@@ -2,7 +2,11 @@ import type { OmcResolution } from "@dicode/omc-bootstrap";
 import type { CompatibilityReport } from "@dicode/omc-client";
 import { describe, expect, it } from "vitest";
 
-import { omcStatus, type OmcVerdict } from "./omc-status.js";
+import {
+  missingOmcGuidance,
+  omcStatus,
+  type OmcVerdict,
+} from "./omc-status.js";
 
 const OMC = "/usr/bin/omc";
 const onPath: OmcResolution = { source: "path", omcPath: OMC };
@@ -95,5 +99,20 @@ describe("omcStatus", () => {
     expect(
       omcStatus(onPath, verdict("exact", "OpenModelica 1.27.0")).warn,
     ).toBe(false);
+  });
+});
+
+describe("missingOmcGuidance", () => {
+  it("names the official installer on the one platform with no automated route", () => {
+    expect(missingOmcGuidance("win32").message).toContain(
+      "official Windows installer",
+    );
+    expect(missingOmcGuidance("linux").message).not.toContain("installer");
+  });
+
+  it("sends each platform to its own download page", () => {
+    expect(missingOmcGuidance("win32").downloadPage).toContain("windows");
+    expect(missingOmcGuidance("darwin").downloadPage).toContain("mac");
+    expect(missingOmcGuidance("linux").downloadPage).toContain("linux");
   });
 });

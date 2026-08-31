@@ -1,8 +1,8 @@
 /**
  * Finds the OpenModelica the extension will use, and says so.
  *
- * Resolution runs again on every client spawn rather than once at activation,
- * so an `omc` the user points at takes effect without a window reload.
+ * Resolution runs on every client spawn, so an `omc` the user points at takes
+ * effect without a window reload.
  *
  * `modelica.omcPath` is written in exactly one place — the file picker below —
  * because it holds a human's stated choice and nothing else (ADR 0002).
@@ -15,6 +15,7 @@ import * as vscode from "vscode";
 import {
   managedRoot,
   resolveOmc,
+  type FileProbe,
   type OmcResolution,
 } from "@dicode/omc-bootstrap";
 import type { CompatibilityReport } from "@dicode/omc-client";
@@ -22,12 +23,14 @@ import type { CompatibilityReport } from "@dicode/omc-client";
 import { errorDetail } from "./error-detail.js";
 import { pathExists } from "./fs-util.js";
 import { log } from "./logger.js";
-import { omcStatus, sourceSentence, type OmcVerdict } from "./omc-status.js";
+import {
+  missingOmcGuidance,
+  omcStatus,
+  sourceSentence,
+  type OmcVerdict,
+} from "./omc-status.js";
 
 const SETUP_COMMAND = "modelica.setupOmc";
-/** Must match the title contributed for `SETUP_COMMAND` in `package.json`. */
-const SETUP_TITLE = "Modelica: Set Up OpenModelica";
-const DOWNLOAD_PAGE = "https://openmodelica.org/download/";
 
 const LOCATE = "Locate omc...";
 const DOWNLOAD = "Get OpenModelica";
@@ -35,6 +38,17 @@ const DOWNLOAD = "Get OpenModelica";
 /** The wrappers' compatibility verdict, from a connected client. */
 interface VersionedClient {
   getVersionStatus(): Promise<CompatibilityReport>;
+}
+
+/**
+ * The ambient facts resolution reads. Injected so the platform and the disk are
+ * both answerable from a test on any host, as they are in `omc-bootstrap`.
+ */
+export interface OmcEnvironment {
+  readonly homeDir: string;
+  readonly pathVariable: string;
+  readonly platform: NodeJS.Platform;
+  readonly probe: FileProbe;
 }
 
 export interface OmcSetup extends vscode.Disposable {
@@ -49,7 +63,18 @@ export interface OmcSetup extends vscode.Disposable {
   reportVersion(client: VersionedClient, omcPath: string): Promise<void>;
 }
 
-export function createOmcSetup(): OmcSetup {
+export function nodeEnvironment(): OmcEnvironment {
+  return {
+    homeDir: os.homedir(),
+    pathVariable: process.env.PATH ?? "",
+    platform: process.platform,
+    probe: pathExists,
+  };
+}
+
+export function createOmcSetup(
+  environment: OmcEnvironment = nodeEnvironment(),
+): OmcSetup {
   const item = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100,
@@ -78,11 +103,11 @@ export function createOmcSetup(): OmcSetup {
           vscode.workspace
             .getConfiguration("modelica")
             .get<string>("omcPath") ?? "",
-        managedRoot: managedRoot(os.homedir(), process.platform),
-        pathVariable: process.env.PATH ?? "",
-        platform: process.platform,
+        managedRoot: managedRoot(environment.homeDir, environment.platform),
+        pathVariable: environment.pathVariable,
+        platform: environment.platform,
       },
-      pathExists,
+      environment.probe,
     );
     // A `PATH` sweep that started earlier can land later; the newest answer is
     // the one the user is looking at.
@@ -107,13 +132,14 @@ export function createOmcSetup(): OmcSetup {
   }
 
   async function prompt(): Promise<void> {
-    // Re-resolve first: the user reaching for this may have just installed the
-    // OpenModelica the last resolution missed.
+    // The user reaching for this may have just installed the OpenModelica the
+    // last resolution missed.
     const current = await resolve();
+    const guidance = missingOmcGuidance(environment.platform);
     const choice =
       current.source === "missing"
         ? await vscode.window.showWarningMessage(
-            "OpenModelica was not found. Modelica language features and simulation need it.",
+            guidance.message,
             LOCATE,
             DOWNLOAD,
           )
@@ -124,7 +150,7 @@ export function createOmcSetup(): OmcSetup {
           );
     if (choice === LOCATE) await locate();
     if (choice === DOWNLOAD) {
-      await vscode.env.openExternal(vscode.Uri.parse(DOWNLOAD_PAGE));
+      await vscode.env.openExternal(vscode.Uri.parse(guidance.downloadPage));
     }
   }
 
@@ -138,15 +164,14 @@ export function createOmcSetup(): OmcSetup {
 
   return {
     async start(): Promise<void> {
-      // The notification fires once, here. A user who dismisses it is left the
-      // status bar rather than a second prompt.
+      // The only site that notifies; the status bar carries it from here on.
       if ((await resolve()).source === "missing") await prompt();
     },
     async omcPath(): Promise<string> {
       const resolved = await resolve();
       if (resolved.source === "missing") {
         throw new Error(
-          `OpenModelica was not found. Run "${SETUP_TITLE}" to point the extension at it.`,
+          "OpenModelica was not found. Set one up from the OpenModelica status bar item.",
         );
       }
       return resolved.omcPath;

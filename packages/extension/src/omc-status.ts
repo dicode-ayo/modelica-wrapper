@@ -1,5 +1,5 @@
 /**
- * How the resolved OpenModelica reads in the status bar.
+ * How the resolved OpenModelica reads back to the user.
  *
  * The compatibility verdict is optional: resolving `omc` costs a file probe and
  * the verdict costs a running OMC, so the item appears at activation naming
@@ -20,6 +20,30 @@ export interface OmcStatus {
   readonly tooltip: string;
   /** Nothing was found, or the version is one the wrappers were never audited against. */
   readonly warn: boolean;
+}
+
+/** What to say when there is no OpenModelica, and where to send the user for one. */
+export function missingOmcGuidance(platform: NodeJS.Platform): {
+  readonly message: string;
+  readonly downloadPage: string;
+} {
+  // Windows is the one platform with no automated route, so its message has to
+  // carry the whole answer.
+  if (platform === "win32") {
+    return {
+      message:
+        "OpenModelica was not found. Install it with the official Windows installer, then reload the window.",
+      downloadPage: "https://openmodelica.org/download/download-windows/",
+    };
+  }
+  return {
+    message:
+      "OpenModelica was not found. Modelica language features and simulation need it.",
+    downloadPage:
+      platform === "darwin"
+        ? "https://openmodelica.org/download/download-mac/"
+        : "https://openmodelica.org/download/download-linux/",
+  };
 }
 
 /** Which of the three OpenModelicas is in use, as a sentence. */
