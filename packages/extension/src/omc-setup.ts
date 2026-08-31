@@ -72,9 +72,17 @@ export function nodeEnvironment(): OmcEnvironment {
   };
 }
 
-export function createOmcSetup(
-  environment: OmcEnvironment = nodeEnvironment(),
-): OmcSetup {
+export interface OmcSetupOptions {
+  readonly environment?: OmcEnvironment;
+  /**
+   * The resolved `omc` changed after the first resolution. A different binary
+   * is a different symbol table, so the caller has a session to replace.
+   */
+  readonly onOmcChanged?: () => void;
+}
+
+export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
+  const environment = options.environment ?? nodeEnvironment();
   const item = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100,
@@ -84,6 +92,7 @@ export function createOmcSetup(
   let resolution: OmcResolution = { source: "missing" };
   let verdict: OmcVerdict | undefined;
   let generation = 0;
+  let resolvedOnce = false;
 
   function render(): void {
     const status = omcStatus(resolution, verdict);
@@ -112,8 +121,11 @@ export function createOmcSetup(
     // A `PATH` sweep that started earlier can land later; the newest answer is
     // the one the user is looking at.
     if (mine === generation) {
+      const changed = resolvedOnce && resolved.omcPath !== resolution.omcPath;
       resolution = resolved;
+      resolvedOnce = true;
       render();
+      if (changed) options.onOmcChanged?.();
     }
     return resolved;
   }

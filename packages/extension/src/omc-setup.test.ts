@@ -43,7 +43,7 @@ describe("createOmcSetup", () => {
       }
       return false;
     };
-    const setup = createOmcSetup(environment(probe));
+    const setup = createOmcSetup({ environment: environment(probe) });
 
     const sweep = setup.omcPath();
     managedInstalled = true;
@@ -56,10 +56,36 @@ describe("createOmcSetup", () => {
   });
 
   it("names the missing dependency rather than letting a spawn fail with ENOENT", async () => {
-    const setup = createOmcSetup(environment(() => Promise.resolve(false)));
+    const setup = createOmcSetup({
+      environment: environment(() => Promise.resolve(false)),
+    });
 
     await expect(setup.omcPath()).rejects.toThrow(/OpenModelica was not found/);
     expect(shown().text).toContain("not found");
+    setup.dispose();
+  });
+
+  it("reports an omc that appeared, but says nothing about the first look", async () => {
+    let installed = false;
+    let changes = 0;
+    const setup = createOmcSetup({
+      environment: environment((candidate) =>
+        Promise.resolve(candidate === MANAGED && installed),
+      ),
+      onOmcChanged: () => {
+        changes += 1;
+      },
+    });
+
+    await expect(setup.omcPath()).rejects.toThrow();
+    expect(changes).toBe(0);
+
+    installed = true;
+    await expect(setup.omcPath()).resolves.toBe(MANAGED);
+    expect(changes).toBe(1);
+
+    await setup.omcPath();
+    expect(changes).toBe(1);
     setup.dispose();
   });
 });

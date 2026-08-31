@@ -17,6 +17,7 @@ import * as vscode from "vscode";
 import { OmcClient, reapOrphanedOmcSessions } from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
+import { errorDetail } from "./error-detail.js";
 import { DiagramEditorProvider } from "./diagram/diagram-editor-provider.js";
 import {
   DIAGRAM_VIEW_TYPE,
@@ -85,7 +86,19 @@ export async function activate(
   // number of caches is invisible here.
   const invalidation = new ClassInvalidationRegistry();
 
-  const omcSetup = createOmcSetup();
+  // Replacing the session is what re-runs the workspace sweep and rebuilds the
+  // sidebar: a user who points at an `omc` after activation found none has an
+  // empty tree until the load happens against the new process.
+  const omcSetup = createOmcSetup({
+    onOmcChanged: () => {
+      void resetClient().catch((err: unknown) => {
+        log.warn(
+          "omc",
+          `replacing the OMC session failed: ${errorDetail(err)}`,
+        );
+      });
+    },
+  });
 
   // `onReset` closes over the per-activation `ClassInvalidationRegistry`, so
   // this can't be built at module scope.
