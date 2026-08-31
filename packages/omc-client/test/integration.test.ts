@@ -41,8 +41,9 @@ describeIf("OmcClient against real OMC", () => {
     const { version } = await client.getVersion();
     const report = compatibilityReport(version);
 
-    expect(report.omc).toBeDefined();
-    expect(["exact", "minor-compatible"]).toContain(report.level);
+    expect(["exact", "minor-compatible"], `omc reports "${version}"`).toContain(
+      report.level,
+    );
   });
 
   it("invoke() dispatches by name with full input + output validation", async () => {
