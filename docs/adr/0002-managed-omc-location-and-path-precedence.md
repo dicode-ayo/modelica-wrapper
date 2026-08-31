@@ -39,6 +39,14 @@ it breaks four ways:
 Under the precedence rule all four disappear, because the setting only ever contains what a
 human typed.
 
+## What sits under the root
+
+The verified installation is `<root>/current`. An install stages into a sibling under the same
+root and is moved into place only once it has run, so the swap is a rename within one
+filesystem and every path the installer creates — staging directories included — sits inside
+the subdirectory the removal guarantee covers. Putting the prefix at the root itself would push
+staging out into `~/.openmodelica`, which OpenModelica owns and we do not.
+
 ## Consequences
 
 Resolution becomes invisible — nothing in the settings file says which `omc` is in use. This
