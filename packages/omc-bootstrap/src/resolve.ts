@@ -100,7 +100,8 @@ export async function resolveOmc(
   return { source: "missing" };
 }
 
-function platformPath(platform: NodeJS.Platform): path.PlatformPath {
+/** The path flavour a platform uses, so one layout never mixes separators. */
+export function platformPath(platform: NodeJS.Platform): path.PlatformPath {
   return platform === "win32" ? path.win32 : path.posix;
 }
 

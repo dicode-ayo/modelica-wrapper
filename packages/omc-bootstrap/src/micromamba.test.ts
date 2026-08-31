@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { condaSubdir, micromambaRelease } from "./micromamba.js";
 
+const SUBDIRS = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"] as const;
+
 describe("condaSubdir", () => {
   it("names the four platforms conda-forge builds OpenModelica for", () => {
     expect(condaSubdir("linux", "x64")).toBe("linux-64");
@@ -23,20 +25,15 @@ describe("condaSubdir", () => {
 
 describe("micromambaRelease", () => {
   it("pins one tag across every platform, so a bump cannot be partial", () => {
-    const tags = (["linux-64", "linux-aarch64", "osx-64", "osx-arm64"] as const)
-      .map((subdir) => micromambaRelease(subdir).url)
-      .map((url) => url.split("/download/")[1]?.split("/")[0]);
+    const tags = SUBDIRS.map((subdir) => micromambaRelease(subdir).url).map(
+      (url) => url.split("/download/")[1]?.split("/")[0],
+    );
 
     expect(new Set(tags).size).toBe(1);
   });
 
   it("carries a digest for every platform it offers", () => {
-    for (const subdir of [
-      "linux-64",
-      "linux-aarch64",
-      "osx-64",
-      "osx-arm64",
-    ] as const) {
+    for (const subdir of SUBDIRS) {
       const release = micromambaRelease(subdir);
       expect(release.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(release.url).toContain(`micromamba-${subdir}`);
@@ -44,9 +41,7 @@ describe("micromambaRelease", () => {
   });
 
   it("gives each platform its own binary", () => {
-    const digests = (
-      ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"] as const
-    ).map((subdir) => micromambaRelease(subdir).sha256);
+    const digests = SUBDIRS.map((subdir) => micromambaRelease(subdir).sha256);
 
     expect(new Set(digests).size).toBe(4);
   });

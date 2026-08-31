@@ -7,20 +7,21 @@
  * is, by definition, one that ran, so there is no health state to track and a
  * failed update cannot leave a user with nothing.
  *
- * Nothing here touches the network, a process, or a disk directly. The four
- * capabilities an install needs are injected, which is what lets the suite pin
- * what happens on a checksum mismatch or a failed verification without either.
+ * Nothing here touches the network, a process, or a disk directly: those four
+ * capabilities are injected, so the suite can pin what a failed verification or
+ * a half-finished swap leaves behind without any of them. Which micromamba to
+ * run, and what it must hash to, stays imported rather than injected — a digest
+ * a caller supplies would verify nothing.
  */
 
 import { createHash } from "node:crypto";
-import * as path from "node:path";
 
 import {
   condaSubdir,
   micromambaRelease,
   type CondaSubdir,
 } from "./micromamba.js";
-import { managedPrefix, prefixOmcBinary } from "./resolve.js";
+import { managedPrefix, platformPath, prefixOmcBinary } from "./resolve.js";
 
 /**
  * Entries under the managed root that an install creates, and so the only
@@ -54,7 +55,7 @@ export interface InstallProgress {
   /** Absent when the server sent no length. */
   readonly totalBytes?: number | undefined;
   /** Whatever the child process just wrote, for a log. */
-  readonly output?: string;
+  readonly output?: string | undefined;
 }
 
 export type ReportProgress = (progress: InstallProgress) => void;
@@ -131,7 +132,7 @@ export interface InstallOmcInput {
   /** The directory this extension owns, from `managedRoot`. */
   readonly managedRoot: string;
   readonly platform: NodeJS.Platform;
-  readonly arch: string;
+  readonly arch: NodeJS.Architecture;
   /** Directory holding the committed per-platform lockfiles. */
   readonly lockfileDirectory: string;
   /** `http.proxy` as the editor has it; absent when unset. */
@@ -168,8 +169,9 @@ export async function installManagedOmc(
     );
   }
 
+  const paths = platformPath(input.platform);
   const root = input.managedRoot;
-  const staging = path.posix.join(root, STAGING_PREFIX);
+  const staging = paths.join(root, STAGING_PREFIX);
   const target = managedPrefix(root, input.platform);
 
   throwIfCancelled(deps.signal);
@@ -191,7 +193,7 @@ export async function installManagedOmc(
     const tool = await installMicromamba(root, subdir, input, deps);
     await createPrefix(tool, staging, subdir, input, deps);
     const version = await verifyPrefix(staging, input.platform, deps);
-    await promote(staging, target, root, deps);
+    await promote(staging, target, root, input.platform, deps);
     return { omcPath: prefixOmcBinary(target, input.platform), version };
   } catch (err) {
     await deps.fs.remove(staging);
@@ -213,11 +215,12 @@ export async function removeManagedOmc(
   input: RemoveOmcInput,
   fs: InstallFileSystem,
 ): Promise<boolean> {
+  const paths = platformPath(input.platform);
   const root = input.managedRoot;
   // Every path below is a fixed name joined onto this root. A root that is
   // empty, relative, or the filesystem root would aim that join at directories
   // no install ever created.
-  if (!path.posix.isAbsolute(root) || path.posix.dirname(root) === root) {
+  if (!paths.isAbsolute(root) || paths.dirname(root) === root) {
     throw new Error(
       `Refusing to remove a managed OpenModelica from ${JSON.stringify(root)}: not a directory this extension creates.`,
     );
@@ -227,10 +230,10 @@ export async function removeManagedOmc(
   const installed = await fs.exists(prefix);
   for (const entry of [
     prefix,
-    path.posix.join(root, STAGING_PREFIX),
-    path.posix.join(root, SUPERSEDED_PREFIX),
-    path.posix.join(root, MICROMAMBA_BINARY),
-    path.posix.join(root, PACKAGE_CACHE),
+    paths.join(root, STAGING_PREFIX),
+    paths.join(root, SUPERSEDED_PREFIX),
+    paths.join(root, MICROMAMBA_BINARY),
+    paths.join(root, PACKAGE_CACHE),
   ]) {
     await fs.remove(entry);
   }
@@ -279,7 +282,7 @@ async function installMicromamba(
 
   // Written and made runnable only past the digest check: a binary that failed
   // verification must never reach a state where the OS would execute it.
-  const tool = path.posix.join(root, MICROMAMBA_BINARY);
+  const tool = platformPath(input.platform).join(root, MICROMAMBA_BINARY);
   await deps.fs.writeFile(tool, bytes);
   await deps.fs.makeExecutable(tool);
   return tool;
@@ -292,7 +295,10 @@ async function createPrefix(
   input: InstallOmcInput,
   deps: InstallOmcDeps,
 ): Promise<void> {
-  const lockfile = path.posix.join(input.lockfileDirectory, `${subdir}.lock`);
+  const lockfile = platformPath(input.platform).join(
+    input.lockfileDirectory,
+    `${subdir}.lock`,
+  );
   if (!(await deps.fs.exists(lockfile))) {
     throw new OmcInstallError(
       "install-failed",
@@ -340,7 +346,10 @@ function micromambaEnvironment(input: InstallOmcInput): Record<string, string> {
   const environment: Record<string, string> = {
     // Keeps the package cache under the root we own, on the filesystem the
     // prefix lands on, which is what lets conda hardlink instead of copy.
-    MAMBA_ROOT_PREFIX: path.posix.join(input.managedRoot, PACKAGE_CACHE),
+    MAMBA_ROOT_PREFIX: platformPath(input.platform).join(
+      input.managedRoot,
+      PACKAGE_CACHE,
+    ),
   };
   const proxy = input.proxy?.trim();
   if (proxy !== undefined && proxy.length > 0) {
@@ -383,10 +392,11 @@ async function promote(
   staging: string,
   target: string,
   root: string,
+  platform: NodeJS.Platform,
   deps: InstallOmcDeps,
 ): Promise<void> {
   deps.report({ phase: "finishing" });
-  const superseded = path.posix.join(root, SUPERSEDED_PREFIX);
+  const superseded = platformPath(platform).join(root, SUPERSEDED_PREFIX);
   const replacing = await deps.fs.exists(target);
 
   if (replacing) {

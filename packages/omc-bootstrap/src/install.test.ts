@@ -146,8 +146,10 @@ const failure = async (run: Promise<unknown>): Promise<OmcInstallError> => {
     () => undefined,
     (caught: unknown) => caught,
   );
-  expect(err).toBeInstanceOf(OmcInstallError);
-  return err as OmcInstallError;
+  if (!(err instanceof OmcInstallError)) {
+    throw new Error(`Expected an OmcInstallError, got ${String(err)}`);
+  }
+  return err;
 };
 
 describe("installManagedOmc", () => {
@@ -337,6 +339,25 @@ describe("removeManagedOmc", () => {
         h.deps.fs,
       ),
     ).toBe(false);
+  });
+
+  it("answers for a Windows root instead of refusing every one of them", async () => {
+    const root = "C:\\Users\\u\\.openmodelica\\modelica-wrapper";
+    const h = harness({ existing: [] });
+
+    expect(
+      await removeManagedOmc(
+        { managedRoot: root, platform: "win32" },
+        h.deps.fs,
+      ),
+    ).toBe(false);
+    expect(h.ops).toEqual([
+      `remove ${root}\\current`,
+      `remove ${root}\\staging`,
+      `remove ${root}\\previous`,
+      `remove ${root}\\micromamba`,
+      `remove ${root}\\cache`,
+    ]);
   });
 
   it("refuses a root that no install could have created", async () => {

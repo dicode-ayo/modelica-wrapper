@@ -37,12 +37,11 @@ const MICROMAMBA_SHA256: Readonly<Record<CondaSubdir, string>> = {
  */
 export function condaSubdir(
   platform: NodeJS.Platform,
-  arch: string,
+  arch: NodeJS.Architecture,
 ): CondaSubdir | undefined {
   if (platform === "linux") {
     if (arch === "x64") return "linux-64";
     if (arch === "arm64") return "linux-aarch64";
-    return undefined;
   }
   if (platform === "darwin") {
     if (arch === "x64") return "osx-64";
