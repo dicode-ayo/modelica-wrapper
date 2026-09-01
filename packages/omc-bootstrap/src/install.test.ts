@@ -291,6 +291,41 @@ describe("installManagedOmc", () => {
     });
   });
 
+  it("types a failure to spawn micromamba rather than letting it escape", async () => {
+    const h = harness({
+      run: (request) =>
+        request.command === TOOL
+          ? Promise.reject(new Error("ENOENT"))
+          : Promise.resolve({ exitCode: 0, stdout: "1.27.0", stderr: "" }),
+    });
+
+    const err = await failure(installManagedOmc(input(), h.deps));
+
+    expect(err.reason).toBe("install-failed");
+    expect(h.existing.has(CURRENT)).toBe(false);
+  });
+
+  it("refuses a version that is not concrete, which would solve to newest", async () => {
+    for (const version of ["", "  ", "latest", "1.x"]) {
+      const h = harness();
+
+      await expect(
+        installManagedOmc(input({ version }), h.deps),
+      ).rejects.toThrow(/not a concrete OpenModelica version/);
+      expect(h.downloads).toEqual([]);
+      expect(h.runs).toEqual([]);
+    }
+  });
+
+  it("refuses a home directory that is not absolute", async () => {
+    const h = harness();
+
+    await expect(
+      installManagedOmc(input({ homeDir: "relative/path" }), h.deps),
+    ).rejects.toThrow(/absolute home directory/);
+    expect(h.downloads).toEqual([]);
+  });
+
   it("stops before downloading anything once cancelled", async () => {
     const h = harness({ signal: AbortSignal.abort() });
 
@@ -368,16 +403,26 @@ describe("removeManagedOmc", () => {
     ]);
   });
 
-  it("cannot be aimed outside the directory this extension owns", async () => {
-    for (const homeDir of ["", "/", "/home/u", "relative/path"]) {
+  it("refuses a home directory that is not absolute", async () => {
+    for (const homeDir of ["", "relative/path"]) {
       const h = harness({ existing: [] });
+
+      await expect(
+        removeManagedOmc({ homeDir, platform: "linux" }, h.deps.fs),
+      ).rejects.toThrow(/absolute home directory/);
+      expect(h.ops).toEqual([]);
+    }
+  });
+
+  it("only ever removes paths inside the directory this extension owns", async () => {
+    for (const homeDir of ["/", "/home/u"]) {
+      const h = harness({ existing: [] });
+      const owned = `remove ${homeDir === "/" ? "" : homeDir}/.openmodelica/modelica-wrapper/`;
 
       await removeManagedOmc({ homeDir, platform: "linux" }, h.deps.fs);
 
-      for (const op of h.ops) {
-        expect(op).toContain(".openmodelica/modelica-wrapper/");
-      }
       expect(h.ops).toHaveLength(5);
+      for (const op of h.ops) expect(op.startsWith(owned)).toBe(true);
     }
   });
 });

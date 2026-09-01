@@ -37,8 +37,8 @@ const PACKAGE_CACHE = "cache";
 /**
  * What an install needs free under the managed root: 0.8 GB of package
  * archives plus a 3.1 GB extracted cache, with the prefix itself hardlinked
- * from that cache and so nearly free — 4.4 GB measured on linux-64 against the
- * pinned OpenModelica. The rest is headroom for the platforms that sit higher.
+ * from that cache and so nearly free — 4.4 GB measured on linux-64 against
+ * OpenModelica 1.27.0. The rest is headroom for the platforms that sit higher.
  */
 const REQUIRED_FREE_BYTES = 5_500_000_000;
 
@@ -89,6 +89,11 @@ export interface ProcessResult {
   readonly stderr: string;
 }
 
+/**
+ * Run a process to completion. Resolves for any exit code; rejecting is for a
+ * process that could not be run at all, which callers here map to a failure of
+ * whatever step was spawning it.
+ */
 export type RunProcess = (request: ProcessRequest) => Promise<ProcessResult>;
 
 export interface InstallFileSystem {
@@ -98,6 +103,7 @@ export interface InstallFileSystem {
    * `target` exists yet — the check has to happen before anything is created.
    */
   availableBytes(target: string): Promise<number>;
+  /** Create it and any missing parents; succeeds when it already exists. */
   makeDirectory(target: string): Promise<void>;
   writeFile(target: string, contents: Uint8Array): Promise<void>;
   makeExecutable(target: string): Promise<void>;
@@ -142,6 +148,13 @@ interface ManagedLayout {
 
 function layoutFor(homeDir: string, platform: NodeJS.Platform): ManagedLayout {
   const paths = platformPath(platform);
+  // A relative home directory would put every path below at the mercy of the
+  // process's working directory, which is not a place this extension owns.
+  if (!paths.isAbsolute(homeDir)) {
+    throw new Error(
+      `A managed OpenModelica needs an absolute home directory, not ${JSON.stringify(homeDir)}.`,
+    );
+  }
   const root = managedRoot(homeDir, platform);
   return {
     root,
@@ -194,6 +207,14 @@ export async function installManagedOmc(
     throw new OmcInstallError(
       "unsupported-platform",
       `conda-forge publishes no OpenModelica for ${input.platform}-${input.arch}.`,
+    );
+  }
+
+  // `openmodelica=` with nothing after it resolves to the newest build there
+  // is, which is exactly what naming a version is meant to prevent.
+  if (!/^\d+\.\d+(\.\d+)?$/.test(input.version)) {
+    throw new Error(
+      `${JSON.stringify(input.version)} is not a concrete OpenModelica version.`,
     );
   }
 
@@ -326,14 +347,14 @@ async function createPrefix(
 ): Promise<void> {
   throwIfCancelled(deps.signal);
   deps.report({ phase: "installing-openmodelica" });
-  const result = await deps.run({
+  const result = await runOrFail(deps, "install-failed", {
     command: layout.tool,
     args: [
       "create",
       "--prefix",
       layout.staging,
       // Pinned in code rather than left to micromamba's default, so an install
-      // can never fall through to a channel with other licence terms.
+      // can never fall through to a channel with other license terms.
       "--channel",
       "conda-forge",
       "--override-channels",
@@ -380,6 +401,11 @@ function micromambaEnvironment(
   return environment;
 }
 
+/**
+ * Prove the staged prefix landed intact and that its `omc` links and runs. The
+ * environment a conda-provided `omc` needs in order to compile is applied at
+ * spawn time by `omc-client`, not here.
+ */
 async function verifyPrefix(
   layout: ManagedLayout,
   platform: NodeJS.Platform,
@@ -388,7 +414,7 @@ async function verifyPrefix(
   throwIfCancelled(deps.signal);
   deps.report({ phase: "verifying-openmodelica" });
   const omc = prefixOmcBinary(layout.staging, platform);
-  const result = await deps.run({
+  const result = await runOrFail(deps, "verification-failed", {
     command: omc,
     args: ["--version"],
     env: {},
@@ -423,7 +449,11 @@ async function promote(
   try {
     await deps.fs.move(layout.staging, layout.current);
   } catch (err) {
-    if (replacing) await deps.fs.move(layout.superseded, layout.current);
+    if (replacing) {
+      await deps.fs
+        .move(layout.superseded, layout.current)
+        .catch(() => undefined);
+    }
     throw new OmcInstallError(
       "install-failed",
       `Moving the verified prefix into ${layout.current} failed.`,
@@ -431,6 +461,21 @@ async function promote(
     );
   }
   if (replacing) await deps.fs.remove(layout.superseded);
+}
+
+async function runOrFail(
+  deps: InstallOmcDeps,
+  reason: InstallFailure,
+  request: ProcessRequest,
+): Promise<ProcessResult> {
+  try {
+    return await deps.run(request);
+  } catch (err) {
+    throwIfCancelled(deps.signal);
+    throw new OmcInstallError(reason, `Running ${request.command} failed.`, {
+      cause: err,
+    });
+  }
 }
 
 function throwIfCancelled(signal: AbortSignal | undefined): void {
