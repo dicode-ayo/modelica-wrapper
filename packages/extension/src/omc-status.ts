@@ -94,7 +94,7 @@ export function verdictWarns(level: CompatibilityLevel): boolean {
  * from another binary says nothing about this one.
  */
 export function verdictFor(
-  resolution: OmcResolution,
+  resolution: FoundOmc,
   verdict: OmcVerdict | undefined,
 ): CompatibilityReport | undefined {
   if (verdict === undefined) return undefined;
@@ -157,10 +157,11 @@ function verdictSentence(compatibility: CompatibilityReport): string {
 /**
  * What an install costs and where it comes from, disclosed before it starts.
  *
- * The disk figure is what the machine actually loses: 0.8 GB of package
- * archives plus a 3.1 GB extracted cache, with the prefix hardlinked from that
- * cache. It is larger than the prefix's own logical size, which is the number a
- * user would otherwise infer from `du` on the prefix alone.
+ * The disk figure is total loss under the managed root, not the prefix's own
+ * size: 0.77 GB of package archives, 2.9 GB of packages extracted beside them,
+ * and 0.59 GB of prefix that conda copies rather than hardlinks from that
+ * cache. Measured at 4.3 GB on linux-64 against OpenModelica 1.27.0, and
+ * quoted rounded up.
  */
 export function installDisclosure(managedRoot: string): ModalPrompt {
   return {
@@ -176,6 +177,14 @@ export function installDisclosure(managedRoot: string): ModalPrompt {
 
 /** The command title the disclosure points at, and the command's own title. */
 export const REMOVE_TITLE = "Modelica: Remove the Installed OpenModelica";
+
+/** A managed-install operation is already running; a second cannot start. */
+export const BUSY =
+  "This extension is already installing or removing OpenModelica.";
+
+/** An install stopped for a reason that is a bug rather than a condition. */
+export const UNEXPECTED_FAILURE =
+  "Installing OpenModelica failed unexpectedly. The log has the details.";
 
 /** Why an install is not on offer, wherever the question is reached from. */
 export const NO_MANAGED_INSTALL =

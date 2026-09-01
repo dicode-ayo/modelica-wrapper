@@ -43,7 +43,9 @@ import {
   settingWinsMessage,
   verdictFor,
   verdictWarns,
+  BUSY,
   NO_MANAGED_INSTALL,
+  UNEXPECTED_FAILURE,
   type FoundOmc,
   type OmcVerdict,
 } from "./omc-status.js";
@@ -60,10 +62,6 @@ const DETAILS = "Details";
 const UPDATE = "Update OpenModelica";
 const REMOVE = "Remove";
 const SHOW_LOGS = "Show Logs";
-
-const BUSY = "This extension is already installing or removing OpenModelica.";
-const UNEXPECTED_FAILURE =
-  "Installing OpenModelica failed unexpectedly. The log has the details.";
 
 /** The wrappers' compatibility verdict, from a connected client. */
 interface VersionedClient {

@@ -211,7 +211,14 @@ async function send(
       ? {}
       : {
           createConnection: () =>
-            tls.connect({ socket: tunnelled, servername: url.hostname }),
+            tls.connect({
+              socket: tunnelled,
+              // RFC 6066 forbids an IP literal as the server name, and Node
+              // has said it will start dropping one.
+              ...(net.isIP(url.hostname) === 0
+                ? { servername: url.hostname }
+                : {}),
+            }),
         }),
   });
 }
