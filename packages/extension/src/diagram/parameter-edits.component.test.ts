@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ComponentElement, ParameterField } from "@dicode/omc-client";
 
-import { refOf } from "../../test-support/parameter-refs.js";
 import { requireComponentParameterForm } from "../../test-support/parameter-forms.js";
+import { refOf } from "../../test-support/parameter-refs.js";
 import {
   buildComponentParameterForm,
   componentParameterEditPlan,
@@ -16,7 +16,7 @@ function field(
   name: string,
 ): ParameterField {
   const f = model.fields.find((x) => x.name === name);
-  if (f === undefined) throw new Error(`no field ${name}`);
+  if (f === undefined) throw new Error(`expected field '${name}'`);
   return f;
 }
 

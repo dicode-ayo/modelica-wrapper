@@ -7,6 +7,7 @@ import type {
 import {
   buildClassParameterForm,
   buildComponentParameterForm,
+  findSubComponent,
   type ComponentParameterFormState,
   type ParameterFormState,
 } from "../src/diagram/parameter-edits.js";
@@ -27,4 +28,15 @@ export function requireComponentParameterForm(
   const form = buildComponentParameterForm(component, unitTable);
   if (form === undefined) throw new Error("expected a parameter form");
   return form;
+}
+
+export function requireSubComponent(
+  instance: ModelInstance,
+  name: string,
+): ComponentElement {
+  const component = findSubComponent(instance, name);
+  if (component === undefined) {
+    throw new Error(`expected sub-component '${name}'`);
+  }
+  return component;
 }

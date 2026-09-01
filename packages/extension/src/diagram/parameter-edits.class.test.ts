@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ModelInstance, ParameterField } from "@dicode/omc-client";
 
-import { refOf } from "../../test-support/parameter-refs.js";
 import { requireClassParameterForm } from "../../test-support/parameter-forms.js";
+import { refOf } from "../../test-support/parameter-refs.js";
 import {
   buildClassParameterForm,
   classParameterValueToExpr,
@@ -33,7 +33,7 @@ function field(
   name: string,
 ): ParameterField {
   const f = model.fields.find((x) => x.name === name);
-  if (f === undefined) throw new Error(`no field ${name}`);
+  if (f === undefined) throw new Error(`expected field '${name}'`);
   return f;
 }
 
