@@ -541,8 +541,17 @@ export const workspace = {
         value: unknown,
         target?: ConfigurationTarget,
       ): Promise<void> => {
-        configurationValues.set(qualify(key), value);
-        configurationUpdates.push({ key: qualify(key), value, target });
+        const qualified = qualify(key);
+        configurationValues.set(qualified, value);
+        configurationUpdates.push({ key: qualified, value, target });
+        // VSCode fires the change event off a write, and listeners re-read the
+        // setting from it; a mock that stays silent hides that whole path.
+        for (const listener of [...workspaceListeners.configuration]) {
+          listener({
+            affectsConfiguration: (section) =>
+              qualified === section || qualified.startsWith(`${section}.`),
+          });
+        }
         return Promise.resolve();
       },
     };

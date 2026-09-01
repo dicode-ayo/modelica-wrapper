@@ -144,7 +144,12 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
     item.show();
   }
 
-  async function resolve(): Promise<OmcResolution> {
+  /**
+   * @param replaced the binary itself was rewritten, so a resolution landing on
+   * the path it already had is still a different OpenModelica than the running
+   * session was spawned from. An update swaps the prefix under `current`.
+   */
+  async function resolve(replaced = false): Promise<OmcResolution> {
     const mine = ++generation;
     const resolved = await resolveOmc(
       {
@@ -161,7 +166,8 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
     // A `PATH` sweep that started earlier can land later; the newest answer is
     // the one the user is looking at.
     if (mine === generation) {
-      const changed = resolvedOnce && resolved.omcPath !== resolution.omcPath;
+      const changed =
+        resolvedOnce && (replaced || resolved.omcPath !== resolution.omcPath);
       resolution = resolved;
       resolvedOnce = true;
       render();
@@ -326,7 +332,7 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
     );
 
     if (!("failure" in outcome)) {
-      await resolve();
+      await resolve(true);
       // A cancel the installer raced past still landed a prefix, so the
       // resolution above stands; announcing it would answer a cancellation
       // with a success.

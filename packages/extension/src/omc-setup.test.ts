@@ -8,7 +8,7 @@ import {
   type RemoveOmcInput,
 } from "@dicode/omc-bootstrap";
 import { SUPPORTED_OMC, type CompatibilityReport } from "@dicode/omc-client";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ConfigurationTarget,
   configurationUpdates,
@@ -266,6 +266,28 @@ describe("the managed install", () => {
     expect(shown().tooltip).toContain(MANAGED);
     // ADR 0002: an install is not a stated choice, so it writes no setting.
     expect(configurationUpdates).toEqual([]);
+    setup.dispose();
+  });
+
+  it("replaces the session after an update, which leaves the path unchanged", async () => {
+    let changes = 0;
+    const setup = createOmcSetup({
+      environment: environment((candidate) =>
+        Promise.resolve(candidate === MANAGED),
+      ),
+      onOmcChanged: () => {
+        changes += 1;
+      },
+      installer: recordingInstaller({}),
+    });
+    await setup.start();
+    expect(changes).toBe(0);
+
+    await runCommand(INSTALL_COMMAND);
+
+    // An update swaps the prefix under the same path, so comparing paths
+    // cannot see it — but the session is running the binary that was replaced.
+    expect(changes).toBe(1);
     setup.dispose();
   });
 
@@ -530,8 +552,12 @@ describe("the managed install", () => {
   });
 
   it("writes modelica.omcPath from the file picker and from nowhere else", async () => {
+    let changes = 0;
     const setup = createOmcSetup({
       environment: environment(() => Promise.resolve(false)),
+      onOmcChanged: () => {
+        changes += 1;
+      },
       installer: recordingInstaller({}),
     });
     queueMessageAnswers("Locate omc...");
@@ -546,6 +572,11 @@ describe("the managed install", () => {
         target: ConfigurationTarget.Global,
       },
     ]);
+    // The write is what re-resolves, and the session has to follow: an `omc`
+    // located after activation otherwise leaves the library tree empty.
+    await vi.waitFor(() => {
+      expect(changes).toBe(1);
+    });
     setup.dispose();
   });
 
