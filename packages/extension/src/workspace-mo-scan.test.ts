@@ -64,4 +64,30 @@ describe("createMoFileScanner", () => {
 
     await expect(scanner.scan()).resolves.toEqual(["A.mo"]);
   });
+
+  it("does not let a late rejection clear a scan started after invalidate()", async () => {
+    let rejectFirst: (e: Error) => void = () => {};
+    const findFiles = vi
+      .fn<() => Promise<readonly string[]>>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_res, rej) => {
+            rejectFirst = rej;
+          }),
+      )
+      .mockResolvedValue(["A.mo"]);
+    const scanner = createMoFileScanner(findFiles);
+
+    const stale = scanner.scan();
+    stale.catch(() => {});
+    scanner.invalidate();
+    const fresh = scanner.scan();
+
+    rejectFirst(new Error("glob failed"));
+    await expect(stale).rejects.toThrow("glob failed");
+
+    await expect(scanner.scan()).resolves.toEqual(["A.mo"]);
+    await fresh;
+    expect(findFiles).toHaveBeenCalledTimes(2);
+  });
 });

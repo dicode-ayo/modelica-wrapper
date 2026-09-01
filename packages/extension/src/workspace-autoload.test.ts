@@ -216,8 +216,13 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
 
   /** Real disk I/O, standing in for extension.ts's own `MoFileScanner`. */
   const scanMoFiles = async (): Promise<string[]> => {
-    const names = await fsp.readdir(tmp);
-    return names.map((name) => path.join(tmp, name));
+    const entries = await fsp.readdir(tmp, {
+      recursive: true,
+      withFileTypes: true,
+    });
+    return entries
+      .filter((e) => e.isFile() && e.name.endsWith(".mo"))
+      .map((e) => path.join(e.parentPath, e.name));
   };
 
   describe("autoLoadWorkspace", () => {

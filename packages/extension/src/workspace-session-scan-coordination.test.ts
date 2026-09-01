@@ -5,11 +5,8 @@
  * its own workspace scan — produces exactly one underlying disk scan per
  * `:reset`, not one per listener.
  *
- * This test hands the same scanner instance to both consumers directly; it
- * does not cover extension.ts's own wiring (that the real `moFileScanner` it
- * builds is the one instance passed to both registration calls). That wiring
- * has no automated test — a reviewer reading extension.ts has to confirm it
- * by eye.
+ * This test hands the same scanner instance to both consumers directly, so it
+ * pins their shared-scanner contract, not extension.ts's own wiring of it.
  */
 
 import * as fsp from "node:fs/promises";
@@ -18,6 +15,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { makeWatcherClient } from "../test-support/mock-watcher-client.js";
 import { resetFileSystemWatchers } from "../test-support/vscode-mock.js";
 
 import { ClassInvalidationRegistry } from "./invalidation.js";
@@ -30,14 +28,6 @@ import {
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 import { createMoFileScanner } from "./workspace-mo-scan.js";
-
-function makeWatcherClient() {
-  return {
-    parseFile: vi.fn(async () => ({ classNames: ["My.Pkg.Bar"] })),
-    loadFile: vi.fn(async () => ({ success: true })),
-    deleteClass: vi.fn(async () => ({ success: true })),
-  };
-}
 
 describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
   let tmp: string;

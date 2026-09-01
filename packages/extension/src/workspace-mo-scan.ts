@@ -21,11 +21,16 @@ export function createMoFileScanner(
     scan(): Promise<readonly string[]> {
       if (pending === undefined) {
         // A rejected scan clears its own memo so the next scan() retries
-        // instead of caching the failure forever.
-        pending = findFiles().catch((err: unknown) => {
-          pending = undefined;
-          throw err;
-        });
+        // instead of caching the failure forever — but only when it's still
+        // the memoized one, since an invalidate()+scan() can have replaced it
+        // while it was in flight, and that newer scan has to survive.
+        const attempt: Promise<readonly string[]> = findFiles().catch(
+          (err: unknown) => {
+            if (pending === attempt) pending = undefined;
+            throw err;
+          },
+        );
+        pending = attempt;
       }
       return pending;
     },

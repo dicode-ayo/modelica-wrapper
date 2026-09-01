@@ -19,9 +19,9 @@ import * as path from "node:path";
 import { pathExists } from "./fs-util.js";
 
 /**
- * Kept as the reference implementation `deriveEntryPoints` is checked against
- * in `workspace-scan.test.ts`'s differential test — no production code calls
- * this directly.
+ * Kept permanently as the reference implementation `deriveEntryPoints` is
+ * checked against in `workspace-scan.test.ts`'s differential test — no
+ * production code calls this directly.
  */
 export async function discoverEntryPoints(roots: string[]): Promise<string[]> {
   const out: string[] = [];
@@ -76,11 +76,9 @@ export function deriveEntryPoints(
     const topLevelFiles: string[] = [];
     const topLevelDirs = new Set<string>();
     for (const file of files) {
-      const rel = path.relative(root, file);
-      if (rel === "" || rel.startsWith(`..${path.sep}`) || rel === "..") {
-        continue; // not under this root
-      }
-      const [first, ...rest] = rel.split(path.sep);
+      // A `..` first segment (the file sits outside this root) is caught by
+      // the same dot-prefix check that skips `.git`, `.vscode`, and dotfiles.
+      const [first, ...rest] = path.relative(root, file).split(path.sep);
       if (first === undefined || first.startsWith(".")) continue;
       if (rest.length === 0) {
         topLevelFiles.push(file);

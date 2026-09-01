@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { makeWatcherClient } from "../test-support/mock-watcher-client.js";
 import {
   recordedMessages,
   resetTabs,
@@ -1236,14 +1237,6 @@ describe("class invalidation from a `.mo` change", () => {
 });
 
 describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
-  function makeWatcherClient() {
-    return {
-      parseFile: vi.fn(async () => ({ classNames: ["My.Pkg.Bar"] })),
-      loadFile: vi.fn(async () => ({ success: true })),
-      deleteClass: vi.fn(async () => ({ success: true })),
-    };
-  }
-
   it("re-seeds the path→class index from disk against the replaced session", async () => {
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
