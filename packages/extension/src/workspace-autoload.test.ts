@@ -214,6 +214,17 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
     await fsp.rm(tmp, { recursive: true, force: true });
   });
 
+  /** Real disk I/O, standing in for extension.ts's own `MoFileScanner`. */
+  const scanMoFiles = async (): Promise<string[]> => {
+    const entries = await fsp.readdir(tmp, {
+      recursive: true,
+      withFileTypes: true,
+    });
+    return entries
+      .filter((e) => e.isFile() && e.name.endsWith(".mo"))
+      .map((e) => path.join(e.parentPath, e.name));
+  };
+
   describe("autoLoadWorkspace", () => {
     it("discovers and loads the workspace's entry files, then refreshes once", async () => {
       const refresh = vi.fn();
@@ -225,6 +236,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient: async () => c,
         refresh,
         onSkipped,
+        scanMoFiles,
       });
 
       expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
@@ -240,6 +252,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient,
         refresh: vi.fn(),
         onSkipped: vi.fn(),
+        scanMoFiles,
       });
 
       expect(ensureClient).not.toHaveBeenCalled();
@@ -256,6 +269,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
           ensureClient,
           refresh: vi.fn(),
           onSkipped: vi.fn(),
+          scanMoFiles,
         }),
       ).resolves.toBeUndefined();
       expect(ensureClient).not.toHaveBeenCalled();
@@ -272,6 +286,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
           ensureClient,
           refresh: vi.fn(),
           onSkipped: vi.fn(),
+          scanMoFiles,
         }),
       ).resolves.toBeUndefined();
       expect(ensureClient).not.toHaveBeenCalled();
@@ -288,6 +303,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient: async () => c,
         refresh,
         onSkipped: vi.fn(),
+        scanMoFiles,
       };
 
       registerWorkspaceAutoload(invalidation, deps);
@@ -308,6 +324,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient: async () => c,
         refresh: vi.fn(),
         onSkipped: vi.fn(),
+        scanMoFiles,
       };
 
       registerWorkspaceAutoload(invalidation, deps).dispose();
@@ -339,6 +356,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         },
         refresh: vi.fn(),
         onSkipped: vi.fn(),
+        scanMoFiles,
       };
 
       registerWorkspaceAutoload(invalidation, deps);
@@ -347,9 +365,9 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
       await vi.waitFor(() => expect(ensureCalls).toBe(1));
 
       invalidation.sessionReplaced(); // 2nd `:reset`, fired before the 1st sweep settles
-      // Real disk I/O (`discoverEntryPoints`), not just microtasks — give an
-      // unserialized 2nd sweep enough real time to reach `ensureClient()` if
-      // nothing is chaining it behind the 1st.
+      // Real disk I/O (`scanMoFiles`'s own `readdir`), not just microtasks —
+      // give an unserialized 2nd sweep enough real time to reach
+      // `ensureClient()` if nothing is chaining it behind the 1st.
       await new Promise((r) => setTimeout(r, 100));
 
       // The 2nd sweep must wait for the 1st instead of starting a second,
@@ -385,6 +403,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         },
         refresh: vi.fn(),
         onSkipped: vi.fn(),
+        scanMoFiles,
       };
 
       const autoload = registerWorkspaceAutoload(invalidation, deps);
@@ -393,9 +412,9 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
       await vi.waitFor(() => expect(ensureCalls).toBe(1));
 
       invalidation.sessionReplaced(); // `:reset` landing mid-activation-sweep
-      // Real disk I/O (`discoverEntryPoints`), not just microtasks — give an
-      // unserialized reset sweep enough real time to reach `ensureClient()`
-      // if it isn't chained behind the activation sweep.
+      // Real disk I/O (`scanMoFiles`'s own `readdir`), not just microtasks —
+      // give an unserialized reset sweep enough real time to reach
+      // `ensureClient()` if it isn't chained behind the activation sweep.
       await new Promise((r) => setTimeout(r, 100));
 
       // The reset sweep must wait for the activation sweep instead of
@@ -408,6 +427,27 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
       // Both sweeps now run in sequence, chained behind one another.
       await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(2));
       expect(ensureCalls).toBe(2);
+    });
+
+    it("derives entry points from scanMoFiles on :reset instead of walking disk again (#484)", async () => {
+      const refresh = vi.fn();
+      const c = client([true]);
+      const invalidation = new ClassInvalidationRegistry();
+      const scanMoFiles = vi.fn(async () => [entryFile]);
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh,
+        onSkipped: vi.fn(),
+        scanMoFiles,
+      };
+
+      registerWorkspaceAutoload(invalidation, deps);
+      invalidation.sessionReplaced();
+
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(1));
+      expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
+      expect(scanMoFiles).toHaveBeenCalledTimes(1);
     });
   });
 });

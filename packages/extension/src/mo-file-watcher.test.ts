@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { makeWatcherClient } from "../test-support/mock-watcher-client.js";
 import {
   recordedMessages,
   resetTabs,
@@ -1236,16 +1237,7 @@ describe("class invalidation from a `.mo` change", () => {
 });
 
 describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
-  function makeWatcherClient() {
-    return {
-      parseFile: vi.fn(async () => ({ classNames: ["My.Pkg.Bar"] })),
-      loadFile: vi.fn(async () => ({ success: true })),
-      deleteClass: vi.fn(async () => ({ success: true })),
-    };
-  }
-
   it("re-seeds the path→class index from disk against the replaced session", async () => {
-    setFindFilesResult([FILE]);
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const disposable = registerMoFileWatcher({
@@ -1258,6 +1250,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      scanMoFiles: async () => [FILE],
     });
 
     // The initial mount seed.
@@ -1272,7 +1265,6 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
   });
 
   it("stops re-seeding once the returned disposable is disposed", async () => {
-    setFindFilesResult([FILE]);
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const disposable = registerMoFileWatcher({
@@ -1285,6 +1277,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      scanMoFiles: async () => [FILE],
     });
     await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
 
@@ -1300,6 +1293,8 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+    const scanMoFiles = async (): Promise<readonly string[]> =>
+      (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath);
 
     // `ensureClient()`'s 2nd call overall is the first reseed's — block it so
     // the test can fire a second `:reset` while that reseed is still pending,
@@ -1324,6 +1319,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      scanMoFiles,
     });
 
     // The mount seed settles (its ensureClient() call isn't blocked).
@@ -1347,6 +1343,35 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
     // behind resolves.
     await vi.waitFor(() => expect(findFilesSpy).toHaveBeenCalledTimes(3));
     await vi.waitFor(() => expect(ensureCalls).toBe(3));
+
+    disposable.dispose();
+    findFilesSpy.mockRestore();
+  });
+
+  it("uses the injected scanMoFiles instead of a fresh findFiles glob, for both the mount seed and :reset (#484)", async () => {
+    const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const scanMoFiles = vi.fn(async () => [FILE]);
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+      scanMoFiles,
+    });
+
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+    invalidation.sessionReplaced();
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(2));
+
+    expect(scanMoFiles).toHaveBeenCalledTimes(2);
+    expect(findFilesSpy).not.toHaveBeenCalled();
 
     disposable.dispose();
     findFilesSpy.mockRestore();

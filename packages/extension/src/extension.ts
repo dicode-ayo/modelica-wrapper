@@ -59,6 +59,7 @@ import {
   registerWorkspaceAutoload,
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
+import { createMoFileScanner } from "./workspace-mo-scan.js";
 
 // Only `deactivate()` outlives `activate()`'s scope.
 let closeOmcClientCache: (() => Promise<void>) | undefined;
@@ -86,6 +87,17 @@ export async function activate(
   // number of caches is invisible here.
   const invalidation = new ClassInvalidationRegistry();
 
+  // Shared by registerWorkspaceAutoload's `:reset` entry-point derivation and
+  // registerMoFileWatcher's `:reset` index reseed, so the two `sessionReplaced`
+  // listeners run one recursive `.mo` glob between them instead of one each.
+  // `null` disables `files.exclude` filtering, matching discoverEntryPoints's
+  // raw `fsp.readdir` walk so `:reset` and activation see the same file set.
+  // The seed therefore parses `files.exclude`d paths as well;
+  // deriveEntryPoints re-applies its own top-level and dot-prefix filtering.
+  const moFileScanner = createMoFileScanner(async () =>
+    (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath),
+  );
+
   // Replacing the session is what re-runs the workspace sweep and rebuilds the
   // sidebar: a user who points at an `omc` after activation found none has an
   // empty tree until the load happens against the new process.
@@ -111,7 +123,13 @@ export async function activate(
       return c;
     },
     (c) => c.close(),
-    () => invalidation.sessionReplaced(),
+    () => {
+      // Invalidated before the fan-out so every sessionReplaced listener —
+      // whichever runs first — sees a fresh scan rather than one memoized
+      // from before this reset.
+      moFileScanner.invalidate();
+      invalidation.sessionReplaced();
+    },
   );
   closeOmcClientCache = () => omcClientCache.shutdown();
   const ensureClient = (): Promise<OmcClient> => omcClientCache.ensure();
@@ -141,6 +159,7 @@ export async function activate(
         multiEntityBatchToast(skipped.map((s) => s.fileName)),
       );
     },
+    scanMoFiles: () => moFileScanner.scan(),
   };
   // One queue for both the activation-time sweep (`.run()` below) and every
   // `:reset` (its own `sessionReplaced` listener), so a reset landing mid-sweep
@@ -210,6 +229,7 @@ export async function activate(
       sourceProvider,
       guard: selfWriteGuard,
       invalidation,
+      scanMoFiles: () => moFileScanner.scan(),
     }),
   );
 
