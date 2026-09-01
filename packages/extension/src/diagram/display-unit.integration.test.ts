@@ -30,10 +30,27 @@ import { randomBytes } from "node:crypto";
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import { OmcClient, diagram } from "@dicode/omc-client";
+import {
+  OmcClient,
+  diagram,
+  type DiagramLayout,
+  type ParameterDef,
+} from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
 import { applyDisplayUnits } from "./display-unit.js";
+
+function paramOf(
+  layout: DiagramLayout,
+  className: string,
+  name: string,
+): ParameterDef {
+  const cls = layout.classes[className];
+  if (cls === undefined) throw new Error(`expected class '${className}'`);
+  const param = cls.parameters[name];
+  if (param === undefined) throw new Error(`expected parameter '${name}'`);
+  return param;
+}
 
 describeIf("displayUnit conversion (live OMC) (#28)", () => {
   let client: OmcClient;
@@ -82,7 +99,7 @@ end ${pkg};
 
     // Sanity: the producer surfaced unit + displayUnit on Comp's `a`, and
     // the source value is still the rad number (~1.57).
-    const before = layout.classes[comp]!.parameters.a!;
+    const before = paramOf(layout, comp, "a");
     expect(before.unit).toBe("rad");
     expect(before.displayUnit).toBe("deg");
     expect(Number.parseFloat(before.value)).toBeCloseTo(1.5708, 3);
@@ -92,7 +109,7 @@ end ${pkg};
       client.convertUnits({ s1, s2 }),
     );
 
-    const after = layout.classes[comp]!.parameters.a!;
+    const after = paramOf(layout, comp, "a");
     // The rewritten display value parses to ~90 (string is "90 deg").
     expect(Number.parseFloat(after.value)).toBeCloseTo(90, 1);
     expect(after.value).toContain("deg");
@@ -108,7 +125,7 @@ end ${pkg};
 
     // `b` has no displayUnit modifier — its rad value is kept (no conversion)
     // and the declared unit is appended verbatim → "3.14… rad".
-    const b = layout.classes[comp]!.parameters.b!;
+    const b = paramOf(layout, comp, "b");
     expect(Number.parseFloat(b.value)).toBeCloseTo(3.14159, 4);
     expect(b.value).not.toContain("deg");
     expect(b.value).toMatch(/\srad$/);
@@ -119,7 +136,7 @@ end ${pkg};
     const layout = diagram.produceDiagramLayout(instance, "diagram");
 
     // Sanity: the producer surfaced unit kg.m2 with no displayUnit.
-    const before = layout.classes[comp]!.parameters.J!;
+    const before = paramOf(layout, comp, "J");
     expect(before.unit).toBe("kg.m2");
     expect(before.displayUnit ?? "").toBe("");
 
@@ -127,7 +144,7 @@ end ${pkg};
       client.convertUnits({ s1, s2 }),
     );
 
-    const after = layout.classes[comp]!.parameters.J!;
+    const after = paramOf(layout, comp, "J");
     expect(after.value).toBe("1 kg.m2");
   });
 });

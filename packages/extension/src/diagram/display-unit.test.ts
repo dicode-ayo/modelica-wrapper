@@ -8,7 +8,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { DiagramLayout } from "@dicode/omc-client";
+import type { DiagramLayout, ParameterDef } from "@dicode/omc-client";
 import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
 
 import {
@@ -133,6 +133,14 @@ function makeLayout(
   };
 }
 
+function paramOf(layout: DiagramLayout, name: string): ParameterDef {
+  const cls = layout.classes["Test.Host"];
+  if (cls === undefined) throw new Error("expected class 'Test.Host'");
+  const param = cls.parameters[name];
+  if (param === undefined) throw new Error(`expected parameter '${name}'`);
+  return param;
+}
+
 describe("applyDisplayUnits", () => {
   it("rewrites ParameterDef.value to the displayUnit value", async () => {
     const layout = makeLayout({
@@ -145,7 +153,7 @@ describe("applyDisplayUnits", () => {
     });
     const resolve: ConvertUnitsResolver = async () => RAD_TO_DEG;
     await applyDisplayUnits(layout, resolve);
-    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("90 deg");
+    expect(paramOf(layout, "a").value).toBe("90 deg");
   });
 
   it("appends the bare unit when displayUnit is absent or equals unit (#71)", async () => {
@@ -156,10 +164,10 @@ describe("applyDisplayUnits", () => {
     });
     const resolve = vi.fn<ConvertUnitsResolver>(async () => RAD_TO_DEG);
     await applyDisplayUnits(layout, resolve);
-    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("1.57 rad");
-    expect(layout.classes["Test.Host"]!.parameters.b!.value).toBe("5 m");
+    expect(paramOf(layout, "a").value).toBe("1.57 rad");
+    expect(paramOf(layout, "b").value).toBe("5 m");
     // The Inertia case from the issue title: J=1 kg.m2.
-    expect(layout.classes["Test.Host"]!.parameters.j!.value).toBe("1 kg.m2");
+    expect(paramOf(layout, "j").value).toBe("1 kg.m2");
     // Bare-append never needs convertUnits.
     expect(resolve).not.toHaveBeenCalled();
   });
@@ -172,9 +180,9 @@ describe("applyDisplayUnits", () => {
     });
     const resolve = vi.fn<ConvertUnitsResolver>(async () => RAD_TO_DEG);
     await applyDisplayUnits(layout, resolve);
-    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("1");
-    expect(layout.classes["Test.Host"]!.parameters.b!.value).toBe("2");
-    expect(layout.classes["Test.Host"]!.parameters.c!.value).toBe("3");
+    expect(paramOf(layout, "a").value).toBe("1");
+    expect(paramOf(layout, "b").value).toBe("2");
+    expect(paramOf(layout, "c").value).toBe("3");
     expect(resolve).not.toHaveBeenCalled();
   });
 
@@ -186,8 +194,8 @@ describe("applyDisplayUnits", () => {
     });
     const resolve = vi.fn<ConvertUnitsResolver>(async () => RAD_TO_DEG);
     await applyDisplayUnits(layout, resolve);
-    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("2 * pi");
-    expect(layout.classes["Test.Host"]!.parameters.k!.value).toBe("k+1");
+    expect(paramOf(layout, "a").value).toBe("2 * pi");
+    expect(paramOf(layout, "k").value).toBe("k+1");
     expect(resolve).not.toHaveBeenCalled();
   });
 
@@ -199,7 +207,7 @@ describe("applyDisplayUnits", () => {
       j: { name: "j", value: "1 kg.m2", unit: "kg.m2" },
     });
     await applyDisplayUnits(layout, async () => RAD_TO_DEG);
-    expect(layout.classes["Test.Host"]!.parameters.j!.value).toBe("1 kg.m2");
+    expect(paramOf(layout, "j").value).toBe("1 kg.m2");
   });
 
   it("keeps the source value (and warns) when units are incompatible", async () => {
@@ -208,7 +216,7 @@ describe("applyDisplayUnits", () => {
     });
     const warn = vi.fn();
     await applyDisplayUnits(layout, async () => INCOMPATIBLE, warn);
-    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("1.57");
+    expect(paramOf(layout, "a").value).toBe("1.57");
     expect(warn).toHaveBeenCalled();
   });
 
@@ -224,7 +232,7 @@ describe("applyDisplayUnits", () => {
       },
       warn,
     );
-    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("1.57");
+    expect(paramOf(layout, "a").value).toBe("1.57");
     expect(warn).toHaveBeenCalled();
   });
 
@@ -245,8 +253,8 @@ describe("applyDisplayUnits", () => {
     });
     const resolve = vi.fn<ConvertUnitsResolver>(async () => RAD_TO_DEG);
     await applyDisplayUnits(layout, resolve);
-    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("90 deg");
-    expect(layout.classes["Test.Host"]!.parameters.b!.value).toBe("180 deg");
+    expect(paramOf(layout, "a").value).toBe("90 deg");
+    expect(paramOf(layout, "b").value).toBe("180 deg");
     // Two params, same pair → exactly one resolver call.
     expect(resolve).toHaveBeenCalledTimes(1);
   });
