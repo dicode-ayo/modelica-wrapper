@@ -30,27 +30,11 @@ import { randomBytes } from "node:crypto";
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import {
-  OmcClient,
-  diagram,
-  type DiagramLayout,
-  type ParameterDef,
-} from "@dicode/omc-client";
+import { OmcClient, diagram } from "@dicode/omc-client";
 
+import { paramOf } from "../../test-support/diagram-layout.js";
 import { describeIf } from "../../test-support/integration-gate.js";
 import { applyDisplayUnits } from "./display-unit.js";
-
-function paramOf(
-  layout: DiagramLayout,
-  className: string,
-  name: string,
-): ParameterDef {
-  const cls = layout.classes[className];
-  if (cls === undefined) throw new Error(`expected class '${className}'`);
-  const param = cls.parameters[name];
-  if (param === undefined) throw new Error(`expected parameter '${name}'`);
-  return param;
-}
 
 describeIf("displayUnit conversion (live OMC) (#28)", () => {
   let client: OmcClient;

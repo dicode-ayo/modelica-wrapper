@@ -35,10 +35,8 @@ import {
 } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
-import {
-  buildComponentParameterForm,
-  findSubComponent,
-} from "./parameter-edits.js";
+import { requireComponentParameterForm } from "../../test-support/parameter-forms.js";
+import { findSubComponent } from "./parameter-edits.js";
 import { SessionUnitCache, collectDisplayUnitsByBase } from "./unit-table.js";
 
 function field(model: ParameterModel, name: string): ParameterField {
@@ -118,7 +116,7 @@ end ${pkg};
     const inertia = findSubComponent(instance, "inertia1")!;
     const cache = new SessionUnitCache(client);
     const table = await unitTableFor(cache, inertia);
-    const form = buildComponentParameterForm(inertia, table)!;
+    const form = requireComponentParameterForm(inertia, table);
 
     const J = field(form.model, "J");
     expect(J.unit).toBe("kg.m2");
@@ -131,7 +129,7 @@ end ${pkg};
     const comp = findSubComponent(instance, "comp1")!;
     const cache = new SessionUnitCache(client);
     const table = await unitTableFor(cache, comp);
-    const form = buildComponentParameterForm(comp, table)!;
+    const form = requireComponentParameterForm(comp, table);
 
     const phi = field(form.model, "phi");
     expect(phi.unit).toBe("rad");
@@ -162,7 +160,7 @@ end ${pkg};
     const comp = findSubComponent(instance, "comp1")!;
     const cache = new SessionUnitCache(client);
     const table = await unitTableFor(cache, comp);
-    const form = buildComponentParameterForm(comp, table)!;
+    const form = requireComponentParameterForm(comp, table);
 
     const tau = field(form.model, "tau");
     expect(tau.unit).toBe("s");
@@ -189,7 +187,7 @@ end ${pkg};
     const comp = findSubComponent(instance, "comp1")!;
     const cache = new SessionUnitCache(client);
     const table = await unitTableFor(cache, comp);
-    const form = buildComponentParameterForm(comp, table)!;
+    const form = requireComponentParameterForm(comp, table);
 
     const phi = field(form.model, "phi");
     const opts = phi.unitOptions;
