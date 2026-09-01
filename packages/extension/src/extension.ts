@@ -92,7 +92,7 @@ export async function activate(
   // listeners run one recursive `.mo` glob between them instead of one each.
   // `null` disables `files.exclude` filtering, matching discoverEntryPoints's
   // raw `fsp.readdir` walk so `:reset` and activation see the same file set.
-  // The seed therefore parses `files.exclude`d paths it previously skipped;
+  // The seed therefore parses `files.exclude`d paths as well;
   // deriveEntryPoints re-applies its own top-level and dot-prefix filtering.
   const moFileScanner = createMoFileScanner(async () =>
     (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath),

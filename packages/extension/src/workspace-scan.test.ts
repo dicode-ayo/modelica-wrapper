@@ -177,8 +177,8 @@ describe("deriveEntryPoints", () => {
     ).flat();
     const derived = deriveEntryPoints(allMoFiles, roots);
     const discovered = await discoverEntryPoints(roots);
-    // Order is deliberately not part of the contract: loadEntryFilesAndRefresh
-    // retries until no pass progresses, so a child before its parent is fine.
+    // Order is not part of the contract: loadEntryFilesAndRefresh retries
+    // until no pass progresses, so a child before its parent is fine.
     expect(derived.sort()).toEqual(discovered.sort());
   }
 
