@@ -190,6 +190,31 @@ describe("downloadFile", () => {
     expect(reached).toEqual([]);
   });
 
+  it("keeps a redirect inside the proxy rather than going direct on the second hop", async () => {
+    const asked: string[] = [];
+    const { origin: proxy } = await serve((request, response) => {
+      asked.push(request.url ?? "");
+      if (asked.length === 1) {
+        response
+          .writeHead(302, { location: "http://assets.invalid/real-asset" })
+          .end();
+        return;
+      }
+      response.writeHead(200).end("through the proxy twice");
+    });
+
+    const bytes = await downloadFile({
+      url: "http://releases.invalid/asset",
+      proxy,
+    });
+
+    expect(asked).toEqual([
+      "http://releases.invalid/asset",
+      "http://assets.invalid/real-asset",
+    ]);
+    expect(Buffer.from(bytes).toString()).toBe("through the proxy twice");
+  });
+
   it("stops a transfer the caller aborted", async () => {
     const controller = new AbortController();
     // Accepted and never answered, so only the abort can end the request.
