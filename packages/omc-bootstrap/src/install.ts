@@ -38,8 +38,9 @@ const PACKAGE_CACHE = "cache";
  * What an install needs free under the managed root: 0.77 GB of package
  * archives, 2.9 GB of packages extracted beside them, and 0.59 GB of prefix
  * that conda copies rather than hardlinks from that cache — 4.3 GB measured on
- * linux-64 against OpenModelica 1.27.0. The rest is headroom for the staged
- * swap and for the platforms that sit higher.
+ * linux-64 against OpenModelica 1.27.0, all of it live at once before the cache
+ * is discarded. The rest is headroom for the staged swap and for the platforms
+ * that sit higher.
  */
 const REQUIRED_FREE_BYTES = 5_500_000_000;
 
@@ -242,6 +243,7 @@ export async function installManagedOmc(
     await createPrefix(layout, input, deps);
     const version = await verifyPrefix(layout, input.platform, deps);
     await promote(layout, deps);
+    await discardPackageCache(layout, deps);
     return {
       omcPath: prefixOmcBinary(layout.current, input.platform),
       version,
@@ -462,6 +464,23 @@ async function promote(
     );
   }
   if (replacing) await deps.fs.remove(layout.superseded);
+}
+
+/**
+ * Drop the package cache now that a prefix has landed. The 2.5 GB it shares
+ * with the prefix is hardlinked, so that data survives the cache's links going
+ * away; what the removal actually reclaims is the 1.4 GB nothing else points
+ * at — the downloaded archives and the extracted files this prefix does not
+ * use. The next install downloads them again.
+ *
+ * The install has already succeeded by this point, so a cache that will not
+ * delete is wasted space rather than a failure.
+ */
+async function discardPackageCache(
+  layout: ManagedLayout,
+  deps: InstallOmcDeps,
+): Promise<void> {
+  await deps.fs.remove(layout.cache).catch(() => undefined);
 }
 
 async function runOrFail(

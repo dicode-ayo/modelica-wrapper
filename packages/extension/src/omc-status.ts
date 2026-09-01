@@ -157,16 +157,17 @@ function verdictSentence(compatibility: CompatibilityReport): string {
 /**
  * What an install costs and where it comes from, disclosed before it starts.
  *
- * The disk figure is total loss under the managed root, not the prefix's own
- * size: 0.77 GB of package archives, 2.9 GB of packages extracted beside them,
- * and 0.59 GB of prefix that conda copies rather than hardlinks from that
- * cache. Measured at 4.3 GB on linux-64 against OpenModelica 1.27.0, and
- * quoted rounded up.
+ * Both disk figures are total loss under the managed root, not the prefix's
+ * own size. The peak holds 0.77 GB of package archives, 2.9 GB of packages
+ * extracted beside them, and 0.59 GB of prefix that conda copies rather than
+ * hardlinks from that cache — 4.3 GB on linux-64 against OpenModelica 1.27.0.
+ * Discarding the cache reclaims the 1.4 GB of it the prefix never links,
+ * leaving 3.1 GB. Both quoted rounded up.
  */
 export function installDisclosure(managedRoot: string): ModalPrompt {
   return {
     summary:
-      "Installing OpenModelica downloads about 0.8 GB and uses about 4.4 GB of disk.",
+      "Installing OpenModelica downloads about 0.8 GB and needs about 4.4 GB of disk while it runs, settling at about 3.1 GB.",
     detail: [
       `It is installed under ${managedRoot}, which this extension owns; nothing outside it is touched, and no setting is written.`,
       "micromamba comes from github.com/mamba-org/micromamba-releases and is checked against a checksum committed in this extension before it runs. OpenModelica and its dependencies come from the conda-forge channel on conda.anaconda.org.",

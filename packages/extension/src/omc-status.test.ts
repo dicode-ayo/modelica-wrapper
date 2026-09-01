@@ -146,6 +146,7 @@ describe("installDisclosure", () => {
   it("quotes what the download and the disk actually cost", () => {
     expect(disclosure.summary).toContain("0.8 GB");
     expect(disclosure.summary).toContain("4.4 GB");
+    expect(disclosure.summary).toContain("3.1 GB");
   });
 
   it("names both hosts the bytes come from", () => {
