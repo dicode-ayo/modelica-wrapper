@@ -6,8 +6,17 @@
  * which OpenModelica is in use and gains its version once a client exists.
  */
 
-import type { OmcResolution, OmcSource } from "@dicode/omc-bootstrap";
-import type { CompatibilityReport } from "@dicode/omc-client";
+import type {
+  InstallFailure,
+  InstallProgress,
+  OmcResolution,
+  OmcSource,
+} from "@dicode/omc-bootstrap";
+import {
+  parseOmcVersion,
+  type CompatibilityReport,
+  type OmcVersion,
+} from "@dicode/omc-client";
 
 /** A compatibility verdict, paired with the binary it was read from. */
 export interface OmcVerdict {
@@ -58,6 +67,34 @@ export function sourceSentence(source: OmcSource): string {
   }
 }
 
+/**
+ * The verdict that describes the resolved binary, or nothing. A verdict read
+ * from another binary says nothing about this one.
+ */
+export function verdictFor(
+  resolution: OmcResolution,
+  verdict: OmcVerdict | undefined,
+): CompatibilityReport | undefined {
+  if (verdict === undefined) return undefined;
+  return verdict.omcPath === resolution.omcPath ? verdict.report : undefined;
+}
+
+/**
+ * Everything known about the OpenModelica that was found: which one it is,
+ * where it lives, and how its version was judged.
+ */
+export function foundOmcSentences(
+  resolution: { readonly source: OmcSource; readonly omcPath: string },
+  verdict: OmcVerdict | undefined,
+): string[] {
+  const compatibility = verdictFor(resolution, verdict);
+  return [
+    sourceSentence(resolution.source),
+    resolution.omcPath,
+    ...(compatibility ? [verdictSentence(compatibility)] : []),
+  ];
+}
+
 export function omcStatus(
   resolution: OmcResolution,
   verdict: OmcVerdict | undefined,
@@ -70,21 +107,19 @@ export function omcStatus(
       warn: true,
     };
   }
-  // A verdict read from another binary says nothing about this one.
-  const compatibility =
-    verdict?.omcPath === resolution.omcPath ? verdict.report : undefined;
+  const compatibility = verdictFor(resolution, verdict);
   const version = compatibility?.omc;
   return {
-    text: `$(circuit-board) OpenModelica${version ? ` ${version.major}.${version.minor}.${version.patch}` : ""}`,
-    tooltip: [
-      sourceSentence(resolution.source),
-      resolution.omcPath,
-      ...(compatibility ? [verdictSentence(compatibility)] : []),
-    ].join("\n"),
+    text: `$(circuit-board) OpenModelica${version ? ` ${versionTriple(version)}` : ""}`,
+    tooltip: foundOmcSentences(resolution, verdict).join("\n"),
     warn:
       compatibility?.level === "untested" ||
       compatibility?.level === "unparseable",
   };
+}
+
+function versionTriple(omc: OmcVersion): string {
+  return `${omc.major}.${omc.minor}.${omc.patch}`;
 }
 
 function verdictSentence(compatibility: CompatibilityReport): string {
@@ -97,4 +132,124 @@ function verdictSentence(compatibility: CompatibilityReport): string {
     case "unparseable":
       return "Its version could not be read, so compatibility is unknown.";
   }
+}
+
+/**
+ * What an install costs and where it comes from, disclosed before it starts.
+ *
+ * The disk figure is what the machine actually loses: 0.8 GB of package
+ * archives plus a 3.1 GB extracted cache, with the prefix hardlinked from that
+ * cache. It is larger than the prefix's own logical size, which is the number a
+ * user would otherwise infer from `du` on the prefix alone.
+ */
+export function installDisclosure(managedRoot: string): {
+  readonly summary: string;
+  readonly detail: string;
+} {
+  return {
+    summary:
+      "Installing OpenModelica downloads about 0.8 GB and uses about 4.4 GB of disk.",
+    detail: [
+      `It is installed under ${managedRoot}, which this extension owns; nothing outside it is touched, and no setting is written.`,
+      "micromamba comes from github.com/mamba-org/micromamba-releases and is checked against a checksum committed in this extension before it runs. OpenModelica and its dependencies come from the conda-forge channel on conda.anaconda.org.",
+      `To reclaim the space later, run "${REMOVE_TITLE}" or delete that directory.`,
+    ].join("\n\n"),
+  };
+}
+
+/** The command title the disclosure points at, and the command's own title. */
+export const REMOVE_TITLE = "Modelica: Remove the Installed OpenModelica";
+
+/** Why an install is not on offer, wherever the question is reached from. */
+export const NO_MANAGED_INSTALL =
+  "There is no OpenModelica package this extension can install for this platform.";
+
+/** How far along an install is, for a progress notification. */
+export function installProgressMessage(progress: InstallProgress): string {
+  switch (progress.phase) {
+    case "checking-space":
+      return "Checking free disk space";
+    case "downloading-micromamba":
+      return `Downloading micromamba${percentSuffix(progress)}`;
+    case "verifying-micromamba":
+      return "Verifying the download";
+    case "installing-openmodelica":
+      return "Downloading and unpacking OpenModelica";
+    case "verifying-openmodelica":
+      return "Checking that the installed OpenModelica runs";
+    case "finishing":
+      return "Finishing up";
+  }
+}
+
+function percentSuffix(progress: InstallProgress): string {
+  const { receivedBytes, totalBytes } = progress;
+  if (
+    receivedBytes === undefined ||
+    totalBytes === undefined ||
+    totalBytes <= 0
+  ) {
+    return "";
+  }
+  return ` (${Math.floor((receivedBytes / totalBytes) * 100)}%)`;
+}
+
+/**
+ * Why an install stopped, as the user should read it.
+ *
+ * Only the space failure's own message is passed through: it is the one whose
+ * numbers are what makes it actionable. The rest name a URL, a digest or a
+ * subprocess exit code, which belong in the log.
+ */
+export function installFailureMessage(failure: {
+  readonly reason: InstallFailure;
+  readonly message: string;
+}): string {
+  switch (failure.reason) {
+    case "unsupported-platform":
+      return NO_MANAGED_INSTALL;
+    case "insufficient-space":
+      return failure.message;
+    case "download-failed":
+      return "Downloading OpenModelica failed. Check your connection, and the http.proxy setting if you are behind a proxy.";
+    case "checksum-mismatch":
+      return "What was downloaded did not match the checksum this extension expects, so it was not run. Nothing was installed.";
+    case "install-failed":
+      return "Installing OpenModelica failed. The log has what the installer reported.";
+    case "verification-failed":
+      return "The OpenModelica that was installed did not run, so it was discarded. Any earlier installation is unchanged.";
+    case "cancelled":
+      return "The OpenModelica install was cancelled.";
+  }
+}
+
+/**
+ * What to say once an install has verified. `version` is whatever
+ * `omc --version` printed, which is a build string — `v1.27.0-cmake` — rather
+ * than something to put in front of a user unaltered.
+ */
+export function installedMessage(version: string): string {
+  const parsed = parseOmcVersion(version);
+  return `OpenModelica ${parsed === undefined ? version : versionTriple(parsed)} is installed and ready to use.`;
+}
+
+/** What removing the managed installation will do, before it is done. */
+export function removeConfirmation(managedRoot: string): {
+  readonly summary: string;
+  readonly detail: string;
+} {
+  return {
+    summary: "Remove the OpenModelica this extension installed?",
+    detail: `${managedRoot} will be deleted. An OpenModelica you installed yourself is not touched, and Modelica features will use one of those if there is one.`,
+  };
+}
+
+export function removeFailedMessage(managedRoot: string): string {
+  return `Removing ${managedRoot} failed. The log has the details.`;
+}
+
+export function removedMessage(removed: boolean): string {
+  return removed
+    ? "Removed the OpenModelica this extension installed."
+    : "There is nothing to remove: this extension has not installed OpenModelica.";
 }
