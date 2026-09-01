@@ -35,10 +35,11 @@ const MICROMAMBA_BINARY = "micromamba";
 const PACKAGE_CACHE = "cache";
 
 /**
- * What an install needs free under the managed root: 0.8 GB of package
- * archives plus a 3.1 GB extracted cache, with the prefix itself hardlinked
- * from that cache and so nearly free — 4.4 GB measured on linux-64 against
- * OpenModelica 1.27.0. The rest is headroom for the platforms that sit higher.
+ * What an install needs free under the managed root: 0.77 GB of package
+ * archives, 2.9 GB of packages extracted beside them, and 0.59 GB of prefix
+ * that conda copies rather than hardlinks from that cache — 4.3 GB measured on
+ * linux-64 against OpenModelica 1.27.0. The rest is headroom for the staged
+ * swap and for the platforms that sit higher.
  */
 const REQUIRED_FREE_BYTES = 5_500_000_000;
 
