@@ -108,6 +108,14 @@
         "title": "Modelica: Set Up OpenModelica"
       },
       {
+        "command": "modelica.installOmc",
+        "title": "Modelica: Install OpenModelica"
+      },
+      {
+        "command": "modelica.removeOmc",
+        "title": "Modelica: Remove the Installed OpenModelica"
+      },
+      {
         "command": "modelica.getOmcVersion",
         "title": "Modelica: Show OMC Version"
       },

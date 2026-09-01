@@ -1,10 +1,20 @@
-import type { OmcResolution } from "@dicode/omc-bootstrap";
+import type {
+  InstallFailure,
+  InstallPhase,
+  OmcResolution,
+} from "@dicode/omc-bootstrap";
 import type { CompatibilityReport } from "@dicode/omc-client";
 import { describe, expect, it } from "vitest";
 
 import {
+  installDisclosure,
+  installedMessage,
+  installFailureMessage,
+  installProgressMessage,
   missingOmcGuidance,
   omcStatus,
+  verdictFor,
+  verdictWarns,
   type OmcVerdict,
 } from "./omc-status.js";
 
@@ -114,5 +124,176 @@ describe("missingOmcGuidance", () => {
     expect(missingOmcGuidance("win32").downloadPage).toContain("windows");
     expect(missingOmcGuidance("darwin").downloadPage).toContain("mac");
     expect(missingOmcGuidance("linux").downloadPage).toContain("linux");
+  });
+});
+
+describe("verdictFor", () => {
+  it("discards a verdict read from a binary other than the resolved one", () => {
+    expect(
+      verdictFor(onPath, verdict("untested", "1.22.0", "/opt/other/omc")),
+    ).toBeUndefined();
+    expect(verdictFor(onPath, verdict("untested", "1.22.0"))?.level).toBe(
+      "untested",
+    );
+  });
+});
+
+describe("installDisclosure", () => {
+  const disclosure = installDisclosure(
+    "/home/u/.openmodelica/modelica-wrapper",
+  );
+
+  it("quotes what the download and the disk actually cost", () => {
+    expect(disclosure.summary).toContain("0.8 GB");
+    expect(disclosure.summary).toContain("4.4 GB");
+  });
+
+  it("names both hosts the bytes come from", () => {
+    expect(disclosure.detail).toContain("micromamba-releases");
+    expect(disclosure.detail).toContain("conda-forge");
+  });
+
+  it("says where the files land, so they can be removed by hand", () => {
+    expect(disclosure.detail).toContain(
+      "/home/u/.openmodelica/modelica-wrapper",
+    );
+  });
+});
+
+describe("installProgressMessage", () => {
+  it("phrases every phase the installer can report", () => {
+    const phases: InstallPhase[] = [
+      "checking-space",
+      "downloading-micromamba",
+      "verifying-micromamba",
+      "installing-openmodelica",
+      "verifying-openmodelica",
+      "finishing",
+    ];
+
+    for (const phase of phases) {
+      expect(installProgressMessage({ phase })).not.toBe("");
+    }
+  });
+
+  it("adds a percentage once the server has said how long the download is", () => {
+    expect(
+      installProgressMessage({
+        phase: "downloading-micromamba",
+        receivedBytes: 512,
+        totalBytes: 2048,
+      }),
+    ).toContain("25%");
+  });
+
+  it("shows what the installer is doing through the phase that runs for minutes", () => {
+    expect(
+      installProgressMessage({
+        phase: "installing-openmodelica",
+        output: "Downloading packages\nLinking openmodelica-1.27.0\n",
+      }),
+    ).toBe("Linking openmodelica-1.27.0");
+  });
+
+  it("keeps the phase name while the installer has said nothing", () => {
+    expect(
+      installProgressMessage({
+        phase: "installing-openmodelica",
+        output: "  \n\n",
+      }),
+    ).toContain("OpenModelica");
+  });
+
+  it("keeps a notification-sized line out of an installer that pads with dots", () => {
+    expect(
+      installProgressMessage({
+        phase: "installing-openmodelica",
+        output: `Fetching ${".".repeat(300)} Done`,
+      }).length,
+    ).toBeLessThan(120);
+  });
+
+  it("claims no percentage when the server sent no length", () => {
+    expect(
+      installProgressMessage({
+        phase: "downloading-micromamba",
+        receivedBytes: 512,
+      }),
+    ).not.toContain("%");
+  });
+});
+
+describe("verdictWarns", () => {
+  it("treats an unreadable version as one an install could resolve, like an untested one", () => {
+    expect(verdictWarns("untested")).toBe(true);
+    expect(verdictWarns("unparseable")).toBe(true);
+    expect(verdictWarns("exact")).toBe(false);
+    expect(verdictWarns("minor-compatible")).toBe(false);
+  });
+});
+
+describe("installFailureMessage", () => {
+  it("keeps the numbers a space failure was thrown with", () => {
+    expect(
+      installFailureMessage({
+        reason: "insufficient-space",
+        message:
+          "needs about 5.5 GB free under /home/u, and 0.3 GB is available.",
+      }),
+    ).toContain("0.3 GB");
+  });
+
+  it("says a rejected download was never run", () => {
+    expect(
+      installFailureMessage({
+        reason: "checksum-mismatch",
+        message: "micromamba hashed to abc, not the audited def.",
+      }),
+    ).not.toContain("abc");
+  });
+
+  it("promises an existing installation survived a failure", () => {
+    expect(
+      installFailureMessage({
+        reason: "verification-failed",
+        message: "exit 127",
+      }),
+    ).toContain("unchanged");
+  });
+
+  it("has a sentence for every reason the installer can stop with", () => {
+    const reasons: InstallFailure[] = [
+      "unsupported-platform",
+      "insufficient-space",
+      "download-failed",
+      "checksum-mismatch",
+      "install-failed",
+      "verification-failed",
+      "cancelled",
+    ];
+
+    for (const reason of reasons) {
+      expect(
+        installFailureMessage({ reason, message: "what was thrown" }),
+      ).not.toBe("");
+    }
+  });
+});
+
+describe("installedMessage", () => {
+  it("names the version, not the build string omc printed", () => {
+    expect(installedMessage("v1.27.0-cmake", "/home/u/managed")).toContain(
+      "OpenModelica 1.27.0",
+    );
+  });
+
+  it("falls back to what was printed when it does not parse", () => {
+    expect(installedMessage("nightly", "/home/u/managed")).toContain("nightly");
+  });
+
+  it("says where the files went, for a user who never opened the disclosure", () => {
+    expect(installedMessage("v1.27.0-cmake", "/home/u/managed")).toContain(
+      "/home/u/managed",
+    );
   });
 });

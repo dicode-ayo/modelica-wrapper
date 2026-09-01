@@ -334,6 +334,69 @@ export interface RecordedMessage {
 export const recordedMessages: RecordedMessage[] = [];
 
 /**
+ * A message that offered actions: what it said, what it offered, and whether it
+ * was modal. Kept apart from {@link recordedMessages} so tests asserting the
+ * whole-object shape of a plain toast are unaffected.
+ */
+export interface RecordedPrompt {
+  level: "info" | "warning" | "error";
+  message: string;
+  detail: string | undefined;
+  modal: boolean;
+  items: string[];
+}
+
+export const recordedPrompts: RecordedPrompt[] = [];
+
+/** Actions the message prompts pick, in prompt order. */
+const messageAnswers: Array<string | undefined> = [];
+
+/** Replace the actions the next message prompts will choose, oldest first. */
+export function queueMessageAnswers(
+  ...answers: Array<string | undefined>
+): void {
+  messageAnswers.length = 0;
+  messageAnswers.push(...answers);
+}
+
+/** Drop what the user was asked, what they answered, and where they were sent. */
+export function resetMessages(): void {
+  recordedMessages.length = 0;
+  recordedPrompts.length = 0;
+  messageAnswers.length = 0;
+  openDialogPicks.length = 0;
+  openedExternals.length = 0;
+}
+
+/**
+ * Record one `show*Message` call and hand back the queued action. Only a
+ * message that offered actions consumes an answer, so a plain toast in between
+ * does not shift the queue out from under the prompt a test is aiming at.
+ */
+function recordMessage(
+  level: "info" | "warning" | "error",
+  message: string,
+  rest: unknown[],
+): Promise<string | undefined> {
+  recordedMessages.push({ level, message });
+  const [first, ...remainder] = rest;
+  const options =
+    typeof first === "object" && first !== null
+      ? (first as { modal?: boolean; detail?: string })
+      : undefined;
+  const items = (options === undefined ? rest : remainder).map(String);
+  if (items.length === 0) return Promise.resolve(undefined);
+  recordedPrompts.push({
+    level,
+    message,
+    detail: options?.detail,
+    modal: options?.modal ?? false,
+    items,
+  });
+  return Promise.resolve(messageAnswers.shift());
+}
+
+/**
  * Minimal `Disposable` — records and runs a teardown callback. Returned by the
  * `register*`/`onDid*` stubs so registration code can collect and dispose them.
  */
@@ -465,9 +528,32 @@ export const workspace = {
   ): Disposable {
     return register(workspaceListeners.configuration, listener);
   },
-  getConfiguration(_section?: string) {
+  getConfiguration(section?: string) {
+    const qualify = (key: string): string =>
+      section === undefined ? key : `${section}.${key}`;
     return {
-      get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
+      get: <T>(key: string, defaultValue?: T): T | undefined => {
+        const value = configurationValues.get(qualify(key));
+        return value === undefined ? defaultValue : (value as T);
+      },
+      update: (
+        key: string,
+        value: unknown,
+        target?: ConfigurationTarget,
+      ): Promise<void> => {
+        const qualified = qualify(key);
+        configurationValues.set(qualified, value);
+        configurationUpdates.push({ key: qualified, value, target });
+        // VSCode fires the change event off a write, and listeners re-read the
+        // setting from it; a mock that stays silent hides that whole path.
+        for (const listener of [...workspaceListeners.configuration]) {
+          listener({
+            affectsConfiguration: (section) =>
+              qualified === section || qualified.startsWith(`${section}.`),
+          });
+        }
+        return Promise.resolve();
+      },
     };
   },
   /** Minimal open-text-document stub. Accepts a `Uri` or the `{ content }`
@@ -586,6 +672,82 @@ export const languages = {
   registerCompletionItemProvider: (): Disposable => new Disposable(),
 };
 
+/** Values `workspace.getConfiguration(...).get(...)` answers with. */
+const configurationValues = new Map<string, unknown>();
+
+/** Every `update` a code path made, so a test can assert it wrote once. */
+export const configurationUpdates: Array<{
+  key: string;
+  value: unknown;
+  target: ConfigurationTarget | undefined;
+}> = [];
+
+/** Set one fully-qualified setting, e.g. `setConfiguration("http.proxy", ...)`. */
+export function setConfiguration(key: string, value: unknown): void {
+  configurationValues.set(key, value);
+}
+
+export function resetConfiguration(): void {
+  configurationValues.clear();
+  configurationUpdates.length = 0;
+}
+
+export enum ConfigurationTarget {
+  Global = 1,
+  Workspace = 2,
+  WorkspaceFolder = 3,
+}
+
+/** URIs `showOpenDialog` hands back, one per call. */
+const openDialogPicks: UriImpl[] = [];
+
+/** Queue the files the next `showOpenDialog` calls will return. */
+export function queueOpenDialogPicks(...picks: UriImpl[]): void {
+  openDialogPicks.length = 0;
+  openDialogPicks.push(...picks);
+}
+
+/** A cancellation token a test can trip while the task it guards is running. */
+export class CancellationTokenStub {
+  isCancellationRequested = false;
+  private readonly listeners: Array<() => void> = [];
+  onCancellationRequested(listener: () => void): Disposable {
+    if (this.isCancellationRequested) listener();
+    return register(this.listeners, listener);
+  }
+  cancel(): void {
+    if (this.isCancellationRequested) return;
+    this.isCancellationRequested = true;
+    for (const listener of [...this.listeners]) listener();
+  }
+}
+
+/** One `withProgress` call: how it was configured and what it reported. */
+export interface ProgressRun {
+  title: string | undefined;
+  cancellable: boolean;
+  messages: string[];
+  /** Trip the token the running task was handed. */
+  cancel(): void;
+}
+
+/** Every `withProgress` call, in order. */
+export const progressRuns: ProgressRun[] = [];
+
+export function resetProgressRuns(): void {
+  progressRuns.length = 0;
+}
+
+/** URIs handed to `env.openExternal`. */
+export const openedExternals: UriImpl[] = [];
+
+export const env = {
+  openExternal(target: UriImpl): Promise<boolean> {
+    openedExternals.push(target);
+    return Promise.resolve(true);
+  },
+};
+
 export enum StatusBarAlignment {
   Left = 1,
   Right = 2,
@@ -668,17 +830,27 @@ export const window = {
       dispose: () => {},
     };
   },
-  showInformationMessage(message: string): Promise<undefined> {
-    recordedMessages.push({ level: "info", message });
-    return Promise.resolve(undefined);
+  showInformationMessage(
+    message: string,
+    ...rest: unknown[]
+  ): Promise<string | undefined> {
+    return recordMessage("info", message, rest);
   },
-  showWarningMessage(message: string): Promise<undefined> {
-    recordedMessages.push({ level: "warning", message });
-    return Promise.resolve(undefined);
+  showWarningMessage(
+    message: string,
+    ...rest: unknown[]
+  ): Promise<string | undefined> {
+    return recordMessage("warning", message, rest);
   },
-  showErrorMessage(message: string): Promise<undefined> {
-    recordedMessages.push({ level: "error", message });
-    return Promise.resolve(undefined);
+  showErrorMessage(
+    message: string,
+    ...rest: unknown[]
+  ): Promise<string | undefined> {
+    return recordMessage("error", message, rest);
+  },
+  showOpenDialog(_options?: unknown): Promise<UriImpl[] | undefined> {
+    const picked = openDialogPicks.shift();
+    return Promise.resolve(picked === undefined ? undefined : [picked]);
   },
   registerWebviewViewProvider: (): Disposable => new Disposable(),
   registerCustomEditorProvider: (
@@ -691,13 +863,28 @@ export const window = {
   showQuickPick: (): Promise<string | undefined> =>
     Promise.resolve(promptAnswers.shift()),
   withProgress<T>(
-    _options: unknown,
+    options: { title?: string; cancellable?: boolean },
     task: (
-      progress: { report(value: unknown): void },
-      token: { isCancellationRequested: boolean },
+      progress: { report(value: { message?: string }): void },
+      token: CancellationTokenStub,
     ) => Promise<T>,
   ): Promise<T> {
-    return task({ report: () => {} }, { isCancellationRequested: false });
+    const token = new CancellationTokenStub();
+    const run: ProgressRun = {
+      title: options.title,
+      cancellable: options.cancellable ?? false,
+      messages: [],
+      cancel: () => token.cancel(),
+    };
+    progressRuns.push(run);
+    return task(
+      {
+        report: (value) => {
+          if (value.message !== undefined) run.messages.push(value.message);
+        },
+      },
+      token,
+    );
   },
   createQuickPick() {
     const noop = () => ({ dispose: () => {} });
