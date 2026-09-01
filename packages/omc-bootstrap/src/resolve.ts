@@ -60,20 +60,28 @@ export function managedRoot(
 const MANAGED_PREFIX = "current";
 
 /**
- * The `omc` of a managed installation. An install stages elsewhere under the
- * root and moves here only once it has verified, so a binary at this path is
- * by definition one that ran.
+ * The prefix a verified installation occupies. An install stages elsewhere
+ * under the root and moves here only once it has verified, so a prefix at this
+ * path is by definition one that ran.
  */
+export function managedPrefix(root: string, platform: NodeJS.Platform): string {
+  return platformPath(platform).join(root, MANAGED_PREFIX);
+}
+
+/** The `omc` inside a conda prefix, managed or staged. */
+export function prefixOmcBinary(
+  prefix: string,
+  platform: NodeJS.Platform,
+): string {
+  return platformPath(platform).join(prefix, "bin", binaryName(platform));
+}
+
+/** The `omc` of a managed installation. */
 export function managedOmcBinary(
   root: string,
   platform: NodeJS.Platform,
 ): string {
-  return platformPath(platform).join(
-    root,
-    MANAGED_PREFIX,
-    "bin",
-    binaryName(platform),
-  );
+  return prefixOmcBinary(managedPrefix(root, platform), platform);
 }
 
 export async function resolveOmc(
@@ -92,7 +100,8 @@ export async function resolveOmc(
   return { source: "missing" };
 }
 
-function platformPath(platform: NodeJS.Platform): path.PlatformPath {
+/** The path flavour a platform uses, so one layout never mixes separators. */
+export function platformPath(platform: NodeJS.Platform): path.PlatformPath {
   return platform === "win32" ? path.win32 : path.posix;
 }
 

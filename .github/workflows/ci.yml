@@ -40,6 +40,14 @@ jobs:
       - name: coverage.md ↔ filesystem recount
         run: pnpm --filter @dicode/omc-client coverage:recount
 
+      # Two drifts, both silent. Renovate bumps the micromamba tag but cannot
+      # recompute the digests committed beside it, so a bumped tag arrives with
+      # stale hashes; and an asset republished under an unchanged tag is worth
+      # learning here rather than from an install that dies at verification.
+      # Hence every run, not only when the pin file changes.
+      - name: micromamba digests ↔ pinned release
+        run: pnpm --filter @dicode/omc-bootstrap check:pin
+
       - name: Unit tests (parser, version, registry)
         env:
           OMC_INTEGRATION: "0"
