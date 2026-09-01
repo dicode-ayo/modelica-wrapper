@@ -1,10 +1,9 @@
 /**
  * The capabilities `omc-bootstrap` needs, in plain Node.
  *
- * The installer injects its filesystem, network and subprocess access so it can
- * be driven from a test with no disk and no network. This is the other half:
- * the real implementations, bound together into the two operations the VS Code
- * layer calls. Nothing here imports `vscode`.
+ * `installManagedOmc` injects its filesystem, network and subprocess access;
+ * these are the implementations bound to this host. Nothing here imports
+ * `vscode`.
  */
 
 import { spawn } from "node:child_process";
@@ -37,10 +36,7 @@ export interface InstallHooks {
   readonly signal: AbortSignal;
 }
 
-/**
- * The managed installation's two operations. An interface rather than the
- * functions themselves so the flow around them is drivable without a network.
- */
+/** The managed installation's two operations, with this host's capabilities bound in. */
 export interface OmcInstaller {
   install(
     input: InstallOmcInput,
@@ -118,11 +114,17 @@ function runProcess(request: ProcessRequest): Promise<ProcessResult> {
   });
 }
 
+/**
+ * micromamba writes UTF-8 box-drawing and tick characters, and a chunk boundary
+ * can fall inside one. `setEncoding` decodes across reads; decoding each chunk
+ * on its own would replace the split character with U+FFFD.
+ */
 function capture(
   stream: Readable | null,
   onText: (text: string) => void,
 ): void {
-  stream?.on("data", (chunk: Buffer) => onText(String(chunk)));
+  stream?.setEncoding("utf8");
+  stream?.on("data", (chunk: string) => onText(chunk));
 }
 
 const MAX_REDIRECTS = 5;
@@ -202,10 +204,12 @@ async function send(
     port: portOf(url, secure ? 443 : 80),
     path: `${url.pathname}${url.search}`,
     signal: request.signal,
+    // `agent` stays unset: Node honours a request's `createConnection` only
+    // while it has no agent, and `agent: false` mints a fresh one that would
+    // open its own direct socket and leave the tunnel unused.
     ...(tunnelled === undefined
       ? {}
       : {
-          agent: false,
           createConnection: () =>
             tls.connect({ socket: tunnelled, servername: url.hostname }),
         }),

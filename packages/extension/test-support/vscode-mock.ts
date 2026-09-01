@@ -359,11 +359,13 @@ export function queueMessageAnswers(
   messageAnswers.push(...answers);
 }
 
-/** Drop recorded messages and any unconsumed answers between tests. */
+/** Drop what the user was asked, what they answered, and where they were sent. */
 export function resetMessages(): void {
   recordedMessages.length = 0;
   recordedPrompts.length = 0;
   messageAnswers.length = 0;
+  openDialogPicks.length = 0;
+  openedExternals.length = 0;
 }
 
 /**

@@ -14,6 +14,7 @@ import {
   missingOmcGuidance,
   omcStatus,
   verdictFor,
+  verdictWarns,
   type OmcVerdict,
 } from "./omc-status.js";
 
@@ -185,6 +186,33 @@ describe("installProgressMessage", () => {
     ).toContain("25%");
   });
 
+  it("shows what the installer is doing through the phase that runs for minutes", () => {
+    expect(
+      installProgressMessage({
+        phase: "installing-openmodelica",
+        output: "Downloading packages\nLinking openmodelica-1.27.0\n",
+      }),
+    ).toBe("Linking openmodelica-1.27.0");
+  });
+
+  it("keeps the phase name while the installer has said nothing", () => {
+    expect(
+      installProgressMessage({
+        phase: "installing-openmodelica",
+        output: "  \n\n",
+      }),
+    ).toContain("OpenModelica");
+  });
+
+  it("keeps a notification-sized line out of an installer that pads with dots", () => {
+    expect(
+      installProgressMessage({
+        phase: "installing-openmodelica",
+        output: `Fetching ${".".repeat(300)} Done`,
+      }).length,
+    ).toBeLessThan(120);
+  });
+
   it("claims no percentage when the server sent no length", () => {
     expect(
       installProgressMessage({
@@ -192,6 +220,15 @@ describe("installProgressMessage", () => {
         receivedBytes: 512,
       }),
     ).not.toContain("%");
+  });
+});
+
+describe("verdictWarns", () => {
+  it("treats an unreadable version as one an install could resolve, like an untested one", () => {
+    expect(verdictWarns("untested")).toBe(true);
+    expect(verdictWarns("unparseable")).toBe(true);
+    expect(verdictWarns("exact")).toBe(false);
+    expect(verdictWarns("minor-compatible")).toBe(false);
   });
 });
 
@@ -245,12 +282,18 @@ describe("installFailureMessage", () => {
 
 describe("installedMessage", () => {
   it("names the version, not the build string omc printed", () => {
-    expect(installedMessage("v1.27.0-cmake")).toBe(
-      "OpenModelica 1.27.0 is installed and ready to use.",
+    expect(installedMessage("v1.27.0-cmake", "/home/u/managed")).toContain(
+      "OpenModelica 1.27.0",
     );
   });
 
   it("falls back to what was printed when it does not parse", () => {
-    expect(installedMessage("nightly")).toContain("nightly");
+    expect(installedMessage("nightly", "/home/u/managed")).toContain("nightly");
+  });
+
+  it("says where the files went, for a user who never opened the disclosure", () => {
+    expect(installedMessage("v1.27.0-cmake", "/home/u/managed")).toContain(
+      "/home/u/managed",
+    );
   });
 });

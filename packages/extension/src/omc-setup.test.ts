@@ -10,8 +10,12 @@ import {
 import { SUPPORTED_OMC, type CompatibilityReport } from "@dicode/omc-client";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  ConfigurationTarget,
+  configurationUpdates,
+  openedExternals,
   progressRuns,
   queueMessageAnswers,
+  queueOpenDialogPicks,
   recordedMessages,
   recordedPrompts,
   resetCommands,
@@ -22,6 +26,7 @@ import {
   runCommand,
   setConfiguration,
   statusBarItems,
+  Uri,
 } from "../test-support/vscode-mock.js";
 
 import type { InstallHooks, OmcInstaller } from "./omc-install-host.js";
@@ -32,6 +37,12 @@ const untested: CompatibilityReport = {
   omc: { major: 1, minor: 22, patch: 0, raw: "OpenModelica 1.22.0" },
   supportedPrimary: SUPPORTED_OMC.primary,
   level: "untested",
+};
+
+const unparseable: CompatibilityReport = {
+  omc: undefined,
+  supportedPrimary: SUPPORTED_OMC.primary,
+  level: "unparseable",
 };
 
 const HOME = "/home/u";
@@ -253,10 +264,16 @@ describe("the managed install", () => {
 
     expect(changes).toBe(1);
     expect(shown().tooltip).toContain(MANAGED);
+    // ADR 0002: an install is not a stated choice, so it writes no setting.
+    expect(configurationUpdates).toEqual([]);
     setup.dispose();
   });
 
   it("says nothing failed when the user cancelled it", async () => {
+    let started = (): void => {};
+    const underway = new Promise<void>((resolve) => {
+      started = resolve;
+    });
     let release = (): void => {};
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
@@ -265,6 +282,7 @@ describe("the managed install", () => {
       environment: environment(() => Promise.resolve(false)),
       installer: recordingInstaller({
         install: async () => {
+          started();
           await blocked;
           throw new OmcInstallError("cancelled", "aborted");
         },
@@ -272,11 +290,50 @@ describe("the managed install", () => {
     });
 
     const running = runCommand(INSTALL_COMMAND);
-    progressRuns.at(-1)?.cancel();
+    await underway;
+    const notification = progressRuns.at(-1);
+    if (notification === undefined) {
+      throw new Error("the install showed no progress notification");
+    }
+    notification.cancel();
     release();
     await running;
 
     expect(errors()).toEqual([]);
+    setup.dispose();
+  });
+
+  it("refuses to install four gigabytes a stated omcPath would outrank", async () => {
+    setConfiguration("modelica.omcPath", "/opt/omc");
+    const installer = recordingInstaller({});
+    const setup = createOmcSetup({
+      environment: environment(() => Promise.resolve(false)),
+      installer,
+    });
+
+    await runCommand(INSTALL_COMMAND);
+
+    expect(installer.installs).toEqual([]);
+    expect(recordedMessages.at(-1)?.message).toContain("modelica.omcPath");
+    setup.dispose();
+  });
+
+  it("offers a way out of the warning an unreadable version raises", async () => {
+    const setup = createOmcSetup({
+      environment: environment((candidate) =>
+        Promise.resolve(candidate === ON_PATH),
+      ),
+      installer: recordingInstaller({}),
+    });
+    await setup.start();
+    await setup.reportVersion(
+      { getVersionStatus: () => Promise.resolve(unparseable) },
+      ON_PATH,
+    );
+
+    await runCommand(SETUP_COMMAND);
+
+    expect(offered()).toContain("Update OpenModelica");
     setup.dispose();
   });
 
@@ -419,6 +476,42 @@ describe("the managed install", () => {
     setup.dispose();
   });
 
+  it("sends the one platform with no automated route to its own installer page", async () => {
+    const setup = createOmcSetup({
+      environment: {
+        ...environment(() => Promise.resolve(false)),
+        platform: "win32",
+      },
+      installer: recordingInstaller({}),
+    });
+    queueMessageAnswers("Get OpenModelica");
+
+    await setup.start();
+
+    expect(openedExternals.at(-1)?.toString()).toContain("windows");
+    setup.dispose();
+  });
+
+  it("writes modelica.omcPath from the file picker and from nowhere else", async () => {
+    const setup = createOmcSetup({
+      environment: environment(() => Promise.resolve(false)),
+      installer: recordingInstaller({}),
+    });
+    queueMessageAnswers("Locate omc...");
+    queueOpenDialogPicks(Uri.file("/opt/omc"));
+
+    await setup.start();
+
+    expect(configurationUpdates).toEqual([
+      {
+        key: "modelica.omcPath",
+        value: "/opt/omc",
+        target: ConfigurationTarget.Global,
+      },
+    ]);
+    setup.dispose();
+  });
+
   it("contributes every command it registers, or the palette cannot reach it", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -429,6 +522,7 @@ describe("the managed install", () => {
       manifest.contributes.commands.map((c) => [c.command, c.title]),
     );
 
+    expect(titles.has(SETUP_COMMAND)).toBe(true);
     expect(titles.has(INSTALL_COMMAND)).toBe(true);
     // The disclosure tells the user to run this by name.
     expect(titles.get(REMOVE_COMMAND)).toBe(REMOVE_TITLE);

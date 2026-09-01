@@ -14,9 +14,22 @@ import type {
 } from "@dicode/omc-bootstrap";
 import {
   parseOmcVersion,
+  type CompatibilityLevel,
   type CompatibilityReport,
   type OmcVersion,
 } from "@dicode/omc-client";
+
+/** A modal's two halves: the sentence it leads with, and the body beneath it. */
+export interface ModalPrompt {
+  readonly summary: string;
+  readonly detail: string;
+}
+
+/** A resolution that found something, which is the only kind worth describing. */
+export interface FoundOmc {
+  readonly source: OmcSource;
+  readonly omcPath: string;
+}
 
 /** A compatibility verdict, paired with the binary it was read from. */
 export interface OmcVerdict {
@@ -71,6 +84,15 @@ export function sourceSentence(source: OmcSource): string {
  * The verdict that describes the resolved binary, or nothing. A verdict read
  * from another binary says nothing about this one.
  */
+/**
+ * Whether a verdict is one to warn about — and so one a fresh install could
+ * resolve. The status bar and the offer to update have to agree, or a user is
+ * shown a warning with no way out of it.
+ */
+export function verdictWarns(level: CompatibilityLevel): boolean {
+  return level === "untested" || level === "unparseable";
+}
+
 export function verdictFor(
   resolution: OmcResolution,
   verdict: OmcVerdict | undefined,
@@ -84,7 +106,7 @@ export function verdictFor(
  * where it lives, and how its version was judged.
  */
 export function foundOmcSentences(
-  resolution: { readonly source: OmcSource; readonly omcPath: string },
+  resolution: FoundOmc,
   verdict: OmcVerdict | undefined,
 ): string[] {
   const compatibility = verdictFor(resolution, verdict);
@@ -112,9 +134,7 @@ export function omcStatus(
   return {
     text: `$(circuit-board) OpenModelica${version ? ` ${versionTriple(version)}` : ""}`,
     tooltip: foundOmcSentences(resolution, verdict).join("\n"),
-    warn:
-      compatibility?.level === "untested" ||
-      compatibility?.level === "unparseable",
+    warn: compatibility !== undefined && verdictWarns(compatibility.level),
   };
 }
 
@@ -142,10 +162,7 @@ function verdictSentence(compatibility: CompatibilityReport): string {
  * cache. It is larger than the prefix's own logical size, which is the number a
  * user would otherwise infer from `du` on the prefix alone.
  */
-export function installDisclosure(managedRoot: string): {
-  readonly summary: string;
-  readonly detail: string;
-} {
+export function installDisclosure(managedRoot: string): ModalPrompt {
   return {
     summary:
       "Installing OpenModelica downloads about 0.8 GB and uses about 4.4 GB of disk.",
@@ -174,12 +191,33 @@ export function installProgressMessage(progress: InstallProgress): string {
     case "verifying-micromamba":
       return "Verifying the download";
     case "installing-openmodelica":
-      return "Downloading and unpacking OpenModelica";
+      return (
+        lastOutputLine(progress.output) ??
+        "Downloading and unpacking OpenModelica"
+      );
     case "verifying-openmodelica":
       return "Checking that the installed OpenModelica runs";
     case "finishing":
       return "Finishing up";
   }
+}
+
+const MAX_OUTPUT_LINE = 100;
+
+/**
+ * The last thing the installer said. Unpacking runs for minutes, so a
+ * notification carrying only the phase name cannot tell slow from stuck.
+ */
+function lastOutputLine(output: string | undefined): string | undefined {
+  const last = output
+    ?.split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .at(-1);
+  if (last === undefined) return undefined;
+  return last.length > MAX_OUTPUT_LINE
+    ? `${last.slice(0, MAX_OUTPUT_LINE)}\u2026`
+    : last;
 }
 
 function percentSuffix(progress: InstallProgress): string {
@@ -228,20 +266,26 @@ export function installFailureMessage(failure: {
  * `omc --version` printed, which is a build string — `v1.27.0-cmake` — rather
  * than something to put in front of a user unaltered.
  */
-export function installedMessage(version: string): string {
+export function installedMessage(version: string, managedRoot: string): string {
   const parsed = parseOmcVersion(version);
-  return `OpenModelica ${parsed === undefined ? version : versionTriple(parsed)} is installed and ready to use.`;
+  const named = parsed === undefined ? version : versionTriple(parsed);
+  return `OpenModelica ${named} is installed under ${managedRoot} and ready to use.`;
 }
 
 /** What removing the managed installation will do, before it is done. */
-export function removeConfirmation(managedRoot: string): {
-  readonly summary: string;
-  readonly detail: string;
-} {
+export function removeConfirmation(managedRoot: string): ModalPrompt {
   return {
     summary: "Remove the OpenModelica this extension installed?",
     detail: `${managedRoot} will be deleted. An OpenModelica you installed yourself is not touched, and Modelica features will use one of those if there is one.`,
   };
+}
+
+/**
+ * Why an install was not started. `modelica.omcPath` outranks a managed
+ * installation, so one made now would cost four gigabytes and never be used.
+ */
+export function settingWinsMessage(): string {
+  return "modelica.omcPath names the omc to use, and it wins over anything this extension installs. Clear that setting first if you want a managed OpenModelica.";
 }
 
 export function removeFailedMessage(managedRoot: string): string {

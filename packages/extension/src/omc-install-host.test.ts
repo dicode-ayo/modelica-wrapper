@@ -1,11 +1,12 @@
 import * as http from "node:http";
+import * as net from "node:net";
 import type { AddressInfo } from "node:net";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { downloadFile } from "./omc-install-host.js";
 
-const servers: http.Server[] = [];
+const servers: Array<http.Server | net.Server> = [];
 
 async function serve(
   handle: http.RequestListener,
@@ -18,6 +19,32 @@ async function serve(
     origin: `http://127.0.0.1:${address.port}`,
     address: `127.0.0.1:${address.port}`,
   };
+}
+
+/** A proxy that answers CONNECT, recording what it was asked to tunnel to. */
+async function serveConnectProxy(tunnelled: string[]): Promise<string> {
+  const server = http.createServer();
+  server.on("connect", (request, socket) => {
+    tunnelled.push(request.url ?? "");
+    // Answered and then dropped: the handshake the caller runs inside the
+    // tunnel fails immediately rather than after a connect timeout.
+    socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+    socket.destroy();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+/** A target that records any connection reaching it without going through a proxy. */
+async function serveDirectTarget(reached: string[]): Promise<number> {
+  const server = net.createServer((socket) => {
+    reached.push("connected");
+    socket.destroy();
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return (server.address() as AddressInfo).port;
 }
 
 afterEach(async () => {
@@ -131,6 +158,20 @@ describe("downloadFile", () => {
     expect(seen).toEqual([
       `Basic ${Buffer.from("user:pa:ss").toString("base64")}`,
     ]);
+  });
+
+  it("tunnels an https URL through the proxy instead of reaching the host itself", async () => {
+    const tunnelled: string[] = [];
+    const reached: string[] = [];
+    const proxy = await serveConnectProxy(tunnelled);
+    const port = await serveDirectTarget(reached);
+
+    await expect(
+      downloadFile({ url: `https://127.0.0.1:${port}/asset`, proxy }),
+    ).rejects.toThrow();
+
+    expect(tunnelled).toEqual([`127.0.0.1:${port}`]);
+    expect(reached).toEqual([]);
   });
 
   it("raises an unusable proxy rather than silently going direct", async () => {

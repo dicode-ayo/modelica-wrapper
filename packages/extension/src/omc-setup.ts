@@ -22,7 +22,6 @@ import {
   resolveOmc,
   type FileProbe,
   type OmcResolution,
-  type OmcSource,
 } from "@dicode/omc-bootstrap";
 import { SUPPORTED_OMC, type CompatibilityReport } from "@dicode/omc-client";
 
@@ -41,8 +40,11 @@ import {
   removeConfirmation,
   removedMessage,
   removeFailedMessage,
+  settingWinsMessage,
   verdictFor,
+  verdictWarns,
   NO_MANAGED_INSTALL,
+  type FoundOmc,
   type OmcVerdict,
 } from "./omc-status.js";
 
@@ -109,10 +111,7 @@ export interface OmcSetupOptions {
    * is a different symbol table, so the caller has a session to replace.
    */
   readonly onOmcChanged?: () => void;
-  /**
-   * The managed installation's two operations. Injected so the flow around
-   * them is drivable without a network or four gigabytes of disk.
-   */
+  /** Injected so the flow around an install runs without a network or four gigabytes of disk. */
   readonly installer?: OmcInstaller;
 }
 
@@ -212,16 +211,15 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
     if (choice === DOWNLOAD) await openDownloadPage();
   }
 
-  async function promptForFound(current: {
-    readonly source: OmcSource;
-    readonly omcPath: string;
-  }): Promise<void> {
+  async function promptForFound(current: FoundOmc): Promise<void> {
     // An install loses to an explicit `modelica.omcPath`, so offering one to a
     // user who set it would spend four gigabytes on something never used.
+    const level = verdictFor(current, verdict)?.level;
     const updatable =
       installable() &&
       current.source !== "setting" &&
-      verdictFor(current, verdict)?.level === "untested";
+      level !== undefined &&
+      verdictWarns(level);
 
     const choice = await vscode.window.showInformationMessage(
       foundOmcSentences(current, verdict).join(" "),
@@ -276,6 +274,11 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
       return;
     }
 
+    if ((await resolve()).source === "setting") {
+      void vscode.window.showWarningMessage(settingWinsMessage());
+      return;
+    }
+
     const controller = new AbortController();
     let cancelled = false;
 
@@ -321,18 +324,15 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
     );
 
     if (!("failure" in outcome)) {
-      // Nothing else re-resolves after an install: no setting was written, so
-      // neither the configuration listener nor the next spawn would notice.
       await resolve();
       void vscode.window.showInformationMessage(
-        installedMessage(outcome.installed.version),
+        installedMessage(outcome.installed.version, root()),
       );
       return;
     }
 
     log.error("omc", "installing OpenModelica failed", outcome.failure);
-    // The token is the extension's own, so a cancelled install is known here
-    // rather than inferred from whichever error the abort surfaced as.
+    // The token the extension owns is the authority on cancellation.
     if (cancelled) return;
     await reportFailure(
       outcome.failure instanceof OmcInstallError
