@@ -278,12 +278,14 @@ describe("the managed install", () => {
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let aborted: boolean | undefined;
     const setup = createOmcSetup({
       environment: environment(() => Promise.resolve(false)),
       installer: recordingInstaller({
-        install: async () => {
+        install: async (_input, hooks) => {
           started();
           await blocked;
+          aborted = hooks.signal.aborted;
           throw new OmcInstallError("cancelled", "aborted");
         },
       }),
@@ -299,7 +301,42 @@ describe("the managed install", () => {
     release();
     await running;
 
+    // Cancelling the notification has to reach the installer, not merely stop
+    // the extension from reporting what it did.
+    expect(aborted).toBe(true);
     expect(errors()).toEqual([]);
+    setup.dispose();
+  });
+
+  it("holds a removal back while an install is building the prefix it would delete", async () => {
+    let started = (): void => {};
+    const underway = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let release = (): void => {};
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const installer = recordingInstaller({
+      install: async () => {
+        started();
+        await blocked;
+        return { omcPath: MANAGED, version: "v1.27.0-cmake" };
+      },
+    });
+    const setup = createOmcSetup({
+      environment: environment(() => Promise.resolve(false)),
+      installer,
+    });
+
+    const installing = runCommand(INSTALL_COMMAND);
+    await underway;
+    queueMessageAnswers("Remove");
+    const removing = runCommand(REMOVE_COMMAND);
+    release();
+    await Promise.all([installing, removing]);
+
+    expect(installer.removals).toEqual([]);
     setup.dispose();
   });
 

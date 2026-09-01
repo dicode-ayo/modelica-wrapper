@@ -187,9 +187,9 @@ async function send(
   // A proxy serves a plain-http URL by being asked for the absolute URL, and a
   // https one by opening a tunnel the TLS handshake then runs inside.
   if (proxy !== undefined && !secure) {
-    return await respond(http, {
+    return await sendRequest(transportFor(proxy), {
       host: proxy.hostname,
-      port: portOf(proxy, 80),
+      port: proxyPort(proxy),
       path: url.href,
       headers: proxyAuthorization(proxy),
       signal: request.signal,
@@ -199,7 +199,7 @@ async function send(
   const tunnelled =
     proxy === undefined ? undefined : await tunnel(url, proxy, request.signal);
 
-  return await respond(secure ? https : http, {
+  return await sendRequest(transportFor(url), {
     host: url.hostname,
     port: portOf(url, secure ? 443 : 80),
     path: `${url.pathname}${url.search}`,
@@ -216,7 +216,7 @@ async function send(
   });
 }
 
-function respond(
+function sendRequest(
   transport: typeof http | typeof https,
   options: https.RequestOptions,
 ): Promise<http.IncomingMessage> {
@@ -233,9 +233,9 @@ function tunnel(
   signal: AbortSignal | undefined,
 ): Promise<net.Socket> {
   return new Promise((resolve, reject) => {
-    const outgoing = http.request({
+    const outgoing = transportFor(proxy).request({
       host: proxy.hostname,
-      port: portOf(proxy, 80),
+      port: proxyPort(proxy),
       method: "CONNECT",
       path: `${url.hostname}:${portOf(url, 443)}`,
       headers: proxyAuthorization(proxy),
@@ -280,6 +280,15 @@ function proxyAuthorization(proxy: URL): Record<string, string> {
   return {
     "Proxy-Authorization": `Basic ${Buffer.from(credentials).toString("base64")}`,
   };
+}
+
+function transportFor(url: URL): typeof http | typeof https {
+  return url.protocol === "https:" ? https : http;
+}
+
+/** A proxy's port, defaulted from its own scheme rather than the target's. */
+function proxyPort(proxy: URL): number {
+  return portOf(proxy, proxy.protocol === "https:" ? 443 : 80);
 }
 
 function portOf(url: URL, fallback: number): number {

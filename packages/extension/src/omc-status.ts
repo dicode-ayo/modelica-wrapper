@@ -81,10 +81,6 @@ export function sourceSentence(source: OmcSource): string {
 }
 
 /**
- * The verdict that describes the resolved binary, or nothing. A verdict read
- * from another binary says nothing about this one.
- */
-/**
  * Whether a verdict is one to warn about — and so one a fresh install could
  * resolve. The status bar and the offer to update have to agree, or a user is
  * shown a warning with no way out of it.
@@ -93,6 +89,10 @@ export function verdictWarns(level: CompatibilityLevel): boolean {
   return level === "untested" || level === "unparseable";
 }
 
+/**
+ * The verdict that describes the resolved binary, or nothing. A verdict read
+ * from another binary says nothing about this one.
+ */
 export function verdictFor(
   resolution: OmcResolution,
   verdict: OmcVerdict | undefined,

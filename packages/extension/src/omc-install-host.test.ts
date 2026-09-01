@@ -21,11 +21,19 @@ async function serve(
   };
 }
 
+interface TunnelRequest {
+  target: string;
+  authorization: string | undefined;
+}
+
 /** A proxy that answers CONNECT, recording what it was asked to tunnel to. */
-async function serveConnectProxy(tunnelled: string[]): Promise<string> {
+async function serveConnectProxy(tunnelled: TunnelRequest[]): Promise<string> {
   const server = http.createServer();
   server.on("connect", (request, socket) => {
-    tunnelled.push(request.url ?? "");
+    tunnelled.push({
+      target: request.url ?? "",
+      authorization: request.headers["proxy-authorization"],
+    });
     // Answered and then dropped: the handshake the caller runs inside the
     // tunnel fails immediately rather than after a connect timeout.
     socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
@@ -33,7 +41,7 @@ async function serveConnectProxy(tunnelled: string[]): Promise<string> {
   });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return `127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
 /** A target that records any connection reaching it without going through a proxy. */
@@ -161,17 +169,39 @@ describe("downloadFile", () => {
   });
 
   it("tunnels an https URL through the proxy instead of reaching the host itself", async () => {
-    const tunnelled: string[] = [];
+    const tunnelled: TunnelRequest[] = [];
     const reached: string[] = [];
-    const proxy = await serveConnectProxy(tunnelled);
+    const proxyAddress = await serveConnectProxy(tunnelled);
     const port = await serveDirectTarget(reached);
 
     await expect(
-      downloadFile({ url: `https://127.0.0.1:${port}/asset`, proxy }),
+      downloadFile({
+        url: `https://127.0.0.1:${port}/asset`,
+        proxy: `http://user:pa%3Ass@${proxyAddress}`,
+      }),
     ).rejects.toThrow();
 
-    expect(tunnelled).toEqual([`127.0.0.1:${port}`]);
+    expect(tunnelled).toEqual([
+      {
+        target: `127.0.0.1:${port}`,
+        authorization: `Basic ${Buffer.from("user:pa:ss").toString("base64")}`,
+      },
+    ]);
     expect(reached).toEqual([]);
+  });
+
+  it("stops a transfer the caller aborted", async () => {
+    const controller = new AbortController();
+    // Accepted and never answered, so only the abort can end the request.
+    const { origin } = await serve(() => {});
+
+    const pending = downloadFile({
+      url: `${origin}/asset`,
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    await expect(pending).rejects.toThrow();
   });
 
   it("raises an unusable proxy rather than silently going direct", async () => {

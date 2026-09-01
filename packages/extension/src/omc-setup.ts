@@ -240,9 +240,10 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
   }
 
   /**
-   * One managed-install operation at a time: a second install would clear the
-   * staging prefix out from under the first, and a removal would delete what
-   * that first one is building.
+   * One managed-install operation at a time in this window: a second install
+   * would clear the staging prefix out from under the first, and a removal
+   * would delete what that first one is building. Two windows share the root
+   * and are not covered; the staged swap is what limits that.
    */
   function exclusive(operation: () => Promise<void>): Promise<void> {
     const running = inFlight;
@@ -257,11 +258,12 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
     return started;
   }
 
-  function install(): Promise<void> {
-    return exclusive(runInstall);
-  }
-
-  async function runInstall(): Promise<void> {
+  /**
+   * Everything that has to be true before an install is worth starting. Kept
+   * outside the lock: each branch below can wait on the user, and a held lock
+   * would answer an unrelated retry with {@link BUSY}.
+   */
+  async function install(): Promise<void> {
     if (!installable()) {
       const guidance = missingOmcGuidance(environment.platform);
       const choice = await vscode.window.showWarningMessage(
@@ -279,6 +281,10 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
       return;
     }
 
+    return exclusive(runInstall);
+  }
+
+  async function runInstall(): Promise<void> {
     const controller = new AbortController();
     let cancelled = false;
 
@@ -302,9 +308,7 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
               // The version the wrappers were audited against, so an install
               // can never produce one the status bar then warns about.
               version: SUPPORTED_OMC.primary,
-              proxy: vscode.workspace
-                .getConfiguration("http")
-                .get<string>("proxy"),
+              proxy: editorProxy(),
             },
             {
               report: (update) => {
@@ -325,27 +329,28 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
 
     if (!("failure" in outcome)) {
       await resolve();
-      void vscode.window.showInformationMessage(
-        installedMessage(outcome.installed.version, root()),
-      );
+      // A cancel the installer raced past still landed a prefix, so the
+      // resolution above stands; announcing it would answer a cancellation
+      // with a success.
+      if (!cancelled) {
+        void vscode.window.showInformationMessage(
+          installedMessage(outcome.installed.version, root()),
+        );
+      }
       return;
     }
 
     log.error("omc", "installing OpenModelica failed", outcome.failure);
     // The token the extension owns is the authority on cancellation.
     if (cancelled) return;
-    await reportFailure(
+    void reportFailure(
       outcome.failure instanceof OmcInstallError
         ? installFailureMessage(outcome.failure)
         : UNEXPECTED_FAILURE,
     );
   }
 
-  function remove(): Promise<void> {
-    return exclusive(runRemove);
-  }
-
-  async function runRemove(): Promise<void> {
+  async function remove(): Promise<void> {
     const confirmation = removeConfirmation(root());
     const choice = await vscode.window.showWarningMessage(
       confirmation.summary,
@@ -353,7 +358,10 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
       REMOVE,
     );
     if (choice !== REMOVE) return;
+    return exclusive(runRemove);
+  }
 
+  async function runRemove(): Promise<void> {
     try {
       const removed = await vscode.window.withProgress(
         {
@@ -370,8 +378,27 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
       void vscode.window.showInformationMessage(removedMessage(removed));
     } catch (err) {
       log.error("omc", "removing OpenModelica failed", err);
-      await reportFailure(removeFailedMessage(root()));
+      void reportFailure(removeFailedMessage(root()));
     }
+  }
+
+  /**
+   * The proxy both legs of an install must route through. micromamba's libcurl
+   * reads the ambient variables on its own, so without the same fallback here
+   * the two legs of one install would take different routes.
+   */
+  function editorProxy(): string | undefined {
+    const configured = vscode.workspace
+      .getConfiguration("http")
+      .get<string>("proxy")
+      ?.trim();
+    if (configured !== undefined && configured.length > 0) return configured;
+    return (
+      process.env.https_proxy ??
+      process.env.HTTPS_PROXY ??
+      process.env.http_proxy ??
+      process.env.HTTP_PROXY
+    );
   }
 
   async function reportFailure(message: string): Promise<void> {
