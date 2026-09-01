@@ -57,6 +57,8 @@ interface HarnessOptions {
   readonly run?: RunProcess;
   /** Which move to fail, so a half-finished swap can be pinned. */
   readonly moveFails?: (from: string, to: string) => boolean;
+  /** Which removal to fail, for a directory the OS will not give up. */
+  readonly removeFails?: (target: string) => boolean;
   readonly signal?: AbortSignal;
 }
 
@@ -94,6 +96,9 @@ function harness(options: HarnessOptions = {}) {
       return Promise.resolve();
     },
     remove: (target) => {
+      if (options.removeFails?.(target) === true) {
+        return Promise.reject(new Error("EBUSY"));
+      }
       existing.delete(target);
       ops.push(`remove ${target}`);
       return Promise.resolve();
@@ -168,6 +173,7 @@ describe("installManagedOmc", () => {
       `run ${TOOL} create --prefix ${STAGING} --channel conda-forge --override-channels --yes openmodelica=${VERSION}`,
       `run ${STAGING}/bin/omc --version`,
       `move ${STAGING} -> ${CURRENT}`,
+      `remove ${CACHE}`,
     ]);
   });
 
@@ -246,11 +252,36 @@ describe("installManagedOmc", () => {
 
     await installManagedOmc(input(), h.deps);
 
-    expect(h.ops.slice(-3)).toEqual([
+    expect(h.ops.slice(-4)).toEqual([
       `move ${CURRENT} -> ${PREVIOUS}`,
       `move ${STAGING} -> ${CURRENT}`,
       `remove ${PREVIOUS}`,
+      `remove ${CACHE}`,
     ]);
+  });
+
+  it("keeps the package cache when the install fails, so a retry is cheap", async () => {
+    const h = harness({
+      run: (request) =>
+        Promise.resolve(
+          request.command === TOOL
+            ? { exitCode: 1, stdout: "", stderr: "solve failed" }
+            : { exitCode: 0, stdout: "OpenModelica 1.27.0", stderr: "" },
+        ),
+    });
+
+    await failure(installManagedOmc(input(), h.deps));
+
+    expect(h.ops).not.toContain(`remove ${CACHE}`);
+  });
+
+  it("installs even when the package cache will not delete", async () => {
+    const h = harness({ removeFails: (target) => target === CACHE });
+
+    const result = await installManagedOmc(input(), h.deps);
+
+    expect(result.omcPath).toBe(`${CURRENT}/bin/omc`);
+    expect(h.existing.has(CURRENT)).toBe(true);
   });
 
   it("puts the superseded installation back when the swap fails", async () => {
