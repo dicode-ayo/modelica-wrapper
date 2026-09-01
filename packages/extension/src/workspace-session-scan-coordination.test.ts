@@ -1,9 +1,15 @@
 /**
- * Regression coverage for #484: `registerWorkspaceAutoload` and
- * `registerMoFileWatcher` each react to `sessionReplaced` with their own
- * workspace scan. Wired to a shared `MoFileScanner` — the way extension.ts
- * wires them — a single `:reset` must run the underlying disk primitive
- * exactly once, not once per listener.
+ * Regression coverage for #484: pins the contract that sharing one
+ * `MoFileScanner` between `registerWorkspaceAutoload` and
+ * `registerMoFileWatcher` — each of which reacts to `sessionReplaced` with
+ * its own workspace scan — produces exactly one underlying disk scan per
+ * `:reset`, not one per listener.
+ *
+ * This test hands the same scanner instance to both consumers directly; it
+ * does not cover extension.ts's own wiring (that the real `moFileScanner` it
+ * builds is the one instance passed to both registration calls). That wiring
+ * has no automated test — a reviewer reading extension.ts has to confirm it
+ * by eye.
  */
 
 import * as fsp from "node:fs/promises";
@@ -142,8 +148,8 @@ describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
     );
     expect(findFiles).toHaveBeenCalledTimes(1);
 
-    // A second `:reset` without an intervening invalidate() must not serve a
-    // stale memo from the first.
+    // A second `:reset` re-invalidates, so it must hit disk again rather than
+    // serving the first reset's memo.
     scanner.invalidate();
     invalidation.sessionReplaced();
     await vi.waitFor(() =>

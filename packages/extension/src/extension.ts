@@ -90,8 +90,10 @@ export async function activate(
   // Shared by registerWorkspaceAutoload's `:reset` entry-point derivation and
   // registerMoFileWatcher's `:reset` index reseed, so the two `sessionReplaced`
   // listeners run one recursive `.mo` glob between them instead of one each.
+  // `null` disables `files.exclude` filtering, matching discoverEntryPoints's
+  // raw `fsp.readdir` walk so `:reset` and activation see the same file set.
   const moFileScanner = createMoFileScanner(async () =>
-    (await vscode.workspace.findFiles("**/*.mo")).map((u) => u.fsPath),
+    (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath),
   );
 
   // Replacing the session is what re-runs the workspace sweep and rebuilds the

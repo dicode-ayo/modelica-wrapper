@@ -1245,7 +1245,6 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
   }
 
   it("re-seeds the path→class index from disk against the replaced session", async () => {
-    setFindFilesResult([FILE]);
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const disposable = registerMoFileWatcher({
@@ -1258,6 +1257,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      scanMoFiles: async () => [FILE],
     });
 
     // The initial mount seed.
@@ -1272,7 +1272,6 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
   });
 
   it("stops re-seeding once the returned disposable is disposed", async () => {
-    setFindFilesResult([FILE]);
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const disposable = registerMoFileWatcher({
@@ -1285,6 +1284,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      scanMoFiles: async () => [FILE],
     });
     await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
 
@@ -1300,6 +1300,8 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+    const scanMoFiles = async (): Promise<readonly string[]> =>
+      (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath);
 
     // `ensureClient()`'s 2nd call overall is the first reseed's — block it so
     // the test can fire a second `:reset` while that reseed is still pending,
@@ -1324,6 +1326,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      scanMoFiles,
     });
 
     // The mount seed settles (its ensureClient() call isn't blocked).

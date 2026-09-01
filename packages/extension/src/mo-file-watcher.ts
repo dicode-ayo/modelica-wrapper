@@ -614,7 +614,7 @@ export function isDeclaredClassBusy(
  */
 export async function seedPathClassIndex(
   client: Pick<WatcherOmcClient, "parseFile">,
-  files: string[],
+  files: readonly string[],
   index: PathClassIndex,
 ): Promise<void> {
   for (const fsPath of files) {
@@ -646,18 +646,13 @@ export function registerMoFileWatcher(deps: {
   invalidation: ClassInvalidationRegistry;
   /**
    * A flat `.mo` path list for the index seed, both at activation and on
-   * every `:reset`. Defaults to a fresh `findFiles` glob per call; extension.ts
-   * instead hands in a scanner memoized per `:reset` and shared with
-   * `registerWorkspaceAutoload`, so the two `sessionReplaced` listeners'
-   * scans coalesce into one.
+   * every `:reset`. extension.ts hands in a scanner memoized per `:reset` and
+   * shared with `registerWorkspaceAutoload`, so the two `sessionReplaced`
+   * listeners' scans coalesce into one.
    */
-  scanMoFiles?: () => Promise<readonly string[]>;
+  scanMoFiles: () => Promise<readonly string[]>;
 }): vscode.Disposable {
   const index = createPathClassIndex();
-  const scanMoFiles =
-    deps.scanMoFiles ??
-    (async (): Promise<readonly string[]> =>
-      (await vscode.workspace.findFiles("**/*.mo")).map((u) => u.fsPath));
   const watcherDeps: MoWatcherDeps = {
     ensureClient: deps.ensureClient,
     libraryTree: deps.libraryTree,
@@ -676,7 +671,7 @@ export function registerMoFileWatcher(deps: {
   // Seed before reacting: a delete resolves its classes from the index, so an
   // event that lands mid-seed must wait or it would no-op a real deletion.
   const seedQueue = new SessionQueue(
-    seedWorkspaceIndex(deps.ensureClient, scanMoFiles, index),
+    seedWorkspaceIndex(deps.ensureClient, deps.scanMoFiles, index),
   );
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
@@ -761,7 +756,7 @@ export function registerMoFileWatcher(deps: {
     deps.invalidation.registerSessionReplaced(() => {
       watcherDeps.pendingReorders.clear();
       seedQueue.enqueue(() =>
-        seedWorkspaceIndex(deps.ensureClient, scanMoFiles, index),
+        seedWorkspaceIndex(deps.ensureClient, deps.scanMoFiles, index),
       );
     }),
   ];
@@ -778,7 +773,7 @@ async function seedWorkspaceIndex(
     const files = await scanMoFiles();
     if (files.length === 0) return;
     const client = await ensureClient();
-    await seedPathClassIndex(client, [...files], index);
+    await seedPathClassIndex(client, files, index);
   } catch (err) {
     log.warn("moWatcher", `index seed failed: ${asMessage(err)}`);
   }

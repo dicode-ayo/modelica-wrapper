@@ -12,12 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { deriveEntryPoints, discoverEntryPoints } from "./workspace-scan.js";
 
 /**
- * Every `.mo` file under `root`, recursively, with NO hidden-directory
- * filtering — unlike `discoverEntryPoints`, `deriveEntryPoints` is handed a
- * flat list that a real caller (a `**\/*.mo` glob) would already include
- * hidden-directory entries in, so the fixture here must too, to prove
- * `deriveEntryPoints` does its own filtering rather than relying on the
- * glob to have done it.
+ * Every `.mo` file under `root`, recursively, including hidden-directory
+ * entries — matching what a real `**\/*.mo` glob would return.
  */
 async function walkAllMoFiles(root: string): Promise<string[]> {
   const out: string[] = [];
@@ -179,10 +175,8 @@ describe("deriveEntryPoints", () => {
     const allMoFiles = (
       await Promise.all(roots.map((root) => walkAllMoFiles(root)))
     ).flat();
-    const [derived, discovered] = await Promise.all([
-      Promise.resolve(deriveEntryPoints(allMoFiles, roots)),
-      discoverEntryPoints(roots),
-    ]);
+    const derived = deriveEntryPoints(allMoFiles, roots);
+    const discovered = await discoverEntryPoints(roots);
     expect([...derived].sort()).toEqual([...discovered].sort());
   }
 

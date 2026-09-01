@@ -18,6 +18,11 @@ import * as path from "node:path";
 
 import { pathExists } from "./fs-util.js";
 
+/**
+ * Kept as the reference implementation `deriveEntryPoints` is checked against
+ * in `workspace-scan.test.ts`'s differential test — no production code calls
+ * this directly.
+ */
 export async function discoverEntryPoints(roots: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const root of roots) {
