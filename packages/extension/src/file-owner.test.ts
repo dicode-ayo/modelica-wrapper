@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fileOwnerClass, realSourceFilename } from "./file-owner.js";
+import {
+  fileOwnerClass,
+  realSourceFilename,
+  type FileOwnerClient,
+} from "./file-owner.js";
 
 /** A client whose `getSourceFile` answers from a class→file map. */
 function makeClient(files: Record<string, string>) {
@@ -76,5 +80,16 @@ describe("realSourceFilename", () => {
     const client = makeClient({ "P.A": "/ws/P/package.mo" });
     expect(await realSourceFilename(client, undefined)).toBeUndefined();
     expect(client.getSourceFile).not.toHaveBeenCalled();
+  });
+
+  it("reports no source file when getSourceFile throws synchronously, not just its promise", async () => {
+    // A test-double client that omits the method entirely (as some suites'
+    // mock clients do) throws "is not a function" the instant it's called —
+    // before any Promise exists for a `.catch` to attach to. A bare
+    // `try { await client.getSourceFile(...) } catch {}` still catches this;
+    // chaining `.then().catch()` off the call's own return value would not,
+    // since the call never gets far enough to return anything to chain onto.
+    const client = { getSourceFile: undefined } as unknown as FileOwnerClient;
+    await expect(realSourceFilename(client, "P.A")).resolves.toBeUndefined();
   });
 });

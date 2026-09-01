@@ -43,23 +43,39 @@ export async function fileOwnerClass(
 }
 
 /**
+ * Both the raw name OMC reports `typeName`'s source under, and that name
+ * filtered down to a real on-disk path (`undefined` when it's a pseudo
+ * filename like `<interactive>` or a `modelica-source:` URI, or the lookup
+ * itself failed). One fetch serves a caller that needs the raw name (e.g. for
+ * a resolver) and the screened path (e.g. for a `loadString` reload, which
+ * binds a class to whatever filename it's given and would evict it from the
+ * file it was actually stored in) without asking OMC for the same fact twice.
+ */
+export async function sourceFilenames(
+  client: FileOwnerClient,
+  typeName: string,
+): Promise<{ reported: string; onDisk: string | undefined }> {
+  let reported: string;
+  try {
+    reported = (await client.getSourceFile({ typeName })).fileName;
+  } catch {
+    reported = "";
+  }
+  return {
+    reported,
+    onDisk: isLikelyDiskPath(reported) ? reported : undefined,
+  };
+}
+
+/**
  * The class's real on-disk source path, or `undefined` when it has none —
  * `typeName` is unknown to OMC, or the class is memory-only and carries a
  * pseudo-filename (`<interactive>`, a `modelica-source:` URI).
- *
- * `loadString` binds a class to whatever filename it is given, evicting it from
- * the file it was stored in, so every buffer reload must pass this path rather
- * than the per-class URI it was read through.
  */
 export async function realSourceFilename(
   client: FileOwnerClient,
   typeName: string | undefined,
 ): Promise<string | undefined> {
   if (typeName === undefined) return undefined;
-  try {
-    const { fileName } = await client.getSourceFile({ typeName });
-    return isLikelyDiskPath(fileName) ? fileName : undefined;
-  } catch {
-    return undefined;
-  }
+  return (await sourceFilenames(client, typeName)).onDisk;
 }

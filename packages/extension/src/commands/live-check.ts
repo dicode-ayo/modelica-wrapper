@@ -26,7 +26,10 @@ import * as vscode from "vscode";
 
 import type { ErrorMessage } from "@dicode/omc-client";
 
-import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
+import {
+  buildSourceUriResolver,
+  mapOmcMessagesToDiagnostics,
+} from "../diagnostics/from-omc.js";
 import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
 import {
@@ -336,17 +339,10 @@ async function runCheck(
     // `modelica-source:` URI verbatim, but as belt-and-suspenders the
     // resolver also parses any modelica-source: URI string OMC might emit
     // (in case a future OMC version normalizes the path).
-    const resolver = (name: string): vscode.Uri | undefined => {
-      if (name === filename) return uri;
-      if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
-        try {
-          return vscode.Uri.parse(name);
-        } catch {
-          return undefined;
-        }
-      }
-      return undefined;
-    };
+    const resolver = buildSourceUriResolver({
+      omcFilename: filename,
+      virtualUri: uri,
+    });
     // A message naming the URI reaches the buffer through the branch above
     // rather than the filename the stages bounded, so bound it too — nothing
     // published against this document escapes its line range.

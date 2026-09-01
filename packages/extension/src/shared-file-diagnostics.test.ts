@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ErrorMessage } from "@dicode/omc-client";
 
 import {
+  alignOwnSourceToSharedFile,
   alignToSharedFile,
   bufferOwnCoords,
   keepForBuffer,
@@ -181,6 +182,211 @@ describe("alignToSharedFile", () => {
       filename: PACKAGE_MO,
       merge: false,
     });
+  });
+
+  it("puts the buffer back when the file reload itself throws", async () => {
+    // Unlike a `success: false` reply (handled above without restoring — OMC
+    // presumably never changed state), a thrown reload can leave OMC
+    // partway through, so the promised "coordinates the caller can name"
+    // contract needs the same restore-then-rethrow the extent read gets.
+    const client = makeClient({
+      loadString: vi.fn(async () => {
+        throw new Error("omc gone");
+      }),
+    });
+
+    await expect(alignToSharedFile(client, INPUT)).rejects.toThrow("omc gone");
+    expect(client.loadString).toHaveBeenLastCalledWith({
+      data: BUFFER_TEXT,
+      filename: PACKAGE_MO,
+      merge: false,
+    });
+  });
+});
+
+describe("alignOwnSourceToSharedFile", () => {
+  it("skips the reload entirely for a class that owns its file", async () => {
+    const client = makeClient({
+      getSourceFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        fileName: typeName === "P.A" ? "/ws/P/A.mo" : PACKAGE_MO,
+      })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: "/ws/P/A.mo",
+    });
+
+    expect(coords).toBeUndefined();
+    expect(client.listFile).not.toHaveBeenCalled();
+    expect(client.loadString).not.toHaveBeenCalled();
+  });
+
+  it("loads the class's own listing and reports the shift when it shares the file", async () => {
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
+      })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual({
+      firstLine: 2,
+      lastLine: 4,
+      lineShift: 1,
+      columnShift: 2,
+    });
+    // fileOwnerClass's walk (getSourceFile("P.A"), getSourceFile("P")) runs
+    // once here, not once more inside alignToSharedFile — the already-known
+    // owner is passed through rather than rediscovered.
+    expect(client.getSourceFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads OMC's own coordinates when the reload lands but the alignment declines to map", async () => {
+    // The standalone reload succeeds — OMC is left holding the buffer's own
+    // coordinates, per `alignToSharedFile`'s contract — but the subsequent
+    // file-wide reload can't place the class in it (an extent OMC cannot
+    // mean, per `alignToSharedFile`'s own "gives up on an extent" case). That
+    // is a known, well-defined state, not an unknown one: fall back to the
+    // buffer's own coordinates rather than the nothing-in-bounds sentinel.
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
+      })),
+      getClassInformation: readsThenFails(() => ({
+        lineNumberStart: 0,
+        lineNumberEnd: 0,
+        columnNumberStart: 0,
+      })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual(bufferOwnCoords(BUFFER_TEXT.split("\n").length));
+  });
+
+  it("fails closed (bounds nothing in) rather than leaking unbounded when the reload reports failure", async () => {
+    const client = makeClient({
+      loadString: vi.fn(async () => ({ success: false })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual({
+      firstLine: 1,
+      lastLine: 0,
+      lineShift: 0,
+      columnShift: 0,
+    });
+    // Bounding to firstLine > lastLine excludes every located message.
+    expect(
+      keepForBuffer(
+        [messageAt(PACKAGE_MO, 1)],
+        PACKAGE_MO,
+        coords ?? bufferOwnCoords(0),
+      ),
+    ).toEqual([]);
+  });
+
+  it("fails closed when the client throws", async () => {
+    const client = makeClient({
+      listFile: vi.fn(async () => {
+        throw new Error("omc gone");
+      }),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual({
+      firstLine: 1,
+      lastLine: 0,
+      lineShift: 0,
+      columnShift: 0,
+    });
+  });
+
+  it("restores the shared file when the standalone reload throws partway through", async () => {
+    // Unlike a clean `success: false`, a throw here leaves it unknown whether
+    // the reload landed on OMC's side. The restore reloads the owner's real
+    // content back over `filename` rather than leave that to chance.
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
+      })),
+      loadString: vi.fn(async ({ data }: { data: string }) => {
+        if (data === BUFFER_TEXT) throw new Error("omc gone");
+        return { success: true };
+      }),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual(bufferOwnCoords(0));
+    expect(client.loadString).toHaveBeenLastCalledWith({
+      data: PACKAGE_SOURCE,
+      filename: PACKAGE_MO,
+      merge: false,
+    });
+  });
+
+  it("fails closed when fileOwnerClass itself throws", async () => {
+    // Nothing is known yet — not even whether the file is shared — so this
+    // is the same fail-closed case as the reload steps below it, not the
+    // known-good state alignToSharedFile leaves behind.
+    const client = makeClient({
+      getSourceFile: vi.fn(async () => {
+        throw new Error("omc gone");
+      }),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual(bufferOwnCoords(0));
+    expect(client.listFile).not.toHaveBeenCalled();
+  });
+
+  it("reads the buffer's own coordinates rather than propagating a throw from alignToSharedFile itself", async () => {
+    // Unlike a failure in this function's own reload (above), a throw from
+    // `alignToSharedFile` after the standalone reload has already landed
+    // means OMC has already been restored to the buffer's own coordinates —
+    // a known-good state, not an unknown one, so it resolves the same way its
+    // `undefined` return does rather than propagating or dropping to
+    // NOTHING_IN_BOUNDS. Mirrors how `live-check.ts`'s `runCheck` already
+    // treats a throw from this same function.
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
+      })),
+      getClassInformation: readsThenFails(() => {
+        throw new Error("class gone");
+      }),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual(bufferOwnCoords(BUFFER_TEXT.split("\n").length));
   });
 });
 

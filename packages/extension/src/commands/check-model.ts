@@ -11,6 +11,9 @@
  *
  * Behavior (decided in the planning discussion, see PR description):
  *   - Drains OMC's error buffer before kicking off the check.
+ *   - For a class stored inline in a shared file, reloads that file so OMC's
+ *     positions and the virtual editor's agree; this leaves OMC holding the
+ *     file's own coordinates.
  *   - Streams progress to a Notification toast that the user can cancel.
  *   - Logs each phase (>>>, result, summary) to the shared "Modelica" output
  *     channel — no second channel.
@@ -22,11 +25,20 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
+import type { ErrorMessage } from "@dicode/omc-client";
 
-import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
+import {
+  buildSourceUriResolver,
+  mapOmcMessagesToDiagnostics,
+} from "../diagnostics/from-omc.js";
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
+import { sourceFilenames } from "../file-owner.js";
 import { log } from "../logger.js";
+import {
+  alignOwnSourceToSharedFile,
+  keepForBuffer,
+  type SharedFileClient,
+} from "../shared-file-diagnostics.js";
 import {
   MODELICA_SOURCE_SCHEME,
   qualifiedNameFromUri,
@@ -81,8 +93,15 @@ function resolveTargetClass(): string | undefined {
   return undefined;
 }
 
-async function runCheckModel(
-  client: OmcClient,
+/** The OMC surface `runCheckModel` drives. `OmcClient` satisfies it. */
+export interface CheckModelClient extends SharedFileClient {
+  getErrorString(): Promise<{ errorString: string }>;
+  checkModel(input: { typeName: string }): Promise<{ result: string }>;
+  getMessagesStringInternal(): Promise<{ messages: ErrorMessage[] }>;
+}
+
+export async function runCheckModel(
+  client: CheckModelClient,
   diagnostics: vscode.DiagnosticCollection,
   className: string,
 ): Promise<void> {
@@ -97,37 +116,36 @@ async function runCheckModel(
       title: `Checking ${className}`,
     },
     async (_progress, token) => {
-      // Best-effort: look up the class's on-disk source path so we can map
-      // OMC diagnostics referring to that path back to the user's virtual
-      // editor (`modelica-source:/<Class>.mo`). Errors here are non-fatal —
-      // the class may have failed to load and the resolver still handles the
-      // URI-prefix case below.
-      const info = await client
-        .getClassInformation({ typeName: className })
-        .catch(() => undefined);
+      // Best-effort: the name OMC reports this class's source under, mapped
+      // back to the user's virtual editor. A failure here is non-fatal — the
+      // class may have failed to load and the resolver still handles the
+      // URI-prefix case.
+      const { reported: omcFilename, onDisk: onDiskPath } =
+        await sourceFilenames(client, className);
       const virtualUri = sourceUriFor(className);
-      const virtualUriString = virtualUri.toString();
-      const onDiskPath = info?.fileName ?? "";
-      const resolver = (name: string): vscode.Uri | undefined => {
-        // The class's on-disk source — map to virtual URI so squiggles land
-        // in the user's open `modelica-source:` editor.
-        if (onDiskPath && name === onDiskPath) return virtualUri;
-        if (name === virtualUriString) return virtualUri;
-        // Belt-and-suspenders: any modelica-source: URI string OMC echoes
-        // back (e.g. from a live-check buffer) parses to its URI.
-        if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
-          try {
-            return vscode.Uri.parse(name);
-          } catch {
-            return undefined;
-          }
-        }
-        return undefined;
-      };
+      const resolver = buildSourceUriResolver({ omcFilename, virtualUri });
 
       // Drain OMC's pre-existing diagnostic buffer so what we read after
       // checkModel reflects this run only.
       await client.getErrorString();
+      if (token.isCancellationRequested) return;
+
+      // A class stored inline in a shared file (e.g. `package.mo`) is reported
+      // by OMC at its real file-relative line, while the virtual editor shows
+      // only that class's own pretty-printed text numbered from line 1.
+      const coords = onDiskPath
+        ? await alignOwnSourceToSharedFile(client, {
+            typeName: className,
+            filename: onDiskPath,
+          })
+        : undefined;
+      if (token.isCancellationRequested) return;
+
+      // The alignment reload above can itself leave messages in OMC's buffer
+      // (e.g. a sibling's pre-existing issue, surfaced only because realigning
+      // reloads the whole file); drain them so the run below reflects
+      // checkModel's own result, not the reload's side effects.
+      if (coords) await client.getErrorString();
       if (token.isCancellationRequested) return;
 
       const stamp = new Date().toISOString().slice(11, 23);
@@ -141,8 +159,14 @@ async function runCheckModel(
       if (token.isCancellationRequested) return;
 
       // Clear-all + replace: this is the user-triggered "global refresh" path.
+      // Bound/shift onto the buffer's own coordinates for squiggle placement;
+      // the error/warning counts below still reflect the true check outcome.
+      const bounded =
+        onDiskPath && coords
+          ? keepForBuffer(messages, onDiskPath, coords)
+          : messages;
       diagnostics.clear();
-      const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
+      const grouped = mapOmcMessagesToDiagnostics(bounded, resolver);
       for (const [uri, diags] of grouped) {
         diagnostics.set(uri, diags);
       }

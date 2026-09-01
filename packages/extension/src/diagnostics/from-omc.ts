@@ -15,9 +15,37 @@ import * as vscode from "vscode";
 import type { ErrorMessage } from "@dicode/omc-client";
 
 import { omcToVscodePosition } from "../language/position.js";
+import { MODELICA_SOURCE_SCHEME } from "../source-provider.js";
 
 /** Maps an OMC filename to a VSCode Uri; `undefined` falls back to `Uri.file`. */
 export type SourceUriResolver = (filename: string) => vscode.Uri | undefined;
+
+/**
+ * Builds a {@link SourceUriResolver} that redirects the name OMC reports a class under
+ * (a real on-disk path, or a pseudo filename such as a `modelica-source:` URI echoed
+ * back verbatim) to the editor URI the user actually has open. Shared by `runCheckModel`
+ * and `live-check.ts`'s `runCheck` — the two OMC-message-consuming pipelines that both
+ * need this same redirect.
+ */
+export function buildSourceUriResolver(input: {
+  omcFilename: string;
+  virtualUri: vscode.Uri;
+}): SourceUriResolver {
+  const { omcFilename, virtualUri } = input;
+  const virtualUriString = virtualUri.toString();
+  return (name: string): vscode.Uri | undefined => {
+    if (omcFilename && name === omcFilename) return virtualUri;
+    if (name === virtualUriString) return virtualUri;
+    if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
+      try {
+        return vscode.Uri.parse(name);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  };
+}
 
 export function mapOmcMessagesToDiagnostics(
   messages: readonly ErrorMessage[],
@@ -68,6 +96,16 @@ export function severityFromLevel(level: string): vscode.DiagnosticSeverity {
 }
 
 /**
+ * `getMessagesStringInternal` can report `lineStart: 0` for a message with no
+ * particular line to point to — a missing/synthetic location, mirroring the
+ * same marker `omcToVscodePosition` (`language/position.ts`) hedges on. There
+ * is no position to bound or shift in that case.
+ */
+export function hasNoSourceLocation(info: { lineStart: number }): boolean {
+  return info.lineStart === 0;
+}
+
+/**
  * VSCode Range from OMC's `getMessagesStringInternal` `info` block. The 1→0
  * shift uses the shared {@link omcToVscodePosition}; diagnostic-specific
  * tweaks (clamp end-before-start, widen zero-width spans so the squiggle
@@ -77,6 +115,10 @@ export function severityFromLevel(level: string): vscode.DiagnosticSeverity {
  * `omcRangeToVscodeRange` in `language/position.ts` treats `getClassInformation`'s
  * end column as **inclusive** instead, because the two OMC APIs disagree. Do
  * not factor these into one helper without reconfirming both conventions.
+ *
+ * A message where {@link hasNoSourceLocation} holds carries no real position;
+ * for the all-zero shape that marker describes, the clamping below already
+ * lands on `(0,0)-(0,1)` without any special-casing here.
  */
 export function rangeFromInfo(info: {
   lineStart: number;
