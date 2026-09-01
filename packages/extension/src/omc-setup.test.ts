@@ -291,6 +291,56 @@ describe("the managed install", () => {
     setup.dispose();
   });
 
+  it("keeps the replacement signal when a later resolution supersedes the install's", async () => {
+    let changes = 0;
+    let gated = false;
+    let enteredProbe = (): void => {};
+    const entered = new Promise<void>((resolve) => {
+      enteredProbe = resolve;
+    });
+    let releaseProbe = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseProbe = resolve;
+    });
+    const probe: FileProbe = async (candidate) => {
+      if (candidate !== MANAGED) return false;
+      if (gated) {
+        enteredProbe();
+        await gate;
+      }
+      return true;
+    };
+    const setup = createOmcSetup({
+      environment: environment(probe),
+      onOmcChanged: () => {
+        changes += 1;
+      },
+      installer: recordingInstaller({
+        install: () => {
+          // The resolution that follows this is the one carrying the signal.
+          gated = true;
+          return Promise.resolve({
+            omcPath: MANAGED,
+            version: "v1.27.0-cmake",
+          });
+        },
+      }),
+    });
+    await setup.start();
+    expect(changes).toBe(0);
+
+    const installing = runCommand(INSTALL_COMMAND);
+    await entered;
+    // A spawn resolving here takes the newest generation, so the install's own
+    // resolution is discarded — with the fact that the binary was replaced.
+    const spawning = setup.omcPath();
+    releaseProbe();
+    await Promise.all([installing, spawning]);
+
+    expect(changes).toBe(1);
+    setup.dispose();
+  });
+
   it("says nothing failed when the user cancelled it", async () => {
     let started = (): void => {};
     const underway = new Promise<void>((resolve) => {

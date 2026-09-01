@@ -126,6 +126,7 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
   let verdict: OmcVerdict | undefined;
   let generation = 0;
   let resolvedOnce = false;
+  let replacementPending = false;
   let inFlight: Promise<void> | undefined;
 
   const root = (): string =>
@@ -150,6 +151,9 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
    * session was spawned from. An update swaps the prefix under `current`.
    */
   async function resolve(replaced = false): Promise<OmcResolution> {
+    // Held across supersession: a resolution started by a spawn can outrun the
+    // install's own and would otherwise drop the fact on the floor.
+    replacementPending ||= replaced;
     const mine = ++generation;
     const resolved = await resolveOmc(
       {
@@ -167,9 +171,11 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
     // the one the user is looking at.
     if (mine === generation) {
       const changed =
-        resolvedOnce && (replaced || resolved.omcPath !== resolution.omcPath);
+        resolvedOnce &&
+        (replacementPending || resolved.omcPath !== resolution.omcPath);
       resolution = resolved;
       resolvedOnce = true;
+      replacementPending = false;
       render();
       if (changed) options.onOmcChanged?.();
     }
