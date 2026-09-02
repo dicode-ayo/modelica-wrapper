@@ -29,23 +29,16 @@ import {
   collectBaseUnits,
   produceParameterModel,
   type ComponentElement,
-  type ParameterField,
-  type ParameterModel,
   type UnitTable,
 } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
 import {
-  buildComponentParameterForm,
-  findSubComponent,
-} from "./parameter-edits.js";
+  fieldOf,
+  requireComponentParameterForm,
+  requireSubComponent,
+} from "../../test-support/parameter-forms.js";
 import { SessionUnitCache, collectDisplayUnitsByBase } from "./unit-table.js";
-
-function field(model: ParameterModel, name: string): ParameterField {
-  const f = model.fields.find((x) => x.name === name);
-  if (!f) throw new Error(`no field ${name}`);
-  return f;
-}
 
 /**
  * Build the injected unit table for a component via the session cache, exactly
@@ -115,12 +108,12 @@ end ${pkg};
 
   it("surfaces J's unit as kg.m2 (the screenshot's static-suffix case)", async () => {
     const { instance } = await client.getModelInstance({ typeName: host });
-    const inertia = findSubComponent(instance, "inertia1")!;
+    const inertia = requireSubComponent(instance, "inertia1");
     const cache = new SessionUnitCache(client);
     const table = await unitTableFor(cache, inertia);
-    const form = buildComponentParameterForm(inertia, table)!;
+    const form = requireComponentParameterForm(inertia, table);
 
-    const J = field(form.model, "J");
+    const J = fieldOf(form.model, "J");
     expect(J.unit).toBe("kg.m2");
     // kg.m2 has no derived units → a single identity option → static suffix.
     expect(J.unitOptions.map((o) => o.unit)).toEqual(["kg.m2"]);
@@ -128,12 +121,12 @@ end ${pkg};
 
   it("builds a rad/deg dropdown with real conversion factors", async () => {
     const { instance } = await client.getModelInstance({ typeName: host });
-    const comp = findSubComponent(instance, "comp1")!;
+    const comp = requireSubComponent(instance, "comp1");
     const cache = new SessionUnitCache(client);
     const table = await unitTableFor(cache, comp);
-    const form = buildComponentParameterForm(comp, table)!;
+    const form = requireComponentParameterForm(comp, table);
 
-    const phi = field(form.model, "phi");
+    const phi = fieldOf(form.model, "phi");
     expect(phi.unit).toBe("rad");
     expect(phi.displayUnit).toBe("deg");
 
@@ -143,7 +136,8 @@ end ${pkg};
     expect(units).toContain("deg");
     expect(units.length).toBeGreaterThanOrEqual(2);
 
-    const deg = opts.find((o) => o.unit === "deg")!;
+    const deg = opts.find((o) => o.unit === "deg");
+    if (deg === undefined) throw new Error("expected a 'deg' unit option");
     // convertUnits("rad","deg") = (true, 0.0174…, 0). Shown value =
     // (1.5708 - 0) / 0.0174… ≈ 90 deg.
     expect(deg.scaleFactor).toBeCloseTo(0.017453292519943295, 9);
@@ -159,18 +153,19 @@ end ${pkg};
     // returns {d, h, min} — NOT "ms". Without folding the declared displayUnit
     // back in, the dropdown would silently drop "ms" and fall back to seconds.
     const { instance } = await client.getModelInstance({ typeName: host });
-    const comp = findSubComponent(instance, "comp1")!;
+    const comp = requireSubComponent(instance, "comp1");
     const cache = new SessionUnitCache(client);
     const table = await unitTableFor(cache, comp);
-    const form = buildComponentParameterForm(comp, table)!;
+    const form = requireComponentParameterForm(comp, table);
 
-    const tau = field(form.model, "tau");
+    const tau = fieldOf(form.model, "tau");
     expect(tau.unit).toBe("s");
     expect(tau.displayUnit).toBe("ms");
 
     const opts = tau.unitOptions;
     expect(opts.map((o) => o.unit)).toContain("ms");
-    const ms = opts.find((o) => o.unit === "ms")!;
+    const ms = opts.find((o) => o.unit === "ms");
+    if (ms === undefined) throw new Error("expected an 'ms' unit option");
     // convertUnits("s","ms") = (true, 0.001, 0). Shown = (0.5 - 0) / 0.001 = 500.
     expect(ms.scaleFactor).toBeCloseTo(0.001, 9);
     expect((0.5 - ms.offset) / ms.scaleFactor).toBeCloseTo(500, 6);
@@ -186,14 +181,15 @@ end ${pkg};
     //   source = shown * scaleFactor + offset      (submit / back-convert)
     const baseRad = 1.5707963267948966;
     const { instance } = await client.getModelInstance({ typeName: host });
-    const comp = findSubComponent(instance, "comp1")!;
+    const comp = requireSubComponent(instance, "comp1");
     const cache = new SessionUnitCache(client);
     const table = await unitTableFor(cache, comp);
-    const form = buildComponentParameterForm(comp, table)!;
+    const form = requireComponentParameterForm(comp, table);
 
-    const phi = field(form.model, "phi");
+    const phi = fieldOf(form.model, "phi");
     const opts = phi.unitOptions;
-    const deg = opts.find((o) => o.unit === "deg")!;
+    const deg = opts.find((o) => o.unit === "deg");
+    if (deg === undefined) throw new Error("expected a 'deg' unit option");
 
     // (a) open shows 90 deg …
     const shownDeg = (baseRad - deg.offset) / deg.scaleFactor;
