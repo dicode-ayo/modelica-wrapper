@@ -66,8 +66,7 @@ interface WatcherOmcClient {
 /**
  * Packages whose reorder was skipped for a busy buffer, keyed by the owning
  * `package.mo`, so a later change that clears the block can find and re-run
- * it. Injected rather than module-level state, so a second activation in the
- * same host starts clean.
+ * it. Injected, not module-level state, so each activation starts clean.
  */
 export interface PendingReorders {
   set(pkgFile: string, describedPath: string): void;
@@ -605,8 +604,8 @@ export function registerMoFileWatcher(deps: {
   invalidation: ClassInvalidationRegistry;
   /**
    * The path→class index this watcher seeds and keeps current. Owned by
-   * extension.ts because the OMC mutation listener reads it too, to resolve a
-   * file-scoped announcement to the classes that file declares.
+   * extension.ts rather than here, because the OMC mutation router reads it
+   * too.
    */
   index: PathClassIndex;
   /**

@@ -100,8 +100,8 @@ export async function activate(
     (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath),
   );
 
-  // Seeded and kept current by the `.mo` watcher; read by the mutation router
-  // below.
+  // Seeded and kept current by the `.mo` watcher; the mutation router reads it
+  // to resolve a file-scoped announcement to the classes that file declares.
   const pathClassIndex = createPathClassIndex();
 
   // Replacing the session is what re-runs the workspace sweep and rebuilds the
