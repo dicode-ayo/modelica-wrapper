@@ -1,6 +1,8 @@
 import type {
   ComponentElement,
   ModelInstance,
+  ParameterField,
+  ParameterModel,
   UnitTable,
 } from "@dicode/omc-client";
 
@@ -14,9 +16,8 @@ import {
 
 export function requireClassParameterForm(
   instance: ModelInstance,
-  unitTable?: UnitTable,
 ): ParameterFormState {
-  const form = buildClassParameterForm(instance, unitTable);
+  const form = buildClassParameterForm(instance);
   if (form === undefined) throw new Error("expected a parameter form");
   return form;
 }
@@ -28,6 +29,12 @@ export function requireComponentParameterForm(
   const form = buildComponentParameterForm(component, unitTable);
   if (form === undefined) throw new Error("expected a parameter form");
   return form;
+}
+
+export function fieldOf(model: ParameterModel, name: string): ParameterField {
+  const field = model.fields.find((f) => f.name === name);
+  if (field === undefined) throw new Error(`expected field '${name}'`);
+  return field;
 }
 
 export function requireSubComponent(

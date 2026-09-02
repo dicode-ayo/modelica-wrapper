@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ComponentElement, ParameterField } from "@dicode/omc-client";
+import type { ComponentElement } from "@dicode/omc-client";
 
-import { requireComponentParameterForm } from "../../test-support/parameter-forms.js";
+import {
+  fieldOf,
+  requireComponentParameterForm,
+} from "../../test-support/parameter-forms.js";
 import { refOf } from "../../test-support/parameter-refs.js";
 import {
   buildComponentParameterForm,
@@ -10,15 +13,6 @@ import {
   componentParameterValueToExpr,
   type ComponentParameterRef,
 } from "./parameter-edits.js";
-
-function field(
-  model: { fields: ParameterField[] },
-  name: string,
-): ParameterField {
-  const f = model.fields.find((x) => x.name === name);
-  if (f === undefined) throw new Error(`expected field '${name}'`);
-  return f;
-}
 
 /**
  * Builds the kind of `ComponentElement` `getModelInstance` emits for a
@@ -297,7 +291,7 @@ describe("buildComponentParameterForm", () => {
     } as unknown as ComponentElement;
 
     const form = requireComponentParameterForm(inertia);
-    const j = field(form.model, "J");
+    const j = fieldOf(form.model, "J");
     expect(j.unit).toBe("kg.m2");
     // No use-site displayUnit modifier → undefined.
     expect(j.displayUnit).toBeUndefined();
@@ -335,7 +329,7 @@ describe("buildComponentParameterForm", () => {
     } as unknown as ComponentElement;
 
     const form = requireComponentParameterForm(angleComp);
-    const phi = field(form.model, "phi");
+    const phi = fieldOf(form.model, "phi");
     expect(phi.unit).toBe("rad");
     expect(phi.displayUnit).toBe("deg");
   });
@@ -343,7 +337,7 @@ describe("buildComponentParameterForm", () => {
   it("emits no unit metadata for a unit-less Real parameter (the `k` gain case)", () => {
     // `pi().k` is a bare `Real` with no unit alias — no unit metadata.
     const form = requireComponentParameterForm(pi());
-    const k = field(form.model, "k");
+    const k = fieldOf(form.model, "k");
     expect(k.unit).toBeUndefined();
     expect(k.displayUnit).toBeUndefined();
   });

@@ -29,23 +29,16 @@ import {
   collectBaseUnits,
   produceParameterModel,
   type ComponentElement,
-  type ParameterField,
-  type ParameterModel,
   type UnitTable,
 } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
 import {
+  fieldOf,
   requireComponentParameterForm,
   requireSubComponent,
 } from "../../test-support/parameter-forms.js";
 import { SessionUnitCache, collectDisplayUnitsByBase } from "./unit-table.js";
-
-function field(model: ParameterModel, name: string): ParameterField {
-  const f = model.fields.find((x) => x.name === name);
-  if (f === undefined) throw new Error(`expected field '${name}'`);
-  return f;
-}
 
 /**
  * Build the injected unit table for a component via the session cache, exactly
@@ -120,7 +113,7 @@ end ${pkg};
     const table = await unitTableFor(cache, inertia);
     const form = requireComponentParameterForm(inertia, table);
 
-    const J = field(form.model, "J");
+    const J = fieldOf(form.model, "J");
     expect(J.unit).toBe("kg.m2");
     // kg.m2 has no derived units → a single identity option → static suffix.
     expect(J.unitOptions.map((o) => o.unit)).toEqual(["kg.m2"]);
@@ -133,7 +126,7 @@ end ${pkg};
     const table = await unitTableFor(cache, comp);
     const form = requireComponentParameterForm(comp, table);
 
-    const phi = field(form.model, "phi");
+    const phi = fieldOf(form.model, "phi");
     expect(phi.unit).toBe("rad");
     expect(phi.displayUnit).toBe("deg");
 
@@ -165,7 +158,7 @@ end ${pkg};
     const table = await unitTableFor(cache, comp);
     const form = requireComponentParameterForm(comp, table);
 
-    const tau = field(form.model, "tau");
+    const tau = fieldOf(form.model, "tau");
     expect(tau.unit).toBe("s");
     expect(tau.displayUnit).toBe("ms");
 
@@ -193,7 +186,7 @@ end ${pkg};
     const table = await unitTableFor(cache, comp);
     const form = requireComponentParameterForm(comp, table);
 
-    const phi = field(form.model, "phi");
+    const phi = fieldOf(form.model, "phi");
     const opts = phi.unitOptions;
     const deg = opts.find((o) => o.unit === "deg");
     if (deg === undefined) throw new Error("expected a 'deg' unit option");
