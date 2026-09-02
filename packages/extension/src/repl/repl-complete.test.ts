@@ -109,7 +109,7 @@ describe("computeCompletion — path-argument meta-commands", () => {
   it("decides on the text up to the cursor, not text after it", () => {
     // Cursor sits right after the verb; the path typed after the cursor
     // hasn't been reached yet, so the verb itself is still a completion
-    // target (this used to see the whole buffer and suppress it).
+    // target.
     const buf = ":load /tmp/scratchpad/LoadProbe.mo";
     const plan = computeCompletion(buf, ":load".length);
     expect(plan.candidates).toEqual([":load"]);
