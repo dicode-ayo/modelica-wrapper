@@ -8,6 +8,8 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
+import type { ParameterPanelFocusDetail } from "../src/parameter-form/parameter-panel.component.js";
+
 import { boxOf, waitForLayout } from "./story-helpers.js";
 
 const PANEL_STORY =
@@ -132,14 +134,17 @@ test.describe("stacked with the toolbar", () => {
   });
 });
 
-/** Collects every `om-panel-focus` the panel dispatches from here on. */
+/** Page-side sink the reports accumulate in. */
+type FocusSink = Window & { __focus: boolean[] };
+
+/** Collects every `om-panel-focus-change` the panel dispatches from here on. */
 async function recordFocusReports(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const sink = window as unknown as { __focus: boolean[] };
+    const sink = window as unknown as FocusSink;
     sink.__focus = [];
-    document.addEventListener("om-panel-focus", (e) => {
+    document.addEventListener("om-panel-focus-change", (e) => {
       sink.__focus.push(
-        (e as CustomEvent<{ focused: boolean }>).detail.focused,
+        (e as CustomEvent<ParameterPanelFocusDetail>).detail.focused,
       );
     });
   });
@@ -147,9 +152,7 @@ async function recordFocusReports(page: Page): Promise<void> {
 
 /** The panel's latest report, or `undefined` if it has not made one. */
 async function lastFocusReport(page: Page): Promise<boolean | undefined> {
-  return page.evaluate(() =>
-    (window as unknown as { __focus: boolean[] }).__focus.at(-1),
-  );
+  return page.evaluate(() => (window as unknown as FocusSink).__focus.at(-1));
 }
 
 /** Innermost focused node, descending through open shadow roots. */
@@ -173,6 +176,9 @@ test.describe("focus reporting", () => {
     await recordFocusReports(page);
     await page.locator(OPEN_PARAMS).click();
     await expect(page.locator(CARD)).toBeVisible();
+    // Opening focuses the card, so the shortcuts stand down before a field is
+    // ever touched.
+    await expect.poll(() => lastFocusReport(page)).toBe(true);
   });
 
   test("reports focused while the caret sits in a parameter field", async ({

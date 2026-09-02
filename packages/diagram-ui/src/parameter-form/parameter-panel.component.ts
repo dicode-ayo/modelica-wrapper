@@ -15,9 +15,10 @@
  * it. The form's optional "Reset to defaults" button surfaces as
  * `om-panel-reset`.
  *
- * `om-panel-focus` reports whether focus rests inside the card, so an embedder
- * that binds bare keys over the surface behind the panel can stand down while
- * the user is typing into a field.
+ * `om-panel-focus-change` reports whether focus rests inside the card, so an
+ * embedder that binds bare keys over the surface behind the panel can stand
+ * down while the user is typing into a field. Opening the panel focuses the
+ * card, so it reports before any field is touched.
  */
 
 import {
@@ -40,7 +41,7 @@ import type {
   ParameterFormSubmitDetail,
 } from "./parameter-form.component.js";
 
-/** Detail of `om-panel-focus`. */
+/** Detail of `om-panel-focus-change`. */
 export interface ParameterPanelFocusDetail {
   /** Focus rests somewhere inside the card. */
   focused: boolean;
@@ -219,9 +220,6 @@ export class OmParameterPanel extends LitElement {
       return;
     }
     window.removeEventListener("keydown", this.onKeyDown, { capture: true });
-    // Closing removes the card, which can retire the focus without a
-    // `focusout` ever reaching us.
-    this.reportFocus(false);
   }
 
   override connectedCallback(): void {
@@ -237,7 +235,7 @@ export class OmParameterPanel extends LitElement {
     this.renderRoot.removeEventListener("focusout", this.onFocusChange);
   }
 
-  /** Last reported state, so `om-panel-focus` only fires on a change. */
+  /** Last reported state, so `om-panel-focus-change` only fires on a change. */
   private focusWithin = false;
 
   // Focus moves inside a shadow tree are retargeted to its host, so a listener
@@ -248,7 +246,9 @@ export class OmParameterPanel extends LitElement {
   // editable.
   private readonly onFocusChange = (): void => {
     // `focusout` runs before the next element takes focus, so recompute from
-    // the settled active element rather than the event's target.
+    // the settled active element rather than the event's target. `shadowRoot`
+    // rather than `renderRoot`, which Lit types wide enough to lose
+    // `activeElement`.
     queueMicrotask(() => {
       this.reportFocus(this.shadowRoot?.activeElement != null);
     });
@@ -258,7 +258,7 @@ export class OmParameterPanel extends LitElement {
     if (focused === this.focusWithin) return;
     this.focusWithin = focused;
     this.dispatchEvent(
-      new CustomEvent<ParameterPanelFocusDetail>("om-panel-focus", {
+      new CustomEvent<ParameterPanelFocusDetail>("om-panel-focus-change", {
         detail: { focused },
         bubbles: true,
         composed: true,

@@ -150,7 +150,7 @@ class OmWebviewRoot extends LitElement {
 
   /** Last reported editable-focus state, so we only post on a transition. */
   private inputFocused = false;
-  /** The parameters panel's own report — see `om-panel-focus`. */
+  /** The parameters panel's own report — see `om-panel-focus-change`. */
   private panelFocused = false;
 
   // A focus move is not dispatched to nodes that retarget both its target and
@@ -231,7 +231,7 @@ class OmWebviewRoot extends LitElement {
           .heading=${this.paramTitle}
           .submitLabel=${this.paramSubmitLabel}
           .crefPrefix=${this.paramCrefPrefix}
-          @om-panel-focus=${this.onPanelFocus}
+          @om-panel-focus-change=${this.onPanelFocus}
           @om-panel-submit=${this.onParamSubmit}
           @om-panel-cancel=${this.onParamCancel}
           @om-panel-reset=${this.onParamReset}
