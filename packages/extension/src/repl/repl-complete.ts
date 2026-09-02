@@ -36,7 +36,7 @@ export function computeCompletion(
   const match = /[A-Za-z0-9_:]*$/.exec(before);
   const prefix = match ? match[0] : "";
 
-  const source = selectSource(buffer, prefix);
+  const source = selectSource(before, prefix);
   const candidates = source.filter((c) => c.startsWith(prefix)).sort();
   return {
     prefix,
@@ -58,20 +58,19 @@ const PATH_ARG_COMMANDS: ReadonlySet<string> = new Set(
 );
 
 /**
- * Decide which candidate set to draw from given the current input.
+ * Decide which candidate set to draw from given the input up to the cursor.
  *
- *   - If the buffer up to the cursor LOOKS like a meta-command line
- *     (begins with `:` and has no space yet) → meta-command names.
+ *   - If it LOOKS like a meta-command line (begins with `:` and has no
+ *     space yet) → meta-command names.
  *   - If the meta verb already typed takes a path argument (`:load`,
  *     `:cd`) → no candidates; OMC function names are never a valid
  *     completion there.
- *   - If the buffer starts with `:help <something` or `:help ` →
- *     OMC function names (most useful expansion target).
- *   - Otherwise → OMC function names.
+ *   - Otherwise → OMC function names. This includes the argument of
+ *     `:help `, where an OMC name is the useful expansion target.
  */
-function selectSource(buffer: string, prefix: string): string[] {
-  const trimmed = buffer.trimStart();
-  const spaceIndex = trimmed.indexOf(" ");
+function selectSource(before: string, prefix: string): string[] {
+  const trimmed = before.trimStart();
+  const spaceIndex = trimmed.search(/\s/);
   if (trimmed.startsWith(":") && spaceIndex === -1) {
     // No space yet — completing the meta verb itself. Anchor on `:`.
     if (prefix.startsWith(":") || prefix === "") {

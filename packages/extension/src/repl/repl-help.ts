@@ -21,17 +21,19 @@ import {
   type OmcFnName,
 } from "@dicode/omc-client";
 
+export interface MetaCommand {
+  name: string;
+  summary: string;
+  /** True when the argument is a filesystem path, never an OMC identifier. */
+  takesPathArg?: boolean;
+}
+
 /**
  * Meta-commands recognised by the REPL. Kept here (rather than in
  * `repl-eval.ts`) so the help renderer + the completion source share a
  * single source of truth.
  */
-export const META_COMMANDS: ReadonlyArray<{
-  name: string;
-  summary: string;
-  /** True when the argument is a filesystem path, never an OMC identifier. */
-  takesPathArg?: boolean;
-}> = [
+export const META_COMMANDS: ReadonlyArray<MetaCommand> = [
   { name: ":help", summary: "Show help (`:help <category|name>` for details)" },
   { name: ":clear", summary: "Clear the terminal screen" },
   {
@@ -98,6 +100,6 @@ function formatOverview(): string {
   return lines.join("\n");
 }
 
-function formatMeta(m: { name: string; summary: string }): string {
+function formatMeta(m: MetaCommand): string {
   return `${m.name}\n  ${m.summary}`;
 }

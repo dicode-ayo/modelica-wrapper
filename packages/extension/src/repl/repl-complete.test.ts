@@ -91,9 +91,9 @@ describe("computeCompletion — meta-commands", () => {
 
 describe("computeCompletion — path-argument meta-commands", () => {
   it("offers nothing for a `:load` path, even one ending like an OMC name", () => {
-    // Before the fix, the `[A-Za-z0-9_:]*$` prefix regex severed this at
-    // the `.`, leaving prefix "mo" and matching OMC names alphabetically
-    // ahead of "mo" (e.g. "modifierToJSON") — rewriting the path.
+    // The `[A-Za-z0-9_:]*$` prefix regex severs a path at the `.`, leaving
+    // prefix "mo", which matches OMC names alphabetically ahead of "mo"
+    // (e.g. "modifierToJSON") and rewrites the path.
     const buf = ":load /tmp/scratchpad/LoadProbe.mo";
     const plan = computeCompletion(buf, buf.length);
     expect(plan.candidates).toEqual([]);
@@ -106,9 +106,24 @@ describe("computeCompletion — path-argument meta-commands", () => {
     expect(plan.candidates).toEqual([]);
   });
 
-  it("still completes the `:load`/`:cd` verb itself before the space", () => {
+  it("decides on the text up to the cursor, not text after it", () => {
+    // Cursor sits right after the verb; the path typed after the cursor
+    // hasn't been reached yet, so the verb itself is still a completion
+    // target (this used to see the whole buffer and suppress it).
+    const buf = ":load /tmp/scratchpad/LoadProbe.mo";
+    const plan = computeCompletion(buf, ":load".length);
+    expect(plan.candidates).toEqual([":load"]);
+    expect(plan.prefix).toBe(":load");
+  });
+
+  it("still completes the `:load` verb itself before the space", () => {
     const plan = computeCompletion(":lo", 3);
     expect(plan.candidates).toEqual([":load"]);
+  });
+
+  it("still completes the `:cd` verb itself before the space", () => {
+    const plan = computeCompletion(":c", 2);
+    expect(plan.candidates).toEqual([":cd", ":clear"]);
   });
 
   it("still completes OMC names after `:help `", () => {
