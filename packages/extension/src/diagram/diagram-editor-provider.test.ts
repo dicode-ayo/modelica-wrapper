@@ -1276,18 +1276,18 @@ describe("DiagramEditController: forward write path", () => {
     // running, so the report is stored mid-`loadString`/refetch and its
     // dispatch queues behind. Reconciling it would diff a layout built before
     // the reload against the class the reload restored.
-    // The report has to land while the sync's OMC calls are in flight, so it
-    // is fired from inside the refetch rather than before it, once.
-    const racing: { report?: (() => void) | undefined } = {};
-    const { client, invoked } = makeEditClient({
+    // The report has to land while the sync's OMC calls are in flight, so the
+    // client fires it from inside the refetch.
+    let racingReport: (() => void) | undefined;
+    const { client, ops, invoked } = makeEditClient({
       instance: instanceWithComponent("gain1", [
         [-10, -10],
         [10, 10],
       ]),
       onInvoke: (fn) => {
         if (fn !== "getModelInstance") return;
-        const report = racing.report;
-        racing.report = undefined;
+        const report = racingReport;
+        racingReport = undefined;
         report?.();
       },
     });
@@ -1300,7 +1300,7 @@ describe("DiagramEditController: forward write path", () => {
       factory,
       scheduler,
     );
-    racing.report = () =>
+    racingReport = () =>
       void controller.handle({
         type: "change",
         layout: layout({}),
@@ -1311,9 +1311,12 @@ describe("DiagramEditController: forward write path", () => {
     flushDebounce();
     await drain();
 
-    expect(racing.report).toBeUndefined(); // the window was actually entered
+    expect(racingReport).toBeUndefined(); // the window was actually entered
+    expect(ops).toEqual(["listFile", "loadString"]);
     expect(invoked).not.toContain("deleteComponent");
-    expect(posted.some((m) => m.type === "error")).toBe(true);
+    expect(
+      posted.some((m) => m.type === "error" && m.message.includes("resynced")),
+    ).toBe(true);
     controller.dispose();
   });
 

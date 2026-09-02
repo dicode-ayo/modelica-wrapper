@@ -8,10 +8,12 @@ import { omcFilenameForDocument } from "../source-provider.js";
 
 /**
  * Machinery shared by the diagram and documentation edit controllers: both
- * debounce a burst of foreign buffer changes into one reverse sync, skip the
- * ones whose buffer still matches the class, then `loadString` the rest back
- * into OMC before re-fetching their render model. Each controller still owns
- * its own debounce-timer field and the post-load re-fetch step.
+ * debounce a burst of foreign buffer changes into one reverse sync, skip it
+ * when the buffer still matches the class, and otherwise `loadString` the
+ * buffer back into OMC before re-fetching their render model. Each controller
+ * still owns its own debounce-timer field and the post-load re-fetch step —
+ * the diagram controller additionally decides whether a report racing the sync
+ * survives it, which the documentation controller has no equivalent of.
  */
 
 /** Deferred one-shot timer, injectable so tests drive the debounce directly. */
@@ -41,7 +43,7 @@ export interface BufferSyncClient extends StringParseClient {
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
 }
 
-/** The subset of OMC the canonical-source comparison reads. */
+/** The subset of OMC that reads a class's canonical source. */
 export interface ClassSourceClient {
   listFile(input: { typeName: string }): Promise<{ contents: string }>;
 }
@@ -52,6 +54,9 @@ export interface ClassSourceClient {
  * the document from `listFile`, and that reload is nobody's self-write, so it
  * reaches a controller as a foreign change — its own edits included. Loading
  * such a buffer back would announce the class again.
+ *
+ * Byte-exact: any normalization between `listFile` and the buffer reports a
+ * mismatch, which costs a redundant reload rather than skipping a needed one.
  */
 export async function bufferMatchesClass(
   client: ClassSourceClient,

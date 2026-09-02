@@ -559,6 +559,10 @@ export class DiagramEditController {
    * restored as something the user deleted. Dropping it here rather than when
    * the sync starts covers reports that land during the sync's own OMC calls,
    * and leaves this push as the state the webview reconciles against next.
+   *
+   * Only a sync that reached OMC calls this. One that found the buffer already
+   * matching, or was refused for a read-only class, reverted nothing, so the
+   * report it raced is still reconcilable and stands.
    */
   private publishSyncedLayout(layout: DiagramLayout): void {
     if (this.pendingChange !== null) {
@@ -594,9 +598,8 @@ export class DiagramEditController {
       const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);
-        // This sync dropped whatever was reported to make way for it, and then
-        // wrote nothing. Without a push the webview goes on showing an edit no
-        // class ever took.
+        // Nothing was written, so the push is what keeps the webview from
+        // going on showing an edit no class ever took.
         this.publishSyncedLayout(this.prevLayout);
         return;
       }

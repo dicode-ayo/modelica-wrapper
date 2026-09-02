@@ -734,8 +734,11 @@ describe("DocumentationEditController write path", () => {
     flushTimer();
     await flush();
 
+    // The positive half: the guard ran and decided to skip, rather than the
+    // foreign change never reaching the controller at all.
+    expect(client.listFile).toHaveBeenCalledWith({ typeName: CLASS });
     expect(calls.loaded).toEqual([]);
-    expect(posted).toEqual([]); // nothing re-fetched, nothing re-sent
+    expect(posted).toEqual([]);
   });
 
   it("refuses a reverse sync on a read-only class and never loads it into OMC", async () => {

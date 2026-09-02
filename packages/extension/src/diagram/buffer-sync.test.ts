@@ -28,7 +28,10 @@ const DOC_URI = vscode.Uri.parse("modelica-source:/Pkg.Model.mo");
 
 describe("bufferMatchesClass", () => {
   const listing = (contents: string) => ({
-    listFile: async () => ({ contents }),
+    listFile: vi.fn(async (input: { typeName: string }) => {
+      expect(input.typeName).toBe("Pkg.Model");
+      return { contents };
+    }),
   });
 
   it("reports a buffer holding the class's own source verbatim", async () => {
@@ -43,6 +46,18 @@ describe("bufferMatchesClass", () => {
       bufferMatchesClass(
         listing("model Model end Model;"),
         docFor(DOC_URI, "model Model Real x; end Model;"),
+        "Pkg.Model",
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("reports a buffer differing only in trailing whitespace", async () => {
+    // The comparison is byte-exact, so a buffer VSCode normalized is reloaded
+    // rather than skipped — the safe direction, but not a free equality.
+    await expect(
+      bufferMatchesClass(
+        listing("model Model end Model;"),
+        docFor(DOC_URI, "model Model end Model;\n"),
         "Pkg.Model",
       ),
     ).resolves.toBe(false);
