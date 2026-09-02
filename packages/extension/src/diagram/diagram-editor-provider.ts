@@ -39,7 +39,7 @@ import {
   pasteClipboardItems,
 } from "./copy-paste.js";
 import {
-  bufferMatchesClass,
+  compareBufferToClass,
   defaultScheduler,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
@@ -444,6 +444,13 @@ export class DiagramEditController {
    * carrying something the webview has no other way to learn.
    */
   private settleOwed = false;
+  /**
+   * The class's canonical source as of the render the webview holds, so a sync
+   * whose buffer matched can tell this editor's own announced edit from
+   * somebody else's mutation. `undefined` means unknown, which re-renders —
+   * the safe direction, since a stale render is what deletes what it never saw.
+   */
+  private renderedSource: string | undefined;
 
   // Per-modal submit state, captured when a modal opens and read back when it
   // submits — mirrors the diagram panel's closure state.
@@ -470,6 +477,7 @@ export class DiagramEditController {
   private readonly refetch: (
     client: OmcClient,
     className: string,
+    forceInstantiate?: boolean,
   ) => Promise<DiagramLayout>;
 
   constructor(
@@ -577,15 +585,23 @@ export class DiagramEditController {
    * Settle a sync whose buffer already matched the class, so it wrote nothing.
    * The announcement that reloaded that buffer may have carried somebody
    * else's mutation, which this editor is not rendering yet — and a report
-   * reconciled against a render that stale deletes whatever it never saw. An
-   * unchanged layout means the announcement was this editor's own edit coming
-   * back: the webview is already showing it, a report racing it reconciles
-   * fine, and pushing anyway would move what is under the pointer.
+   * reconciled against a render that stale deletes whatever it never saw.
+   *
+   * `source` is what tells the two apart: it still being the source this
+   * render came from means the announcement was this editor's own edit
+   * returning, the webview is already showing it, a report racing it
+   * reconciles fine, and pushing anyway would move what is under the pointer.
+   * Comparing layouts cannot answer this — `applyChange` adopts the webview's
+   * own report as `prevLayout`, and OMC materializes fields the webview never
+   * sends, the divergence `normalizeShape` exists for.
    */
-  private async rerenderIfClassMoved(): Promise<void> {
-    const layout = await this.refetch(this.deps.client, this.deps.className);
-    if (JSON.stringify(layout) === JSON.stringify(this.prevLayout)) return;
-    this.publishSyncedLayout(layout);
+  private async rerenderIfClassMoved(source: string): Promise<void> {
+    if (source === this.renderedSource) return;
+    const { client, className } = this.deps;
+    // Forced: the annotation-only icon fetch reflects the last elaboration, so
+    // a class just observed to change would otherwise re-render as it was.
+    this.publishSyncedLayout(await this.refetch(client, className, true));
+    this.renderedSource = source;
   }
 
   private enqueue(unit: () => Promise<void>): Promise<void> {
@@ -608,8 +624,13 @@ export class DiagramEditController {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
-      if (await bufferMatchesClass(client, document, className)) {
-        await this.rerenderIfClassMoved();
+      const { source, matches } = await compareBufferToClass(
+        client,
+        document,
+        className,
+      );
+      if (matches) {
+        await this.rerenderIfClassMoved(source);
         return;
       }
       const reload = await reloadBufferIntoOmc(client, document, className);
@@ -620,6 +641,9 @@ export class DiagramEditController {
         this.publishSyncedLayout(this.prevLayout);
         return;
       }
+      // OMC pretty-prints what it was handed, so the loaded text is not
+      // necessarily the source it now lists.
+      this.renderedSource = undefined;
       this.publishSyncedLayout(await this.refetch(client, className));
       this.deps.onClassContentChanged?.(className);
     } catch (err) {
@@ -1380,6 +1404,10 @@ export class DiagramEditController {
     const { contents } = await this.deps.client.listFile({
       typeName: this.deps.className,
     });
+    // Read after this edit's writes, so it is the source the webview's current
+    // render corresponds to — whether that render came from a push or from the
+    // report `applyChange` adopted.
+    this.renderedSource = contents;
     // A built-in with no listable source returns empty; writing that would wipe
     // the buffer.
     if (contents.length > 0) await this.shadow.write(contents);

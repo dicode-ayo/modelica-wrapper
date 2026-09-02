@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import { renamedClassMessage } from "../single-entity-file.js";
 import {
-  bufferMatchesClass,
+  compareBufferToClass,
   defaultScheduler,
   reloadBufferIntoOmc,
   type BufferSyncClient,
@@ -26,7 +26,7 @@ function docFor(uri: vscode.Uri, text = ""): vscode.TextDocument {
 
 const DOC_URI = vscode.Uri.parse("modelica-source:/Pkg.Model.mo");
 
-describe("bufferMatchesClass", () => {
+describe("compareBufferToClass", () => {
   const listing = (contents: string) => ({
     listFile: vi.fn(async (input: { typeName: string }) => {
       expect(input.typeName).toBe("Pkg.Model");
@@ -36,31 +36,37 @@ describe("bufferMatchesClass", () => {
 
   it("reports a buffer holding the class's own source verbatim", async () => {
     const source = "model Model end Model;";
+    // The source comes back on a match too: a caller that renders the class
+    // needs it to tell its own announced edit from somebody else's mutation.
     await expect(
-      bufferMatchesClass(listing(source), docFor(DOC_URI, source), "Pkg.Model"),
-    ).resolves.toBe(true);
+      compareBufferToClass(
+        listing(source),
+        docFor(DOC_URI, source),
+        "Pkg.Model",
+      ),
+    ).resolves.toEqual({ source, matches: true });
   });
 
   it("reports a buffer edited out from under the class", async () => {
     await expect(
-      bufferMatchesClass(
+      compareBufferToClass(
         listing("model Model end Model;"),
         docFor(DOC_URI, "model Model Real x; end Model;"),
         "Pkg.Model",
       ),
-    ).resolves.toBe(false);
+    ).resolves.toEqual({ source: "model Model end Model;", matches: false });
   });
 
   it("reports a buffer differing only in trailing whitespace", async () => {
     // The comparison is byte-exact, so a buffer VSCode normalized is reloaded
     // rather than skipped — the safe direction, but not a free equality.
     await expect(
-      bufferMatchesClass(
+      compareBufferToClass(
         listing("model Model end Model;"),
         docFor(DOC_URI, "model Model end Model;\n"),
         "Pkg.Model",
       ),
-    ).resolves.toBe(false);
+    ).resolves.toMatchObject({ matches: false });
   });
 });
 

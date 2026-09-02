@@ -611,6 +611,8 @@ const LISTED_SOURCE = "model M end M;";
 
 function makeEditClient(opts?: {
   loadStringSuccess?: boolean;
+  /** The class's canonical source, read per call so a test can move it. */
+  listedSource?: () => string;
   instance?: ModelInstance;
   /** Make OMC refuse every `updateComponent`, so the batch rolls back. */
   updateComponentFails?: boolean;
@@ -702,7 +704,9 @@ function makeEditClient(opts?: {
     listFile: vi.fn((input: { typeName: string }) => {
       ops.push("listFile");
       listedTypes.push(input.typeName);
-      return Promise.resolve({ contents: LISTED_SOURCE });
+      return Promise.resolve({
+        contents: opts?.listedSource?.() ?? LISTED_SOURCE,
+      });
     }),
     loadString: vi.fn((input: Record<string, unknown>) => {
       ops.push("loadString");
@@ -1444,7 +1448,55 @@ describe("DiagramEditController: forward write path", () => {
     ).toBe(true);
     // The re-render is what breaks the loop: a retry reconciles against a
     // layout that has gain1 in it.
-    expect(posted.some((m) => m.type === "layout")).toBe(true);
+    const pushed = posted.filter((m) => m.type === "layout").at(-1);
+    expect(
+      pushed?.type === "layout" && pushed.layout.components,
+    ).toHaveProperty("gain1");
+    controller.dispose();
+  });
+
+  it("re-renders when the class moved after this editor last rendered it", async () => {
+    // The buffer matches the class in both halves — it is reloaded from
+    // `listFile` on every announcement — so what separates this editor's own
+    // edit from somebody else's is whether the source is still the one this
+    // render came from.
+    let source = LISTED_SOURCE;
+    const { client } = makeEditClient({ listedSource: () => source });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      controllerDeps({
+        client,
+        gate,
+        document: srcDoc(LISTED_SOURCE),
+      }),
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    // A forward edit renders the class and records the source it rendered from.
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    const pushes = () => posted.filter((m) => m.type === "layout").length;
+    const settled = pushes();
+
+    // Its own announcement coming back changes nothing, so nothing is pushed.
+    fireForeign();
+    flushDebounce();
+    await drain();
+    expect(pushes()).toBe(settled);
+
+    // Somebody else's mutation moves the class under the same matching buffer.
+    source = "model M Real y; end M;";
+    fireForeign();
+    flushDebounce();
+    await drain();
+    expect(pushes()).toBe(settled + 1);
     controller.dispose();
   });
 

@@ -48,23 +48,33 @@ export interface ClassSourceClient {
   listFile(input: { typeName: string }): Promise<{ contents: string }>;
 }
 
+export interface ClassSourceComparison {
+  /** The class's canonical source, as `listFile` prints it. */
+  source: string;
+  /** Whether `document` holds that source verbatim. */
+  matches: boolean;
+}
+
 /**
- * Whether `document` still holds `className` exactly as OMC has it, in which
- * case a reverse sync has nothing to load back. Announcing a mutation reloads
- * the document from `listFile`, and that reload is nobody's self-write, so it
- * reaches a controller as a foreign change — its own edits included. Loading
- * such a buffer back would announce the class again.
+ * Read `className`'s canonical source and say whether `document` still holds
+ * it, in which case a reverse sync has nothing to load back. Announcing a
+ * mutation reloads the document from `listFile`, and that reload is nobody's
+ * self-write, so it reaches a controller as a foreign change — its own edits
+ * included. Loading such a buffer back would announce the class again.
  *
- * Byte-exact: any normalization between `listFile` and the buffer reports a
- * mismatch, which costs a redundant reload rather than skipping a needed one.
+ * The match is byte-exact: any normalization between `listFile` and the buffer
+ * reports a mismatch, which costs a redundant reload rather than skipping a
+ * needed one. The source comes back either way, because a matching buffer says
+ * nothing about whose mutation was announced — a caller that renders the class
+ * needs it to tell its own edit from somebody else's.
  */
-export async function bufferMatchesClass(
+export async function compareBufferToClass(
   client: ClassSourceClient,
   document: vscode.TextDocument,
   className: string,
-): Promise<boolean> {
+): Promise<ClassSourceComparison> {
   const { contents } = await client.listFile({ typeName: className });
-  return contents === document.getText();
+  return { source: contents, matches: contents === document.getText() };
 }
 
 export type ReloadResult = { ok: true } | { ok: false; message: string };
