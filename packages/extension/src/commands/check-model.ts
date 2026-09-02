@@ -31,6 +31,7 @@ import {
   MODELICA_SOURCE_SCHEME,
   qualifiedNameFromUri,
   sourceUriFor,
+  sourceUriFromOmcFilename,
 } from "../source-provider.js";
 
 import { liveCheckLock } from "./check-lock.js";
@@ -113,16 +114,7 @@ async function runCheckModel(
         // in the user's open `modelica-source:` editor.
         if (onDiskPath && name === onDiskPath) return virtualUri;
         if (name === virtualUriString) return virtualUri;
-        // Belt-and-suspenders: any modelica-source: URI string OMC echoes
-        // back (e.g. from a live-check buffer) parses to its URI.
-        if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
-          try {
-            return vscode.Uri.parse(name);
-          } catch {
-            return undefined;
-          }
-        }
-        return undefined;
+        return sourceUriFromOmcFilename(name);
       };
 
       // Drain OMC's pre-existing diagnostic buffer so what we read after

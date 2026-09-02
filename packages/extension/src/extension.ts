@@ -43,6 +43,7 @@ import {
   ModelicaSourceProvider,
 } from "./source-provider.js";
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
+import { createPathClassIndex } from "./path-class-index.js";
 import {
   createOmcClientCache,
   type OmcClientCache,
@@ -50,6 +51,7 @@ import {
 import { createOmcSetup } from "./omc-setup.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
+import { publishOmcMutations } from "./omc-mutation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
@@ -98,6 +100,10 @@ export async function activate(
     (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath),
   );
 
+  // Seeded and kept current by the `.mo` watcher; the mutation router reads it
+  // to resolve a file-scoped announcement to the classes that file declares.
+  const pathClassIndex = createPathClassIndex();
+
   // Replacing the session is what re-runs the workspace sweep and rebuilds the
   // sidebar: a user who points at an `omc` after activation found none has an
   // empty tree until the load happens against the new process.
@@ -118,6 +124,9 @@ export async function activate(
     async () => {
       const omcPath = await omcSetup.omcPath();
       const c = await OmcClient.create({ omcPath });
+      // The subscription lives on `c` and dies with it, so there is nothing
+      // for `context.subscriptions` to hold.
+      publishOmcMutations(c, sourceProvider, invalidation, pathClassIndex);
       await cdIntoWorkspaceCacheDir(c);
       void omcSetup.reportVersion(c, omcPath);
       return c;
@@ -229,6 +238,7 @@ export async function activate(
       sourceProvider,
       guard: selfWriteGuard,
       invalidation,
+      index: pathClassIndex,
       scanMoFiles: () => moFileScanner.scan(),
     }),
   );

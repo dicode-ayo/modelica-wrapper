@@ -15,7 +15,6 @@ import {
 } from "../test-support/vscode-mock.js";
 
 import {
-  createPathClassIndex,
   createPendingReorders,
   handleMoChange,
   handleMoDelete,
@@ -27,6 +26,7 @@ import {
   type MoWatcherDeps,
 } from "./mo-file-watcher.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
+import { createPathClassIndex } from "./path-class-index.js";
 import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { publishSourceChanges } from "./source-invalidation.js";
@@ -1083,51 +1083,6 @@ describe("seedPathClassIndex", () => {
   });
 });
 
-describe("createPathClassIndex", () => {
-  it("normalizes paths so a differently-spelled lookup still resolves", () => {
-    const index = createPathClassIndex();
-    index.set("/ws/pkg/Bar.mo", ["Bar"]);
-    expect(index.get("/ws/pkg/../pkg/Bar.mo")).toEqual(["Bar"]);
-  });
-
-  describe("filesUnder", () => {
-    it("pairs the package's own file and every nested member's file with just its matching classes", () => {
-      const index = createPathClassIndex();
-      index.set("/ws/My/Pkg/package.mo", ["My.Pkg"]);
-      index.set("/ws/My/Pkg/Bar.mo", ["My.Pkg.Bar"]);
-      index.set("/ws/My/Other.mo", ["My.Other"]);
-
-      const found = index.filesUnder("My.Pkg");
-
-      expect(found).toEqual(
-        expect.arrayContaining([
-          {
-            fsPath: path.resolve("/ws/My/Pkg/package.mo"),
-            classNames: ["My.Pkg"],
-          },
-          {
-            fsPath: path.resolve("/ws/My/Pkg/Bar.mo"),
-            classNames: ["My.Pkg.Bar"],
-          },
-        ]),
-      );
-      expect(found).not.toContainEqual(
-        expect.objectContaining({ fsPath: path.resolve("/ws/My/Other.mo") }),
-      );
-    });
-
-    it("doesn't treat a same-prefixed sibling as nested", () => {
-      const index = createPathClassIndex();
-      index.set("/ws/My/Pkg.mo", ["My.Pkg"]);
-      index.set("/ws/My/PkgTwo.mo", ["My.PkgTwo"]);
-
-      expect(index.filesUnder("My.Pkg")).toEqual([
-        { fsPath: path.resolve("/ws/My/Pkg.mo"), classNames: ["My.Pkg"] },
-      ]);
-    });
-  });
-});
-
 describe("createPendingReorders", () => {
   it("returns a set pair through entries(), and drops it on delete", () => {
     const pending = createPendingReorders();
@@ -1250,6 +1205,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles: async () => [FILE],
     });
 
@@ -1277,6 +1233,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles: async () => [FILE],
     });
     await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
@@ -1319,6 +1276,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles,
     });
 
@@ -1363,6 +1321,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles,
     });
 

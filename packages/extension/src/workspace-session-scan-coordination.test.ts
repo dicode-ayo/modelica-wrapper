@@ -21,6 +21,7 @@ import { resetFileSystemWatchers } from "../test-support/vscode-mock.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
 import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
+import { createPathClassIndex } from "./path-class-index.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import type { ModelicaSourceProvider } from "./source-provider.js";
 import {
@@ -60,6 +61,7 @@ describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles: () => scanner.scan(),
     });
 
@@ -121,6 +123,7 @@ describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles: () => scanner.scan(),
     });
 
@@ -169,6 +172,7 @@ describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles: () => scanner.scan(),
     });
 

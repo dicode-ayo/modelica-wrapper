@@ -316,10 +316,32 @@ export function sourceUriFor(qualifiedName: string): vscode.Uri {
   return vscode.Uri.parse(`${MODELICA_SOURCE_SCHEME}:/${qualifiedName}.mo`);
 }
 
+/**
+ * The `modelica-source:` URI behind a filename OMC handed back, or `undefined`
+ * when the filename is a disk path or one of the pseudo-names OMC carries for
+ * memory-only classes. OMC echoes the URI it was given verbatim — Probe 2b in
+ * `lsp-probe.integration.test.ts` — but parses defensively so an OMC that
+ * normalizes it cannot throw here.
+ */
+export function sourceUriFromOmcFilename(
+  filename: string,
+): vscode.Uri | undefined {
+  if (!filename.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) return undefined;
+  try {
+    return vscode.Uri.parse(filename);
+  } catch {
+    return undefined;
+  }
+}
+
 export function qualifiedNameFromUri(uri: vscode.Uri): string | undefined {
   if (uri.scheme !== MODELICA_SOURCE_SCHEME) return undefined;
   const p = uri.path.replace(/^\//, "");
-  return p.endsWith(".mo") ? p.slice(0, -3) : p;
+  const name = p.endsWith(".mo") ? p.slice(0, -3) : p;
+  // `modelica-source:` and `modelica-source:/` parse to an empty path. An
+  // empty name is not a class, and returning it would pass every caller's
+  // `!== undefined` guard while failing their truthiness ones.
+  return name === "" ? undefined : name;
 }
 
 /**
