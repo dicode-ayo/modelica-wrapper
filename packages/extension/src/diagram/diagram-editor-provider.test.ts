@@ -611,6 +611,8 @@ const LISTED_SOURCE = "model M end M;";
 
 function makeEditClient(opts?: {
   loadStringSuccess?: boolean;
+  /** The class's canonical source, read per call so a test can move it. */
+  listedSource?: () => string;
   instance?: ModelInstance;
   /** Make OMC refuse every `updateComponent`, so the batch rolls back. */
   updateComponentFails?: boolean;
@@ -702,7 +704,9 @@ function makeEditClient(opts?: {
     listFile: vi.fn((input: { typeName: string }) => {
       ops.push("listFile");
       listedTypes.push(input.typeName);
-      return Promise.resolve({ contents: LISTED_SOURCE });
+      return Promise.resolve({
+        contents: opts?.listedSource?.() ?? LISTED_SOURCE,
+      });
     }),
     loadString: vi.fn((input: Record<string, unknown>) => {
       ops.push("loadString");
@@ -854,6 +858,13 @@ function srcDoc(text = LISTED_SOURCE): vscode.TextDocument {
 }
 
 const SRC_DOC = srcDoc();
+
+/**
+ * A buffer whose text has diverged from what OMC holds (`LISTED_SOURCE`) — the
+ * precondition for a reverse sync, since a buffer that still matches the class
+ * has nothing to load back.
+ */
+const EDITED_DOC = srcDoc("model M Real x; end M;");
 
 type ControllerDeps = ConstructorParameters<typeof DiagramEditController>[0];
 
@@ -1091,7 +1102,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, writes, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate, document: srcDoc("model M2 end M2;") }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       layout({}),
       factory,
       scheduler,
@@ -1102,7 +1113,7 @@ describe("DiagramEditController: forward write path", () => {
     await drain();
 
     expect(loadStringCalls[0]).toMatchObject({
-      data: "model M2 end M2;",
+      data: EDITED_DOC.getText(),
       merge: false,
     });
     expect(invoked).toContain("getModelInstance"); // layout re-fetched
@@ -1117,7 +1128,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       layout({}),
       factory,
       scheduler,
@@ -1133,10 +1144,12 @@ describe("DiagramEditController: forward write path", () => {
     await edit;
     await drain();
 
-    // The forward edit fully applies + reflects before the reverse sync loads.
+    // The forward edit fully applies + reflects before the reverse sync reads
+    // the class to compare the buffer against and loads it back.
     expect(ops).toEqual([
       "isPartial",
       "addComponent",
+      "listFile",
       "listFile",
       "loadString",
     ]);
@@ -1149,7 +1162,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       layout({}),
       factory,
       scheduler,
@@ -1172,6 +1185,7 @@ describe("DiagramEditController: forward write path", () => {
     // the undo lands in OMC before the drag diffs against `prevLayout` — never
     // the other way around, which would silently discard the undo.
     expect(ops).toEqual([
+      "listFile",
       "loadString",
       "isPartial",
       "addComponent",
@@ -1199,7 +1213,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       layout({}),
       factory,
       scheduler,
@@ -1217,7 +1231,7 @@ describe("DiagramEditController: forward write path", () => {
     // Only the flushed reverse sync runs — the stale `next` is never diffed
     // against the refreshed `prevLayout`, so gain1 is never reported as
     // deleted to OMC.
-    expect(ops).toEqual(["loadString"]);
+    expect(ops).toEqual(["listFile", "loadString"]);
     expect(invoked).not.toContain("deleteComponent");
     expect(posted.some((m) => m.type === "error")).toBe(true);
     controller.dispose();
@@ -1226,9 +1240,9 @@ describe("DiagramEditController: forward write path", () => {
   it("drops a racing 'change' message even after the debounce timer has fired but the reverse sync hasn't resolved", async () => {
     // Same corruption setup as above, but the race lands in the narrower
     // window between the debounce timer firing (`reverseTimer` already
-    // cleared) and the enqueued reverse sync's own OMC round-trip
-    // completing — `reverseTimer === undefined` alone can't distinguish
-    // this from "no sync pending at all".
+    // cleared) and the enqueued reverse sync's own OMC round-trip completing.
+    // There is no timer left to flush, so what orders the two is the queue the
+    // sync is already sitting in, ahead of the report.
     const { client, ops, invoked } = makeEditClient({
       instance: instanceWithComponent("gain1", [
         [-10, -10],
@@ -1239,7 +1253,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       layout({}),
       factory,
       scheduler,
@@ -1255,9 +1269,58 @@ describe("DiagramEditController: forward write path", () => {
     await edit;
     await drain();
 
-    expect(ops).toEqual(["loadString"]);
+    expect(ops).toEqual(["listFile", "loadString"]);
     expect(invoked).not.toContain("deleteComponent");
     expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
+  });
+
+  it("drops a 'change' message reported while the reverse sync's own OMC calls run", async () => {
+    // The narrowest window: no timer left to flush and the sync already
+    // running, so the report is stored mid-`loadString`/refetch and its
+    // dispatch queues behind. Reconciling it would diff a layout built before
+    // the reload against the class the reload restored.
+    // The report has to land while the sync's OMC calls are in flight, so the
+    // client fires it from inside the refetch.
+    let racingReport: (() => void) | undefined;
+    const { client, ops, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [-10, -10],
+        [10, 10],
+      ]),
+      onInvoke: (fn) => {
+        if (fn !== "getModelInstance") return;
+        const report = racingReport;
+        racingReport = undefined;
+        report?.();
+      },
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate, document: EDITED_DOC }),
+      layout({}),
+      factory,
+      scheduler,
+    );
+    racingReport = () =>
+      void controller.handle({
+        type: "change",
+        layout: layout({}),
+        staleBase: false,
+      });
+
+    fireForeign();
+    flushDebounce();
+    await drain();
+
+    expect(racingReport).toBeUndefined(); // the window was actually entered
+    expect(ops).toEqual(["listFile", "loadString"]);
+    expect(invoked).not.toContain("deleteComponent");
+    expect(
+      posted.some((m) => m.type === "error" && m.message.includes("resynced")),
+    ).toBe(true);
     controller.dispose();
   });
 
@@ -1269,7 +1332,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       layout({}),
       factory,
       scheduler,
@@ -1301,7 +1364,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       layout({}),
       factory,
       scheduler,
@@ -1314,6 +1377,173 @@ describe("DiagramEditController: forward write path", () => {
     await drain();
 
     expect(loadStringCalls).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("does not reverse-sync a mutation announced back into this editor's buffer", async () => {
+    // A class-scoped OMC mutation is announced from the call seam, so the
+    // source provider reloads the `modelica-source:` document this editor is
+    // showing. That reload is not one of the shadow buffer's own writes, so it
+    // arrives here as a foreign change — but the buffer it left behind is the
+    // class's own source, and loading it back would announce again.
+    const { client, ops, loadStringCalls } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    const edit = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    fireForeign();
+    await edit;
+    flushDebounce();
+    await drain();
+
+    expect(loadStringCalls).toEqual([]);
+    expect(ops).toEqual(["isPartial", "addComponent", "listFile", "listFile"]);
+    controller.dispose();
+  });
+
+  it("drops a gesture racing an announcement that carried somebody else's mutation", async () => {
+    // A second editor on this class adds gain1. Its announcement reloads this
+    // editor's buffer to the new canonical source, so the buffer matches the
+    // class and nothing needs loading back — but this webview has never been
+    // shown gain1. Reconciling a report built without it reads gain1 as a
+    // deletion and destroys the other editor's edit.
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [-10, -10],
+        [10, 10],
+      ]),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler } = manualScheduler();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}), // the render this webview holds: no gain1
+      factory,
+      scheduler,
+    );
+
+    fireForeign();
+    await controller.handle({
+      type: "change",
+      layout: layout({}),
+      staleBase: false,
+    });
+    await drain();
+
+    expect(invoked).not.toContain("deleteComponent");
+    expect(
+      posted.some((m) => m.type === "error" && m.message.includes("resynced")),
+    ).toBe(true);
+    // The re-render is what breaks the loop: a retry reconciles against a
+    // layout that has gain1 in it.
+    const pushed = posted.filter((m) => m.type === "layout").at(-1);
+    expect(
+      pushed?.type === "layout" && pushed.layout.components,
+    ).toHaveProperty("gain1");
+    controller.dispose();
+  });
+
+  it("re-renders when the class moved after this editor last rendered it", async () => {
+    // The buffer matches the class in both halves — it is reloaded from
+    // `listFile` on every announcement — so what separates this editor's own
+    // edit from somebody else's is whether the source is still the one this
+    // render came from.
+    let source = LISTED_SOURCE;
+    const { client } = makeEditClient({ listedSource: () => source });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      controllerDeps({
+        client,
+        gate,
+        document: srcDoc(LISTED_SOURCE),
+      }),
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    // A forward edit renders the class and records the source it rendered from.
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    const pushes = () => posted.filter((m) => m.type === "layout").length;
+    const settled = pushes();
+
+    // Its own announcement coming back changes nothing, so nothing is pushed.
+    fireForeign();
+    flushDebounce();
+    await drain();
+    expect(pushes()).toBe(settled);
+
+    // Somebody else's mutation moves the class under the same matching buffer.
+    source = "model M Real y; end M;";
+    fireForeign();
+    flushDebounce();
+    await drain();
+    expect(pushes()).toBe(settled + 1);
+    controller.dispose();
+  });
+
+  it("keeps a gesture that races this editor's own announced mutation", async () => {
+    // The gesture lands inside the debounce window the announcement opened, so
+    // it is flushed against a reverse sync that turns out to have nothing to
+    // do. Nothing external changed, so the user is not told to retry and the
+    // drag is reconciled.
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [-10, -10],
+        [10, 10],
+      ]),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler } = manualScheduler();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      movedComponent([
+        [-10, -10],
+        [10, 10],
+      ]),
+      factory,
+      scheduler,
+    );
+
+    const edit = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    fireForeign();
+    const drag = controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      staleBase: false,
+    });
+    await edit;
+    await drag;
+    await drain();
+
+    expect(posted.filter((m) => m.type === "error")).toEqual([]);
+    expect(invoked).toContain("updateComponent");
     controller.dispose();
   });
 
@@ -1676,7 +1906,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       movedComponent(AT(-10)),
       factory,
       scheduler,
@@ -2172,7 +2402,7 @@ describe("DiagramEditController: shape properties", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       shapeLayout(),
       factory,
       scheduler,
