@@ -4,6 +4,7 @@ import type { ModelInstance, OmcClient } from "@dicode/omc-client";
 import type { DocumentationInterface } from "@dicode/documentation-ui/interface-model";
 
 import {
+  bufferMatchesClass,
   defaultScheduler,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
@@ -410,6 +411,7 @@ export class DocumentationEditController {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
+      if (await bufferMatchesClass(client, document, className)) return;
       const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);

@@ -39,6 +39,7 @@ import {
   pasteClipboardItems,
 } from "./copy-paste.js";
 import {
+  bufferMatchesClass,
   defaultScheduler,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
@@ -443,11 +444,6 @@ export class DiagramEditController {
    * carrying something the webview has no other way to learn.
    */
   private settleOwed = false;
-  // True from the moment a reverse sync is enqueued until it resolves —
-  // covers the gap between the debounce timer firing and the queued unit's
-  // `loadString`/refetch actually completing, which `reverseTimer` alone
-  // (cleared the instant the timer fires) does not.
-  private reverseSyncInFlight = false;
 
   // Per-modal submit state, captured when a modal opens and read back when it
   // submits — mirrors the diagram panel's closure state.
@@ -514,18 +510,8 @@ export class DiagramEditController {
    */
   handle(msg: WebviewToExtension): Promise<void> {
     // Every message, so an undo lands in OMC before the next unit reads the class.
-    const racing = this.flushRacingReverseSync();
+    this.flushPendingReverseSync();
     if (msg.type === "change") {
-      if (racing) {
-        // The webview computed this against the diagram as it stood before the
-        // reverse sync racing it. Reconciling it afterwards would read whatever
-        // the sync restored as something the user deleted. Drop it: the sync's
-        // own `layout` push resyncs the webview to reconcile against.
-        this.reportError(
-          "the diagram was resynced from an external change — please retry the edit",
-        );
-        return this.queue;
-      }
       this.pendingChange = { layout: msg.layout, staleBase: msg.staleBase };
     }
     return this.enqueue(() => this.dispatch(msg));
@@ -550,36 +536,34 @@ export class DiagramEditController {
   }
 
   /**
-   * Flush a pending reverse sync ahead of the caller and report whether one is
-   * racing it — either still a timer (not yet enqueued) or already
-   * enqueued/running (`loadString`/refetch in flight). Flushing rather than
-   * letting the timer fire on its own is what keeps a racing edit from reading
-   * a class the sync has not reverted yet, whichever window it lands in.
+   * Enqueue a pending reverse sync ahead of the caller rather than letting its
+   * timer fire on its own, so a racing edit never reads a class the sync has
+   * not reverted yet. The queue then orders the two, and the sync itself
+   * decides whether the edit survives it — see `dropReportedChange`.
    */
-  private flushRacingReverseSync(): boolean {
-    if (this.reverseTimer !== undefined) {
-      this.reverseTimer.cancel();
-      this.runReverseSyncNow();
-      return true;
-    }
-    return this.reverseSyncInFlight;
+  private flushPendingReverseSync(): void {
+    if (this.reverseTimer === undefined) return;
+    this.reverseTimer.cancel();
+    this.runReverseSyncNow();
   }
 
   private runReverseSyncNow(): void {
     this.reverseTimer = undefined;
-    this.reverseSyncInFlight = true;
-    // Same reason the racing `change` above is dropped: this one was reported
-    // against the pre-sync diagram too.
-    if (this.pendingChange !== null) {
-      this.pendingChange = null;
-      this.reportError(
-        "the diagram was resynced from an external change — please retry the edit",
-      );
-    }
-    void this.enqueue(() =>
-      this.reverseSync().finally(() => {
-        this.reverseSyncInFlight = false;
-      }),
+    void this.enqueue(() => this.reverseSync());
+  }
+
+  /**
+   * Drop the report the webview is waiting to have reconciled. It was computed
+   * against the diagram as it stood before this sync, so reconciling it
+   * afterwards would read whatever the sync restored as something the user
+   * deleted. The sync's own `layout` push is what the webview reconciles
+   * against next.
+   */
+  private dropReportedChange(): void {
+    if (this.pendingChange === null) return;
+    this.pendingChange = null;
+    this.reportError(
+      "the diagram was resynced from an external change — please retry the edit",
     );
   }
 
@@ -603,6 +587,8 @@ export class DiagramEditController {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
+      if (await bufferMatchesClass(client, document, className)) return;
+      this.dropReportedChange();
       const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);

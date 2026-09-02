@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import { renamedClassMessage } from "../single-entity-file.js";
 import {
+  bufferMatchesClass,
   defaultScheduler,
   reloadBufferIntoOmc,
   type BufferSyncClient,
@@ -24,6 +25,29 @@ function docFor(uri: vscode.Uri, text = ""): vscode.TextDocument {
 }
 
 const DOC_URI = vscode.Uri.parse("modelica-source:/Pkg.Model.mo");
+
+describe("bufferMatchesClass", () => {
+  const listing = (contents: string) => ({
+    listFile: vi.fn(async () => ({ contents })),
+  });
+
+  it("reports a buffer holding the class's own source verbatim", async () => {
+    const source = "model Model end Model;";
+    await expect(
+      bufferMatchesClass(listing(source), docFor(DOC_URI, source), "Pkg.Model"),
+    ).resolves.toBe(true);
+  });
+
+  it("reports a buffer edited out from under the class", async () => {
+    await expect(
+      bufferMatchesClass(
+        listing("model Model end Model;"),
+        docFor(DOC_URI, "model Model Real x; end Model;"),
+        "Pkg.Model",
+      ),
+    ).resolves.toBe(false);
+  });
+});
 
 describe("reloadBufferIntoOmc", () => {
   it("drains stale diagnostics before loading the buffer's text", async () => {

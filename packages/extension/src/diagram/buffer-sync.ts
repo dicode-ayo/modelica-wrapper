@@ -43,6 +43,27 @@ export interface BufferSyncClient extends StringParseClient {
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
 }
 
+/** The subset of OMC the canonical-source comparison reads. */
+export interface ClassSourceClient {
+  listFile(input: { typeName: string }): Promise<{ contents: string }>;
+}
+
+/**
+ * Whether `document` still holds `className` exactly as OMC has it, in which
+ * case a reverse sync has nothing to load back. Announcing a mutation reloads
+ * the document from `listFile`, and that reload is nobody's self-write, so it
+ * reaches a controller as a foreign change — its own edits included. Loading
+ * such a buffer back would announce the class again.
+ */
+export async function bufferMatchesClass(
+  client: ClassSourceClient,
+  document: vscode.TextDocument,
+  className: string,
+): Promise<boolean> {
+  const { contents } = await client.listFile({ typeName: className });
+  return contents === document.getText();
+}
+
 export type ReloadResult = { ok: true } | { ok: false; message: string };
 
 /**
