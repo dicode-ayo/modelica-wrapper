@@ -123,6 +123,13 @@ class OmWebviewRoot extends LitElement {
     return this.renderRoot.querySelector("om-graphical-layout");
   }
 
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    const root = super.createRenderRoot();
+    root.addEventListener("focusin", this.onFocusChange);
+    root.addEventListener("focusout", this.onFocusChange);
+    return root;
+  }
+
   override connectedCallback(): void {
     super.connectedCallback();
     this.vscode = getVsCodeApi<WebviewToExtension>();
@@ -130,8 +137,6 @@ class OmWebviewRoot extends LitElement {
     // `disconnectedCallback` is a DOM-removal hook; closing the panel tears the
     // iframe down without one, which would strand the last queued commit.
     window.addEventListener("pagehide", this.onPageHide);
-    this.renderRoot.addEventListener("focusin", this.onFocusChange);
-    this.renderRoot.addEventListener("focusout", this.onFocusChange);
     this.vscode.postMessage({ type: "ready" });
   }
 
@@ -140,8 +145,6 @@ class OmWebviewRoot extends LitElement {
     this.commits.flush();
     window.removeEventListener("message", this.onHostMessage);
     window.removeEventListener("pagehide", this.onPageHide);
-    this.renderRoot.removeEventListener("focusin", this.onFocusChange);
-    this.renderRoot.removeEventListener("focusout", this.onFocusChange);
   }
 
   private readonly onPageHide = (): void => {

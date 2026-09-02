@@ -222,17 +222,18 @@ export class OmParameterPanel extends LitElement {
     window.removeEventListener("keydown", this.onKeyDown, { capture: true });
   }
 
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this.renderRoot.addEventListener("focusin", this.onFocusChange);
-    this.renderRoot.addEventListener("focusout", this.onFocusChange);
+  protected override createRenderRoot(): HTMLElement | DocumentFragment {
+    // Attached for the element's lifetime; the root dies with it, so there is
+    // no teardown to pair.
+    const root = super.createRenderRoot();
+    root.addEventListener("focusin", this.onFocusChange);
+    root.addEventListener("focusout", this.onFocusChange);
+    return root;
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("keydown", this.onKeyDown, { capture: true });
-    this.renderRoot.removeEventListener("focusin", this.onFocusChange);
-    this.renderRoot.removeEventListener("focusout", this.onFocusChange);
   }
 
   /** Last reported state, so `om-panel-focus-change` only fires on a change. */
@@ -246,25 +247,21 @@ export class OmParameterPanel extends LitElement {
   // editable.
   private readonly onFocusChange = (): void => {
     // `focusout` runs before the next element takes focus, so recompute from
-    // the settled active element rather than the event's target. `shadowRoot`
-    // rather than `renderRoot`, which Lit types wide enough to lose
-    // `activeElement`.
+    // the settled active element rather than the event's target. `shadowRoot`,
+    // not `renderRoot`: Lit types the latter without `activeElement`.
     queueMicrotask(() => {
-      this.reportFocus(this.shadowRoot?.activeElement != null);
+      const focused = this.shadowRoot?.activeElement != null;
+      if (focused === this.focusWithin) return;
+      this.focusWithin = focused;
+      this.dispatchEvent(
+        new CustomEvent<ParameterPanelFocusDetail>("om-panel-focus-change", {
+          detail: { focused },
+          bubbles: true,
+          composed: true,
+        }),
+      );
     });
   };
-
-  private reportFocus(focused: boolean): void {
-    if (focused === this.focusWithin) return;
-    this.focusWithin = focused;
-    this.dispatchEvent(
-      new CustomEvent<ParameterPanelFocusDetail>("om-panel-focus-change", {
-        detail: { focused },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (e.key !== "Escape") return;
