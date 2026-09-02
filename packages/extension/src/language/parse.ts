@@ -276,7 +276,15 @@ export class ParseCache implements vscode.Disposable {
   /** Drop a single document's cache entry, freeing its tree unless an
    *  in-flight parse still holds it as its reparse base. */
   invalidate(uri: vscode.Uri): void {
-    const key = uri.toString();
+    this.invalidateKey(uri.toString());
+  }
+
+  /** Drop every cache entry, for a change no document URI identifies. */
+  invalidateAll(): void {
+    for (const key of [...this.entries.keys()]) this.invalidateKey(key);
+  }
+
+  private invalidateKey(key: string): void {
     const cached = this.entries.get(key);
     this.entries.delete(key);
     // Every turn queued for this key — not just the one currently running —

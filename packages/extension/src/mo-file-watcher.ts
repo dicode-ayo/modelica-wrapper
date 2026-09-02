@@ -645,6 +645,12 @@ export function registerMoFileWatcher(deps: {
   guard: SelfWriteGuard;
   invalidation: ClassInvalidationRegistry;
   /**
+   * The path→class index this watcher seeds and keeps current. Owned by
+   * extension.ts because the OMC mutation listener reads it too, to resolve a
+   * file-scoped announcement to the classes that file declares.
+   */
+  index: PathClassIndex;
+  /**
    * A flat `.mo` path list for the index seed, both at activation and on
    * every `:reset`. extension.ts hands in a scanner memoized per `:reset` and
    * shared with `registerWorkspaceAutoload`, so the two `sessionReplaced`
@@ -652,7 +658,7 @@ export function registerMoFileWatcher(deps: {
    */
   scanMoFiles: () => Promise<readonly string[]>;
 }): vscode.Disposable {
-  const index = createPathClassIndex();
+  const { index } = deps;
   const watcherDeps: MoWatcherDeps = {
     ensureClient: deps.ensureClient,
     libraryTree: deps.libraryTree,

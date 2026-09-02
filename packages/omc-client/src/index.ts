@@ -20,7 +20,18 @@
  */
 
 // --- Class API ---
-export { OmcClient, type OmcClientOptions } from "./client.js";
+export {
+  OmcClient,
+  type MutationListener,
+  type OmcClientOptions,
+} from "./client.js";
+
+// --- Mutation announcements (see client.onMutation) ---
+export {
+  mutationFor,
+  type MutationScope,
+  type OmcMutation,
+} from "./mutation.js";
 
 // --- Diagnostic record types (re-exported for VSCode-side mappers) ---
 export {

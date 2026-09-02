@@ -42,7 +42,10 @@ import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
 } from "./source-provider.js";
-import { registerMoFileWatcher } from "./mo-file-watcher.js";
+import {
+  createPathClassIndex,
+  registerMoFileWatcher,
+} from "./mo-file-watcher.js";
 import {
   createOmcClientCache,
   type OmcClientCache,
@@ -50,6 +53,7 @@ import {
 import { createOmcSetup } from "./omc-setup.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
+import { applyOmcMutation } from "./omc-mutation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
@@ -98,6 +102,11 @@ export async function activate(
     (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath),
   );
 
+  // Seeded and kept current by the `.mo` watcher; read by the OMC mutation
+  // listener below to resolve a file-scoped announcement — a save, a diagram
+  // reverse sync — to the classes that file declares.
+  const pathClassIndex = createPathClassIndex();
+
   // Replacing the session is what re-runs the workspace sweep and rebuilds the
   // sidebar: a user who points at an `omc` after activation found none has an
   // empty tree until the load happens against the new process.
@@ -118,6 +127,12 @@ export async function activate(
     async () => {
       const omcPath = await omcSetup.omcPath();
       const c = await OmcClient.create({ omcPath });
+      // Inside the spawn: `resetClient()` closes this client and builds
+      // another, and a subscription attached to the handle from outside would
+      // evaporate on `:reset` with nothing to show for it.
+      c.onMutation((mutation) => {
+        applyOmcMutation(mutation, invalidation, pathClassIndex);
+      });
       await cdIntoWorkspaceCacheDir(c);
       void omcSetup.reportVersion(c, omcPath);
       return c;
@@ -229,6 +244,7 @@ export async function activate(
       sourceProvider,
       guard: selfWriteGuard,
       invalidation,
+      index: pathClassIndex,
       scanMoFiles: () => moFileScanner.scan(),
     }),
   );

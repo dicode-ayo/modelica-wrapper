@@ -8,6 +8,11 @@
  * a listener here. A producer signals the change once; how many caches care is
  * not its business, and a cache added later needs no producer to change.
  *
+ * `allClassesChanged` is the sibling signal for a change whose class cannot be
+ * named: a REPL `renameClass`, an `installPackage`, a command that did not
+ * parse. The AST is still there, but which part of it moved is unknown, so a
+ * cache drops everything it holds rather than one entry.
+ *
  * `sessionReplaced` is the coarser sibling signal: the REPL's `:reset` closes
  * OMC and spawns a fresh process with an empty AST, which invalidates every
  * class at once rather than one at a time. A cache that only tracks
@@ -24,11 +29,15 @@ import { log } from "./logger.js";
 /** Drops whatever a cache holds for `className`. Must not throw to be correct. */
 export type ClassChangeListener = (className: string) => void;
 
+/** Drops everything a cache holds. Must not throw to be correct. */
+export type AllClassesChangedListener = () => void;
+
 /** Drops whatever a cache holds about the whole session. Must not throw to be correct. */
 export type SessionReplacedListener = () => void;
 
 export class ClassInvalidationRegistry {
   private readonly listeners = new Set<ClassChangeListener>();
+  private readonly allClassesListeners = new Set<AllClassesChangedListener>();
   private readonly sessionListeners = new Set<SessionReplacedListener>();
 
   /** Subscribe `listener`; dispose to unsubscribe. */
@@ -36,6 +45,16 @@ export class ClassInvalidationRegistry {
     this.listeners.add(listener);
     return new vscode.Disposable(() => {
       this.listeners.delete(listener);
+    });
+  }
+
+  /** Subscribe `listener` to {@link allClassesChanged}; dispose to unsubscribe. */
+  registerAllClassesChanged(
+    listener: AllClassesChangedListener,
+  ): vscode.Disposable {
+    this.allClassesListeners.add(listener);
+    return new vscode.Disposable(() => {
+      this.allClassesListeners.delete(listener);
     });
   }
 
@@ -64,6 +83,28 @@ export class ClassInvalidationRegistry {
         log.warn(
           "invalidation",
           `a listener for ${className} threw: ${errorDetail(err)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Signal that something changed in OMC that no class name describes. Same
+   * throw-tolerant, snapshotted fan-out as {@link classChanged}.
+   *
+   * Distinct from {@link sessionReplaced}, which additionally means the symbol
+   * table underneath is gone. Nothing that re-loads the workspace may listen
+   * here: a `:load` announcing this would trigger a sweep that triggers a
+   * load.
+   */
+  allClassesChanged(): void {
+    for (const listener of [...this.allClassesListeners]) {
+      try {
+        listener();
+      } catch (err) {
+        log.warn(
+          "invalidation",
+          `an allClassesChanged listener threw: ${errorDetail(err)}`,
         );
       }
     }

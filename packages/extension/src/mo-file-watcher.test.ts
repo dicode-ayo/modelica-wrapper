@@ -1250,6 +1250,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles: async () => [FILE],
     });
 
@@ -1277,6 +1278,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles: async () => [FILE],
     });
     await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
@@ -1319,6 +1321,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles,
     });
 
@@ -1363,6 +1366,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
       scanMoFiles,
     });
 

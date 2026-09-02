@@ -89,6 +89,7 @@ export class LibraryWebviewProvider
   private readonly searches = new Map<string, AbortController>();
 
   private readonly onClassChanged: vscode.Disposable;
+  private readonly onAllClassesChanged: vscode.Disposable;
   private readonly onSessionReplaced: vscode.Disposable;
 
   constructor(
@@ -99,6 +100,11 @@ export class LibraryWebviewProvider
     this.onClassChanged = invalidation.register((className) =>
       this.classChanged(className),
     );
+    // A mutation nothing could pin to a class can have moved any icon or
+    // restriction the tree is showing, and none of them names itself.
+    this.onAllClassesChanged = invalidation.registerAllClassesChanged(() => {
+      this.refresh();
+    });
     // `refresh()` rather than a re-list: an icon cached from the dead
     // session would otherwise keep serving its stale bytes.
     this.onSessionReplaced = invalidation.registerSessionReplaced(() => {
@@ -108,6 +114,7 @@ export class LibraryWebviewProvider
 
   dispose(): void {
     this.onClassChanged.dispose();
+    this.onAllClassesChanged.dispose();
     this.onSessionReplaced.dispose();
   }
 
