@@ -337,7 +337,11 @@ export function sourceUriFromOmcFilename(
 export function qualifiedNameFromUri(uri: vscode.Uri): string | undefined {
   if (uri.scheme !== MODELICA_SOURCE_SCHEME) return undefined;
   const p = uri.path.replace(/^\//, "");
-  return p.endsWith(".mo") ? p.slice(0, -3) : p;
+  const name = p.endsWith(".mo") ? p.slice(0, -3) : p;
+  // `modelica-source:` and `modelica-source:/` parse to an empty path. An
+  // empty name is not a class, and returning it would pass every caller's
+  // `!== undefined` guard while failing their truthiness ones.
+  return name === "" ? undefined : name;
 }
 
 /**

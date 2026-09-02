@@ -67,6 +67,29 @@ describe("applyOmcMutation", () => {
     );
   });
 
+  it("goes coarse for a modelica-source URI carrying no class name", () => {
+    // An empty name is not a class. Announcing it would reach
+    // `notifySourceChanged("")`, whose falsy check quietly downgrades it to
+    // "refresh the open documents" and drops the caches on the floor.
+    for (const fileName of [
+      "modelica-source:",
+      "modelica-source:/",
+      "modelica-source:/.mo",
+    ]) {
+      const seen = spies();
+
+      applyOmcMutation(
+        { fn: "loadString", scope: { kind: "file", fileName } },
+        seen,
+        seen,
+        emptyIndex,
+      );
+
+      expect(seen.allClassesChanged).toHaveBeenCalledOnce();
+      expect(seen.notifySourceChanged).toHaveBeenCalledExactlyOnceWith();
+    }
+  });
+
   it("goes coarse for a file nothing can resolve to a class", () => {
     const unresolvable = spies();
     const behindTheIndex = spies();
