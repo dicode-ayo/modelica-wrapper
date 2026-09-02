@@ -32,8 +32,6 @@ const TRANSITION = {
 const PROBES: Record<string, Record<string, unknown>> = {
   loadFile: { fileName: FILE },
   loadString: { data: "model X end X;", filename: FILE },
-  newModel: { typeName: CLASS, withinPath: "Probe" },
-  deleteClass: { typeName: CLASS },
   setSourceFile: { typeName: CLASS, fileName: "/elsewhere.mo" },
   loadClassContentString: { data: "model X end X;", typeName: CLASS },
   setParameterValue: { typeName: CLASS, variableName: "r", value: "1" },

@@ -1,10 +1,19 @@
 /**
- * Routes OMC's mutation announcements into class-invalidation signals.
+ * Routes OMC's mutation announcements into an editor refresh.
  *
  * The client names what a command touched as far as the command string can
  * tell: a class, a file, or nothing more specific. A file is resolved to
- * classes here rather than in the registry, which is keyed by class and has no
- * business knowing about paths.
+ * classes here rather than downstream, because a file is an extension concept
+ * and the invalidation registry is keyed by class.
+ *
+ * Named classes go to the source provider rather than straight to the
+ * registry. Reloading the `modelica-source:` buffer is the point — a document
+ * opened before a REPL mutation overwrites that mutation on its next save —
+ * and the provider's broadcast is what reaches the buffer, the documentation
+ * HTML and the diagram editors. `publishSourceChanges` turns that same
+ * broadcast back into `classChanged`, so the caches follow without a second
+ * announcement. A dirty buffer will not reload; that hazard needs conflict
+ * detection and is not this seam's to solve.
  *
  * A file OMC was handed is one of three things: the `modelica-source:` URI a
  * memory-only class stays bound to until `setSourceFile` gives it a disk path,
@@ -16,16 +25,24 @@
 
 import type { OmcMutation } from "@dicode/omc-client";
 
-import type { PathClassIndex } from "./path-class-index.js";
 import {
   qualifiedNameFromUri,
   sourceUriFromOmcFilename,
 } from "./source-provider.js";
 
-/** The invalidation registry, narrowed to the two signals a mutation produces. */
+/** The source provider, narrowed to the reload this triggers. */
+export interface MutationSourceProvider {
+  notifySourceChanged(typeName?: string): void;
+}
+
+/** The invalidation registry, narrowed to the signal no class name can carry. */
 export interface MutationInvalidation {
-  classChanged(className: string): void;
   allClassesChanged(): void;
+}
+
+/** The path→class index, narrowed to the lookup a file-scoped mutation needs. */
+export interface FileClassLookup {
+  get(fsPath: string): string[] | undefined;
 }
 
 /** The client, narrowed to the subscription this attaches. */
@@ -34,7 +51,7 @@ export interface MutatingClient {
 }
 
 /**
- * Route `client`'s mutations into `invalidation`. Returns the unsubscribe.
+ * Route `client`'s mutations into an editor refresh. Returns the unsubscribe.
  *
  * Subscribe inside the client cache's spawn closure: `resetClient()` closes
  * the client and builds another, and a subscription attached to the handle
@@ -42,40 +59,45 @@ export interface MutatingClient {
  */
 export function publishOmcMutations(
   client: MutatingClient,
+  source: MutationSourceProvider,
   invalidation: MutationInvalidation,
-  index: Pick<PathClassIndex, "get">,
+  index: FileClassLookup,
 ): () => void {
   return client.onMutation((mutation) => {
-    applyOmcMutation(mutation, invalidation, index);
+    applyOmcMutation(mutation, source, invalidation, index);
   });
 }
 
 /** Announce `mutation` at the narrowest scope it can be pinned to. */
 export function applyOmcMutation(
   mutation: OmcMutation,
+  source: MutationSourceProvider,
   invalidation: MutationInvalidation,
-  index: Pick<PathClassIndex, "get">,
+  index: FileClassLookup,
 ): void {
   const { scope } = mutation;
   if (scope.kind === "class") {
-    invalidation.classChanged(scope.className);
+    source.notifySourceChanged(scope.className);
     return;
   }
   const names =
     scope.kind === "file" ? classesInFile(scope.fileName, index) : undefined;
   if (names === undefined || names.length === 0) {
+    source.notifySourceChanged();
     invalidation.allClassesChanged();
     return;
   }
-  for (const name of names) invalidation.classChanged(name);
+  for (const name of names) source.notifySourceChanged(name);
 }
 
 function classesInFile(
   fileName: string,
-  index: Pick<PathClassIndex, "get">,
+  index: FileClassLookup,
 ): string[] | undefined {
   const uri = sourceUriFromOmcFilename(fileName);
-  if (uri === undefined) return index.get(fileName);
-  const className = qualifiedNameFromUri(uri);
-  return className === undefined ? undefined : [className];
+  if (uri !== undefined) {
+    const className = qualifiedNameFromUri(uri);
+    return className === undefined ? undefined : [className];
+  }
+  return index.get(fileName);
 }

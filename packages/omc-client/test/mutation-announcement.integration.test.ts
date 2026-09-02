@@ -54,6 +54,20 @@ describeIf("OmcClient mutation announcements", () => {
     ]);
   });
 
+  it("keeps a throwing listener from failing the call it rides on", async () => {
+    unsubscribe();
+    unsubscribe = client.onMutation(() => {
+      throw new Error("listener exploded");
+    });
+
+    await expect(
+      client.setClassComment({
+        typeName: fixture.modelClass,
+        filename: "survived",
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it("lets a listener call OMC back without deadlocking the queue", async () => {
     const answers: string[] = [];
     unsubscribe();

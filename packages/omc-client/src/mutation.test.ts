@@ -30,8 +30,8 @@ describe("mutationFor", () => {
   });
 
   it("keeps a quoted identifier intact inside a dotted name", () => {
-    expect(mutationFor("deleteClass(Complex.'-'.negate)")).toEqual({
-      fn: "deleteClass",
+    expect(mutationFor("setClassComment(Complex.'-'.negate, \"c\")")).toEqual({
+      fn: "setClassComment",
       scope: { kind: "class", className: "Complex.'-'.negate" },
     });
   });
@@ -61,8 +61,8 @@ describe("mutationFor", () => {
   });
 
   it("tolerates the trailing semicolon a REPL user types", () => {
-    expect(mutationFor("deleteClass(Demo.Circuit);")).toEqual({
-      fn: "deleteClass",
+    expect(mutationFor("renameComponent(Demo.Circuit, a, b);")).toEqual({
+      fn: "renameComponent",
       scope: { kind: "class", className: "Demo.Circuit" },
     });
   });
@@ -79,22 +79,22 @@ describe("mutationFor", () => {
       fn: undefined,
       scope: { kind: "coarse" },
     });
-    expect(mutationFor("deleteClass(")).toEqual({
+    expect(mutationFor("renameComponent(")).toEqual({
       fn: undefined,
       scope: { kind: "coarse" },
     });
   });
 
   it("goes coarse rather than silent on a name it does not know", () => {
-    expect(mutationFor("deleteClas(Demo.Circuit)")).toEqual({
+    expect(mutationFor("renameComponnt(Demo.Circuit, a, b)")).toEqual({
       fn: undefined,
       scope: { kind: "coarse" },
     });
   });
 
   it("goes coarse when the argument it needs is absent or unreadable", () => {
-    expect(mutationFor("deleteClass()")).toEqual({
-      fn: "deleteClass",
+    expect(mutationFor("renameComponent()")).toEqual({
+      fn: "renameComponent",
       scope: { kind: "coarse" },
     });
     expect(

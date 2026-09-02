@@ -3,32 +3,33 @@ import { describe, expect, it, vi } from "vitest";
 import { applyOmcMutation } from "./omc-mutation.js";
 
 function spies() {
-  return { classChanged: vi.fn(), allClassesChanged: vi.fn() };
+  return { notifySourceChanged: vi.fn(), allClassesChanged: vi.fn() };
 }
 
 const emptyIndex = { get: () => undefined };
 
 describe("applyOmcMutation", () => {
-  it("announces a class-scoped mutation by name", () => {
-    const invalidation = spies();
+  it("refreshes a class-scoped mutation by name", () => {
+    const seen = spies();
 
     applyOmcMutation(
       {
         fn: "setElementModifierValue",
         scope: { kind: "class", className: "Demo.Circuit" },
       },
-      invalidation,
+      seen,
+      seen,
       emptyIndex,
     );
 
-    expect(invalidation.classChanged).toHaveBeenCalledExactlyOnceWith(
+    expect(seen.notifySourceChanged).toHaveBeenCalledExactlyOnceWith(
       "Demo.Circuit",
     );
-    expect(invalidation.allClassesChanged).not.toHaveBeenCalled();
+    expect(seen.allClassesChanged).not.toHaveBeenCalled();
   });
 
-  it("announces every class an indexed file declares", () => {
-    const invalidation = spies();
+  it("refreshes every class an indexed file declares", () => {
+    const seen = spies();
     const index = { get: () => ["Demo", "Demo.Circuit"] };
 
     applyOmcMutation(
@@ -36,30 +37,32 @@ describe("applyOmcMutation", () => {
         fn: "loadString",
         scope: { kind: "file", fileName: "/w/Demo/package.mo" },
       },
-      invalidation,
+      seen,
+      seen,
       index,
     );
 
-    expect(invalidation.classChanged.mock.calls).toEqual([
+    expect(seen.notifySourceChanged.mock.calls).toEqual([
       ["Demo"],
       ["Demo.Circuit"],
     ]);
-    expect(invalidation.allClassesChanged).not.toHaveBeenCalled();
+    expect(seen.allClassesChanged).not.toHaveBeenCalled();
   });
 
   it("reads the class straight off a memory-only class's buffer URI", () => {
-    const invalidation = spies();
+    const seen = spies();
 
     applyOmcMutation(
       {
         fn: "loadString",
         scope: { kind: "file", fileName: "modelica-source:/Demo.Circuit.mo" },
       },
-      invalidation,
+      seen,
+      seen,
       emptyIndex,
     );
 
-    expect(invalidation.classChanged).toHaveBeenCalledExactlyOnceWith(
+    expect(seen.notifySourceChanged).toHaveBeenCalledExactlyOnceWith(
       "Demo.Circuit",
     );
   });
@@ -74,6 +77,7 @@ describe("applyOmcMutation", () => {
         scope: { kind: "file", fileName: "<runtime:Demo.New>" },
       },
       unresolvable,
+      unresolvable,
       emptyIndex,
     );
     // An indexed file that declares nothing means the index is behind, not
@@ -81,24 +85,27 @@ describe("applyOmcMutation", () => {
     applyOmcMutation(
       { fn: "loadString", scope: { kind: "file", fileName: "/w/Empty.mo" } },
       behindTheIndex,
+      behindTheIndex,
       { get: () => [] },
     );
 
     expect(unresolvable.allClassesChanged).toHaveBeenCalledOnce();
-    expect(unresolvable.classChanged).not.toHaveBeenCalled();
     expect(behindTheIndex.allClassesChanged).toHaveBeenCalledOnce();
   });
 
-  it("passes a coarse mutation straight through", () => {
-    const invalidation = spies();
+  it("refreshes every open document alongside the coarse signal", () => {
+    const seen = spies();
 
     applyOmcMutation(
       { fn: "renameClass", scope: { kind: "coarse" } },
-      invalidation,
+      seen,
+      seen,
       emptyIndex,
     );
 
-    expect(invalidation.allClassesChanged).toHaveBeenCalledOnce();
-    expect(invalidation.classChanged).not.toHaveBeenCalled();
+    // Argument-less: the coarse signal drops the caches, but only the
+    // provider reloads a buffer, and no class name is available to aim it.
+    expect(seen.notifySourceChanged).toHaveBeenCalledExactlyOnceWith();
+    expect(seen.allClassesChanged).toHaveBeenCalledOnce();
   });
 });

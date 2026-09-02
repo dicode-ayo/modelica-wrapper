@@ -124,7 +124,9 @@ export async function activate(
     async () => {
       const omcPath = await omcSetup.omcPath();
       const c = await OmcClient.create({ omcPath });
-      publishOmcMutations(c, invalidation, pathClassIndex);
+      // The subscription lives on `c` and dies with it, so there is nothing
+      // for `context.subscriptions` to hold.
+      publishOmcMutations(c, sourceProvider, invalidation, pathClassIndex);
       await cdIntoWorkspaceCacheDir(c);
       void omcSetup.reportVersion(c, omcPath);
       return c;

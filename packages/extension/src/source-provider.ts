@@ -319,8 +319,9 @@ export function sourceUriFor(qualifiedName: string): vscode.Uri {
 /**
  * The `modelica-source:` URI behind a filename OMC handed back, or `undefined`
  * when the filename is a disk path or one of the pseudo-names OMC carries for
- * memory-only classes. OMC echoes the URI it was given verbatim, but parses
- * defensively so a future OMC that normalizes it can't throw here.
+ * memory-only classes. OMC echoes the URI it was given verbatim — Probe 2b in
+ * `lsp-probe.integration.test.ts` — but parses defensively so an OMC that
+ * normalizes it cannot throw here.
  */
 export function sourceUriFromOmcFilename(
   filename: string,

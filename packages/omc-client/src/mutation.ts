@@ -44,11 +44,12 @@ export interface OmcMutation {
  *
  * - `"readOnly"` — changes nothing any cache derives from a class.
  * - `"coarse"` — mutates, but the affected class is not readable from a single
- *   argument. `renameClass`'s second argument is a bare leaf, `copyClass`
- *   composes parent and leaf, `moveClassToTop` reorders a parent that appears
- *   nowhere in the call. Reading those as class names gives a confidently
- *   wrong answer, which is worse than no answer, and they are rare enough that
- *   one extra refresh is cheap.
+ *   argument. `renameClass`'s second argument is a bare leaf and `copyClass`
+ *   composes parent and leaf, so reading either as a class name gives a
+ *   confidently wrong answer — worse than no answer. `newModel`,
+ *   `deleteClass` and `moveClassToTop` do name a class, but what they move is
+ *   its parent's membership, which appears nowhere in the call. All are rare
+ *   enough that one extra refresh is cheap.
  * - `{ pos, as }` — argument `pos` holds the affected class name or file path.
  */
 export type MutationEntry =
@@ -177,9 +178,9 @@ export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
   loadModel: "coarse",
   parseFile: "readOnly",
   parseString: "readOnly",
-  newModel: { pos: 0, as: "class" },
+  newModel: "coarse",
   renameClass: "coarse",
-  deleteClass: { pos: 0, as: "class" },
+  deleteClass: "coarse",
   copyClass: "coarse",
   moveClass: "coarse",
   moveClassToTop: "coarse",
