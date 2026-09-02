@@ -34,6 +34,7 @@ import {
   type LayoutEvents,
   type OmGraphicalLayout,
   type ParameterFormSubmitDetail,
+  type ParameterPanelFocusDetail,
   type ToolId,
 } from "@dicode/diagram-ui";
 
@@ -129,8 +130,8 @@ class OmWebviewRoot extends LitElement {
     // `disconnectedCallback` is a DOM-removal hook; closing the panel tears the
     // iframe down without one, which would strand the last queued commit.
     window.addEventListener("pagehide", this.onPageHide);
-    document.addEventListener("focusin", this.onFocusChange);
-    document.addEventListener("focusout", this.onFocusChange);
+    this.renderRoot.addEventListener("focusin", this.onFocusChange);
+    this.renderRoot.addEventListener("focusout", this.onFocusChange);
     this.vscode.postMessage({ type: "ready" });
   }
 
@@ -139,8 +140,8 @@ class OmWebviewRoot extends LitElement {
     this.commits.flush();
     window.removeEventListener("message", this.onHostMessage);
     window.removeEventListener("pagehide", this.onPageHide);
-    document.removeEventListener("focusin", this.onFocusChange);
-    document.removeEventListener("focusout", this.onFocusChange);
+    this.renderRoot.removeEventListener("focusin", this.onFocusChange);
+    this.renderRoot.removeEventListener("focusout", this.onFocusChange);
   }
 
   private readonly onPageHide = (): void => {
@@ -149,19 +150,33 @@ class OmWebviewRoot extends LitElement {
 
   /** Last reported editable-focus state, so we only post on a transition. */
   private inputFocused = false;
+  /** The parameters panel's own report — see `om-panel-focus`. */
+  private panelFocused = false;
 
-  // `focusout` retargets at shadow boundaries and its `relatedTarget` is often
-  // null, so we recompute from the post-event active element rather than trust
-  // the event target. Deferred a tick so `document.activeElement` reflects the
-  // element being focused, not the one being left.
+  // A focus move is not dispatched to nodes that retarget both its target and
+  // its related target to the same host, so this listener only ever sees moves
+  // between the surfaces rendered here; a surface with fields of its own has to
+  // report for itself.
+  //
+  // `focusout` fires before the next element takes focus, so the state is
+  // recomputed from the settled active element rather than the event target.
   private readonly onFocusChange = (): void => {
-    queueMicrotask(() => {
-      const focused = isEditableTarget(deepActiveElement());
-      if (focused === this.inputFocused) return;
-      this.inputFocused = focused;
-      this.post({ type: "inputFocus", focused });
-    });
+    queueMicrotask(() => this.syncInputFocus());
   };
+
+  private readonly onPanelFocus = (
+    e: CustomEvent<ParameterPanelFocusDetail>,
+  ): void => {
+    this.panelFocused = e.detail.focused;
+    this.syncInputFocus();
+  };
+
+  private syncInputFocus(): void {
+    const focused = this.panelFocused || isEditableTarget(deepActiveElement());
+    if (focused === this.inputFocused) return;
+    this.inputFocused = focused;
+    this.post({ type: "inputFocus", focused });
+  }
 
   override render(): TemplateResult {
     if (this.renderError !== null) {
@@ -216,6 +231,7 @@ class OmWebviewRoot extends LitElement {
           .heading=${this.paramTitle}
           .submitLabel=${this.paramSubmitLabel}
           .crefPrefix=${this.paramCrefPrefix}
+          @om-panel-focus=${this.onPanelFocus}
           @om-panel-submit=${this.onParamSubmit}
           @om-panel-cancel=${this.onParamCancel}
           @om-panel-reset=${this.onParamReset}

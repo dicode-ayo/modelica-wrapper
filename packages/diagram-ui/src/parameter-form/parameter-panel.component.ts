@@ -14,6 +14,10 @@
  * *request* a close via `om-panel-cancel`; the embedder owns `open` and clears
  * it. The form's optional "Reset to defaults" button surfaces as
  * `om-panel-reset`.
+ *
+ * `om-panel-focus` reports whether focus rests inside the card, so an embedder
+ * that binds bare keys over the surface behind the panel can stand down while
+ * the user is typing into a field.
  */
 
 import {
@@ -35,6 +39,12 @@ import type {
   ParameterFormChangeDetail,
   ParameterFormSubmitDetail,
 } from "./parameter-form.component.js";
+
+/** Detail of `om-panel-focus`. */
+export interface ParameterPanelFocusDetail {
+  /** Focus rests somewhere inside the card. */
+  focused: boolean;
+}
 
 @customElement("om-parameter-panel")
 export class OmParameterPanel extends LitElement {
@@ -209,11 +219,51 @@ export class OmParameterPanel extends LitElement {
       return;
     }
     window.removeEventListener("keydown", this.onKeyDown, { capture: true });
+    // Closing removes the card, which can retire the focus without a
+    // `focusout` ever reaching us.
+    this.reportFocus(false);
+  }
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.renderRoot.addEventListener("focusin", this.onFocusChange);
+    this.renderRoot.addEventListener("focusout", this.onFocusChange);
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("keydown", this.onKeyDown, { capture: true });
+    this.renderRoot.removeEventListener("focusin", this.onFocusChange);
+    this.renderRoot.removeEventListener("focusout", this.onFocusChange);
+  }
+
+  /** Last reported state, so `om-panel-focus` only fires on a change. */
+  private focusWithin = false;
+
+  // Focus moves inside a shadow tree are retargeted to its host, so a listener
+  // outside the card never sees the caret land in a field — the listener has to
+  // sit on this component's own root. Anything inside the card counts as
+  // focused: the embedder gates destructive single-key shortcuts on this, and a
+  // `wa-*` field parks focus on shadow nodes no DOM predicate recognises as
+  // editable.
+  private readonly onFocusChange = (): void => {
+    // `focusout` runs before the next element takes focus, so recompute from
+    // the settled active element rather than the event's target.
+    queueMicrotask(() => {
+      this.reportFocus(this.shadowRoot?.activeElement != null);
+    });
+  };
+
+  private reportFocus(focused: boolean): void {
+    if (focused === this.focusWithin) return;
+    this.focusWithin = focused;
+    this.dispatchEvent(
+      new CustomEvent<ParameterPanelFocusDetail>("om-panel-focus", {
+        detail: { focused },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
