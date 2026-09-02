@@ -42,14 +42,16 @@ export interface OmcMutation {
 /**
  * How one OMC function announces itself:
  *
- * - `"readOnly"` — changes nothing any cache derives from a class.
+ * - `"readOnly"` — changes nothing any cache derives from a class. `save` is one:
+ *   it writes to disk, and the `.mo` watcher is what notices that.
  * - `"coarse"` — mutates, but the affected class is not readable from a single
  *   argument. `renameClass`'s second argument is a bare leaf and `copyClass`
  *   composes parent and leaf, so reading either as a class name gives a
  *   confidently wrong answer — worse than no answer. `newModel`,
  *   `deleteClass` and `moveClassToTop` do name a class, but what they move is
- *   its parent's membership, which appears nowhere in the call. All are rare
- *   enough that one extra refresh is cheap.
+ *   its parent's membership, which appears nowhere in the call.
+ *   `setCommandLineOptions` names no class at all, yet can change what
+ *   instantiation reports. All are rare enough that one extra refresh is cheap.
  * - `{ pos, as }` — argument `pos` holds the affected class name or file path.
  */
 export type MutationEntry =
@@ -263,7 +265,7 @@ export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
   // --- Solver / runtime config ---
   setMatchingAlgorithm: "readOnly",
   setIndexReductionMethod: "readOnly",
-  setCommandLineOptions: "readOnly",
+  setCommandLineOptions: "coarse",
   getMatchingAlgorithm: "readOnly",
   getAvailableMatchingAlgorithms: "readOnly",
   getIndexReductionMethod: "readOnly",
@@ -301,7 +303,7 @@ function entryFor(name: string): MutationEntry | undefined {
   return isOmcFunction(name) ? MUTATIONS[name] : undefined;
 }
 
-const COARSE = (fn: OmcFunction | undefined): OmcMutation => ({
+const coarseMutation = (fn: OmcFunction | undefined): OmcMutation => ({
   fn,
   scope: { kind: "coarse" },
 });
@@ -333,19 +335,19 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
   try {
     head = parseLeading(cmd).value;
   } catch {
-    return COARSE(undefined);
+    return coarseMutation(undefined);
   }
   if (head.kind !== "call" || !isOmcFunction(head.name)) {
-    return COARSE(undefined);
+    return coarseMutation(undefined);
   }
 
   const entry = MUTATIONS[head.name];
   if (entry === "readOnly") return undefined;
-  if (entry === "coarse") return COARSE(head.name);
+  if (entry === "coarse") return coarseMutation(head.name);
 
   const arg = head.args[entry.pos];
   const name = arg === undefined ? undefined : asString(arg);
-  if (name === undefined || name === "") return COARSE(head.name);
+  if (name === undefined || name === "") return coarseMutation(head.name);
 
   return {
     fn: head.name,

@@ -12,8 +12,7 @@
  * and the provider's broadcast is what reaches the buffer, the documentation
  * HTML and the diagram editors. `publishSourceChanges` turns that same
  * broadcast back into `classChanged`, so the caches follow without a second
- * announcement. A dirty buffer will not reload; that hazard needs conflict
- * detection and is not this seam's to solve.
+ * announcement. A dirty buffer will not reload.
  *
  * A file OMC was handed is one of three things: the `modelica-source:` URI a
  * memory-only class stays bound to until `setSourceFile` gives it a disk path,

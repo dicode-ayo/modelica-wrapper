@@ -62,7 +62,7 @@ export class ClassInvalidationRegistry {
 
   /** Signal that `className`'s definition changed. */
   classChanged(className: string): void {
-    fanOut(this.listeners, (l) => l(className), `for ${className}`);
+    fanOut(this.listeners, (l) => l(className), `a listener for ${className}`);
   }
 
   /**
@@ -75,7 +75,11 @@ export class ClassInvalidationRegistry {
    * separate from {@link sessionReplaced}.
    */
   allClassesChanged(): void {
-    fanOut(this.allClassesListeners, (l) => l(), "allClassesChanged");
+    fanOut(
+      this.allClassesListeners,
+      (l) => l(),
+      "an allClassesChanged listener",
+    );
   }
 
   /**
@@ -84,7 +88,7 @@ export class ClassInvalidationRegistry {
    * holds predates a symbol table that no longer exists.
    */
   sessionReplaced(): void {
-    fanOut(this.sessionListeners, (l) => l(), "sessionReplaced");
+    fanOut(this.sessionListeners, (l) => l(), "a sessionReplaced listener");
   }
 }
 
@@ -104,16 +108,13 @@ function subscribe<L>(listeners: Set<L>, listener: L): vscode.Disposable {
 function fanOut<L>(
   listeners: Set<L>,
   invoke: (listener: L) => void,
-  signal: string,
+  subject: string,
 ): void {
   for (const listener of [...listeners]) {
     try {
       invoke(listener);
     } catch (err) {
-      log.warn(
-        "invalidation",
-        `a listener ${signal} threw: ${errorDetail(err)}`,
-      );
+      log.warn("invalidation", `${subject} threw: ${errorDetail(err)}`);
     }
   }
 }

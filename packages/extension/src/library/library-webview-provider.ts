@@ -95,9 +95,9 @@ export class LibraryWebviewProvider
     private readonly ensureClient: EnsureClient,
     invalidation: ClassInvalidationRegistry,
   ) {
-    // The two coarse signals share `refresh()` rather than a re-list: neither
-    // an unattributable mutation nor a dead session leaves any cached icon
-    // trustworthy, and none of them names itself.
+    // Both coarse signals drop the icon cache: neither an unattributable
+    // mutation nor a dead session leaves a cached icon trustworthy, and
+    // neither names the classes it invalidated.
     this.onInvalidation = vscode.Disposable.from(
       invalidation.register((className) => this.classChanged(className)),
       invalidation.registerAllClassesChanged(() => this.refresh()),
