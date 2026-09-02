@@ -1408,6 +1408,46 @@ describe("DiagramEditController: forward write path", () => {
     controller.dispose();
   });
 
+  it("drops a gesture racing an announcement that carried somebody else's mutation", async () => {
+    // A second editor on this class adds gain1. Its announcement reloads this
+    // editor's buffer to the new canonical source, so the buffer matches the
+    // class and nothing needs loading back — but this webview has never been
+    // shown gain1. Reconciling a report built without it reads gain1 as a
+    // deletion and destroys the other editor's edit.
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [-10, -10],
+        [10, 10],
+      ]),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler } = manualScheduler();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}), // the render this webview holds: no gain1
+      factory,
+      scheduler,
+    );
+
+    fireForeign();
+    await controller.handle({
+      type: "change",
+      layout: layout({}),
+      staleBase: false,
+    });
+    await drain();
+
+    expect(invoked).not.toContain("deleteComponent");
+    expect(
+      posted.some((m) => m.type === "error" && m.message.includes("resynced")),
+    ).toBe(true);
+    // The re-render is what breaks the loop: a retry reconciles against a
+    // layout that has gain1 in it.
+    expect(posted.some((m) => m.type === "layout")).toBe(true);
+    controller.dispose();
+  });
+
   it("keeps a gesture that races this editor's own announced mutation", async () => {
     // The gesture lands inside the debounce window the announcement opened, so
     // it is flushed against a reverse sync that turns out to have nothing to

@@ -553,16 +553,15 @@ export class DiagramEditController {
   }
 
   /**
-   * Push a reverse sync's outcome, dropping any report the webview made while
-   * it ran. Such a report was computed against the diagram as it stood before
-   * the sync, so reconciling it afterwards would read whatever the sync
-   * restored as something the user deleted. Dropping it here rather than when
-   * the sync starts covers reports that land during the sync's own OMC calls,
-   * and leaves this push as the state the webview reconciles against next.
-   *
-   * Only a sync that reached OMC calls this. One that found the buffer already
-   * matching, or was refused for a read-only class, reverted nothing, so the
-   * report it raced is still reconcilable and stands.
+   * Push a layout the webview has not seen, dropping any report it made while
+   * the sync ran. Such a report was computed against the diagram as it stood
+   * before the sync, so reconciling it afterwards would read whatever the sync
+   * brought back as something the user deleted — `diffLayouts` does not detect
+   * additions, and a webview that missed a push it was never sent reports
+   * `staleBase: false`, so nothing downstream catches it. Dropping it here
+   * rather than when the sync starts covers reports that land during the
+   * sync's own OMC calls, and leaves this push as the state the webview
+   * reconciles against next.
    */
   private publishSyncedLayout(layout: DiagramLayout): void {
     if (this.pendingChange !== null) {
@@ -572,6 +571,21 @@ export class DiagramEditController {
       );
     }
     this.publishLayout(layout);
+  }
+
+  /**
+   * Settle a sync whose buffer already matched the class, so it wrote nothing.
+   * The announcement that reloaded that buffer may have carried somebody
+   * else's mutation, which this editor is not rendering yet — and a report
+   * reconciled against a render that stale deletes whatever it never saw. An
+   * unchanged layout means the announcement was this editor's own edit coming
+   * back: the webview is already showing it, a report racing it reconciles
+   * fine, and pushing anyway would move what is under the pointer.
+   */
+  private async rerenderIfClassMoved(): Promise<void> {
+    const layout = await this.refetch(this.deps.client, this.deps.className);
+    if (JSON.stringify(layout) === JSON.stringify(this.prevLayout)) return;
+    this.publishSyncedLayout(layout);
   }
 
   private enqueue(unit: () => Promise<void>): Promise<void> {
@@ -594,7 +608,10 @@ export class DiagramEditController {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
-      if (await bufferMatchesClass(client, document, className)) return;
+      if (await bufferMatchesClass(client, document, className)) {
+        await this.rerenderIfClassMoved();
+        return;
+      }
       const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);
