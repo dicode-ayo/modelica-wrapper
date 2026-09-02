@@ -123,13 +123,6 @@ class OmWebviewRoot extends LitElement {
     return this.renderRoot.querySelector("om-graphical-layout");
   }
 
-  protected override createRenderRoot(): HTMLElement | DocumentFragment {
-    const root = super.createRenderRoot();
-    root.addEventListener("focusin", this.onFocusChange);
-    root.addEventListener("focusout", this.onFocusChange);
-    return root;
-  }
-
   override connectedCallback(): void {
     super.connectedCallback();
     this.vscode = getVsCodeApi<WebviewToExtension>();
@@ -151,35 +144,15 @@ class OmWebviewRoot extends LitElement {
     this.commits.flush();
   };
 
-  /** Last reported editable-focus state, so we only post on a transition. */
-  private inputFocused = false;
-  /** The parameters panel's own report — see `om-panel-focus-change`. */
-  private panelFocused = false;
-
-  // A focus move is not dispatched to nodes that retarget both its target and
-  // its related target to the same host, so this listener only ever sees moves
-  // between the surfaces rendered here; a surface with fields of its own has to
-  // report for itself.
-  //
-  // `focusout` fires before the next element takes focus, so the state is
-  // recomputed from the settled active element rather than the event target.
-  private readonly onFocusChange = (): void => {
-    queueMicrotask(() => this.syncInputFocus());
-  };
-
+  // The root cannot detect this for itself: a focus move is not dispatched to a
+  // node that retargets both its target and its related target to the same
+  // host, and every surface here sits in this root's shadow tree. Whichever
+  // surface holds the fields reports for itself, and only on a change.
   private readonly onPanelFocus = (
     e: CustomEvent<ParameterPanelFocusDetail>,
   ): void => {
-    this.panelFocused = e.detail.focused;
-    this.syncInputFocus();
+    this.post({ type: "inputFocus", focused: e.detail.focused });
   };
-
-  private syncInputFocus(): void {
-    const focused = this.panelFocused || isEditableTarget(deepActiveElement());
-    if (focused === this.inputFocused) return;
-    this.inputFocused = focused;
-    this.post({ type: "inputFocus", focused });
-  }
 
   override render(): TemplateResult {
     if (this.renderError !== null) {
@@ -426,31 +399,6 @@ class OmWebviewRoot extends LitElement {
       componentName: this.paramComponentName,
     });
   };
-}
-
-/** Innermost focused node, descending through open shadow roots. */
-function deepActiveElement(): Element | null {
-  let el: Element | null = document.activeElement;
-  while (el?.shadowRoot?.activeElement) {
-    el = el.shadowRoot.activeElement;
-  }
-  return el;
-}
-
-function isEditableTarget(node: Element | null): boolean {
-  if (node === null) return false;
-  if (node instanceof HTMLInputElement) {
-    // Buttons / checkboxes don't swallow typed characters, so a shortcut over
-    // one is still the diagram's to handle.
-    return !["button", "checkbox", "radio", "submit", "reset"].includes(
-      node.type,
-    );
-  }
-  return (
-    node instanceof HTMLTextAreaElement ||
-    node instanceof HTMLSelectElement ||
-    (node instanceof HTMLElement && node.isContentEditable)
-  );
 }
 
 declare global {
