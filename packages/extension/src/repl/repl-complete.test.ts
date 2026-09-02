@@ -89,6 +89,35 @@ describe("computeCompletion — meta-commands", () => {
   });
 });
 
+describe("computeCompletion — path-argument meta-commands", () => {
+  it("offers nothing for a `:load` path, even one ending like an OMC name", () => {
+    // Before the fix, the `[A-Za-z0-9_:]*$` prefix regex severed this at
+    // the `.`, leaving prefix "mo" and matching OMC names alphabetically
+    // ahead of "mo" (e.g. "modifierToJSON") — rewriting the path.
+    const buf = ":load /tmp/scratchpad/LoadProbe.mo";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+    expect(plan.commonPrefix).toBe("");
+  });
+
+  it("offers nothing for a `:cd` path", () => {
+    const buf = ":cd /tmp/some/dir";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it("still completes the `:load`/`:cd` verb itself before the space", () => {
+    const plan = computeCompletion(":lo", 3);
+    expect(plan.candidates).toEqual([":load"]);
+  });
+
+  it("still completes OMC names after `:help `", () => {
+    const buf = ":help getCl";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toContain("getClassInformation");
+  });
+});
+
 describe("computeCompletion — cursor position", () => {
   it("completes the word ending at the cursor, ignoring text after", () => {
     // Cursor sits right after `getCl` — text after shouldn't be considered.
@@ -128,6 +157,11 @@ describe("computeGhost", () => {
     // The buffer is itself an OMC function name; the only candidate IS
     // the buffer, so the tail is empty.
     expect(computeGhost("simulate", "simulate".length)).toBe("");
+  });
+
+  it("suggests nothing for a `:load` path argument", () => {
+    const buf = ":load /tmp/scratchpad/LoadProbe.mo";
+    expect(computeGhost(buf, buf.length)).toBe("");
   });
 });
 

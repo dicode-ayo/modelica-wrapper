@@ -46,21 +46,40 @@ export function computeCompletion(
 }
 
 /**
+ * Meta-commands whose argument is a filesystem path rather than an OMC
+ * identifier. The `[A-Za-z0-9_:]` prefix regex in computeCompletion severs
+ * a path at `.`/`/`, so falling through to OMC function names here would
+ * offer a nonsense rewrite (e.g. turning `.mo` into `.modifierToJSON`)
+ * instead of nothing.
+ */
+const PATH_ARG_COMMANDS: ReadonlySet<string> = new Set([":load", ":cd"]);
+
+/**
  * Decide which candidate set to draw from given the current input.
  *
  *   - If the buffer up to the cursor LOOKS like a meta-command line
  *     (begins with `:` and has no space yet) → meta-command names.
+ *   - If the meta verb already typed takes a path argument (`:load`,
+ *     `:cd`) → no candidates; OMC function names are never a valid
+ *     completion there.
  *   - If the buffer starts with `:help <something` or `:help ` →
  *     OMC function names (most useful expansion target).
  *   - Otherwise → OMC function names.
  */
 function selectSource(buffer: string, prefix: string): string[] {
   const trimmed = buffer.trimStart();
-  if (trimmed.startsWith(":") && !trimmed.slice(1).includes(" ")) {
+  const spaceIndex = trimmed.indexOf(" ");
+  if (trimmed.startsWith(":") && spaceIndex === -1) {
     // No space yet — completing the meta verb itself. Anchor on `:`.
     if (prefix.startsWith(":") || prefix === "") {
       return META_COMMANDS.map((m) => m.name);
     }
+  }
+  if (
+    spaceIndex !== -1 &&
+    PATH_ARG_COMMANDS.has(trimmed.slice(0, spaceIndex))
+  ) {
+    return [];
   }
   // Anywhere else: OMC function names. `omcFunctionNames` is already sorted
   // but we re-sort after filtering above so a smaller pool stays sorted.
