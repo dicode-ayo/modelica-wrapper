@@ -61,7 +61,7 @@ const PATH_ARG_COMMANDS: ReadonlySet<string> = new Set(
  * Decide which candidate set to draw from given the input up to the cursor.
  *
  *   - If it LOOKS like a meta-command line (begins with `:` and has no
- *     space yet) → meta-command names.
+ *     whitespace yet) → meta-command names.
  *   - If the meta verb already typed takes a path argument (`:load`,
  *     `:cd`) → no candidates; OMC function names are never a valid
  *     completion there.
@@ -72,7 +72,7 @@ function selectSource(before: string, prefix: string): string[] {
   const trimmed = before.trimStart();
   const spaceIndex = trimmed.search(/\s/);
   if (trimmed.startsWith(":") && spaceIndex === -1) {
-    // No space yet — completing the meta verb itself. Anchor on `:`.
+    // No whitespace yet — completing the meta verb itself. Anchor on `:`.
     if (prefix.startsWith(":") || prefix === "") {
       return META_COMMANDS.map((m) => m.name);
     }

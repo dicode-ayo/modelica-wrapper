@@ -116,7 +116,9 @@ async function handleMeta(
 ): Promise<ReplResult> {
   // Split into command + remainder so `:load /path with spaces` keeps the
   // remainder intact. Modelica path arguments commonly contain spaces.
-  const spaceIdx = line.indexOf(" ");
+  // Splits on any whitespace, matching repl-complete.ts's selectSource so
+  // the two agree on where the verb ends.
+  const spaceIdx = line.search(/\s/);
   const cmd = spaceIdx === -1 ? line : line.slice(0, spaceIdx);
   const arg = spaceIdx === -1 ? "" : line.slice(spaceIdx + 1).trim();
 

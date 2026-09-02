@@ -91,9 +91,7 @@ describe("computeCompletion — meta-commands", () => {
 
 describe("computeCompletion — path-argument meta-commands", () => {
   it("offers nothing for a `:load` path, even one ending like an OMC name", () => {
-    // The `[A-Za-z0-9_:]*$` prefix regex severs a path at the `.`, leaving
-    // prefix "mo", which matches OMC names alphabetically ahead of "mo"
-    // (e.g. "modifierToJSON") and rewrites the path.
+    // "modifierToJSON" sorts alphabetically ahead of the "mo" this path ends in.
     const buf = ":load /tmp/scratchpad/LoadProbe.mo";
     const plan = computeCompletion(buf, buf.length);
     expect(plan.candidates).toEqual([]);
