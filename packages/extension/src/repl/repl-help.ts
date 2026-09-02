@@ -26,14 +26,24 @@ import {
  * `repl-eval.ts`) so the help renderer + the completion source share a
  * single source of truth.
  */
-export const META_COMMANDS: ReadonlyArray<{ name: string; summary: string }> = [
+export const META_COMMANDS: ReadonlyArray<{
+  name: string;
+  summary: string;
+  /** True when the argument is a filesystem path, never an OMC identifier. */
+  takesPathArg?: boolean;
+}> = [
   { name: ":help", summary: "Show help (`:help <category|name>` for details)" },
   { name: ":clear", summary: "Clear the terminal screen" },
-  { name: ":load", summary: "Call loadFile on a path (`:load <path>`)" },
+  {
+    name: ":load",
+    summary: "Call loadFile on a path (`:load <path>`)",
+    takesPathArg: true,
+  },
   {
     name: ":cd",
     summary:
       "Show or change OMC's working directory (`:cd` to print, `:cd <path>` to change)",
+    takesPathArg: true,
   },
   { name: ":reset", summary: "Close OMC and start a fresh subprocess" },
   { name: ":exit", summary: "Close this REPL terminal" },

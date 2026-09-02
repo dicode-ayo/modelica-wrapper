@@ -47,12 +47,15 @@ export function computeCompletion(
 
 /**
  * Meta-commands whose argument is a filesystem path rather than an OMC
- * identifier. The `[A-Za-z0-9_:]` prefix regex in computeCompletion severs
- * a path at `.`/`/`, so falling through to OMC function names here would
- * offer a nonsense rewrite (e.g. turning `.mo` into `.modifierToJSON`)
- * instead of nothing.
+ * identifier — derived from META_COMMANDS' `takesPathArg` flag so this and
+ * `repl-help.ts` can't drift apart. The `[A-Za-z0-9_:]` prefix regex in
+ * computeCompletion severs a path at `.`/`/`, so falling through to OMC
+ * function names here would offer a nonsense rewrite (e.g. turning `.mo`
+ * into `.modifierToJSON`) instead of nothing.
  */
-const PATH_ARG_COMMANDS: ReadonlySet<string> = new Set([":load", ":cd"]);
+const PATH_ARG_COMMANDS: ReadonlySet<string> = new Set(
+  META_COMMANDS.filter((m) => m.takesPathArg).map((m) => m.name),
+);
 
 /**
  * Decide which candidate set to draw from given the current input.
