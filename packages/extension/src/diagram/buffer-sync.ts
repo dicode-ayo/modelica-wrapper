@@ -8,12 +8,10 @@ import { omcFilenameForDocument } from "../source-provider.js";
 
 /**
  * Machinery shared by the diagram and documentation edit controllers: both
- * debounce a burst of foreign buffer changes into one reverse sync, then
- * `loadString` the buffer back into OMC before re-fetching their render
- * model. Each controller still owns its own debounce-timer field and the
- * post-load re-fetch step — the diagram controller additionally tracks
- * whether a sync is in flight to detect a racing forward edit, which the
- * documentation controller has no equivalent of.
+ * debounce a burst of foreign buffer changes into one reverse sync, skip the
+ * ones whose buffer still matches the class, then `loadString` the rest back
+ * into OMC before re-fetching their render model. Each controller still owns
+ * its own debounce-timer field and the post-load re-fetch step.
  */
 
 /** Deferred one-shot timer, injectable so tests drive the debounce directly. */

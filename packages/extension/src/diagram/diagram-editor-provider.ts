@@ -539,7 +539,7 @@ export class DiagramEditController {
    * Enqueue a pending reverse sync ahead of the caller rather than letting its
    * timer fire on its own, so a racing edit never reads a class the sync has
    * not reverted yet. The queue then orders the two, and the sync itself
-   * decides whether the edit survives it — see `dropReportedChange`.
+   * decides whether the edit survives it — see `publishSyncedLayout`.
    */
   private flushPendingReverseSync(): void {
     if (this.reverseTimer === undefined) return;
@@ -553,18 +553,21 @@ export class DiagramEditController {
   }
 
   /**
-   * Drop the report the webview is waiting to have reconciled. It was computed
-   * against the diagram as it stood before this sync, so reconciling it
-   * afterwards would read whatever the sync restored as something the user
-   * deleted. The sync's own `layout` push is what the webview reconciles
-   * against next.
+   * Push a reverse sync's outcome, dropping any report the webview made while
+   * it ran. Such a report was computed against the diagram as it stood before
+   * the sync, so reconciling it afterwards would read whatever the sync
+   * restored as something the user deleted. Dropping it here rather than when
+   * the sync starts covers reports that land during the sync's own OMC calls,
+   * and leaves this push as the state the webview reconciles against next.
    */
-  private dropReportedChange(): void {
-    if (this.pendingChange === null) return;
-    this.pendingChange = null;
-    this.reportError(
-      "the diagram was resynced from an external change — please retry the edit",
-    );
+  private publishSyncedLayout(layout: DiagramLayout): void {
+    if (this.pendingChange !== null) {
+      this.pendingChange = null;
+      this.reportError(
+        "the diagram was resynced from an external change — please retry the edit",
+      );
+    }
+    this.publishLayout(layout);
   }
 
   private enqueue(unit: () => Promise<void>): Promise<void> {
@@ -588,21 +591,20 @@ export class DiagramEditController {
     const { client, className, document } = this.deps;
     try {
       if (await bufferMatchesClass(client, document, className)) return;
-      this.dropReportedChange();
       const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);
         // This sync dropped whatever was reported to make way for it, and then
         // wrote nothing. Without a push the webview goes on showing an edit no
         // class ever took.
-        this.publishLayout(this.prevLayout);
+        this.publishSyncedLayout(this.prevLayout);
         return;
       }
-      this.publishLayout(await this.refetch(client, className));
+      this.publishSyncedLayout(await this.refetch(client, className));
       this.deps.onClassContentChanged?.(className);
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
-      this.publishLayout(this.prevLayout);
+      this.publishSyncedLayout(this.prevLayout);
     }
   }
 

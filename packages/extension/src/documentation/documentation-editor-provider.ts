@@ -9,6 +9,7 @@ import {
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
   type BufferSyncClient,
+  type ClassSourceClient,
   type Scheduler,
 } from "../diagram/buffer-sync.js";
 import {
@@ -41,7 +42,7 @@ export { DOCUMENTATION_VIEW_TYPE };
 
 /** The subset of OMC the documentation editor drives. */
 export interface DocumentationClient
-  extends BufferSyncClient, WriteVerdictClient {
+  extends BufferSyncClient, ClassSourceClient, WriteVerdictClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string }>;
@@ -55,7 +56,6 @@ export interface DocumentationClient
     typeName: string;
     info: string;
   }): Promise<{ success: boolean }>;
-  listFile(input: { typeName: string }): Promise<{ contents: string }>;
   uriToFilename(input: { uri: string }): Promise<{ filename: string }>;
 }
 

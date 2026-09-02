@@ -1098,7 +1098,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, writes, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      controllerDeps({ client, gate, document: srcDoc("model M2 end M2;") }),
+      controllerDeps({ client, gate, document: EDITED_DOC }),
       layout({}),
       factory,
       scheduler,
@@ -1109,7 +1109,7 @@ describe("DiagramEditController: forward write path", () => {
     await drain();
 
     expect(loadStringCalls[0]).toMatchObject({
-      data: "model M2 end M2;",
+      data: EDITED_DOC.getText(),
       merge: false,
     });
     expect(invoked).toContain("getModelInstance"); // layout re-fetched
@@ -1266,6 +1266,52 @@ describe("DiagramEditController: forward write path", () => {
     await drain();
 
     expect(ops).toEqual(["listFile", "loadString"]);
+    expect(invoked).not.toContain("deleteComponent");
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
+  });
+
+  it("drops a 'change' message reported while the reverse sync's own OMC calls run", async () => {
+    // The narrowest window: no timer left to flush and the sync already
+    // running, so the report is stored mid-`loadString`/refetch and its
+    // dispatch queues behind. Reconciling it would diff a layout built before
+    // the reload against the class the reload restored.
+    // The report has to land while the sync's OMC calls are in flight, so it
+    // is fired from inside the refetch rather than before it, once.
+    const racing: { report?: (() => void) | undefined } = {};
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [-10, -10],
+        [10, 10],
+      ]),
+      onInvoke: (fn) => {
+        if (fn !== "getModelInstance") return;
+        const report = racing.report;
+        racing.report = undefined;
+        report?.();
+      },
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate, document: EDITED_DOC }),
+      layout({}),
+      factory,
+      scheduler,
+    );
+    racing.report = () =>
+      void controller.handle({
+        type: "change",
+        layout: layout({}),
+        staleBase: false,
+      });
+
+    fireForeign();
+    flushDebounce();
+    await drain();
+
+    expect(racing.report).toBeUndefined(); // the window was actually entered
     expect(invoked).not.toContain("deleteComponent");
     expect(posted.some((m) => m.type === "error")).toBe(true);
     controller.dispose();

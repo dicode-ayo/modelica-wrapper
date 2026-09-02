@@ -28,7 +28,7 @@ const DOC_URI = vscode.Uri.parse("modelica-source:/Pkg.Model.mo");
 
 describe("bufferMatchesClass", () => {
   const listing = (contents: string) => ({
-    listFile: vi.fn(async () => ({ contents })),
+    listFile: async () => ({ contents }),
   });
 
   it("reports a buffer holding the class's own source verbatim", async () => {
