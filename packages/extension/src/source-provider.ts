@@ -316,6 +316,23 @@ export function sourceUriFor(qualifiedName: string): vscode.Uri {
   return vscode.Uri.parse(`${MODELICA_SOURCE_SCHEME}:/${qualifiedName}.mo`);
 }
 
+/**
+ * The `modelica-source:` URI behind a filename OMC handed back, or `undefined`
+ * when the filename is a disk path or one of the pseudo-names OMC carries for
+ * memory-only classes. OMC echoes the URI it was given verbatim, but parses
+ * defensively so a future OMC that normalizes it can't throw here.
+ */
+export function sourceUriFromOmcFilename(
+  filename: string,
+): vscode.Uri | undefined {
+  if (!filename.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) return undefined;
+  try {
+    return vscode.Uri.parse(filename);
+  } catch {
+    return undefined;
+  }
+}
+
 export function qualifiedNameFromUri(uri: vscode.Uri): string | undefined {
   if (uri.scheme !== MODELICA_SOURCE_SCHEME) return undefined;
   const p = uri.path.replace(/^\//, "");

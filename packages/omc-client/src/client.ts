@@ -182,17 +182,14 @@ export class OmcClient implements CallContext {
 
   /**
    * Announce whatever `cmd` may have changed. Fired whenever the call did not
-   * throw: `call()` holds only OMC's raw reply text, and reading success out
-   * of it is the wrapper's job one layer up. It would not settle the question
-   * anyway — `addComponent` answers `false` with an error line and still may
-   * have touched the AST.
+   * throw, because success is unreadable here — `call()` holds only OMC's raw
+   * reply text, and even the wrapper one layer up cannot settle it:
+   * `addComponent` answers `false` with an error line and may still have
+   * touched the AST.
    *
-   * Listeners run synchronously and are not awaited, so a slow one cannot
-   * stall an unrelated mutation, and the set is snapshotted so one
-   * subscribing or unsubscribing mid-fan-out neither joins it nor cuts it
-   * short. A throw is swallowed: a listener left un-run because a sibling
-   * failed is the staleness this exists to prevent, and this package has no
-   * logging channel to report it through.
+   * A throw is swallowed. A listener left un-run because a sibling failed is
+   * the staleness this exists to prevent, and this package has no logging
+   * channel to report it through.
    */
   private announce(cmd: string): void {
     if (this.mutationListeners.size === 0) return;

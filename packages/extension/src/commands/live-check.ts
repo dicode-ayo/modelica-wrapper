@@ -45,6 +45,7 @@ import {
   MODELICA_SOURCE_SCHEME,
   omcFilenameForDocument,
   qualifiedNameFromUri,
+  sourceUriFromOmcFilename,
 } from "../source-provider.js";
 
 import { liveCheckLock } from "./check-lock.js";
@@ -331,22 +332,9 @@ async function runCheck(
 
     // Per-file replace. Map every OMC filename back to THIS uri when it
     // matches the name we checked under, so squiggles land in the user's
-    // buffer rather than the file it happens to be stored in. The probe in
-    // `lsp-probe.integration.test.ts` (Probe 2b) confirms OMC echoes a
-    // `modelica-source:` URI verbatim, but as belt-and-suspenders the
-    // resolver also parses any modelica-source: URI string OMC might emit
-    // (in case a future OMC version normalizes the path).
-    const resolver = (name: string): vscode.Uri | undefined => {
-      if (name === filename) return uri;
-      if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
-        try {
-          return vscode.Uri.parse(name);
-        } catch {
-          return undefined;
-        }
-      }
-      return undefined;
-    };
+    // buffer rather than the file it happens to be stored in.
+    const resolver = (name: string): vscode.Uri | undefined =>
+      name === filename ? uri : sourceUriFromOmcFilename(name);
     // A message naming the URI reaches the buffer through the branch above
     // rather than the filename the stages bounded, so bound it too — nothing
     // published against this document escapes its line range.

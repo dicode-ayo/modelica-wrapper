@@ -11,12 +11,15 @@ interface SourceChangeBroadcaster {
 /**
  * Turn the source provider's change broadcast into class-invalidation signals.
  *
- * Every write that reaches OMC and names a class — a save through the virtual
- * filesystem, a mutation command's `notifySourceChanged(typeName)`, the `.mo`
- * watcher reloading a foreign edit — ends in this broadcast, so it is the
- * single producer feeding {@link ClassInvalidationRegistry}. Routing the caches
- * off it rather than off each producer is what keeps a class from being
- * invalidated once per producer that happened to fire.
+ * Every write that reaches OMC through one of our own commands — a save
+ * through the virtual filesystem, a mutation command's
+ * `notifySourceChanged(typeName)`, the `.mo` watcher reloading a foreign edit
+ * — ends in this broadcast, so a command needs no listener wiring of its own.
+ *
+ * It is not the only producer: `omc-mutation.ts` announces whatever reaches
+ * OMC without passing through a command at all, which is the REPL and anything
+ * else driving the client directly. A write that goes through both is
+ * announced twice; the cost is one redundant re-read.
  *
  * The argument-less `notifySourceChanged()` announces only the classes open in
  * an editor. It follows class creation, where nothing is cached yet.

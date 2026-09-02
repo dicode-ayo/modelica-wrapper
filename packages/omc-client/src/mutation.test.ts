@@ -8,16 +8,13 @@ describe("mutationFor", () => {
     expect(mutationFor("getComponents(Circuit)")).toBeUndefined();
   });
 
-  it("scopes a mutation to the class its arguments name", () => {
+  it("reads the class from whichever position OMC put it in", () => {
     expect(
-      mutationFor("setElementModifierValue(Circuit, R.R, $Code(=220))"),
+      mutationFor("setElementModifierValue(Demo.Circuit, R.R, $Code(=220))"),
     ).toEqual({
       fn: "setElementModifierValue",
-      scope: { kind: "class", className: "Circuit" },
+      scope: { kind: "class", className: "Demo.Circuit" },
     });
-  });
-
-  it("reads the class from whichever position OMC put it in", () => {
     expect(
       mutationFor(
         "addComponent(r1, Modelica.Electrical.Analog.Basic.Resistor, Demo.Circuit, annotate=Placement(visible=true))",

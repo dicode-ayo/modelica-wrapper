@@ -322,16 +322,10 @@ export class ParseCache implements vscode.Disposable {
     // after this method returns, chain onto the (by-then-settled) `turns`
     // entry it read below, and race the parser teardown at the bottom.
     this.disposed = true;
-    for (const [key, entry] of this.entries) {
-      if (this.borrowedOldTree.get(key) === entry.tree) {
-        continue;
-      }
-      entry.tree.delete();
-    }
-    this.entries.clear();
-    // Any key still mid-flight — cold parses included — discards its own
-    // result instead of caching into a cache nobody will read again; see
-    // `invalidate`.
+    this.invalidateAll();
+    // Any key still mid-flight — cold parses included, which `invalidateAll`
+    // has no entry to reach — discards its own result instead of caching into
+    // a cache nobody will read again; see `invalidate`.
     for (const key of this.turns.keys()) this.bumpGeneration(key);
 
     // A key with an outstanding `turns` entry has a `parseOnce` call

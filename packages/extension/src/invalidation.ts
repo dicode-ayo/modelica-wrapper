@@ -1,6 +1,7 @@
 /**
- * The one fan-out point for "this class's definition changed" and for "the
- * whole OMC session was replaced".
+ * The one fan-out point for "this class's definition changed", for "something
+ * changed that no class name describes", and for "the whole OMC session was
+ * replaced".
  *
  * Anything derived from a class's source — the sidebar's rendered icon, its
  * restriction badge, the tree-sitter parse tree, the read-only lookup answers
@@ -42,90 +43,77 @@ export class ClassInvalidationRegistry {
 
   /** Subscribe `listener`; dispose to unsubscribe. */
   register(listener: ClassChangeListener): vscode.Disposable {
-    this.listeners.add(listener);
-    return new vscode.Disposable(() => {
-      this.listeners.delete(listener);
-    });
+    return subscribe(this.listeners, listener);
   }
 
   /** Subscribe `listener` to {@link allClassesChanged}; dispose to unsubscribe. */
   registerAllClassesChanged(
     listener: AllClassesChangedListener,
   ): vscode.Disposable {
-    this.allClassesListeners.add(listener);
-    return new vscode.Disposable(() => {
-      this.allClassesListeners.delete(listener);
-    });
+    return subscribe(this.allClassesListeners, listener);
   }
 
   /** Subscribe `listener` to {@link sessionReplaced}; dispose to unsubscribe. */
   registerSessionReplaced(
     listener: SessionReplacedListener,
   ): vscode.Disposable {
-    this.sessionListeners.add(listener);
-    return new vscode.Disposable(() => {
-      this.sessionListeners.delete(listener);
-    });
+    return subscribe(this.sessionListeners, listener);
   }
 
-  /**
-   * Signal that `className`'s definition changed. Every listener runs even if
-   * an earlier one throws — a cache left stale because a sibling failed is the
-   * drift this registry exists to prevent. The listener set is snapshotted so
-   * a listener registering or disposing during the fan-out neither joins it
-   * nor cuts it short.
-   */
+  /** Signal that `className`'s definition changed. */
   classChanged(className: string): void {
-    for (const listener of [...this.listeners]) {
-      try {
-        listener(className);
-      } catch (err) {
-        log.warn(
-          "invalidation",
-          `a listener for ${className} threw: ${errorDetail(err)}`,
-        );
-      }
-    }
+    fanOut(this.listeners, (l) => l(className), `for ${className}`);
   }
 
   /**
-   * Signal that something changed in OMC that no class name describes. Same
-   * throw-tolerant, snapshotted fan-out as {@link classChanged}.
+   * Signal that something changed in OMC that no class name describes — a
+   * `renameClass`, an `installPackage`, a command that did not parse. The
+   * symbol table is still there; which part of it moved is unknown.
    *
-   * Distinct from {@link sessionReplaced}, which additionally means the symbol
-   * table underneath is gone. Nothing that re-loads the workspace may listen
-   * here: a `:load` announcing this would trigger a sweep that triggers a
-   * load.
+   * Nothing that re-loads the workspace may listen here: a `:load` announcing
+   * this would trigger a sweep that triggers a load. That is what keeps this
+   * separate from {@link sessionReplaced}.
    */
   allClassesChanged(): void {
-    for (const listener of [...this.allClassesListeners]) {
-      try {
-        listener();
-      } catch (err) {
-        log.warn(
-          "invalidation",
-          `an allClassesChanged listener threw: ${errorDetail(err)}`,
-        );
-      }
-    }
+    fanOut(this.allClassesListeners, (l) => l(), "allClassesChanged");
   }
 
   /**
    * Signal that OMC's whole session was replaced (`:reset`): the process is
    * new and its AST starts empty, so every class-scoped fact any listener
-   * holds predates a symbol table that no longer exists. Same throw-tolerant,
-   * snapshotted fan-out as {@link classChanged}.
+   * holds predates a symbol table that no longer exists.
    */
   sessionReplaced(): void {
-    for (const listener of [...this.sessionListeners]) {
-      try {
-        listener();
-      } catch (err) {
-        log.warn(
-          "invalidation",
-          `a sessionReplaced listener threw: ${errorDetail(err)}`,
-        );
-      }
+    fanOut(this.sessionListeners, (l) => l(), "sessionReplaced");
+  }
+}
+
+function subscribe<L>(listeners: Set<L>, listener: L): vscode.Disposable {
+  listeners.add(listener);
+  return new vscode.Disposable(() => {
+    listeners.delete(listener);
+  });
+}
+
+/**
+ * Every listener runs even if an earlier one throws — a cache left stale
+ * because a sibling failed is the drift this registry exists to prevent. The
+ * set is snapshotted so a listener registering or disposing during the fan-out
+ * neither joins it nor cuts it short.
+ */
+function fanOut<L>(
+  listeners: Set<L>,
+  invoke: (listener: L) => void,
+  signal: string,
+): void {
+  for (const listener of [...listeners]) {
+    try {
+      invoke(listener);
+    } catch (err) {
+      log.warn(
+        "invalidation",
+        `a listener ${signal} threw: ${errorDetail(err)}`,
+      );
     }
   }
 }

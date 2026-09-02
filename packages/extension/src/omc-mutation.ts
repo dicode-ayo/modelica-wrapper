@@ -1,27 +1,25 @@
 /**
- * Turns an OMC mutation announcement into class-invalidation signals.
+ * Routes OMC's mutation announcements into class-invalidation signals.
  *
  * The client names what a command touched as far as the command string can
- * tell: a class, a file, or nothing more specific. A class goes straight to
- * the registry. A file is resolved to classes here rather than there — the
- * registry is keyed by class, and a file is an extension concept that has no
- * business in it.
+ * tell: a class, a file, or nothing more specific. A file is resolved to
+ * classes here rather than in the registry, which is keyed by class and has no
+ * business knowing about paths.
  *
  * A file OMC was handed is one of three things: the `modelica-source:` URI a
  * memory-only class stays bound to until `setSourceFile` gives it a disk path,
- * a workspace `.mo` path the watcher's index already maps to the classes it
- * declares, or neither — a library outside the workspace, a file created after
- * the index was seeded, one of the `<runtime:…>` pseudo-names a class carries
- * between its creation and its first save. Only the last is coarse.
+ * a workspace `.mo` path the index already maps to the classes it declares, or
+ * neither — a library outside the workspace, a file created after the index
+ * was seeded, one of the `<runtime:…>` pseudo-names a class carries between
+ * its creation and its first save. Only the last is coarse.
  */
-
-import * as vscode from "vscode";
 
 import type { OmcMutation } from "@dicode/omc-client";
 
+import type { PathClassIndex } from "./path-class-index.js";
 import {
-  MODELICA_SOURCE_SCHEME,
   qualifiedNameFromUri,
+  sourceUriFromOmcFilename,
 } from "./source-provider.js";
 
 /** The invalidation registry, narrowed to the two signals a mutation produces. */
@@ -30,16 +28,33 @@ export interface MutationInvalidation {
   allClassesChanged(): void;
 }
 
-/** The `.mo` watcher's path→class index, narrowed to the lookup this needs. */
-export interface ClassesByPath {
-  get(fsPath: string): string[] | undefined;
+/** The client, narrowed to the subscription this attaches. */
+export interface MutatingClient {
+  onMutation(listener: (mutation: OmcMutation) => void): () => void;
 }
 
-/** Announce `mutation` to the caches, at the narrowest scope it can be pinned to. */
+/**
+ * Route `client`'s mutations into `invalidation`. Returns the unsubscribe.
+ *
+ * Subscribe inside the client cache's spawn closure: `resetClient()` closes
+ * the client and builds another, and a subscription attached to the handle
+ * from outside would evaporate on `:reset` with nothing to show for it.
+ */
+export function publishOmcMutations(
+  client: MutatingClient,
+  invalidation: MutationInvalidation,
+  index: Pick<PathClassIndex, "get">,
+): () => void {
+  return client.onMutation((mutation) => {
+    applyOmcMutation(mutation, invalidation, index);
+  });
+}
+
+/** Announce `mutation` at the narrowest scope it can be pinned to. */
 export function applyOmcMutation(
   mutation: OmcMutation,
   invalidation: MutationInvalidation,
-  index: ClassesByPath,
+  index: Pick<PathClassIndex, "get">,
 ): void {
   const { scope } = mutation;
   if (scope.kind === "class") {
@@ -57,11 +72,10 @@ export function applyOmcMutation(
 
 function classesInFile(
   fileName: string,
-  index: ClassesByPath,
+  index: Pick<PathClassIndex, "get">,
 ): string[] | undefined {
-  if (fileName.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
-    const className = qualifiedNameFromUri(vscode.Uri.parse(fileName));
-    return className === undefined ? undefined : [className];
-  }
-  return index.get(fileName);
+  const uri = sourceUriFromOmcFilename(fileName);
+  if (uri === undefined) return index.get(fileName);
+  const className = qualifiedNameFromUri(uri);
+  return className === undefined ? undefined : [className];
 }

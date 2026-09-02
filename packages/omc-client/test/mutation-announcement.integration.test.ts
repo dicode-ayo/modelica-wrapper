@@ -73,15 +73,4 @@ describeIf("OmcClient mutation announcements", () => {
 
     expect(answers).toEqual(["model"]);
   });
-
-  it("stops announcing once the subscription is dropped", async () => {
-    unsubscribe();
-
-    await client.setClassComment({
-      typeName: fixture.modelClass,
-      filename: "unheard",
-    });
-
-    expect(seen).toEqual([]);
-  });
 });

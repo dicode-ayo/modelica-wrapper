@@ -64,32 +64,29 @@ describe("applyOmcMutation", () => {
     );
   });
 
-  it("goes coarse for a file no index and no URI can name", () => {
-    const invalidation = spies();
+  it("goes coarse for a file nothing can resolve to a class", () => {
+    const unresolvable = spies();
+    const behindTheIndex = spies();
 
     applyOmcMutation(
       {
         fn: "loadString",
         scope: { kind: "file", fileName: "<runtime:Demo.New>" },
       },
-      invalidation,
+      unresolvable,
       emptyIndex,
     );
-
-    expect(invalidation.allClassesChanged).toHaveBeenCalledOnce();
-    expect(invalidation.classChanged).not.toHaveBeenCalled();
-  });
-
-  it("goes coarse for an indexed file that declares nothing, since the index is behind", () => {
-    const invalidation = spies();
-
+    // An indexed file that declares nothing means the index is behind, not
+    // that the load changed nothing.
     applyOmcMutation(
       { fn: "loadString", scope: { kind: "file", fileName: "/w/Empty.mo" } },
-      invalidation,
+      behindTheIndex,
       { get: () => [] },
     );
 
-    expect(invalidation.allClassesChanged).toHaveBeenCalledOnce();
+    expect(unresolvable.allClassesChanged).toHaveBeenCalledOnce();
+    expect(unresolvable.classChanged).not.toHaveBeenCalled();
+    expect(behindTheIndex.allClassesChanged).toHaveBeenCalledOnce();
   });
 
   it("passes a coarse mutation straight through", () => {

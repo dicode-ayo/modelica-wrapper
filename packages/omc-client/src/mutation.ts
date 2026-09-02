@@ -50,11 +50,8 @@ export interface OmcMutation {
  *   wrong answer, which is worse than no answer, and they are rare enough that
  *   one extra refresh is cheap.
  * - `{ pos, as }` — argument `pos` holds the affected class name or file path.
- *
- * Data rather than a function per entry, so the table is auditable by reading
- * it.
  */
-type MutationEntry =
+export type MutationEntry =
   | "readOnly"
   | "coarse"
   | { readonly pos: number; readonly as: "class" | "file" };
@@ -69,7 +66,7 @@ type MutationEntry =
  * `loadString`. Coarse there would refresh every open Modelica editor on every
  * save.
  */
-const MUTATIONS: Record<OmcFunction, MutationEntry> = {
+export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
   // --- Lifecycle / transport ---
   quit: "readOnly",
   getErrorString: "readOnly",
@@ -299,10 +296,23 @@ function isOmcFunction(name: string): name is OmcFunction {
   return Object.hasOwn(MUTATIONS, name);
 }
 
+function entryFor(name: string): MutationEntry | undefined {
+  return isOmcFunction(name) ? MUTATIONS[name] : undefined;
+}
+
 const COARSE = (fn: OmcFunction | undefined): OmcMutation => ({
   fn,
   scope: { kind: "coarse" },
 });
+
+/**
+ * The leading `name(` of a well-formed command. Enough to dismiss a read
+ * before parsing it: the parser finds the same name, but only after walking
+ * every argument, and `parseString` — called on every live-check tick —
+ * carries a whole buffer in argument 0 that it would unescape in full first.
+ * The parser stays the authority; this only ever skips work.
+ */
+const LEADING_CALL = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/;
 
 /**
  * The mutation `cmd` announces, or `undefined` when it announces nothing.
@@ -314,6 +324,10 @@ const COARSE = (fn: OmcFunction | undefined): OmcMutation => ({
  * back coarse.
  */
 export function mutationFor(cmd: string): OmcMutation | undefined {
+  if (entryFor(LEADING_CALL.exec(cmd)?.[1] ?? "") === "readOnly") {
+    return undefined;
+  }
+
   let head;
   try {
     head = parseLeading(cmd).value;
