@@ -1,7 +1,7 @@
 /**
  * Installing OpenModelica, and removing one we installed.
  *
- * An install resolves OpenModelica from conda-forge into a staging prefix,
+ * An install fetches OpenModelica from conda-forge into a staging prefix,
  * proves it by running `omc --version`,
  * and only then moves it into the location {@link resolveOmc} probes. A prefix
  * at that location has therefore always run, so no health state has to be
@@ -9,7 +9,8 @@
  * until the new one has landed.
  *
  * Network, subprocess, filesystem and progress are injected. The micromamba to
- * run and the digest it must match are fixed here, not supplied by a caller.
+ * run, the digest it must match and the packages it fetches are fixed here, not
+ * supplied by a caller.
  *
  * Every path is derived from the one root this extension owns, so nothing here
  * can be aimed at a directory an install did not create.
@@ -17,6 +18,7 @@
 
 import { createHash } from "node:crypto";
 
+import { LOCKFILES, LOCKFILE_OMC_VERSION } from "./lockfile.generated.js";
 import {
   condaSubdir,
   micromambaRelease,
@@ -33,6 +35,7 @@ const STAGING_PREFIX = "staging";
 const SUPERSEDED_PREFIX = "previous";
 const MICROMAMBA_BINARY = "micromamba";
 const PACKAGE_CACHE = "cache";
+const LOCKFILE_NAME = "lock.txt";
 
 /**
  * What an install needs free under the managed root: 0.77 GB of package
@@ -146,6 +149,8 @@ interface ManagedLayout {
   readonly superseded: string;
   readonly tool: string;
   readonly cache: string;
+  /** Inside the cache, so the same removal that clears one clears both. */
+  readonly lockfile: string;
 }
 
 function layoutFor(homeDir: string, platform: NodeJS.Platform): ManagedLayout {
@@ -158,13 +163,15 @@ function layoutFor(homeDir: string, platform: NodeJS.Platform): ManagedLayout {
     );
   }
   const root = managedRoot(homeDir, platform);
+  const cache = paths.join(root, PACKAGE_CACHE);
   return {
     root,
     current: managedPrefix(root, platform),
     staging: paths.join(root, STAGING_PREFIX),
     superseded: paths.join(root, SUPERSEDED_PREFIX),
     tool: paths.join(root, MICROMAMBA_BINARY),
-    cache: paths.join(root, PACKAGE_CACHE),
+    cache,
+    lockfile: paths.join(cache, LOCKFILE_NAME),
   };
 }
 
@@ -212,11 +219,12 @@ export async function installManagedOmc(
     );
   }
 
-  // `openmodelica=` with nothing after it resolves to the newest build there
-  // is, which is exactly what naming a version is meant to prevent.
-  if (!/^\d+\.\d+(\.\d+)?$/.test(input.version)) {
+  // The lockfile is what an install fetches, so a caller asking for anything
+  // else would silently get the locked version instead.
+  if (input.version !== LOCKFILE_OMC_VERSION) {
     throw new Error(
-      `${JSON.stringify(input.version)} is not a concrete OpenModelica version.`,
+      `The committed lockfile installs OpenModelica ${LOCKFILE_OMC_VERSION}, not ${JSON.stringify(input.version)}. ` +
+        `Regenerate it: node scripts/update-lockfiles.mjs ${input.version}`,
     );
   }
 
@@ -240,7 +248,7 @@ export async function installManagedOmc(
 
   try {
     await installMicromamba(layout, subdir, input, deps);
-    await createPrefix(layout, input, deps);
+    await createPrefix(layout, subdir, input, deps);
     const version = await verifyPrefix(layout, input.platform, deps);
     await promote(layout, deps);
     await discardPackageCache(layout, deps);
@@ -343,26 +351,38 @@ async function installMicromamba(
   await deps.fs.makeExecutable(layout.tool);
 }
 
+/**
+ * Create the staging prefix from the committed lockfile.
+ *
+ * An explicit file names every package as a URL and the digest micromamba must
+ * find behind it, so there is no solve: the environment is the one the lockfile
+ * was generated against rather than whatever conda-forge holds today, every URL
+ * is a conda-forge one by construction, and a package that changed underneath
+ * its URL fails the install instead of entering the prefix.
+ */
 async function createPrefix(
   layout: ManagedLayout,
+  subdir: CondaSubdir,
   input: InstallOmcInput,
   deps: InstallOmcDeps,
 ): Promise<void> {
   throwIfCancelled(deps.signal);
   deps.report({ phase: "installing-openmodelica" });
+  await deps.fs.makeDirectory(layout.cache);
+  await deps.fs.writeFile(
+    layout.lockfile,
+    new TextEncoder().encode(LOCKFILES[subdir]),
+  );
+
   const result = await runOrFail(deps, "install-failed", {
     command: layout.tool,
     args: [
       "create",
       "--prefix",
       layout.staging,
-      // Pinned in code rather than left to micromamba's default, so an install
-      // can never fall through to a channel with other license terms.
-      "--channel",
-      "conda-forge",
-      "--override-channels",
+      "--file",
+      layout.lockfile,
       "--yes",
-      `openmodelica=${input.version}`,
     ],
     env: micromambaEnvironment(layout, input.proxy),
     signal: deps.signal,

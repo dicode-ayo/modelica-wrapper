@@ -38,6 +38,7 @@ const STAGING = `${ROOT}/staging`;
 const PREVIOUS = `${ROOT}/previous`;
 const TOOL = `${ROOT}/micromamba`;
 const CACHE = `${ROOT}/cache`;
+const LOCK = `${CACHE}/lock.txt`;
 const VERSION = "1.27.0";
 
 const ENOUGH_SPACE = 9_000_000_000;
@@ -65,6 +66,7 @@ interface HarnessOptions {
 function harness(options: HarnessOptions = {}) {
   const existing = new Set(options.existing ?? []);
   const ops: string[] = [];
+  const written = new Map<string, string>();
   const runs: ProcessRequest[] = [];
   const downloads: Parameters<DownloadFile>[0][] = [];
   const progress: InstallProgress[] = [];
@@ -77,8 +79,9 @@ function harness(options: HarnessOptions = {}) {
       ops.push(`mkdir ${target}`);
       return Promise.resolve();
     },
-    writeFile: (target) => {
+    writeFile: (target, contents) => {
       existing.add(target);
+      written.set(target, new TextDecoder().decode(contents));
       ops.push(`write ${target}`);
       return Promise.resolve();
     },
@@ -123,6 +126,7 @@ function harness(options: HarnessOptions = {}) {
 
   return {
     ops,
+    written,
     runs,
     downloads,
     progress,
@@ -170,7 +174,9 @@ describe("installManagedOmc", () => {
       `remove ${STAGING}`,
       `write ${TOOL}`,
       `chmod ${TOOL}`,
-      `run ${TOOL} create --prefix ${STAGING} --channel conda-forge --override-channels --yes openmodelica=${VERSION}`,
+      `mkdir ${CACHE}`,
+      `write ${LOCK}`,
+      `run ${TOOL} create --prefix ${STAGING} --file ${LOCK} --yes`,
       `run ${STAGING}/bin/omc --version`,
       `move ${STAGING} -> ${CURRENT}`,
       `remove ${CACHE}`,
@@ -336,13 +342,13 @@ describe("installManagedOmc", () => {
     expect(h.existing.has(CURRENT)).toBe(false);
   });
 
-  it("refuses a version that is not concrete, which would solve to newest", async () => {
-    for (const version of ["", "  ", "latest", "1.x"]) {
+  it("refuses a version the committed lockfile does not install", async () => {
+    for (const version of ["", "latest", "1.26.4"]) {
       const h = harness();
 
       await expect(
         installManagedOmc(input({ version }), h.deps),
-      ).rejects.toThrow(/not a concrete OpenModelica version/);
+      ).rejects.toThrow(/committed lockfile installs OpenModelica/);
       expect(h.downloads).toEqual([]);
       expect(h.runs).toEqual([]);
     }
@@ -366,15 +372,33 @@ describe("installManagedOmc", () => {
     expect(h.downloads).toEqual([]);
   });
 
-  it("installs the version the caller was audited against, from conda-forge only", async () => {
+  it("fetches only digest-pinned conda-forge packages", async () => {
     const h = harness();
 
-    await installManagedOmc(input({ version: "1.26.4" }), h.deps);
+    await installManagedOmc(input(), h.deps);
 
-    const args = h.runs.find((r) => r.command === TOOL)?.args ?? [];
-    expect(args).toContain("openmodelica=1.26.4");
-    expect(args).toContain("--override-channels");
-    expect(args.at(args.indexOf("--channel") + 1)).toBe("conda-forge");
+    const [header, ...urls] = (h.written.get(LOCK) ?? "").trim().split("\n");
+    expect(header).toBe("@EXPLICIT");
+    expect(urls.length).toBeGreaterThan(0);
+    expect(
+      urls.filter(
+        (url) =>
+          !/^https:\/\/conda\.anaconda\.org\/conda-forge\/.+#[0-9a-f]{64}$/.test(
+            url,
+          ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("locks the subdir the install is running on, not the one it was generated on", async () => {
+    const h = harness();
+
+    await installManagedOmc(
+      input({ platform: "darwin", arch: "arm64" }),
+      h.deps,
+    );
+
+    expect(h.written.get(LOCK)).toContain("/conda-forge/osx-arm64/");
   });
 
   it("recovers an installation stranded by an interrupted swap", async () => {

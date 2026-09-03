@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import {
+  LOCKFILE_OMC_VERSION,
   OmcInstallError,
   type FileProbe,
   type InstallOmcInput,
@@ -220,6 +221,10 @@ describe("the managed install", () => {
     await runCommand(INSTALL_COMMAND);
 
     expect(installer.installs.at(0)?.version).toBe(SUPPORTED_OMC.primary);
+    // Renovate moves the pin on its own; the lockfile moves only when someone
+    // regenerates it, and an install asked for a version it does not carry
+    // fails on the user's machine rather than here.
+    expect(installer.installs.at(0)?.version).toBe(LOCKFILE_OMC_VERSION);
     setup.dispose();
   });
 
