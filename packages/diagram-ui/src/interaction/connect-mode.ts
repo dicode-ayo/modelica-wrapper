@@ -133,10 +133,20 @@ export class ConnectMode implements GestureMode {
   private snapKey(e: PointerEvent, excludeKey: string): string | null {
     const node = this.picker(e.clientX, e.clientY);
     const entity = node ? entityKeyForNode(node) : null;
-    if (!entity || entity.kind !== "connector") {
+    if (!entity) {
       return null;
     }
-    const key = formatKey("connector", entity.nodeId);
+    // A drop can land on the target's port disc as well as its body — the
+    // disc sits at the connector's center, exactly where a route terminates.
+    const key =
+      entity.kind === "connector"
+        ? formatKey("connector", entity.nodeId)
+        : entity.kind === "port"
+          ? ownerOfPort(node)
+          : null;
+    if (key === null) {
+      return null;
+    }
     return key === excludeKey ? null : key;
   }
 }

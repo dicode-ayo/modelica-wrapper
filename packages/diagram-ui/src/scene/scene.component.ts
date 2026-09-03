@@ -29,6 +29,7 @@ import {
   FALLBACK_CANVAS_HEIGHT,
   FALLBACK_CANVAS_WIDTH,
 } from "../constants.js";
+import { entityKeyForNode, readEntityMeta } from "../interaction/node-keys.js";
 import { PanZoom } from "./pan-zoom.js";
 import {
   clientToDiagram as computeClientToDiagram,
@@ -351,7 +352,20 @@ export class OmScene extends LitElement {
     // subtree may be stale even with a live renderer — refresh before
     // every pick or a container reads as identity.
     refreshWorldTransforms(stage, null);
-    return pickAtPoint(stage, x, y);
+    const hit = pickAtPoint(stage, x, y);
+    // An edge's pick band follows the route into the connector it terminates
+    // on and outranks a nested port's component subtree (band zIndex > 0), so
+    // it would swallow the press that starts or drops a connection there. A
+    // connector or port under the band wins the pick; anything else (a
+    // component the band crosses, empty space) keeps the edge.
+    if (hit && readEntityMeta(hit)?.kind === "edge") {
+      const under = pickAtPoint(stage, x, y, isEdgeNode);
+      const kind = under ? entityKeyForNode(under)?.kind : undefined;
+      if (under && (kind === "connector" || kind === "port")) {
+        return under;
+      }
+    }
+    return hit;
   }
 
   clientToDiagram(
@@ -493,11 +507,17 @@ const tmpLocal = new Point();
  * target when its `eventMode` is `"static"`/`"dynamic"`; `"none"` skips
  * the whole subtree. `hitArea` overrides geometry; otherwise a node's
  * own `containsPoint` (e.g. `Graphics`/`Sprite`) is tested in its local
- * space. Hand-rolled rather than Pixi's `EventBoundary`, which only
- * hit-tests once the renderer has installed its event mixin — absent
+ * space. `exclude` drops individual nodes from the pick without skipping
+ * their subtrees. Hand-rolled rather than Pixi's `EventBoundary`, which
+ * only hit-tests once the renderer has installed its event mixin — absent
  * renderer-less and before the first frame.
  */
-function pickAtPoint(node: Container, x: number, y: number): Container | null {
+function pickAtPoint(
+  node: Container,
+  x: number,
+  y: number,
+  exclude?: (node: Container) => boolean,
+): Container | null {
   if (node.visible === false || node.renderable === false) {
     return null;
   }
@@ -509,17 +529,21 @@ function pickAtPoint(node: Container, x: number, y: number): Container | null {
     for (let i = ordered.length - 1; i >= 0; i--) {
       const child = ordered[i];
       if (child) {
-        const hit = pickAtPoint(child, x, y);
+        const hit = pickAtPoint(child, x, y, exclude);
         if (hit) {
           return hit;
         }
       }
     }
   }
-  if (isPickable(node) && containsGlobalPoint(node, x, y)) {
+  if (!exclude?.(node) && isPickable(node) && containsGlobalPoint(node, x, y)) {
     return node;
   }
   return null;
+}
+
+function isEdgeNode(node: Container): boolean {
+  return readEntityMeta(node)?.kind === "edge";
 }
 
 function isPickable(node: Container): boolean {
