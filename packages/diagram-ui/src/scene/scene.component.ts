@@ -352,7 +352,7 @@ export class OmScene extends LitElement {
     // subtree may be stale even with a live renderer — refresh before
     // every pick or a container reads as identity.
     refreshWorldTransforms(stage, null);
-    const hit = pickAtPoint(stage, x, y, null);
+    const hit = pickAtPoint(stage, x, y);
     // An edge's pick band follows the route into the connector it terminates
     // on and outranks a nested port's component subtree (band zIndex > 0), so
     // it would swallow the press that starts or drops a connection there. A
@@ -516,7 +516,7 @@ function pickAtPoint(
   node: Container,
   x: number,
   y: number,
-  exclude: ((node: Container) => boolean) | null,
+  exclude?: (node: Container) => boolean,
 ): Container | null {
   if (node.visible === false || node.renderable === false) {
     return null;

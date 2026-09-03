@@ -71,20 +71,6 @@ describe("buildEdge", () => {
     expect(area.contains(30, 0)).toBe(false);
   });
 
-  it("leaves a default hit tube covering its tips (poly host shapes terminate on nothing)", () => {
-    const tube = buildHitTube(
-      "tube",
-      [
-        [0, 0],
-        [30, 0],
-      ],
-      1.5,
-      0xffffff,
-    );
-    expect(tube.hitArea?.contains(0, 0)).toBe(true);
-    expect(tube.hitArea?.contains(30, 0)).toBe(true);
-  });
-
   it("scales a clocked dash rhythm by worldPerPixel so it reads a constant size on screen", () => {
     const longPath: Array<[number, number]> = [
       [0, 0],
@@ -118,6 +104,22 @@ describe("buildEdge", () => {
     // The legacy fallback still produces a dashed (segmented) line, not a
     // single continuous run.
     expect(dashCount(result.line)).toBeGreaterThan(1);
+  });
+});
+
+describe("buildHitTube", () => {
+  it("leaves a default hit tube covering its tips (poly host shapes terminate on nothing)", () => {
+    const tube = buildHitTube(
+      "tube",
+      [
+        [0, 0],
+        [30, 0],
+      ],
+      1.5,
+      0xffffff,
+    );
+    expect(tube.hitArea?.contains(0, 0)).toBe(true);
+    expect(tube.hitArea?.contains(30, 0)).toBe(true);
   });
 });
 

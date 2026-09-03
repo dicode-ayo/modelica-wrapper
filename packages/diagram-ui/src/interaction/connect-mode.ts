@@ -137,7 +137,7 @@ export class ConnectMode implements GestureMode {
       return null;
     }
     // A drop can land on the target's port disc as well as its body — the
-    // disc sits at the connector's centre, exactly where a route terminates.
+    // disc sits at the connector's center, exactly where a route terminates.
     const key =
       entity.kind === "connector"
         ? formatKey("connector", entity.nodeId)

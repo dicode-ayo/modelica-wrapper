@@ -118,9 +118,9 @@ describe("<om-scene>", () => {
     expect(pt.y).toBeCloseTo(-3);
   });
 
-  describe("pick with an edge terminating on a nested port", () => {
+  describe("pick with an edge terminating on a connector at each end", () => {
     // Default zoom 100 on the 800x600 fallback canvas → 3 px per diagram
-    // unit, diagram origin at the canvas centre.
+    // unit, diagram origin at the canvas center.
     const PPU = H / (2 * 100);
     const canvasPt = (x: number, y: number) => ({
       x: W / 2 + PPU * x,
@@ -128,10 +128,14 @@ describe("<om-scene>", () => {
     });
 
     /**
-     * Component R1 spanning x 10..30 with its port `p` at (30, 0), and a
-     * connection routed from (0, 0) into the port's centre — the edge's
-     * pick band therefore runs across empty space, the component body and
-     * the connector.
+     * Component R1 spanning x 10..30 with its port `p` at (30, 0), a
+     * standalone connector `src` at (0, 0), and a connection routed
+     * between the two centers — the edge's pick band therefore runs
+     * across both connectors, the component body and empty space.
+     *
+     * `src` carries the `zIndex` an `OmConnector` gets from its `zOffset`
+     * of -1.5; the nested port has none of its own, inheriting its owning
+     * component's 0.
      */
     async function mountPickScene(): Promise<SceneContext> {
       const el = await mountScene();
@@ -148,6 +152,12 @@ describe("<om-scene>", () => {
       conn.position.set(30, 0);
       comp.addChild(conn);
       ctx.diagramRoot.addChild(comp);
+      const standalone = new Container();
+      tagEntity(standalone, "connector", "src");
+      standalone.eventMode = "static";
+      standalone.hitArea = new Circle(0, 0, 3);
+      standalone.zIndex = 1.5;
+      ctx.diagramRoot.addChild(standalone);
       const meshes = buildEdge(ctx.diagramRoot, "om-edge:0", {
         points: [
           [0, 0],
@@ -189,6 +199,12 @@ describe("<om-scene>", () => {
     it("keeps the edge pick over empty space", async () => {
       const ctx = await mountPickScene();
       expect(kindAt(ctx, 5, 0)).toEqual({ kind: "edge", nodeId: "0" });
+    });
+
+    it("resolves the standalone connector the band overlaps at the far end", async () => {
+      const ctx = await mountPickScene();
+      expect(kindAt(ctx, 0, 0)).toEqual({ kind: "connector", nodeId: "src" });
+      expect(kindAt(ctx, 2, 0)).toEqual({ kind: "connector", nodeId: "src" });
     });
   });
 

@@ -17,17 +17,14 @@ import type { Point } from "@dicode/omc-client";
  * follow-the-line pick behaviour.
  *
  * `excludeEnds` carves a `radius` disc around each terminal point out of
- * the hit area. A connection route terminates at the centre of the entity
- * it lands on, so without the exclusion the band swallows every pick on
- * that spot — which belongs to the connector, not the edge. Poly host
- * shapes keep the full band: their tips terminate on nothing.
+ * the hit area, leaving that spot to whatever the polyline lands on.
  */
 export function buildHitTube(
   name: string,
   points: ReadonlyArray<Point>,
   radius: number,
   color: number,
-  excludeEnds = false,
+  { excludeEnds = false }: { excludeEnds?: boolean } = {},
 ): Graphics {
   const g = new Graphics({ label: name });
   g.alpha = 0;
