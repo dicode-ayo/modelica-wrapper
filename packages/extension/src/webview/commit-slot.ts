@@ -27,20 +27,22 @@ const defaultScheduler: CommitScheduler = {
  * for one reconcile instead of one per gesture.
  */
 export class CommitSlot {
-  private queued: DiagramLayout | null = null;
+  private queued: { layout: DiagramLayout; basedOn: number } | null = null;
   private timer: { cancel(): void } | undefined;
-  /** True from a refused/discarded `layout` push (per {@link takePush}) until
-   *  the next one actually lands. Read alongside the layout by `send`. */
-  private stale = false;
 
   constructor(
-    private readonly send: (layout: DiagramLayout, staleBase: boolean) => void,
+    private readonly send: (layout: DiagramLayout, basedOn: number) => void,
     private readonly scheduler: CommitScheduler = defaultScheduler,
   ) {}
 
-  /** Take a commit, replacing any still waiting, and restart the debounce. */
-  commit(layout: DiagramLayout): void {
-    this.queued = layout;
+  /**
+   * Take a commit, replacing any still waiting, and restart the debounce.
+   * `basedOn` is the `layoutVersion` of the last host push the webview
+   * applied — captured per commit, since it names the base this layout was
+   * computed against, and it rides out with the layout on flush.
+   */
+  commit(layout: DiagramLayout, basedOn: number): void {
+    this.queued = { layout, basedOn };
     this.timer?.cancel();
     this.timer = this.scheduler.schedule(
       () => this.flush(),
@@ -54,30 +56,28 @@ export class CommitSlot {
   }
 
   /**
-   * Whether an arriving layout push may be applied, recording the verdict: a
-   * refused push leaves the diagram showing state the host does not know it
-   * has not seen, which rides out on the next commit as `staleBase`.
+   * Whether an arriving layout push may be applied.
    *
    * The host settles once its own queue drains, which says nothing about work
    * the webview has not sent yet — a commit still held here, or a gesture that
    * has committed nothing at all. A push raised without sight of either is
    * older than what is on screen, and applying it puts the user's own edit
-   * back undone until the settle for it arrives.
+   * back undone until the settle for it arrives. A refused push is discarded
+   * without an ack: the host reads the miss off the `basedOn` the next report
+   * echoes, and re-sends what was missed as a forced settle.
    */
-  takePush(gestureActive: boolean): boolean {
-    const applicable = !gestureActive && this.queued === null;
-    this.stale = !applicable;
-    return applicable;
+  canApplyPush(gestureActive: boolean): boolean {
+    return !gestureActive && this.queued === null;
   }
 
-  /** Send whatever is held, now — the debounce is an optimisation, and losing
+  /** Send whatever is held, now — the debounce is an optimization, and losing
    *  a commit to a teardown is not a trade it is allowed to make. */
   flush(): void {
     this.timer?.cancel();
     this.timer = undefined;
-    const layout = this.queued;
-    if (layout === null) return;
+    const queued = this.queued;
+    if (queued === null) return;
     this.queued = null;
-    this.send(layout, this.stale);
+    this.send(queued.layout, queued.basedOn);
   }
 }

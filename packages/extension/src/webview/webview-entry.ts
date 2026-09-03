@@ -114,8 +114,12 @@ class OmWebviewRoot extends LitElement {
    *  gates whether the form is read-only. Reactive — `render` reads it. */
   @state() private paramKind: ParameterFormKind | null = null;
 
-  private readonly commits = new CommitSlot((layout, staleBase) =>
-    this.vscode?.postMessage({ type: "change", layout, staleBase }),
+  /** `layoutVersion` of the last host push applied, echoed as each commit's
+   *  `basedOn` so the host can tell which layouts this report has seen. */
+  private layoutVersion = 0;
+
+  private readonly commits = new CommitSlot((layout, basedOn) =>
+    this.vscode?.postMessage({ type: "change", layout, basedOn }),
   );
 
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
@@ -225,13 +229,23 @@ class OmWebviewRoot extends LitElement {
     this.apply(data);
   };
 
+  /**
+   * Adopt a pushed layout and the stamp it carries together — the stamp is
+   * what the next commit echoes, so a push applied without it would report a
+   * base the host has already superseded.
+   */
+  private adoptPush(message: { layout: DiagramLayout; layoutVersion: number }) {
+    this.layout = message.layout;
+    this.layoutVersion = message.layoutVersion;
+    this.renderError = null;
+  }
+
   private apply(message: ExtensionToWebview): void {
     switch (message.type) {
       case "init":
         this.readOnly = message.readOnly;
         this.hasClipboard = message.hasClipboard;
-        this.layout = message.layout;
-        this.renderError = null;
+        this.adoptPush(message);
         return;
       case "clipboard":
         this.hasClipboard = message.hasClipboard;
@@ -240,11 +254,13 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
-        if (!this.commits.takePush(this.diagram?.gestureActive === true)) {
+        // A refused push leaves `layoutVersion` on the last applied push, so
+        // the next commit's `basedOn` tells the host this one was missed and
+        // its forced settle re-sends it.
+        if (!this.commits.canApplyPush(this.diagram?.gestureActive === true)) {
           return;
         }
-        this.layout = message.layout;
-        this.renderError = null;
+        this.adoptPush(message);
         return;
       case "renderError":
         this.renderError = message;
@@ -305,7 +321,7 @@ class OmWebviewRoot extends LitElement {
     // as one thing. They diverge from the first gesture otherwise, and every
     // later render binds one that predates it.
     this.layout = e.detail;
-    this.commits.commit(e.detail);
+    this.commits.commit(e.detail, this.layoutVersion);
   };
 
   private onConnectionCreate = (

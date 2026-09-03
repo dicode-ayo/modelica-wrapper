@@ -26,7 +26,7 @@ function layout(): DiagramLayout {
 /** One well-formed message per declared gesture. */
 const SAMPLES: WebviewToExtension[] = [
   { type: "ready" },
-  { type: "change", layout: layout(), staleBase: false },
+  { type: "change", layout: layout(), basedOn: 1 },
   {
     type: "connectionCreate",
     fromKey: "a",
@@ -128,22 +128,28 @@ describe("isGestureMessage", () => {
     const reject = vi.fn();
     expect(
       isGestureMessage(
-        { type: "change", layout: { kind: "x" }, staleBase: false },
+        { type: "change", layout: { kind: "x" }, basedOn: 1 },
         reject,
       ),
     ).toBe(false);
   });
 
-  it("rejects a change whose staleBase is not a boolean", () => {
+  it("rejects a change whose basedOn is not a finite number", () => {
     const reject = vi.fn();
     expect(
       isGestureMessage(
-        { type: "change", layout: layout(), staleBase: "false" },
+        { type: "change", layout: layout(), basedOn: "1" },
+        reject,
+      ),
+    ).toBe(false);
+    expect(
+      isGestureMessage(
+        { type: "change", layout: layout(), basedOn: NaN },
         reject,
       ),
     ).toBe(false);
     expect(reject).toHaveBeenCalledWith(
-      expect.stringContaining("change.staleBase"),
+      expect.stringContaining("change.basedOn"),
     );
   });
 });
@@ -151,7 +157,7 @@ describe("isGestureMessage", () => {
 describe("iconHonorsGesture", () => {
   it("honors shape work, connector placement and the clipboard", () => {
     expect(
-      iconHonorsGesture({ type: "change", layout: layout(), staleBase: false }),
+      iconHonorsGesture({ type: "change", layout: layout(), basedOn: 1 }),
     ).toBe(true);
     expect(iconHonorsGesture({ type: "editShape", key: "shape:line:0" })).toBe(
       true,

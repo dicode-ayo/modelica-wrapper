@@ -50,13 +50,24 @@ export type ExtensionToWebview =
   | {
       type: "init";
       layout: DiagramLayout;
+      /** Stamp of `layout` — see the `layout` variant. */
+      layoutVersion: number;
       className: string;
       /** True for a read-only class (system library); the webview suppresses all edit affordances. */
       readOnly: boolean;
       /** Whether the window-wide diagram clipboard already holds something. */
       hasClipboard: boolean;
     }
-  | { type: "layout"; layout: DiagramLayout }
+  | {
+      type: "layout";
+      layout: DiagramLayout;
+      /**
+       * Monotonic per-editor stamp of this layout. The webview echoes the
+       * stamp of the last push it applied on every `change` report
+       * (`basedOn`) — see `DiagramEditController.applyChange`.
+       */
+      layoutVersion: number;
+    }
   | { type: "clipboard"; hasClipboard: boolean }
   | {
       // Replace the webview's selection — sent after a paste so the fresh
