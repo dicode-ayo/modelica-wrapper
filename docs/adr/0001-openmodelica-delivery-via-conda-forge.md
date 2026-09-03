@@ -50,5 +50,6 @@ and is deliberately not a prerequisite: installs run from a committed lockfile, 
 a slimmer package later is a data change rather than a code change.
 
 conda-forge is not subject to Anaconda's paid-license terms — those cover Anaconda's own
-`defaults` channel — but the channel is pinned explicitly in code rather than relying on
-micromamba's default, so this stays true by construction.
+`defaults` channel — and every package an install fetches is named by a conda-forge URL in
+the committed lockfile rather than resolved through whatever channel micromamba would
+default to, so this stays true by construction.

@@ -14,6 +14,11 @@ export const PIN_FILE = join(
 
 export const SUBDIRS = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"];
 
+const DIGEST = new RegExp(
+  `"(${SUBDIRS.join("|")})":\\s*\\n?\\s*"([0-9a-f]{64})"`,
+  "g",
+);
+
 /**
  * The committed tag and per-subdir digests. Reading the TypeScript rather than
  * importing it keeps these scripts runnable with plain `node`, no build step.
@@ -26,11 +31,10 @@ export async function readMicromambaPin() {
     throw new Error(`No MICROMAMBA_TAG found in ${PIN_FILE}.`);
   }
 
-  const digests = [
-    ...source.matchAll(
-      /"(linux-64|linux-aarch64|osx-64|osx-arm64)":\s*\n?\s*"([0-9a-f]{64})"/g,
-    ),
-  ].map(([, subdir, sha256]) => ({ subdir, sha256 }));
+  const digests = [...source.matchAll(DIGEST)].map(([, subdir, sha256]) => ({
+    subdir,
+    sha256,
+  }));
 
   if (digests.length !== SUBDIRS.length) {
     throw new Error(

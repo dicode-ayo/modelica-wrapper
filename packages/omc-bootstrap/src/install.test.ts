@@ -348,7 +348,7 @@ describe("installManagedOmc", () => {
 
       await expect(
         installManagedOmc(input({ version }), h.deps),
-      ).rejects.toThrow(/committed lockfile installs OpenModelica/);
+      ).rejects.toThrow(/cannot install/);
       expect(h.downloads).toEqual([]);
       expect(h.runs).toEqual([]);
     }

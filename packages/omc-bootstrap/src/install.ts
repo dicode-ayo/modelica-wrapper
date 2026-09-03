@@ -220,11 +220,12 @@ export async function installManagedOmc(
   }
 
   // The lockfile is what an install fetches, so a caller asking for anything
-  // else would silently get the locked version instead.
+  // else would silently get the locked version instead. Moving the OpenModelica
+  // pin means regenerating it: `pnpm --filter @dicode/omc-bootstrap
+  // update:lockfiles <version>`.
   if (input.version !== LOCKFILE_OMC_VERSION) {
     throw new Error(
-      `The committed lockfile installs OpenModelica ${LOCKFILE_OMC_VERSION}, not ${JSON.stringify(input.version)}. ` +
-        `Regenerate it: node scripts/update-lockfiles.mjs ${input.version}`,
+      `This build installs OpenModelica ${LOCKFILE_OMC_VERSION} and cannot install ${JSON.stringify(input.version)}.`,
     );
   }
 
