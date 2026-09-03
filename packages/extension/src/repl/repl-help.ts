@@ -3,7 +3,9 @@
  *
  * REPL-specific bits live here:
  *   - `META_COMMANDS` — the `:help`, `:load`, `:cd`, … set the REPL adds
- *     on top of OMC's API. Mirrored in `repl-eval.ts` (single source).
+ *     on top of OMC's API. The verb names are the single source of truth
+ *     for help text and completion; `repl-eval.ts`'s dispatcher still
+ *     hand-writes each verb as its own `switch` case (#588).
  *   - Topic routing — which kind of help the user is asking for.
  *
  * Everything else (per-function rendering, category lists, the OMC API
