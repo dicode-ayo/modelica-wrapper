@@ -135,7 +135,7 @@ jobs:
         run: runuser -u omcrunner -- pnpm --filter modelica-wrapper test
 
       - name: Build the extension bundle
-        run: pnpm --filter modelica-wrapper build
+        run: runuser -u omcrunner -- pnpm --filter modelica-wrapper build
 
   # End-to-end smoke: drive the built extension inside a real code-server via
   # Playwright. The baseline spec runs against `main`'s declarative
