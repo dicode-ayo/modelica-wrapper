@@ -147,19 +147,31 @@ jobs:
         id: probe
         if: always()
         run: |
-          if [ ! -f drift-probe-output.txt ]; then
-            echo "summary=(probe did not run)" >> "$GITHUB_OUTPUT"
+          # `tee` creates the file even when the probe never ran, so it is the
+          # absence of the summary marker, not of the file, that means there is
+          # no report. A probe that died still reaches the reviewer as a
+          # checklist, and an empty verdict block there reads as a clean audit.
+          if ! grep -q '^=== summary ===$' drift-probe-output.txt 2>/dev/null; then
+            {
+              echo "summary<<PROBE_EOF"
+              echo "**The drift probe produced no report.** Its last lines:"
+              echo ""
+              echo '```'
+              tail -n 20 drift-probe-output.txt 2>/dev/null || echo "(no output captured)"
+              echo '```'
+              echo "PROBE_EOF"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Pull just the per-probe verdicts and the summary tally so the
           # PR comment stays scannable. Full output remains in the artifact.
           {
-            echo "summary<<EOF"
+            echo "summary<<PROBE_EOF"
             sed -n '/^=== OMC drift probe ===/,/^=== summary ===$/p' drift-probe-output.txt \
               | grep -E '^(✓|⌀|✗|⚠|OMC:)' || true
             echo ""
             sed -n '/^=== summary ===$/,$p' drift-probe-output.txt
-            echo "EOF"
+            echo "PROBE_EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR with audit checklist + drift probe
