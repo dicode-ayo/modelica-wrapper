@@ -26,8 +26,13 @@ import {
 export interface MetaCommand {
   name: string;
   summary: string;
-  /** True when the argument is a filesystem path, never an OMC identifier. */
-  takesPathArg?: boolean;
+  /**
+   * What kind of argument the command takes, used to pick the right
+   * completion source: `"path"` for a filesystem path, `"omc-name"` for an
+   * OMC category or function name, `"none"` for a command that takes no
+   * argument at all.
+   */
+  argKind: "path" | "omc-name" | "none";
 }
 
 /**
@@ -36,21 +41,29 @@ export interface MetaCommand {
  * single source of truth.
  */
 export const META_COMMANDS: ReadonlyArray<MetaCommand> = [
-  { name: ":help", summary: "Show help (`:help <category|name>` for details)" },
-  { name: ":clear", summary: "Clear the terminal screen" },
+  {
+    name: ":help",
+    summary: "Show help (`:help <category|name>` for details)",
+    argKind: "omc-name",
+  },
+  { name: ":clear", summary: "Clear the terminal screen", argKind: "none" },
   {
     name: ":load",
     summary: "Call loadFile on a path (`:load <path>`)",
-    takesPathArg: true,
+    argKind: "path",
   },
   {
     name: ":cd",
     summary:
       "Show or change OMC's working directory (`:cd` to print, `:cd <path>` to change)",
-    takesPathArg: true,
+    argKind: "path",
   },
-  { name: ":reset", summary: "Close OMC and start a fresh subprocess" },
-  { name: ":exit", summary: "Close this REPL terminal" },
+  {
+    name: ":reset",
+    summary: "Close OMC and start a fresh subprocess",
+    argKind: "none",
+  },
+  { name: ":exit", summary: "Close this REPL terminal", argKind: "none" },
 ];
 
 const META_LABEL_WIDTH = 16;
