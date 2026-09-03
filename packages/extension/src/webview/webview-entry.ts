@@ -229,14 +229,23 @@ class OmWebviewRoot extends LitElement {
     this.apply(data);
   };
 
+  /**
+   * Adopt a pushed layout and the stamp it carries together — the stamp is
+   * what the next commit echoes, so a push applied without it would report a
+   * base the host has already superseded.
+   */
+  private adoptPush(message: { layout: DiagramLayout; layoutVersion: number }) {
+    this.layout = message.layout;
+    this.layoutVersion = message.layoutVersion;
+    this.renderError = null;
+  }
+
   private apply(message: ExtensionToWebview): void {
     switch (message.type) {
       case "init":
         this.readOnly = message.readOnly;
         this.hasClipboard = message.hasClipboard;
-        this.layout = message.layout;
-        this.layoutVersion = message.layoutVersion;
-        this.renderError = null;
+        this.adoptPush(message);
         return;
       case "clipboard":
         this.hasClipboard = message.hasClipboard;
@@ -245,15 +254,13 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
-        // A refused push is discarded, not deferred: `layoutVersion` stays on
-        // the last applied push, so the next commit's `basedOn` tells the host
-        // this one was missed and its forced settle re-sends it.
+        // A refused push leaves `layoutVersion` on the last applied push, so
+        // the next commit's `basedOn` tells the host this one was missed and
+        // its forced settle re-sends it.
         if (!this.commits.canApplyPush(this.diagram?.gestureActive === true)) {
           return;
         }
-        this.layout = message.layout;
-        this.layoutVersion = message.layoutVersion;
-        this.renderError = null;
+        this.adoptPush(message);
         return;
       case "renderError":
         this.renderError = message;

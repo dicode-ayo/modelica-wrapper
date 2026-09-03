@@ -70,7 +70,7 @@ export class CommitSlot {
     return !gestureActive && this.queued === null;
   }
 
-  /** Send whatever is held, now — the debounce is an optimisation, and losing
+  /** Send whatever is held, now — the debounce is an optimization, and losing
    *  a commit to a teardown is not a trade it is allowed to make. */
   flush(): void {
     this.timer?.cancel();

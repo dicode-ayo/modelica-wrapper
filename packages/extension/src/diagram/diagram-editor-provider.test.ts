@@ -2098,7 +2098,9 @@ describe("DiagramEditController: superseded-report reconcile (issue #513)", () =
     controller.dispose();
   });
 
-  it("does not read a component as deleted by a report that crossed its layout push on the wire", async () => {
+  /** Drop a component, then report a layout that never held it, echoing
+   *  `basedOn` as the stamp the report was computed against. */
+  async function dropThenReport(basedOn: number) {
     const { client, invoked } = makeEditClient({ instance: DROPPED });
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
@@ -2108,54 +2110,34 @@ describe("DiagramEditController: superseded-report reconcile (issue #513)", () =
       factory,
     );
 
-    // The drop completes and its layout push goes out...
     await controller.handle({
       type: "addComponent",
       className: "Modelica.Blocks.Math.Gain",
       position: { x: 5, y: 5 },
     });
-    // ...but this report was already in flight, flushed before that push
-    // reached the webview — `basedOn` still names the init layout.
-    await controller.handle({
-      type: "change",
-      layout: layout({}),
-      basedOn: 1,
-    });
+    await controller.handle({ type: "change", layout: layout({}), basedOn });
     await drain();
+    controller.dispose();
+    return { invoked, posted };
+  }
+
+  it("does not read a component as deleted by a report that crossed its layout push on the wire", async () => {
+    // The report was already in flight when the drop's push went out, flushed
+    // before it reached the webview — `basedOn` still names the init layout.
+    const { invoked, posted } = await dropThenReport(1);
 
     expect(invoked).not.toContain("deleteComponent");
     // The forced settle resyncs the webview onto what its report missed.
     expect(posted.filter((m) => m.type === "layout")).toHaveLength(2);
-    controller.dispose();
   });
 
   it("trusts a report raised against the layout the controller last published", async () => {
-    const { client, invoked } = makeEditClient({ instance: DROPPED });
-    const { gate } = makeGate();
-    const { factory } = makeShadowFactory();
-    const controller = new DiagramEditController(
-      controllerDeps({ client, gate }),
-      layout({}),
-      factory,
-    );
-
-    await controller.handle({
-      type: "addComponent",
-      className: "Modelica.Blocks.Math.Gain",
-      position: { x: 5, y: 5 },
-    });
     // The webview applied the drop's push (stamp 2) and the user then deleted
     // gain1 for real: the report has seen everything, so its omission is an
     // edit, not a miss.
-    await controller.handle({
-      type: "change",
-      layout: layout({}),
-      basedOn: 2,
-    });
-    await drain();
+    const { invoked } = await dropThenReport(2);
 
     expect(invoked).toContain("deleteComponent");
-    controller.dispose();
   });
 });
 

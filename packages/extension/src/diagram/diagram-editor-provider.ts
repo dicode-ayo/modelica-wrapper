@@ -95,12 +95,10 @@ import {
 export { DIAGRAM_VIEW_TYPE, ICON_VIEW_TYPE };
 
 /**
- * Stamp of the layout the `init` message seeds the webview with. The
- * controller's own counter starts here and `publishLayout` bumps it, so the
- * stamp on the wire and the one reports are checked against never diverge —
- * `init` goes out before the controller can have published anything.
+ * First stamp the controller mints. The webview holds 0 until a push lands,
+ * so a report raised before it has seen one always reads as stale.
  */
-export const INITIAL_LAYOUT_VERSION = 1;
+const INITIAL_LAYOUT_VERSION = 1;
 
 /**
  * Resolve the Modelica class a `.mo` document stands for. The
@@ -369,7 +367,7 @@ export function resolveDiagramEditor(
         gate.send({
           type: "init",
           layout,
-          layoutVersion: INITIAL_LAYOUT_VERSION,
+          layoutVersion: controller.canonicalLayoutVersion,
           className,
           readOnly: !verdict.ok,
           hasClipboard: !diagramClipboard.isEmpty,
@@ -511,6 +509,14 @@ export class DiagramEditController {
     this.shadow = makeShadow(() => this.onForeignChange());
     this.librarySource = new LibrarySource(deps.client);
     this.refetch = mode === "icon" ? fetchIconLayout : fetchDiagramLayout;
+  }
+
+  /**
+   * Stamp the `init` that seeds the webview carries, so the counter reports
+   * are checked against and the one on the wire have a single owner.
+   */
+  get canonicalLayoutVersion(): number {
+    return this.layoutVersion;
   }
 
   /**

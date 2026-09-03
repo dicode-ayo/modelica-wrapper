@@ -166,10 +166,7 @@ const GESTURES = {
   /**
    * User committed a layout change — the whole layout, not a diff.
    * `basedOn` echoes the `layoutVersion` of the last `init`/`layout` push the
-   * webview applied; a report echoing an older stamp than the host's current
-   * one was computed without sight of a layout the class already holds, and
-   * the host distrusts what such a report omits (see
-   * `DiagramEditController.applyChange`).
+   * webview applied — see `DiagramEditController.applyChange`.
    */
   change: gesture({
     payload: { layout: isDiagramLayout, basedOn: isFiniteNumber },
