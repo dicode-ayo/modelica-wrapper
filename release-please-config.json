@@ -40,6 +40,11 @@
       "package-name": "@dicode/omc-client",
       "changelog-path": "CHANGELOG.md"
     },
+    "packages/omc-bootstrap": {
+      "component": "@dicode/omc-bootstrap",
+      "package-name": "@dicode/omc-bootstrap",
+      "changelog-path": "CHANGELOG.md"
+    },
     "packages/lang-core": {
       "component": "@dicode/modelica-lang-core",
       "package-name": "@dicode/modelica-lang-core",

@@ -328,13 +328,17 @@ export class OmDocumentationEditor extends LitElement {
       ${STYLE}
       <div class="om-doc-header">
         <div class="om-doc-toolbar">
-          ${!this.readOnly && !this.showSource
-            ? this.renderFormatButtons()
-            : null}
+          ${
+            !this.readOnly && !this.showSource
+              ? this.renderFormatButtons()
+              : null
+          }
           ${this.renderSourceButton()}
-          ${this.readOnly
-            ? html`<span class="om-doc-badge">Read-only</span>`
-            : null}
+          ${
+            this.readOnly
+              ? html`<span class="om-doc-badge">Read-only</span>`
+              : null
+          }
         </div>
         ${this.linkEditing && !this.showSource ? this.renderLinkInput() : null}
       </div>

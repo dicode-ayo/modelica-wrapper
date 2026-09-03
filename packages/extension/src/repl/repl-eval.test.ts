@@ -260,6 +260,19 @@ describe("evalLine — meta commands", () => {
     expect(result.output).toContain(":load requires a path");
   });
 
+  it(":load<tab><path> is recognised the same as a space-separated argument", async () => {
+    // repl-complete.ts's selectSource splits the verb from its argument on
+    // any whitespace; this dispatcher must agree on where the verb ends or
+    // a tab-separated line it recognises as :load falls through to
+    // "unknown meta-command" here instead.
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":load\t/some/path.mo", deps);
+    expect(fake.loadFileCalls).toEqual(["/some/path.mo"]);
+    expect(result.output).toBe("loaded");
+    expect(result.isError).toBe(false);
+  });
+
   it(":cd <path> routes through the typed cd wrapper and returns the new cwd", async () => {
     const fake = makeClient();
     fake.cdReplies.set("/tmp", "/tmp");

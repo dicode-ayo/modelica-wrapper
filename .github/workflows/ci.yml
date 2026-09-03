@@ -17,7 +17,7 @@ jobs:
     name: Lint + format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: ESLint
@@ -31,7 +31,7 @@ jobs:
     name: Lint + unit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Type-check
@@ -39,6 +39,14 @@ jobs:
 
       - name: coverage.md ↔ filesystem recount
         run: pnpm --filter @dicode/omc-client coverage:recount
+
+      # Two drifts, both silent. Renovate bumps the micromamba tag but cannot
+      # recompute the digests committed beside it, so a bumped tag arrives with
+      # stale hashes; and an asset republished under an unchanged tag is worth
+      # learning here rather than from an install that dies at verification.
+      # Hence every run, not only when the pin file changes.
+      - name: micromamba digests ↔ pinned release
+        run: pnpm --filter @dicode/omc-bootstrap check:pin
 
       - name: Unit tests (parser, version, registry)
         env:
@@ -70,7 +78,7 @@ jobs:
           npm install -g pnpm@10.25.0
           useradd -m -s /bin/bash omcrunner
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify OMC matches the pin
         run: |
@@ -127,7 +135,7 @@ jobs:
     name: E2E (Playwright + code-server)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Build the extension bundle
@@ -153,7 +161,7 @@ jobs:
 
       - name: Upload Playwright traces + code-server logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts
           path: |
@@ -170,7 +178,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Install Playwright Chromium + system deps
@@ -181,7 +189,7 @@ jobs:
 
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagram-ui-e2e-artifacts
           path: |

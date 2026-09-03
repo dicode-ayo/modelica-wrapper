@@ -22,7 +22,7 @@ const require = createRequire(import.meta.url);
  * sit next to the bundle at runtime so the extension can load them by
  * absolute path (esbuild can't inline a WASM the way it can a `.css`):
  *
- *   1. `tree-sitter.wasm`           — the web-tree-sitter runtime (Emscripten
+ *   1. `web-tree-sitter.wasm`       — the web-tree-sitter runtime (Emscripten
  *      core), shipped by the npm package; located via `require.resolve`.
  *   2. `tree-sitter-modelica.wasm`  — the OpenModelica grammar, fetched on
  *      install by `scripts/fetch-grammar-wasm.mjs` into `grammar/` (see
@@ -35,10 +35,10 @@ const require = createRequire(import.meta.url);
  * (`GRAMMAR_WASM_SHA256`) are imported from `grammar/grammar-source.mjs` — the
  * single source of truth shared with the fetch script — so the supply-chain pin
  * (and the routine that verifies it) live in exactly one place. The runtime
- * `tree-sitter.wasm` comes from the npm package and is already integrity-pinned
+ * `web-tree-sitter.wasm` comes from the npm package and is already integrity-pinned
  * by the lockfile, so only the grammar is verified here.
  */
-const RUNTIME_WASM_FILENAME = "tree-sitter.wasm";
+const RUNTIME_WASM_FILENAME = "web-tree-sitter.wasm";
 const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
 
 const wasmAssets = [

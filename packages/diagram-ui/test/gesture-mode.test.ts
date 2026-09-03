@@ -8,8 +8,8 @@ describe("MOVE_KINDS", () => {
     expect(MOVE_KINDS.has("shape")).toBe(true);
   });
 
-  it("still excludes connectors (a connector pick starts a connection)", () => {
-    expect(MOVE_KINDS.has("connector")).toBe(false);
+  it("includes connectors so a standalone connector pick begins a move-drag", () => {
+    expect(MOVE_KINDS.has("connector")).toBe(true);
   });
 });
 

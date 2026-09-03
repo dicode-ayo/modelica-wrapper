@@ -8,10 +8,7 @@ import * as vscode from "vscode";
  * a compile error, not a silently-wrong URL.
  */
 export type WebviewEntry =
-  | "webview"
-  | "documentation"
-  | "library-view"
-  | "postprocessing";
+  "webview" | "documentation" | "library-view" | "postprocessing";
 
 /** Every {@link WebviewEntry}, for callers (namely tests) that need to enumerate them. */
 export const ALL_WEBVIEW_ENTRIES: readonly WebviewEntry[] = [

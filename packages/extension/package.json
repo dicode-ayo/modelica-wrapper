@@ -7,7 +7,7 @@
   "private": true,
   "engines": {
     "vscode": "^1.95.0",
-    "node": ">=20"
+    "node": ">=24.20.0"
   },
   "categories": [
     "Programming Languages",
@@ -103,6 +103,18 @@
       }
     ],
     "commands": [
+      {
+        "command": "modelica.setupOmc",
+        "title": "Modelica: Set Up OpenModelica"
+      },
+      {
+        "command": "modelica.installOmc",
+        "title": "Modelica: Install OpenModelica"
+      },
+      {
+        "command": "modelica.removeOmc",
+        "title": "Modelica: Remove the Installed OpenModelica"
+      },
       {
         "command": "modelica.getOmcVersion",
         "title": "Modelica: Show OMC Version"
@@ -457,7 +469,8 @@
         "modelica.omcPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the omc binary. Leave empty to use 'omc' from PATH."
+          "scope": "machine-overridable",
+          "description": "Path to the omc binary. Leave empty to use a managed installation, or 'omc' from PATH."
         },
         "modelica.checkOnEdit": {
           "type": "boolean",
@@ -486,6 +499,8 @@
     "test:e2e:ui": "cd e2e && npm run test:ui",
     "test:e2e:debug": "cd e2e && npm run test:debug",
     "test:e2e:omc": "cd e2e && npm run test:omc",
+    "test:coverage": "OMC_INTEGRATION=0 vitest run --passWithNoTests --coverage",
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\"",
     "package": "node esbuild.config.mjs --production && vsce package --no-dependencies --allow-missing-repository"
   },
   "dependencies": {
@@ -494,19 +509,21 @@
     "@dicode/documentation-ui": "workspace:*",
     "@dicode/modelica-completion": "workspace:*",
     "@dicode/modelica-lang-core": "workspace:*",
+    "@dicode/omc-bootstrap": "workspace:*",
     "@dicode/omc-client": "workspace:*",
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",
-    "lit": "^3.2.0",
-    "web-tree-sitter": "^0.25.10",
-    "zeromq": "^6.1.0"
+    "lit": "^3.3.3",
+    "web-tree-sitter": "^0.27.0",
+    "zeromq": "^6.6.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/vscode": "^1.95.0",
+    "@types/node": "^24.13.3",
+    "@types/vscode": "^1.134.0",
+    "@vitest/coverage-istanbul": "^4.1.11",
     "@vscode/vsce": "^3.9.2",
-    "esbuild": "^0.24.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }

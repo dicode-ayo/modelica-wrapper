@@ -40,7 +40,7 @@ export async function rasterizeSvgToTexture(
     console.error("[diagram-ui] SVG → Texture decode failed:", cause, {
       svgPreview: svg.slice(0, 200),
     });
-    throw new Error(`Failed to decode SVG: ${message}`);
+    throw new Error(`Failed to decode SVG: ${message}`, { cause });
   }
 
   const source = new ImageSource({

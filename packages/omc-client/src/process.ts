@@ -14,6 +14,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { condaActivatedEnv, nodeDirectoryProbe } from "./conda.js";
 import {
   OMC_PID_FILE,
   WRAPPER_USER,
@@ -45,7 +46,7 @@ export async function spawnOmc(
   const tempDir = await mkdtemp(join(tmpdir(), sessionDirPrefix(process.pid)));
   const portFile = join(tempDir, portFileName(suffix));
 
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env = await condaActivatedEnv(bin, process.env, nodeDirectoryProbe);
   if (process.platform === "win32") {
     // GetTempPath() consults TMP, then TEMP, then USERPROFILE.
     env.TMP = tempDir;

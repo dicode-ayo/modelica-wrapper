@@ -158,6 +158,37 @@ describe("drag", () => {
     ]);
   });
 
+  it("moves a standalone connector and grid-snaps it on commit like a component", () => {
+    const base = baseLayout();
+    const p = base.connectors["p"];
+    if (p === undefined) {
+      throw new Error("fixture lost p");
+    }
+    const layout: DiagramLayout = {
+      ...base,
+      connectors: {
+        ...base.connectors,
+        p: {
+          ...p,
+          placement: {
+            extent: [
+              [-50.5, -2],
+              [-46.5, 2],
+            ],
+          },
+        },
+      },
+    };
+    const committed = effects(
+      { type: "drag", detail: { keys: ["k:p"], dx: 2, dy: 0, draft: false } },
+      { layout },
+    );
+    expect(layoutOf(committed).connectors["p"]?.placement.extent).toEqual([
+      [-48, -2],
+      [-44, 2],
+    ]);
+  });
+
   it("leaves an off-grid entity alone when the grid is disabled", () => {
     const layout = offGrid();
     const list = effects(

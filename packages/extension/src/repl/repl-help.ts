@@ -3,7 +3,9 @@
  *
  * REPL-specific bits live here:
  *   - `META_COMMANDS` — the `:help`, `:load`, `:cd`, … set the REPL adds
- *     on top of OMC's API. Mirrored in `repl-eval.ts` (single source).
+ *     on top of OMC's API. The verb names are the single source of truth
+ *     for help text and completion; `repl-eval.ts`'s dispatcher still
+ *     hand-writes each verb as its own `switch` case (#588).
  *   - Topic routing — which kind of help the user is asking for.
  *
  * Everything else (per-function rendering, category lists, the OMC API
@@ -21,19 +23,31 @@ import {
   type OmcFnName,
 } from "@dicode/omc-client";
 
+export interface MetaCommand {
+  name: string;
+  summary: string;
+  /** True when the argument is a filesystem path, never an OMC identifier. */
+  takesPathArg?: boolean;
+}
+
 /**
  * Meta-commands recognised by the REPL. Kept here (rather than in
  * `repl-eval.ts`) so the help renderer + the completion source share a
  * single source of truth.
  */
-export const META_COMMANDS: ReadonlyArray<{ name: string; summary: string }> = [
+export const META_COMMANDS: ReadonlyArray<MetaCommand> = [
   { name: ":help", summary: "Show help (`:help <category|name>` for details)" },
   { name: ":clear", summary: "Clear the terminal screen" },
-  { name: ":load", summary: "Call loadFile on a path (`:load <path>`)" },
+  {
+    name: ":load",
+    summary: "Call loadFile on a path (`:load <path>`)",
+    takesPathArg: true,
+  },
   {
     name: ":cd",
     summary:
       "Show or change OMC's working directory (`:cd` to print, `:cd <path>` to change)",
+    takesPathArg: true,
   },
   { name: ":reset", summary: "Close OMC and start a fresh subprocess" },
   { name: ":exit", summary: "Close this REPL terminal" },
@@ -88,6 +102,6 @@ function formatOverview(): string {
   return lines.join("\n");
 }
 
-function formatMeta(m: { name: string; summary: string }): string {
+function formatMeta(m: MetaCommand): string {
   return `${m.name}\n  ${m.summary}`;
 }

@@ -6,7 +6,7 @@
  *   1. **Init the parser once** (lazy singleton). `web-tree-sitter` runs the
  *      grammar as WASM in-process, so there's no native rebuild per platform.
  *      Init needs two `.wasm` files shipped beside the bundle (see
- *      `esbuild.config.mjs`): the runtime core (`tree-sitter.wasm`) and the
+ *      `esbuild.config.mjs`): the runtime core (`web-tree-sitter.wasm`) and the
  *      grammar (`tree-sitter-modelica.wasm`, fetched on install — see
  *      `grammar/README.md`).
  *
@@ -23,13 +23,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import {
-  Language,
-  Parser,
-  type Edit,
-  type Point,
-  type Tree,
-} from "web-tree-sitter";
+import { Edit, Language, Parser, type Point, type Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
 import { advancePointUtf16 } from "./position.js";
@@ -38,7 +32,7 @@ import { advancePointUtf16 } from "./position.js";
  * Filenames of the two WASM assets copied into `out/` by `esbuild.config.mjs`.
  * Keep these in sync with the `wasmAssets` table there.
  */
-export const RUNTIME_WASM_FILENAME = "tree-sitter.wasm";
+export const RUNTIME_WASM_FILENAME = "web-tree-sitter.wasm";
 export const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
 
 /** The VSCode language id contributed in `package.json` (`contributes.languages`). */
@@ -77,7 +71,7 @@ export async function ensureLanguage(wasmDir: string): Promise<Language> {
     const language = await Language.load(grammarWasm);
     log.info(
       "language.parse",
-      `tree-sitter-modelica loaded (ABI ${language.version})`,
+      `tree-sitter-modelica loaded (ABI ${language.abiVersion})`,
     );
     return language;
   })().catch((err: unknown) => {
@@ -282,7 +276,15 @@ export class ParseCache implements vscode.Disposable {
   /** Drop a single document's cache entry, freeing its tree unless an
    *  in-flight parse still holds it as its reparse base. */
   invalidate(uri: vscode.Uri): void {
-    const key = uri.toString();
+    this.invalidateKey(uri.toString());
+  }
+
+  /** Drop every cache entry, for a change no document URI identifies. */
+  invalidateAll(): void {
+    for (const key of [...this.entries.keys()]) this.invalidateKey(key);
+  }
+
+  private invalidateKey(key: string): void {
     const cached = this.entries.get(key);
     this.entries.delete(key);
     // Every turn queued for this key — not just the one currently running —
@@ -320,16 +322,10 @@ export class ParseCache implements vscode.Disposable {
     // after this method returns, chain onto the (by-then-settled) `turns`
     // entry it read below, and race the parser teardown at the bottom.
     this.disposed = true;
-    for (const [key, entry] of this.entries) {
-      if (this.borrowedOldTree.get(key) === entry.tree) {
-        continue;
-      }
-      entry.tree.delete();
-    }
-    this.entries.clear();
-    // Any key still mid-flight — cold parses included — discards its own
-    // result instead of caching into a cache nobody will read again; see
-    // `invalidate`.
+    this.invalidateAll();
+    // Any key still mid-flight — cold parses included, which `invalidateAll`
+    // has no entry to reach — discards its own result instead of caching into
+    // a cache nobody will read again; see `invalidate`.
     for (const key of this.turns.keys()) this.bumpGeneration(key);
 
     // A key with an outstanding `turns` entry has a `parseOnce` call
@@ -379,14 +375,14 @@ function toTreeEdit(change: vscode.TextDocumentContentChangeEvent): Edit {
   const oldEndPosition = pointOf(change.range.end);
   const newEndPosition = advancePointUtf16(startPosition, change.text);
 
-  return {
+  return new Edit({
     startIndex,
     oldEndIndex,
     newEndIndex,
     startPosition,
     oldEndPosition,
     newEndPosition,
-  };
+  });
 }
 
 /** VSCode `Position` (UTF-16 row/column) → tree-sitter `Point` (UTF-16). */

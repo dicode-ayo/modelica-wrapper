@@ -76,8 +76,7 @@ const meta: Meta<StoryArgs> = {
         ></om-graphical-layout>
       </div>
       <pre class="om-status" style="font-size:11px;color:#444;margin:8px 0;">
-selection: (none)</pre
-      >
+selection: (none)</pre>
     </div>
   `,
   argTypes: {

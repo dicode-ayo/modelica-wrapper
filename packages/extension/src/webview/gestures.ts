@@ -18,10 +18,7 @@ import type { DiagramLayout } from "@dicode/omc-client";
  * a read-only class.
  */
 export type ParameterFormKind =
-  | "classParams"
-  | "componentParams"
-  | "shapeProperties"
-  | "simulate";
+  "classParams" | "componentParams" | "shapeProperties" | "simulate";
 
 /**
  * Whether a queued layout commit has to reach the host before this gesture
