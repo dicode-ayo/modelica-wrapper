@@ -108,8 +108,10 @@ jobs:
           # Drift probe (informational). Reports per-call OMC behavior for the ⛔
           # wrappers in coverage.md so the human reviewer sees ground truth on
           # the new OMC version. Always succeeds — output is what matters.
+          # `exec`, not a bare `vitest`: with --filter, pnpm routes an unknown
+          # command to `recursive run`, and omc-client has no `vitest` script.
           OMC_DRIFT_PROBE=1 \
-            runuser -u omcrunner -- pnpm --filter @dicode/omc-client \
+            runuser -u omcrunner -- pnpm --filter @dicode/omc-client exec \
             vitest run test/drift-probe.integration.test.ts --reporter=verbose 2>&1 \
             | tee drift-probe-output.txt
           exit "$test_status"
