@@ -12,6 +12,7 @@ import type {
 
 import {
   diffLayouts,
+  isTrustedOnStaleBase,
   lineAnnotation,
   placementAnnotation,
   type LayoutEdit,
@@ -580,7 +581,7 @@ describe("diffLayouts", () => {
       ]);
     });
 
-    it("does NOT rename when the waypoints changed (re-drawn, not re-indexed)", () => {
+    it("does NOT rename when the waypoints changed (re-drawn, not re-indexed), and flags the addition ambiguousReindex", () => {
       const a = vectorLayout("pins[3].p");
       const b = vectorLayout("pins[2].p");
       b.connections[0]!.waypoints = [
@@ -594,6 +595,10 @@ describe("diffLayouts", () => {
         from: "pins[3].p",
         to: "ground.p",
       });
+      // `pins[3].p` shares its re-index group with this addition — a
+      // `connectorSizing` re-index never touches waypoints, so even a lone
+      // 1:1 group where the waypoints changed can be the same logical edge
+      // OMC hasn't yet reported under its new index (issue #503).
       expect(edits).toContainEqual({
         kind: "connectionAdded",
         from: "pins[2].p",
@@ -602,6 +607,7 @@ describe("diffLayouts", () => {
           [5, 5],
           [15, 5],
         ],
+        ambiguousReindex: true,
       });
     });
 
@@ -660,11 +666,15 @@ describe("diffLayouts", () => {
         from: "pins[1].p",
         to: "ground.p",
       });
+      // Flagged ambiguousReindex: pins[1] existed on this base in `prev`, so
+      // the addition could be completing a rename a stale-base report never
+      // fully saw — see `isTrustedOnStaleBase` (issue #503).
       expect(edits).toContainEqual({
         kind: "connectionAdded",
         from: "pins[3].p",
         to: "ground.p",
         waypoints: [[0, 0]],
+        ambiguousReindex: true,
       });
       // The bogus pins[1]→pins[3] rename must NOT appear.
       expect(
@@ -698,11 +708,72 @@ describe("diffLayouts", () => {
         from: "pins[1].p",
         to: "ground.p",
       });
+      // Flagged ambiguousReindex for the same reason as above.
       expect(edits).toContainEqual({
         kind: "connectionAdded",
         from: "pins[2].p",
         to: "ground.p",
         waypoints: [[0, 0]],
+        ambiguousReindex: true,
+      });
+    });
+
+    // ── Stale-base duplication (issue #503) ─────────────────────────────
+    describe("ambiguousReindex: connectionAdded sharing a group with a prev connection", () => {
+      it("flags a cascade's connectionAdded", () => {
+        // Cascade: 2 prev members on the same base+fixed-endpoint, 1 next —
+        // the shape issue #503 reports.
+        const cascadePrev = multiVectorLayout([1, 2]);
+        const cascadeNext = multiVectorLayout([3]);
+        const cascadeEdits = diffLayouts(cascadePrev, cascadeNext);
+        const cascadeAdd = cascadeEdits.find(
+          (e) => e.kind === "connectionAdded",
+        );
+        expect(cascadeAdd?.ambiguousReindex).toBe(true);
+      });
+
+      it("does NOT flag a connectionAdded whose base has no prev member at all", () => {
+        // pins[2].p is a fresh index on a base `prev` never used, so there is
+        // no sibling it could be completing a rename against.
+        const edits = diffLayouts(
+          multiVectorLayout([]),
+          multiVectorLayout([2]),
+        );
+        const add = edits.find((e) => e.kind === "connectionAdded");
+        expect(add?.ambiguousReindex).toBeUndefined();
+      });
+
+      it("flags a genuinely new connection drawn onto an occupied base", () => {
+        // The accepted cost of not gating on group cardinality: pins[1]
+        // survives verbatim and pins[2] is a connection the user just drew,
+        // but the diff can't tell it apart from pins[1] re-indexed, so it is
+        // distrusted under staleBase and resynced by the forced settle.
+        const edits = diffLayouts(
+          multiVectorLayout([1]),
+          multiVectorLayout([1, 2]),
+        );
+        const add = edits.find((e) => e.kind === "connectionAdded");
+        expect(add?.ambiguousReindex).toBe(true);
+      });
+
+      it("isTrustedOnStaleBase distrusts an ambiguousReindex addition but trusts a plain one", () => {
+        expect(
+          isTrustedOnStaleBase({
+            kind: "connectionAdded",
+            from: "pins[3].p",
+            to: "ground.p",
+            waypoints: [],
+            ambiguousReindex: true,
+          }),
+        ).toBe(false);
+        expect(
+          isTrustedOnStaleBase({
+            kind: "connectionAdded",
+            from: "a.x",
+            to: "b.y",
+            waypoints: [],
+          }),
+        ).toBe(true);
       });
     });
   });

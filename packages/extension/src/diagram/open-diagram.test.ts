@@ -462,3 +462,116 @@ describe("applyDiagramEdits: staleBase connectionRenamed (issue #408)", () => {
     expect(invoked).toContain("updateConnectionNames");
   });
 });
+
+describe("applyDiagramEdits: staleBase cascade re-index duplicate (issue #503)", () => {
+  function withConnections(
+    connections: DiagramLayout["connections"],
+  ): DiagramLayout {
+    const layout = connectedLayout();
+    layout.connections = connections;
+    return layout;
+  }
+
+  it("does not duplicate a connection by keeping a cascade's connectionAdded while its connectionDeleted is dropped", async () => {
+    // OMC actually holds pins[1].p->ground.p AND pins[2].p->ground.p (a
+    // 2-member re-index group sharing the ground.p end). The stale report
+    // never learned about pins[2] (a missed push), and the user renames
+    // pins[1] to pins[3] in their own view — so `next` reports pins[3].p->
+    // ground.p only. The vector-port collapse only recognises a LONE 1:1
+    // re-index (group has 2 `prev` members here), so it falls through to
+    // the plain delete+add loops: connectionDeleted(pins[1]) is untrusted
+    // and gets dropped under staleBase, but a plain connectionAdded(pins[3])
+    // would sail through as trusted — net a duplicated connection in OMC,
+    // not the rename the user made.
+    const { client, invoked } = stubEditClient();
+    const current = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[1]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[2]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+    const next = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[3]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      staleBase: true,
+    });
+
+    // Every edit the diff produced is untrusted from this report — the
+    // deletions of pins[1]/pins[2] (absence-inferred) and now also the
+    // pins[3] addition (ambiguous re-index) — so nothing is left to apply.
+    expect(result).toBeNull();
+    expect(invoked).not.toContain("addConnection");
+    expect(invoked).not.toContain("deleteConnection");
+  });
+
+  it("still applies the rename's delete+add when staleBase is unset", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[1]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[2]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+    const next = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[3]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next);
+
+    expect(invoked).toContain("addConnection");
+    expect(invoked).toContain("deleteConnection");
+  });
+
+  it("does not duplicate a connection for a lone 1:1 group either, once the waypoints differ", async () => {
+    // A `connectorSizing` re-index never touches waypoints, so even a clean
+    // 1:1 group (a single prev, a single next on the same base) can be the
+    // same logical edge OMC hasn't yet reported under its new index once the
+    // waypoints differ too — `isReindexRename` declines the collapse, but
+    // that's not proof the addition is unrelated to the prev connection.
+    const { client, invoked } = stubEditClient();
+    const current = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[1]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+    const next = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[2]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [[5, 5]],
+      },
+    ]);
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      staleBase: true,
+    });
+
+    expect(result).toBeNull();
+    expect(invoked).not.toContain("addConnection");
+    expect(invoked).not.toContain("deleteConnection");
+  });
+});

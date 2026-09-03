@@ -92,6 +92,12 @@ export type LayoutEdit =
       to: string;
       waypoints: ReadonlyArray<readonly [number, number]>;
       style?: ConnectionLineStyle | undefined;
+      /**
+       * Set when this addition shares a re-index group (see
+       * `keysForReindexGroups`) with a `prev` connection — see
+       * {@link isTrustedOnStaleBase}.
+       */
+      ambiguousReindex?: boolean | undefined;
     }
   | {
       kind: "connectionDeleted";
@@ -148,8 +154,12 @@ export type LayoutEdit =
  *     level removed — a 1:1 re-index group can pair a connection the report
  *     never knew about with one the user just drew, and rewrite the former's
  *     endpoints onto the latter.
+ *
+ * `connectionAdded` is `true` here, but an `ambiguousReindex` addition
+ * carries the same absence hazard as `connectionRenamed`. Filter through
+ * {@link isTrustedOnStaleBase} rather than indexing this map by kind.
  */
-export const TRUSTED_ON_STALE_BASE = {
+const TRUSTED_ON_STALE_BASE = {
   componentPlacement: true,
   componentDeleted: false,
   connectionAdded: true,
@@ -161,6 +171,43 @@ export const TRUSTED_ON_STALE_BASE = {
   graphicsDeleted: false,
   graphicsReordered: false,
 } satisfies Record<LayoutEdit["kind"], boolean>;
+
+/**
+ * Whether `edit` can be trusted from a report built on a stale base — see
+ * {@link TRUSTED_ON_STALE_BASE}. The map alone is right for every kind except
+ * `connectionAdded`, where an `ambiguousReindex` addition is downgraded to
+ * untrusted.
+ *
+ * `ambiguousReindex` is set on a `connectionAdded` that shares a re-index
+ * group (see `keysForReindexGroups`) with a `prev` connection — i.e. some
+ * connection already existed on the same vector base wired to the same
+ * fixed endpoint. `prev` is always OMC's real, freshly-fetched state (see
+ * `DiagramEditController.applyChange`'s `refetch`), so it isn't itself
+ * stale — but a `connectorSizing` re-index never touches waypoints, only the
+ * indexed endpoint, so a `prev` connection on that base can be the very same
+ * logical edge, just not yet reported under its new index. Applying the
+ * addition while the matching `connectionDeleted` is dropped as untrusted
+ * (issue #503) then leaves both in OMC — a duplicated connection, not the
+ * `TRUSTED_ON_STALE_BASE` design's accepted "edit silently doesn't take
+ * effect" trade-off. Group cardinality is deliberately not part of the
+ * test: a 1:1 group only collapses into `connectionRenamed` when
+ * `isReindexRename` also matches waypoints and style, so a lone re-index
+ * whose route was re-drawn falls through to the add loop carrying the same
+ * hazard. The cost is over-flagging a genuinely new connection drawn onto a
+ * base that already had one, which under `staleBase` is dropped and then
+ * resynced by the forced settle (`DiagramEditController.applyChange`).
+ *
+ * `keysForReindexGroups` only groups a connection by ONE re-indexed
+ * endpoint at a time, so a lockstep re-index of BOTH endpoints together
+ * (e.g. `load[1].p → gnd.pin[1]` to `load[2].p → gnd.pin[2]`) shares no
+ * group signature with its own prior connection and isn't caught here —
+ * the same limit `isReindexRename`'s collapse already has for a two-sided
+ * change. Tracked separately (issue #507), not fixed by this function.
+ */
+export function isTrustedOnStaleBase(edit: LayoutEdit): boolean {
+  if (edit.kind === "connectionAdded" && edit.ambiguousReindex) return false;
+  return TRUSTED_ON_STALE_BASE[edit.kind];
+}
 
 export function endpointToCref(c: {
   component: string | undefined;
@@ -300,16 +347,15 @@ export function diffLayouts(
     next: Conn[];
   }
   const groups = new Map<string, ReindexGroup>();
-  const groupKeyForConn = (c: Conn): string[] => keysForReindexGroups(c);
   for (const c of prevConns) {
-    for (const sig of groupKeyForConn(c)) {
+    for (const sig of keysForReindexGroups(c)) {
       let g = groups.get(sig);
       if (!g) groups.set(sig, (g = { prev: [], next: [] }));
       g.prev.push(c);
     }
   }
   for (const c of nextConns) {
-    for (const sig of groupKeyForConn(c)) {
+    for (const sig of keysForReindexGroups(c)) {
       let g = groups.get(sig);
       if (!g) groups.set(sig, (g = { prev: [], next: [] }));
       g.next.push(c);
@@ -339,6 +385,19 @@ export function diffLayouts(
     consumedNext.add(afterKey);
   }
 
+  // Endpoint keys of a `next` connection in a re-index group that has `prev`
+  // members — see `isTrustedOnStaleBase` (issue #503). A group successfully
+  // collapsed into `connectionRenamed` above never reaches the add loop
+  // below (its key is in `consumedNext`), so marking its members here too is
+  // harmless.
+  const ambiguousReindexNextKeys = new Set<string>();
+  for (const g of groups.values()) {
+    if (g.prev.length === 0) continue;
+    for (const c of g.next) {
+      ambiguousReindexNextKeys.add(`${c.from}|${c.to}`);
+    }
+  }
+
   for (const c of prevConns) {
     const key = `${c.from}|${c.to}`;
     if (consumedPrev.has(key)) continue;
@@ -358,6 +417,7 @@ export function diffLayouts(
         to: c.to,
         waypoints: c.waypoints as ReadonlyArray<readonly [number, number]>,
         ...(style && { style }),
+        ...(ambiguousReindexNextKeys.has(key) && { ambiguousReindex: true }),
       });
     } else if (
       !deepEqual(before.waypoints, c.waypoints) ||
