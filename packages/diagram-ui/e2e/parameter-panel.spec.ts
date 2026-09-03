@@ -187,8 +187,8 @@ test.describe("focus reporting", () => {
     await page.locator("#f-startTime").click();
     await page.keyboard.type("2");
 
-    // The caret is in a plain `<input>`, two shadow roots down: what hides it
-    // from an outside listener is the retargeting, not the element's type.
+    // The fixture has to park the caret in a native input two shadow roots
+    // down, or the assertion below says nothing about the panel.
     expect(await deepActiveTag(page)).toBe("input");
     await expect.poll(() => lastFocusReport(page)).toBe(true);
   });
@@ -239,5 +239,31 @@ test.describe("focus reporting", () => {
 
     await expect(page.locator(CARD)).toHaveCount(0);
     await expect.poll(() => lastFocusReport(page)).toBe(false);
+  });
+
+  test("reports unfocused from a panel already out of the DOM", async ({
+    page,
+  }) => {
+    await page.locator("#f-startTime").click();
+    await expect.poll(() => lastFocusReport(page)).toBe(true);
+
+    // An embedder swapping its whole template out unmounts the panel with the
+    // caret still in it. The report lands on the element rather than through
+    // the tree, which is where the embedder's own listener sits.
+    const reported = page.evaluate(
+      async () =>
+        new Promise<boolean>((resolve) => {
+          const panel = document.querySelector("om-parameter-panel");
+          if (panel === null) throw new Error("the story rendered no panel");
+          panel.addEventListener("om-panel-focus-change", (e) => {
+            resolve(
+              (e as CustomEvent<ParameterPanelFocusDetail>).detail.focused,
+            );
+          });
+          panel.remove();
+        }),
+    );
+
+    expect(await reported).toBe(false);
   });
 });

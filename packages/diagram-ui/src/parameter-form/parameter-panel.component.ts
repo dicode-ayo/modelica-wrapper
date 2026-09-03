@@ -223,8 +223,7 @@ export class OmParameterPanel extends LitElement {
   }
 
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
-    // Attached for the element's lifetime; the root dies with it, so there is
-    // no teardown to pair.
+    // The root dies with the element, so there is no teardown to pair.
     const root = super.createRenderRoot();
     root.addEventListener("focusin", this.onFocusChange);
     root.addEventListener("focusout", this.onFocusChange);
