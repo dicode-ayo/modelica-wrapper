@@ -101,10 +101,12 @@ jobs:
             echo "::warning::Pin/runtime mismatch — container is $OMC_RUNTIME, pin is $OMC_PIN. The integration tests still run, but a Renovate PR is probably needed to bump the pin."
           fi
 
-      - run: pnpm install --frozen-lockfile
-
       - name: Hand workspace to non-root user
         run: chown -R omcrunner:omcrunner "$GITHUB_WORKSPACE"
+
+      # As omcrunner, not root: the extension's postinstall executes
+      # checked-out code, and on a pull_request event that code is the PR's.
+      - run: runuser -u omcrunner -- pnpm install --frozen-lockfile
 
       - name: Install Modelica Standard Library for omcrunner
         run: |
