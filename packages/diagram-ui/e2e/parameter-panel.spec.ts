@@ -6,7 +6,9 @@
  * crash it on connect.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+import type { ParameterPanelFocusDetail } from "../src/parameter-form/parameter-panel.component.js";
 
 import { boxOf, waitForLayout } from "./story-helpers.js";
 
@@ -129,5 +131,139 @@ test.describe("stacked with the toolbar", () => {
     await page.keyboard.press("Escape");
 
     await expect(page.locator(CARD)).toHaveCount(0);
+  });
+});
+
+/** Page-side sink the reports accumulate in. */
+type FocusSink = Window & { __focus: boolean[] };
+
+/** Collects every `om-panel-focus-change` the panel dispatches from here on. */
+async function recordFocusReports(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const sink = window as unknown as FocusSink;
+    sink.__focus = [];
+    document.addEventListener("om-panel-focus-change", (e) => {
+      sink.__focus.push(
+        (e as CustomEvent<ParameterPanelFocusDetail>).detail.focused,
+      );
+    });
+  });
+}
+
+/** The panel's latest report, or `undefined` if it has not made one. */
+async function lastFocusReport(page: Page): Promise<boolean | undefined> {
+  return page.evaluate(() => (window as unknown as FocusSink).__focus.at(-1));
+}
+
+/** Innermost focused node, descending through open shadow roots. */
+async function deepActiveTag(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    let el: Element | null = document.activeElement;
+    while (el?.shadowRoot?.activeElement) {
+      el = el.shadowRoot.activeElement;
+    }
+    return el?.tagName.toLowerCase() ?? "";
+  });
+}
+
+test.describe("focus reporting", () => {
+  // The diagram binds bare `r`, `f` and Delete over the canvas and stands them
+  // down on this report. Without it a Backspace meant for a parameter field
+  // deletes the selected component instead (#584).
+  test.beforeEach(async ({ page }) => {
+    await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
+    await waitForLayout(page);
+    await recordFocusReports(page);
+    await page.locator(OPEN_PARAMS).click();
+    await expect(page.locator(CARD)).toBeVisible();
+    // Opening focuses the card, so the shortcuts stand down before a field is
+    // ever touched.
+    await expect.poll(() => lastFocusReport(page)).toBe(true);
+  });
+
+  test("reports focused while the caret sits in a parameter field", async ({
+    page,
+  }) => {
+    await page.locator("#f-startTime").click();
+    await page.keyboard.type("2");
+
+    // The fixture has to park the caret in a native input two shadow roots
+    // down, or the assertion below says nothing about the panel.
+    expect(await deepActiveTag(page)).toBe("input");
+    await expect.poll(() => lastFocusReport(page)).toBe(true);
+  });
+
+  test("reports unfocused once the canvas takes the focus back", async ({
+    page,
+  }) => {
+    await page.locator("#f-startTime").click();
+    await expect.poll(() => lastFocusReport(page)).toBe(true);
+
+    const canvas = await boxOf(page, "om-graphical-layout");
+    await page.mouse.click(canvas.x + 20, canvas.y + canvas.height - 20);
+
+    await expect.poll(() => lastFocusReport(page)).toBe(false);
+  });
+
+  test("reports a field taking focus from a sibling of the panel", async ({
+    page,
+  }) => {
+    // The webview renders the canvas and the panel into one shadow root, and a
+    // move between them retargets to that root — nothing outside the panel is
+    // told about it.
+    await page.evaluate(() => {
+      const panel = document.querySelector("om-parameter-panel");
+      if (panel === null) throw new Error("the story rendered no panel");
+      const host = document.createElement("div");
+      host.id = "embedder";
+      document.body.append(host);
+      const root = host.attachShadow({ mode: "open" });
+      const sibling = document.createElement("button");
+      root.append(sibling, panel);
+      sibling.focus();
+    });
+    await expect.poll(() => lastFocusReport(page)).toBe(false);
+
+    await page.locator("#embedder #f-startTime").click();
+
+    await expect.poll(() => lastFocusReport(page)).toBe(true);
+  });
+
+  test("reports unfocused when the panel closes under the caret", async ({
+    page,
+  }) => {
+    await page.locator("#f-startTime").click();
+    await expect.poll(() => lastFocusReport(page)).toBe(true);
+
+    await page.keyboard.press("Escape");
+
+    await expect(page.locator(CARD)).toHaveCount(0);
+    await expect.poll(() => lastFocusReport(page)).toBe(false);
+  });
+
+  test("reports unfocused from a panel already out of the DOM", async ({
+    page,
+  }) => {
+    await page.locator("#f-startTime").click();
+    await expect.poll(() => lastFocusReport(page)).toBe(true);
+
+    // An embedder swapping its whole template out unmounts the panel with the
+    // caret still in it. The report lands on the element rather than through
+    // the tree, which is where the embedder's own listener sits.
+    const reported = page.evaluate(
+      async () =>
+        new Promise<boolean>((resolve) => {
+          const panel = document.querySelector("om-parameter-panel");
+          if (panel === null) throw new Error("the story rendered no panel");
+          panel.addEventListener("om-panel-focus-change", (e) => {
+            resolve(
+              (e as CustomEvent<ParameterPanelFocusDetail>).detail.focused,
+            );
+          });
+          panel.remove();
+        }),
+    );
+
+    expect(await reported).toBe(false);
   });
 });
