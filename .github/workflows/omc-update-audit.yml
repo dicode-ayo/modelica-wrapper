@@ -161,7 +161,8 @@ jobs:
               echo "**The drift probe produced no report.** Its last lines:"
               echo ""
               echo '```'
-              tail -n 20 drift-probe-output.txt 2>/dev/null || echo "(no output captured)"
+              { tail -n 20 drift-probe-output.txt 2>/dev/null || echo "(no output captured)"; } \
+                | sed 's/\x1b\[[0-9;]*m//g'
               echo '```'
               echo "$delim"
             } >> "$GITHUB_OUTPUT"
@@ -171,10 +172,14 @@ jobs:
           # PR comment stays scannable. Full output remains in the artifact.
           {
             echo "summary<<$delim"
-            sed -n '/^=== OMC drift probe ===/,/^=== summary ===$/p' drift-probe-output.txt \
-              | grep -E '^(✓|⌀|✗|⚠|OMC:)' || true
-            echo ""
-            sed -n '/^=== summary ===$/,$p' drift-probe-output.txt
+            # vitest colours its trailer, and the raw escapes render as
+            # literal ^[[32m inside the comment's code block.
+            {
+              sed -n '/^=== OMC drift probe ===/,/^=== summary ===$/p' drift-probe-output.txt \
+                | grep -E '^(✓|⌀|✗|⚠|OMC:)' || true
+              echo ""
+              sed -n '/^=== summary ===$/,$p' drift-probe-output.txt
+            } | sed 's/\x1b\[[0-9;]*m//g'
             echo "$delim"
           } >> "$GITHUB_OUTPUT"
 
