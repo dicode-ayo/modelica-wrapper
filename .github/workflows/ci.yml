@@ -58,6 +58,8 @@ jobs:
   integration:
     name: Integration (OMC ${{ matrix.omc }})
     runs-on: ubuntu-latest
+    # OMC hangs rather than fails when a spawn cannot reach its ZMQ port.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -78,15 +80,16 @@ jobs:
         with:
           persist-credentials: false
 
-      # Not ./.github/actions/setup: its pnpm/action-setup step installs pnpm
-      # under /root (mode 700), which the `runuser -u omcrunner` test steps
-      # below can't read. A global npm install lands pnpm in /usr, readable by
-      # everyone; setup-node's tool-cache node is world-executable already.
-      - uses: actions/setup-node@v4
+      # Not ./.github/actions/setup: pnpm/action-setup installs pnpm into a
+      # root-owned directory the `runuser -u omcrunner` test steps below
+      # cannot read. `npm install -g` puts pnpm in setup-node's tool-cache
+      # prefix instead — world-readable, and on the PATH runuser preserves.
+      # Node and pnpm versions track the composite action; bump both together.
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24.20.0
 
-      - run: npm install -g pnpm@10.25.0
+      - run: npm install -g pnpm@10.34.5
 
       - name: Verify OMC matches the pin
         run: |

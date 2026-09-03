@@ -44,6 +44,8 @@ jobs:
       contents: read
       pull-requests: write
     runs-on: ubuntu-latest
+    # OMC hangs rather than fails when a spawn cannot reach its ZMQ port.
+    timeout-minutes: 30
     container:
       image: openmodelica/openmodelica:v${{ needs.pin.outputs.version }}-minimal
       options: --user root
@@ -64,13 +66,13 @@ jobs:
           persist-credentials: false
 
       # Not ./.github/actions/setup — see the matching comment in ci.yml's
-      # integration job: the composite's pnpm lands under /root (mode 700),
-      # unreadable to the `runuser -u omcrunner` test steps below.
-      - uses: actions/setup-node@v4
+      # integration job: the composite installs pnpm where the
+      # `runuser -u omcrunner` test steps below cannot read it.
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24.20.0
 
-      - run: npm install -g pnpm@10.25.0
+      - run: npm install -g pnpm@10.34.5
 
       - run: pnpm install --frozen-lockfile
 
@@ -160,14 +162,17 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v9
         env:
+          # Every value below is derived from pull-request-controlled input
+          # (a branch name, or a file in the head tree). They ride in via env
+          # so nothing is interpolated into the script body.
           PROBE_SUMMARY: ${{ steps.probe.outputs.summary }}
-          # Branch names are attacker-influenced; ride in via env, never
-          # interpolated into the script body.
           HEAD_REF: ${{ github.head_ref }}
+          PIN: ${{ needs.pin.outputs.version }}
+          RESULT: ${{ steps.summary.outputs.result }}
         with:
           script: |
-            const pin = '${{ needs.pin.outputs.version }}';
-            const result = `${{ steps.summary.outputs.result }}`;
+            const pin = process.env.PIN || '(unknown)';
+            const result = process.env.RESULT || '(unavailable)';
             const probe = (process.env.PROBE_SUMMARY || '(unavailable)').trim();
             const headRef = process.env.HEAD_REF || 'main';
             const body = [
