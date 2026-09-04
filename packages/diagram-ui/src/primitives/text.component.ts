@@ -1,6 +1,6 @@
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
-import { Text, TextStyle, type Container } from "pixi.js";
+import { type Container } from "pixi.js";
 import {
   interpolateTemplate,
   type TextSubstitutions,
@@ -14,6 +14,12 @@ import {
   type EntityBounds,
 } from "./shape-primitive.js";
 import { colorToCss, extentToRect } from "./shape-utils.js";
+import {
+  createSceneText,
+  requiresDeferredRasterization,
+  supportsDynamicResolution,
+  type SceneText,
+} from "./text-mode.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
 import { worldScaleXY } from "../scene/ortho-camera.js";
 
@@ -32,11 +38,18 @@ const MIN_TEXT_RESOLUTION = 1;
  *  zoom; a label gains nothing visible past this density. */
 const MAX_TEXT_RESOLUTION = 8;
 
+/** Frames to nudge after building a text whose texture rasterizes async.
+ *  Bounded so a failed rasterization cannot pin a repaint loop. */
+const DEFERRED_RASTER_FRAMES = 8;
+
 /**
- * `<om-text>` — one Modelica `TextShape`, rendered as a Pixi `Text`. The text
- * counter-flips locally (`scale.y < 0`) so it stays upright under the diagram
- * root's Y-flip, and its `resolution` is raised on zoom-in so glyphs stay
- * crisp (it is never lowered on zoom-out — the cap bounds the atlas).
+ * `<om-text>` — one Modelica `TextShape`, rendered through the Pixi text class
+ * {@link getTextMode} selects. The text counter-flips locally (`scale.y < 0`)
+ * so it stays upright under the diagram root's Y-flip.
+ *
+ * Under the default `bitmap` mode the glyph density is the font atlas's and
+ * fixed; `canvas` mode instead raises `resolution` on zoom-in so glyphs stay
+ * crisp (never lowered on zoom-out — the cap bounds the atlas).
  */
 @customElement("om-text")
 export class OmText extends OmShapePrimitive {
@@ -52,7 +65,7 @@ export class OmText extends OmShapePrimitive {
   @consume({ context: substitutionsContext, subscribe: true })
   private substitutions: TextSubstitutions | null = null;
 
-  private text: Text | null = null;
+  private text: SceneText | null = null;
   private currentResolution = MIN_TEXT_RESOLUTION;
 
   /** Raise the `Text` resolution to match the new zoom (never lowered). */
@@ -115,23 +128,6 @@ export class OmText extends OmShapePrimitive {
       s.fontName && s.fontName.length > 0 ? s.fontName : "sans-serif";
     const align = horizontalAlign(s.horizontalAlignment);
 
-    const style = new TextStyle({
-      fontFamily,
-      fontSize: Math.max(0.01, fontUnits * FONT_FIT_FACTOR),
-      fill: colorToCss(s.textColor, "rgb(0,0,0)"),
-      align,
-    });
-    const text = new Text({ text: body, style });
-    text.label = `om-text.${this.zOrder}`;
-    text.eventMode = "none";
-    text.zIndex = z;
-    text.resolution = this.currentResolution;
-    // Anchor at the horizontal alignment edge and vertical centre; the local
-    // Y-flip pivots about that anchor so the glyph stays upright and in place.
-    text.anchor.set(anchorX(align), 0.5);
-    text.scale.set(1, -1);
-    text.position.set(alignX(align, x, width), y + height / 2);
-
     const root = this.graphicRoot(
       parent,
       s,
@@ -139,15 +135,54 @@ export class OmText extends OmShapePrimitive {
       inEntityFrame,
       z,
     );
+
+    const text = createSceneText({
+      text: body,
+      style: {
+        fontFamily,
+        fontSize: Math.max(0.01, fontUnits * FONT_FIT_FACTOR),
+        fill: colorToCss(s.textColor, "rgb(0,0,0)"),
+        align,
+      },
+    });
+    text.label = `om-text.${this.zOrder}`;
+    text.eventMode = "none";
+    text.zIndex = z;
+    if (supportsDynamicResolution(text)) {
+      text.resolution = this.currentResolution;
+    }
+    // Anchor at the horizontal alignment edge and vertical centre; the local
+    // flip pivots about that anchor so the glyph stays upright and in place.
+    text.anchor.set(anchorX(align), 0.5);
+    text.scale.set(1, -1);
+    text.position.set(alignX(align, x, width), y + height / 2);
+
     root.addChild(text);
     this.text = text;
     this.applyResolution();
+    if (requiresDeferredRasterization(text)) {
+      this.pumpRasterizationFrames();
+    }
 
     this.resources.push({
       dispose: () => {
         text.destroy();
         this.text = null;
       },
+    });
+  }
+
+  /**
+   * Drive a bounded run of frames so an asynchronously-rasterized text
+   * texture reaches the screen. See {@link requiresDeferredRasterization}.
+   */
+  private pumpRasterizationFrames(remaining = DEFERRED_RASTER_FRAMES): void {
+    if (remaining <= 0) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      this.requestRender();
+      this.pumpRasterizationFrames(remaining - 1);
     });
   }
 
@@ -159,7 +194,7 @@ export class OmText extends OmShapePrimitive {
   private applyResolution(): void {
     const text = this.text;
     const ctx = this.sceneCtx;
-    if (!text || !ctx) {
+    if (!text || !ctx || !supportsDynamicResolution(text)) {
       return;
     }
     const wpp = ctx.worldPerPixel();
