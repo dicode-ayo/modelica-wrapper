@@ -131,6 +131,37 @@ describe("computeCompletion — path-argument meta-commands", () => {
   });
 });
 
+describe("computeCompletion — no-argument meta-commands", () => {
+  it("offers nothing for `:clear`'s argument", () => {
+    const buf = ":clear ge";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it("offers nothing for `:reset`'s argument", () => {
+    const buf = ":reset ge";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it("offers nothing for `:exit`'s argument", () => {
+    const buf = ":exit ge";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it("still completes the `:clear` verb itself before the space", () => {
+    const plan = computeCompletion(":cle", 4);
+    expect(plan.candidates).toEqual([":clear"]);
+  });
+
+  it("still completes OMC names after `:help `", () => {
+    const buf = ":help ge";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toContain("getClassInformation");
+  });
+});
+
 describe("computeCompletion — cursor position", () => {
   it("completes the word ending at the cursor, ignoring text after", () => {
     // Cursor sits right after `getCl` — text after shouldn't be considered.
@@ -174,6 +205,11 @@ describe("computeGhost", () => {
 
   it("suggests nothing for a `:load` path argument", () => {
     const buf = ":load /tmp/scratchpad/LoadProbe.mo";
+    expect(computeGhost(buf, buf.length)).toBe("");
+  });
+
+  it("suggests nothing for a `:clear` argument", () => {
+    const buf = ":clear ge";
     expect(computeGhost(buf, buf.length)).toBe("");
   });
 });
