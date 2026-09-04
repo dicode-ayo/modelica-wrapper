@@ -328,11 +328,13 @@ describe("evalLine — meta commands", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it("dispatches every META_COMMANDS verb to a real handler, never the unknown-command fallback", async () => {
-    // Guards the desync #588 describes: META_COMMANDS (help/completion) and
-    // handleMeta's dispatch table are maintained separately, so a verb
-    // present in one and missing from the other must show up here as a
-    // fallback to "unknown meta-command" for a name :help still advertises.
+  it("dispatches every META_COMMANDS verb to a working handler", async () => {
+    // `tsc` already guarantees every META_COMMANDS verb has a META_HANDLERS
+    // entry (the Record type in repl-eval.ts). What that guarantee can't
+    // catch is a handler that's present but broken against real inputs —
+    // this drives each verb through evalLine against the fake client's
+    // ordinary defaults and checks it actually succeeds, not just that some
+    // handler ran.
     const fake = makeClient();
     fake.cdReplies.set("/tmp", "/tmp");
     const { deps } = makeDeps(fake.client);
@@ -341,6 +343,7 @@ describe("evalLine — meta commands", () => {
       const line = meta.argKind === "path" ? `${meta.name} /tmp` : meta.name;
       const result = await evalLine(line, deps);
       expect(result.output).not.toContain("unknown meta-command");
+      expect(result.isError).toBe(false);
     }
   });
 });
