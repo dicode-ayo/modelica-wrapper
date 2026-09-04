@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import type { OmcClient } from "@dicode/omc-client";
 
 import { HELP_TEXT, evalLine, type ReplDependencies } from "./repl-eval.js";
+import { META_COMMANDS } from "./repl-help.js";
 
 interface FakeClient {
   client: OmcClient;
@@ -325,5 +326,21 @@ describe("evalLine — meta commands", () => {
     expect(result.output).toContain(":bogus");
     expect(result.output).toContain(":help");
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("dispatches every META_COMMANDS verb to a real handler, never the unknown-command fallback", async () => {
+    // Guards the desync #588 describes: META_COMMANDS (help/completion) and
+    // handleMeta's dispatch table are maintained separately, so a verb
+    // present in one and missing from the other must show up here as a
+    // fallback to "unknown meta-command" for a name :help still advertises.
+    const fake = makeClient();
+    fake.cdReplies.set("/tmp", "/tmp");
+    const { deps } = makeDeps(fake.client);
+
+    for (const meta of META_COMMANDS) {
+      const line = meta.argKind === "path" ? `${meta.name} /tmp` : meta.name;
+      const result = await evalLine(line, deps);
+      expect(result.output).not.toContain("unknown meta-command");
+    }
   });
 });
