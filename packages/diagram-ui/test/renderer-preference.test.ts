@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  */
 
 const { autoDetectRendererSpy } = vi.hoisted(() => ({
-  autoDetectRendererSpy: vi.fn(),
+  autoDetectRendererSpy:
+    vi.fn<(options: { preference?: unknown }) => unknown>(),
 }));
 
 vi.mock("pixi.js", async (importActual) => {
@@ -45,7 +46,7 @@ afterEach(() => {
 function preferenceFromFirstCall(): unknown {
   const call = autoDetectRendererSpy.mock.calls[0];
   if (call === undefined) throw new Error("autoDetectRenderer was not called");
-  const [options] = call as [{ preference?: unknown }];
+  const [options] = call;
   return options.preference;
 }
 

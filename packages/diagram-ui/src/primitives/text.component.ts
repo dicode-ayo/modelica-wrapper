@@ -18,8 +18,11 @@ import {
   createSceneText,
   requiresDeferredRasterization,
   supportsDynamicResolution,
+  DEFAULT_TEXT_MODE,
   type SceneText,
+  type TextMode,
 } from "./text-mode.js";
+import { textModeContext } from "./text-mode-context.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
 import { placementMirrorSigns, worldScaleXY } from "../scene/ortho-camera.js";
 
@@ -65,10 +68,13 @@ export class OmText extends OmShapePrimitive {
   @consume({ context: substitutionsContext, subscribe: true })
   private substitutions: TextSubstitutions | null = null;
 
+  @consume({ context: textModeContext, subscribe: true })
+  private textMode: TextMode | undefined = undefined;
+
   private text: SceneText | null = null;
   private currentResolution = MIN_TEXT_RESOLUTION;
+  private rasterizationFrame: number | null = null;
 
-  /** Raise the `Text` resolution to match the new zoom (never lowered). */
   protected override onViewChange(): void {
     this.applyResolution();
   }
@@ -94,10 +100,12 @@ export class OmText extends OmShapePrimitive {
     // magnitude-only: flipping a component leaves that term identical, so
     // without this the counter-mirror computed in `buildMeshes` would go
     // stale and the glyphs would render backwards until some other edit
-    // forced a rebuild.
+    // forced a rebuild. Walking from the parent matches what `buildMeshes`
+    // sees: `graphicItemNode` sets only position and rotation, so its
+    // wrapper never contributes a sign.
     const parent = this.parentTransform;
     const mirror = parent ? placementMirrorSigns(parent) : { x: 1, y: 1 };
-    return `${this.resolvedBody()}|${mirror.x},${mirror.y}|${JSON.stringify(this.shape)}`;
+    return `${this.textMode ?? DEFAULT_TEXT_MODE}|${this.resolvedBody()}|${mirror.x},${mirror.y}|${JSON.stringify(this.shape)}`;
   }
 
   protected override entityKind(): string {
@@ -144,7 +152,7 @@ export class OmText extends OmShapePrimitive {
       z,
     );
 
-    const text = createSceneText({
+    const text = createSceneText(this.textMode ?? DEFAULT_TEXT_MODE, {
       text: body,
       style: {
         fontFamily,
@@ -159,7 +167,7 @@ export class OmText extends OmShapePrimitive {
     if (supportsDynamicResolution(text)) {
       text.resolution = this.currentResolution;
     }
-    // Anchor at the horizontal alignment edge and vertical centre; the local
+    // Anchor at the horizontal alignment edge and vertical center; the local
     // flip pivots about that anchor so the glyph stays upright and in place.
     text.anchor.set(anchorX(align), 0.5);
     // Glyphs read upright and unmirrored whatever the ancestors do. The `-`
@@ -168,7 +176,7 @@ export class OmText extends OmShapePrimitive {
     // backwards — OMEdit keeps it readable. Only the glyph frame is
     // corrected: the anchor still sits where the mirrored placement put it,
     // so the text moves with the component.
-    const mirror = placementMirrorSigns(root);
+    const mirror = placementMirrorSigns(parent);
     text.scale.set(mirror.x, -mirror.y);
     text.position.set(alignX(align, x, width), y + height / 2);
 
@@ -181,6 +189,7 @@ export class OmText extends OmShapePrimitive {
 
     this.resources.push({
       dispose: () => {
+        this.cancelRasterizationFrames();
         text.destroy();
         this.text = null;
       },
@@ -190,21 +199,36 @@ export class OmText extends OmShapePrimitive {
   /**
    * Drive a bounded run of frames so an asynchronously-rasterized text
    * texture reaches the screen. See {@link requiresDeferredRasterization}.
+   *
+   * At most one chain is in flight per element: `updated()` rebuilds on
+   * every drag frame, so without cancelling the previous chain each drag
+   * frame would leave another one running and pin the on-demand scheduler
+   * to a full repaint long after the pointer stopped.
    */
-  private pumpRasterizationFrames(remaining = DEFERRED_RASTER_FRAMES): void {
-    if (remaining <= 0) {
-      return;
-    }
-    requestAnimationFrame(() => {
+  private pumpRasterizationFrames(): void {
+    this.cancelRasterizationFrames();
+    let remaining = DEFERRED_RASTER_FRAMES;
+    const step = (): void => {
       this.requestRender();
-      this.pumpRasterizationFrames(remaining - 1);
-    });
+      remaining -= 1;
+      this.rasterizationFrame =
+        remaining > 0 ? requestAnimationFrame(step) : null;
+    };
+    this.rasterizationFrame = requestAnimationFrame(step);
+  }
+
+  private cancelRasterizationFrames(): void {
+    if (this.rasterizationFrame !== null) {
+      cancelAnimationFrame(this.rasterizationFrame);
+      this.rasterizationFrame = null;
+    }
   }
 
   /**
-   * Raise the `Text` resolution to match the on-screen texel density at the
-   * current zoom. No-op on pan and on zoom-out (resolution is never lowered —
-   * the ceiling bounds the atlas).
+   * Raise the text resolution to match the on-screen texel density at the
+   * current zoom. No-op on pan, on zoom-out (resolution is never lowered —
+   * the ceiling bounds the atlas), and for a text class whose density is
+   * fixed by its font atlas (see {@link supportsDynamicResolution}).
    */
   private applyResolution(): void {
     const text = this.text;

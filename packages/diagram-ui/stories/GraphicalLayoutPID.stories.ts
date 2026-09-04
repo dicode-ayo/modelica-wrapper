@@ -3,7 +3,7 @@
  * `fixtures/pid-layout.ts` with `<om-graphical-layout>`, the same element
  * the VSCode extension mounts.
  *
- * Browser memory: ~1.3 MB JSON fixture plus the textures rasterised
+ * Browser memory: ~1.3 MB JSON fixture plus the textures rasterized
  * lazily per unique class — typical icon count on PID_Controller is
  * < 15, well within the icon-cache's per-SVG dedup.
  */

@@ -1,51 +1,39 @@
 import { BitmapText, HTMLText, Text, type TextStyleOptions } from "pixi.js";
+import { assertUnreachable } from "@dicode/modelica-lang-core";
 
 /**
  * Which Pixi text class `<om-text>` instantiates.
  *
- * - `bitmap` — `BitmapText`, the default. Glyphs come from an atlas keyed
- *   on font family, fill and weight — *not* size, since the font is baked
- *   at a canonical size and scaled — so a diagram's whole ladder of
- *   Modelica `fontSize`s shares one atlas, repeated strings cost almost
- *   nothing to draw, and `ensureCharacters` grows the glyph set on demand.
- *   The atlas has a fixed density and no per-instance `resolution`.
+ * - `bitmap` — `BitmapText`. Its atlas is keyed on font family, fill and
+ *   weight but not size, since the font bakes at a canonical size and
+ *   scales, so a diagram's whole ladder of Modelica `fontSize`s shares one
+ *   atlas and `ensureCharacters` grows the glyph set on demand. The atlas
+ *   density is fixed and there is no per-instance `resolution`.
  * - `canvas` — `Text`. Rasterized through a 2D canvas into its own texture
- *   per string. The only mode whose `resolution` can be raised on zoom-in.
- * - `html` — `HTMLText`. Laid out by the browser via an SVG
- *   `foreignObject` and rasterized to a texture. Richest styling, slowest
- *   to build, and it drops text below roughly a pixel of rendered height.
+ *   per string. The only class whose `resolution` can be raised on zoom-in.
+ * - `html` — `HTMLText`. Laid out by the browser via an SVG `foreignObject`.
+ *   Its texture resolves after the draw that requests it, and it drops text
+ *   below roughly a pixel of rendered height.
  */
 export type TextMode = "canvas" | "bitmap" | "html";
 
 export type SceneText = Text | BitmapText | HTMLText;
 
-let mode: TextMode = "bitmap";
+export const DEFAULT_TEXT_MODE: TextMode = "bitmap";
 
-/**
- * Swaps the text class used by subsequently-built `<om-text>` primitives.
- * Existing instances keep the class they were built with — `<om-text>`
- * creates its Pixi object in `buildMeshes`, so a switch needs those
- * rebuilt.
- */
-export function setTextMode(next: TextMode): void {
-  mode = next;
-}
-
-export function getTextMode(): TextMode {
-  return mode;
-}
-
-export function createSceneText(options: {
-  text: string;
-  style: TextStyleOptions;
-}): SceneText {
-  switch (getTextMode()) {
+export function createSceneText(
+  mode: TextMode,
+  options: { text: string; style: TextStyleOptions },
+): SceneText {
+  switch (mode) {
     case "bitmap":
       return new BitmapText(options);
     case "html":
       return new HTMLText(options);
-    default:
+    case "canvas":
       return new Text(options);
+    default:
+      return assertUnreachable(mode, "TextMode");
   }
 }
 

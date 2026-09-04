@@ -4,6 +4,7 @@ import { createRef, ref } from "lit/directives/ref.js";
 import { ContextProvider } from "@lit/context";
 import {
   autoDetectRenderer,
+  type RendererPreference,
   Container,
   Point,
   type Matrix,
@@ -37,9 +38,12 @@ import {
   type ViewState,
 } from "./view-math.js";
 import { setRasterizerDebug } from "../icon-provider/svg-rasterizer.js";
+import { WORLD_ROOT_LABEL } from "./ortho-camera.js";
+import { textModeContext } from "../primitives/text-mode-context.js";
+import type { TextMode } from "../primitives/text-mode.js";
 
 /** Scene background, matching the `:host` CSS plate (#f7f7f8). */
-const SCENE_BACKGROUND = 0xf7f7f8;
+export const SCENE_BACKGROUND = 0xf7f7f8;
 
 /**
  * Factory injected by tests so the scene can mount without a GPU
@@ -53,28 +57,40 @@ export type RendererFactory = (
   size: { width: number; height: number; resolution: number },
 ) => Renderer | null | Promise<Renderer | null>;
 
-const defaultRendererFactory: RendererFactory = (canvas, size) =>
-  // The array form of `preference` is an exact allowlist; the string form
-  // appends every omitted backend as a fallback. Listing `webgl` then
-  // `canvas` keeps the renderer off WebGPU — absent or unreliable under
-  // the software stack (SwiftShader) used when hardware acceleration is
-  // off — while still degrading to the 2D canvas backend on a machine
-  // with no usable WebGL context, rather than failing to a blank canvas.
-  // `autoDensity: false` leaves the canvas display size to the `:host`
-  // CSS (`width/height: 100%`) while the backing store is sized in
-  // physical pixels via `resolution` so 1-px strokes and small handles
-  // stay crisp on HiDPI displays.
-  autoDetectRenderer({
-    preference: ["webgl", "canvas"],
-    canvas,
-    width: size.width,
-    height: size.height,
-    resolution: size.resolution,
-    autoDensity: false,
-    antialias: true,
-    background: SCENE_BACKGROUND,
-    clearBeforeRender: true,
-  });
+/**
+ * Builds a factory over the scene's renderer options, varying only the
+ * backend allowlist. Exported so a caller comparing backends drives the
+ * shipping configuration rather than restating it.
+ *
+ * `preference` is passed as an array because that form is an exact
+ * allowlist; the string form appends every omitted backend as a fallback.
+ * `autoDensity: false` leaves the canvas display size to the `:host` CSS
+ * (`width/height: 100%`) while the backing store is sized in physical
+ * pixels via `resolution` so 1-px strokes and small handles stay crisp on
+ * HiDPI displays.
+ */
+export function createRendererFactory(
+  preference: readonly RendererPreference[],
+): RendererFactory {
+  return (canvas, size) =>
+    autoDetectRenderer({
+      preference: [...preference],
+      canvas,
+      width: size.width,
+      height: size.height,
+      resolution: size.resolution,
+      autoDensity: false,
+      antialias: true,
+      background: SCENE_BACKGROUND,
+      clearBeforeRender: true,
+    });
+}
+
+// Listing `webgl` then `canvas` keeps the renderer off WebGPU — absent or
+// unreliable under the software stack (SwiftShader) used when hardware
+// acceleration is off — while still degrading to the 2D canvas backend on a
+// machine with no usable WebGL context, rather than failing to a blank canvas.
+const defaultRendererFactory = createRendererFactory(["webgl", "canvas"]);
 
 /**
  * `<om-scene>` — root custom element for the graphical layout editor.
@@ -161,9 +177,16 @@ export class OmScene extends LitElement {
   @property({ type: String, reflect: true, attribute: "camera-mode" })
   cameraMode: "2d" | "3d" = "2d";
 
-  /** Enables verbose logging in the icon-provider rasteriser. */
+  /** Enables verbose logging in the icon-provider rasterizer. */
   @property({ type: Boolean, reflect: true })
   debug = false;
+
+  /**
+   * Pixi text class every `<om-text>` in this scene builds with, published
+   * on `textModeContext`. `undefined` uses {@link DEFAULT_TEXT_MODE}.
+   */
+  @property({ type: String, reflect: true, attribute: "text-mode" })
+  textMode: TextMode | undefined = undefined;
 
   private readonly canvasRef = createRef<HTMLCanvasElement>();
   private readonly resizeObserver = new ResizeObserver(() =>
@@ -199,6 +222,19 @@ export class OmScene extends LitElement {
     context: viewStateContext,
     initialValue: this.viewStateStore,
   });
+
+  // Serves `textMode` to every descendant `<om-text>`, which reads it when
+  // it builds its Pixi object.
+  private readonly textModeProvider = new ContextProvider(this, {
+    context: textModeContext,
+    initialValue: undefined,
+  });
+
+  override willUpdate(changed: Map<string, unknown>): void {
+    if (changed.has("textMode")) {
+      this.textModeProvider.setValue(this.textMode);
+    }
+  }
 
   override render() {
     return html`<canvas ${ref(this.canvasRef)} tabindex="0"></canvas
@@ -251,7 +287,7 @@ export class OmScene extends LitElement {
     // diagramRoot without waiting on the async GPU init below.
     const stage = new Container({ label: "om-stage" });
     stage.eventMode = "passive";
-    const worldRoot = new Container({ label: "om-world" });
+    const worldRoot = new Container({ label: WORLD_ROOT_LABEL });
     worldRoot.eventMode = "passive";
     // No depth buffer in 2D — paint order is child order. zIndex +
     // sortableChildren let the grid sit behind entities and entities

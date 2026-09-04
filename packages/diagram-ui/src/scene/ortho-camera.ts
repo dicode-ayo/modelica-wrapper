@@ -1,7 +1,7 @@
 import type { Container } from "pixi.js";
 
 /** Label of the worldRoot container, which carries the pan/zoom view transform. */
-const WORLD_ROOT_LABEL = "om-world";
+export const WORLD_ROOT_LABEL = "om-world";
 
 /**
  * Absolute diagram-space scale of a container: the product of local
@@ -13,15 +13,8 @@ const WORLD_ROOT_LABEL = "om-world";
  * is dropped.
  */
 export function worldScaleXY(node: Container): { x: number; y: number } {
-  let sx = 1;
-  let sy = 1;
-  let cur: Container | null = node;
-  while (cur && cur.label !== WORLD_ROOT_LABEL) {
-    sx *= Math.abs(cur.scale.x);
-    sy *= Math.abs(cur.scale.y);
-    cur = cur.parent;
-  }
-  return { x: sx || 1, y: sy || 1 };
+  const { magX, magY } = accumulateToWorldRoot(node);
+  return { x: magX || 1, y: magY || 1 };
 }
 
 /**
@@ -40,13 +33,36 @@ export function placementMirrorSigns(node: Container): {
   x: number;
   y: number;
 } {
-  let sx = 1;
-  let sy = 1;
+  const { signX, signY } = accumulateToWorldRoot(node);
+  return { x: signX, y: signY };
+}
+
+/**
+ * Single walk backing {@link worldScaleXY} and {@link placementMirrorSigns},
+ * so the stop-below-worldRoot rule has one definition.
+ *
+ * Sign is tracked as a parity toggle rather than derived from the signed
+ * product: a deep chain of small scales can underflow the product to zero,
+ * which would lose the mirror bit that {@link placementMirrorSigns} exists
+ * to report.
+ */
+function accumulateToWorldRoot(node: Container): {
+  magX: number;
+  magY: number;
+  signX: number;
+  signY: number;
+} {
+  let magX = 1;
+  let magY = 1;
+  let signX = 1;
+  let signY = 1;
   let cur: Container | null = node;
   while (cur && cur.label !== WORLD_ROOT_LABEL) {
-    if (cur.scale.x < 0) sx = -sx;
-    if (cur.scale.y < 0) sy = -sy;
+    magX *= Math.abs(cur.scale.x);
+    magY *= Math.abs(cur.scale.y);
+    if (cur.scale.x < 0) signX = -signX;
+    if (cur.scale.y < 0) signY = -signY;
     cur = cur.parent;
   }
-  return { x: sx, y: sy };
+  return { magX, magY, signX, signY };
 }
