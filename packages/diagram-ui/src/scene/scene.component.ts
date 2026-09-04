@@ -45,7 +45,7 @@ const SCENE_BACKGROUND = 0xf7f7f8;
  * Factory injected by tests so the scene can mount without a GPU
  * context: returning `null` builds the Pixi scene graph (Containers,
  * Graphics) on the CPU with no renderer, which is all the unit suite
- * asserts on. In production the default factory creates a real WebGL
+ * asserts on. In production the default factory creates a real
  * `Renderer` against the canvas element.
  */
 export type RendererFactory = (
@@ -54,14 +54,18 @@ export type RendererFactory = (
 ) => Renderer | null | Promise<Renderer | null>;
 
 const defaultRendererFactory: RendererFactory = (canvas, size) =>
-  // `preference: 'webgl'` keeps the renderer off WebGPU, which is absent
-  // or unreliable under the software stack (SwiftShader) used when
-  // hardware acceleration is off. `autoDensity: false` leaves the
-  // canvas display size to the `:host` CSS (`width/height: 100%`) while
-  // the backing store is sized in physical pixels via `resolution` so
-  // 1-px strokes and small handles stay crisp on HiDPI displays.
+  // The array form of `preference` is an exact allowlist; the string form
+  // appends every omitted backend as a fallback. Listing `webgl` then
+  // `canvas` keeps the renderer off WebGPU — absent or unreliable under
+  // the software stack (SwiftShader) used when hardware acceleration is
+  // off — while still degrading to the 2D canvas backend on a machine
+  // with no usable WebGL context, rather than failing to a blank canvas.
+  // `autoDensity: false` leaves the canvas display size to the `:host`
+  // CSS (`width/height: 100%`) while the backing store is sized in
+  // physical pixels via `resolution` so 1-px strokes and small handles
+  // stay crisp on HiDPI displays.
   autoDetectRenderer({
-    preference: "webgl",
+    preference: ["webgl", "canvas"],
     canvas,
     width: size.width,
     height: size.height,
@@ -127,8 +131,9 @@ export class OmScene extends LitElement {
 
   /**
    * Renderer factory override. Tests pass a factory returning `null` so
-   * the scene mounts without a WebGL context. Setting this after mount
-   * has no effect. `undefined` falls back to the real-WebGL default.
+   * the scene mounts without a GPU context. Setting this after mount has
+   * no effect — `unmount()` latches `disposed`, so a switch needs a fresh
+   * element. `undefined` falls back to {@link defaultRendererFactory}.
    */
   @property({ attribute: false })
   rendererFactory: RendererFactory | undefined = undefined;
