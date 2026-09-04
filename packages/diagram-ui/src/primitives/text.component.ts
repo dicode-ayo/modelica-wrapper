@@ -21,7 +21,7 @@ import {
   type SceneText,
 } from "./text-mode.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
-import { worldScaleXY } from "../scene/ortho-camera.js";
+import { placementMirrorSigns, worldScaleXY } from "../scene/ortho-camera.js";
 
 /**
  * Em-size vs box-height fudge: a `font-size: Npx` font has cap+descender
@@ -44,8 +44,8 @@ const DEFERRED_RASTER_FRAMES = 8;
 
 /**
  * `<om-text>` — one Modelica `TextShape`, rendered through the Pixi text class
- * {@link getTextMode} selects. The text counter-flips locally (`scale.y < 0`)
- * so it stays upright under the diagram root's Y-flip.
+ * {@link getTextMode} selects. The text counter-flips locally so it reads
+ * upright and unmirrored whatever the ancestor transforms do.
  *
  * Under the default `bitmap` mode the glyph density is the font atlas's and
  * fixed; `canvas` mode instead raises `resolution` on zoom-in so glyphs stay
@@ -89,7 +89,15 @@ export class OmText extends OmShapePrimitive {
     // Include the resolved body so a substitution change (e.g. the user
     // edits a modifier and the parameters map updates) re-runs buildMeshes.
     // The raw shape JSON alone wouldn't change.
-    return `${this.resolvedBody()}|${JSON.stringify(this.shape)}`;
+    //
+    // The mirror signs join it because the rebuild key's `worldScaleOf` is
+    // magnitude-only: flipping a component leaves that term identical, so
+    // without this the counter-mirror computed in `buildMeshes` would go
+    // stale and the glyphs would render backwards until some other edit
+    // forced a rebuild.
+    const parent = this.parentTransform;
+    const mirror = parent ? placementMirrorSigns(parent) : { x: 1, y: 1 };
+    return `${this.resolvedBody()}|${mirror.x},${mirror.y}|${JSON.stringify(this.shape)}`;
   }
 
   protected override entityKind(): string {
@@ -154,7 +162,14 @@ export class OmText extends OmShapePrimitive {
     // Anchor at the horizontal alignment edge and vertical centre; the local
     // flip pivots about that anchor so the glyph stays upright and in place.
     text.anchor.set(anchorX(align), 0.5);
-    text.scale.set(1, -1);
+    // Glyphs read upright and unmirrored whatever the ancestors do. The `-`
+    // on Y cancels the diagram root's Y-flip; the mirror terms cancel a
+    // mirrored component placement, which would otherwise draw the text
+    // backwards — OMEdit keeps it readable. Only the glyph frame is
+    // corrected: the anchor still sits where the mirrored placement put it,
+    // so the text moves with the component.
+    const mirror = placementMirrorSigns(root);
+    text.scale.set(mirror.x, -mirror.y);
     text.position.set(alignX(align, x, width), y + height / 2);
 
     root.addChild(text);

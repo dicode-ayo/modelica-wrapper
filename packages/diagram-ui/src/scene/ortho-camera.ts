@@ -23,3 +23,30 @@ export function worldScaleXY(node: Container): { x: number; y: number } {
   }
   return { x: sx || 1, y: sy || 1 };
 }
+
+/**
+ * Per-axis sign of the accumulated scale from `node` up to (but
+ * excluding) the worldRoot: `-1` where an ancestor inverts that axis,
+ * `1` otherwise.
+ *
+ * The only ancestors that carry a negative scale are mirrored component
+ * placements — `placementTransform` derives a signed scale from the
+ * Modelica extent, so `x2 < x1` mirrors horizontally and `y2 < y1`
+ * vertically. Stopping below the worldRoot excludes the pan/zoom view
+ * transform and its Y-flip, which every drawn shape shares and which
+ * callers cancel separately.
+ */
+export function placementMirrorSigns(node: Container): {
+  x: number;
+  y: number;
+} {
+  let sx = 1;
+  let sy = 1;
+  let cur: Container | null = node;
+  while (cur && cur.label !== WORLD_ROOT_LABEL) {
+    if (cur.scale.x < 0) sx = -sx;
+    if (cur.scale.y < 0) sy = -sy;
+    cur = cur.parent;
+  }
+  return { x: sx, y: sy };
+}
