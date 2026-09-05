@@ -5,6 +5,7 @@ import "../src/scene/scene.component.js";
 import "../src/connection/edge.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmEdge } from "../src/connection/edge.component.js";
+import { buildHitTube } from "../src/base/hit-tube.js";
 import { buildEdge } from "../src/connection/edge-build.js";
 import { parseCssColor } from "../src/connection/parse-color.js";
 import { dashCount } from "./pixi-dash.helper.js";
@@ -54,6 +55,22 @@ describe("buildEdge", () => {
     expect(result.hitArea.alpha).toBe(0);
   });
 
+  it("keeps the terminal WAYPOINT_RADIUS out of the pick band — that region belongs to the connector", () => {
+    const result = buildEdge(new Container(), "edge", {
+      points: [
+        [0, 0],
+        [30, 0],
+      ],
+    });
+    if (result === null) throw new Error("expected an edge");
+    const area = result.hitArea.hitArea;
+    if (!area) throw new Error("expected a hit area");
+    expect(area.contains(15, 0)).toBe(true);
+    expect(area.contains(0, 0)).toBe(false);
+    expect(area.contains(29, 0.5)).toBe(false);
+    expect(area.contains(30, 0)).toBe(false);
+  });
+
   it("scales a clocked dash rhythm by worldPerPixel so it reads a constant size on screen", () => {
     const longPath: Array<[number, number]> = [
       [0, 0],
@@ -87,6 +104,22 @@ describe("buildEdge", () => {
     // The legacy fallback still produces a dashed (segmented) line, not a
     // single continuous run.
     expect(dashCount(result.line)).toBeGreaterThan(1);
+  });
+});
+
+describe("buildHitTube", () => {
+  it("leaves a default hit tube covering its tips (poly host shapes terminate on nothing)", () => {
+    const tube = buildHitTube(
+      "tube",
+      [
+        [0, 0],
+        [30, 0],
+      ],
+      1.5,
+      0xffffff,
+    );
+    expect(tube.hitArea?.contains(0, 0)).toBe(true);
+    expect(tube.hitArea?.contains(30, 0)).toBe(true);
   });
 });
 

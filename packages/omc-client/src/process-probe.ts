@@ -252,8 +252,7 @@ function winParentPid(pid: number): number | undefined {
 const PROCESS_TABLE_CACHE_TTL_MS = 5_000;
 
 let processTableCache:
-  | { rows: WinProcessRow[] | undefined; expiresAt: number }
-  | undefined;
+  { rows: WinProcessRow[] | undefined; expiresAt: number } | undefined;
 
 /**
  * The whole process table in one shot, cached for `PROCESS_TABLE_CACHE_TTL_MS`

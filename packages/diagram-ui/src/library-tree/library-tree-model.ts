@@ -118,8 +118,7 @@ function childId(parentId: string | null, info: LibraryClassInfo): string {
 
 /** Outcome of the root (`listChildren(null)`) load, reported to `onRootLoad`. */
 export type LibraryRootLoad =
-  | { ok: true; empty: boolean }
-  | { ok: false; error: string };
+  { ok: true; empty: boolean } | { ok: false; error: string };
 
 /**
  * Build the Headless Tree data loader over a `LibraryDataSource`.

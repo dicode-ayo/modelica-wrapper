@@ -4,7 +4,7 @@
   "private": true,
   "description": "Monorepo root for the modelica-wrapper VSCode extension and the @dicode/omc-client package.",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.20.0"
   },
   "scripts": {
     "start": "pnpm --filter @dicode/diagram-ui start",
@@ -19,6 +19,8 @@
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit",
+    "test:coverage": "pnpm -r test:coverage",
+    "crap": "pnpm -r crap",
     "test:e2e": "pnpm --filter modelica-wrapper test:e2e",
     "test:e2e:headed": "pnpm --filter modelica-wrapper test:e2e:headed",
     "test:e2e:ui": "pnpm --filter modelica-wrapper test:e2e:ui",
@@ -26,16 +28,17 @@
     "test:e2e:omc": "pnpm --filter modelica-wrapper test:e2e:omc"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
-    "eslint": "^9.39.4",
+    "@eslint/js": "^10.0.1",
+    "@sebassdc/crap4ts": "^0.1.1",
+    "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
-    "globals": "^16.5.0",
-    "prettier": "^3.8.3",
-    "tsup": "^8.3.0",
-    "typescript": "^5.6.0",
-    "typescript-eslint": "^8.60.0"
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.68.0"
   },
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "pnpm@10.34.5",
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",

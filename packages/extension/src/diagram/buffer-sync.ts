@@ -8,12 +8,12 @@ import { omcFilenameForDocument } from "../source-provider.js";
 
 /**
  * Machinery shared by the diagram and documentation edit controllers: both
- * debounce a burst of foreign buffer changes into one reverse sync, then
- * `loadString` the buffer back into OMC before re-fetching their render
- * model. Each controller still owns its own debounce-timer field and the
- * post-load re-fetch step — the diagram controller additionally tracks
- * whether a sync is in flight to detect a racing forward edit, which the
- * documentation controller has no equivalent of.
+ * debounce a burst of foreign buffer changes into one reverse sync, skip it
+ * when the buffer still matches the class, and otherwise `loadString` the
+ * buffer back into OMC before re-fetching their render model. Each controller
+ * still owns its own debounce-timer field and the post-load re-fetch step —
+ * the diagram controller additionally decides whether a report racing the sync
+ * survives it, which the documentation controller has no equivalent of.
  */
 
 /** Deferred one-shot timer, injectable so tests drive the debounce directly. */
@@ -41,6 +41,40 @@ export interface BufferSyncClient extends StringParseClient {
   }): Promise<{ success: boolean }>;
   getErrorString(): Promise<{ errorString: string }>;
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
+}
+
+/** The subset of OMC that reads a class's canonical source. */
+export interface ClassSourceClient {
+  listFile(input: { typeName: string }): Promise<{ contents: string }>;
+}
+
+export interface ClassSourceComparison {
+  /** The class's canonical source, as `listFile` prints it. */
+  source: string;
+  /** Whether `document` holds that source verbatim. */
+  matches: boolean;
+}
+
+/**
+ * Read `className`'s canonical source and say whether `document` still holds
+ * it, in which case a reverse sync has nothing to load back. Announcing a
+ * mutation reloads the document from `listFile`, and that reload is nobody's
+ * self-write, so it reaches a controller as a foreign change — its own edits
+ * included. Loading such a buffer back would announce the class again.
+ *
+ * The match is byte-exact: any normalization between `listFile` and the buffer
+ * reports a mismatch, which costs a redundant reload rather than skipping a
+ * needed one. The source comes back either way, because a matching buffer says
+ * nothing about whose mutation was announced — a caller that renders the class
+ * needs it to tell its own edit from somebody else's.
+ */
+export async function compareBufferToClass(
+  client: ClassSourceClient,
+  document: vscode.TextDocument,
+  className: string,
+): Promise<ClassSourceComparison> {
+  const { contents } = await client.listFile({ typeName: className });
+  return { source: contents, matches: contents === document.getText() };
 }
 
 export type ReloadResult = { ok: true } | { ok: false; message: string };

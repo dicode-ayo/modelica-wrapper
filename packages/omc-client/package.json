@@ -15,7 +15,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=24.20.0"
   },
   "publishConfig": {
     "access": "public",
@@ -53,16 +53,19 @@
     "test:unit": "OMC_INTEGRATION=0 vitest run",
     "capture-modelinstance-fixtures": "node scripts/capture-modelinstance-fixtures.mjs",
     "check-modelinstance-schema-drift": "node scripts/check-modelinstance-schema-drift.mjs",
-    "coverage:recount": "node scripts/check-coverage-counts.mjs"
+    "coverage:recount": "node scripts/check-coverage-counts.mjs",
+    "test:coverage": "OMC_INTEGRATION=0 vitest run --coverage",
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "dependencies": {
-    "zeromq": "^6.1.0",
-    "zod": "^4.4.3"
+    "zeromq": "^6.6.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "^15.3.5",
-    "@types/node": "^22.0.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "@apidevtools/json-schema-ref-parser": "^16.0.1",
+    "@types/node": "^24.13.3",
+    "@vitest/coverage-istanbul": "^4.1.11",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }

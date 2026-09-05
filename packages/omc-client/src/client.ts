@@ -13,6 +13,7 @@
 
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
+import { mutationFor, type OmcMutation } from "./mutation.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
 import { SerialQueue } from "./queue.js";
@@ -40,6 +41,9 @@ import {
 } from "./version.js";
 
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
+
+/** Reacts to a mutation OMC just accepted. Must not throw to be correct. */
+export type MutationListener = (mutation: OmcMutation) => void;
 
 export interface OmcClientOptions {
   /** Path to omc binary. Empty/undefined uses "omc" from PATH. */
@@ -69,6 +73,7 @@ export class OmcClient implements CallContext {
   get lastCall(): string | null {
     return this._lastCall;
   }
+  private readonly mutationListeners = new Set<MutationListener>();
 
   /** Spawn OMC, dial its ZMQ endpoint, and return a connected client. */
   static async create(opts: OmcClientOptions = {}): Promise<OmcClient> {
@@ -151,7 +156,52 @@ export class OmcClient implements CallContext {
     // Record the raw command before we enqueue / send, so it's already
     // readable via `lastCall` even if the transport hangs or throws.
     this._lastCall = cmd;
-    return this.queue.run(() => this.transport.send(cmd, this.callTimeoutMs));
+    const reply = await this.queue.run(() =>
+      this.transport.send(cmd, this.callTimeoutMs),
+    );
+    // Outside the queue slot: a listener that asks OMC anything would
+    // otherwise wait for a slot the announcement is still holding.
+    this.announce(cmd);
+    return reply;
+  }
+
+  /**
+   * Subscribe to mutations this client accepts. Returns an unsubscribe
+   * function.
+   *
+   * A subscription belongs to one client and dies with it, so a caller that
+   * replaces its client — closing this one and spawning another — must
+   * subscribe again on the new one.
+   */
+  onMutation(listener: MutationListener): () => void {
+    this.mutationListeners.add(listener);
+    return () => {
+      this.mutationListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Announce whatever `cmd` may have changed. Fired whenever the call did not
+   * throw, because success is unreadable here — `call()` holds only OMC's raw
+   * reply text, and even the wrapper one layer up cannot settle it:
+   * `addComponent` answers `false` with an error line and may still have
+   * touched the AST.
+   *
+   * A throw is swallowed. A listener left un-run because a sibling failed is
+   * the staleness this exists to prevent, and this package has no logging
+   * channel to report it through.
+   */
+  private announce(cmd: string): void {
+    if (this.mutationListeners.size === 0) return;
+    const mutation = mutationFor(cmd);
+    if (mutation === undefined) return;
+    for (const listener of [...this.mutationListeners]) {
+      try {
+        listener(mutation);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   /**

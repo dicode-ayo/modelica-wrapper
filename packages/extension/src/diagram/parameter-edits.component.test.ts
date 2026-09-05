@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ComponentElement, ParameterField } from "@dicode/omc-client";
+import type { ComponentElement } from "@dicode/omc-client";
 
+import {
+  fieldOf,
+  requireComponentParameterForm,
+} from "../../test-support/parameter-forms.js";
 import { refOf } from "../../test-support/parameter-refs.js";
 import {
   buildComponentParameterForm,
@@ -9,15 +13,6 @@ import {
   componentParameterValueToExpr,
   type ComponentParameterRef,
 } from "./parameter-edits.js";
-
-function field(
-  model: { fields: ParameterField[] },
-  name: string,
-): ParameterField {
-  const f = model.fields.find((x) => x.name === name);
-  if (!f) throw new Error(`no field ${name}`);
-  return f;
-}
 
 /**
  * Builds the kind of `ComponentElement` `getModelInstance` emits for a
@@ -111,7 +106,7 @@ describe("buildComponentParameterForm", () => {
   });
 
   it("emits fields for each scalar/enum parameter using type-side defaults when no overrides are set", () => {
-    const form = buildComponentParameterForm(pi())!;
+    const form = requireComponentParameterForm(pi());
     expect(form.componentName).toBe("PI");
     expect(form.model.fields.map((f) => f.name)).toEqual([
       "controllerType",
@@ -155,7 +150,7 @@ describe("buildComponentParameterForm", () => {
         ],
       },
     } as unknown as ComponentElement;
-    const form = buildComponentParameterForm(c)!;
+    const form = requireComponentParameterForm(c);
     expect(form.refs.init).toMatchObject({
       tab: "Advanced",
       group: "Initialization",
@@ -163,12 +158,12 @@ describe("buildComponentParameterForm", () => {
   });
 
   it("prefers parent-class modifier overrides over type-side defaults", () => {
-    const form = buildComponentParameterForm(
+    const form = requireComponentParameterForm(
       pi({
         k: "100",
         controllerType: "Modelica.Blocks.Types.SimpleController.PI",
       }),
-    )!;
+    );
     expect(form.values).toEqual({
       controllerType: "PI",
       k: 100,
@@ -177,9 +172,9 @@ describe("buildComponentParameterForm", () => {
   });
 
   it("unwraps $value-tagged modifier records and keeps the leaf value", () => {
-    const form = buildComponentParameterForm(
+    const form = requireComponentParameterForm(
       pi({ k: { $value: "42", final: true } }),
-    )!;
+    );
     expect(form.values.k).toBe(42);
   });
 
@@ -187,9 +182,9 @@ describe("buildComponentParameterForm", () => {
     // Real-world example: `limiter: {u: {start: "0"}}` addresses a
     // grandchild of the sub-component; it isn't a parameter on PI
     // itself, so the form must NOT emit a "limiter" field.
-    const form = buildComponentParameterForm(
+    const form = requireComponentParameterForm(
       pi({ limiter: { u: { start: "0" } } }),
-    )!;
+    );
     expect(form.model.fields.map((f) => f.name)).not.toContain("limiter");
   });
 
@@ -236,7 +231,7 @@ describe("buildComponentParameterForm", () => {
       },
     } as unknown as ComponentElement;
 
-    const form = buildComponentParameterForm(torque)!;
+    const form = requireComponentParameterForm(torque);
     expect(form.model.fields.map((f) => f.name)).toContain("useSupport");
     expect(form.refs.useSupport).toEqual({
       name: "useSupport",
@@ -254,7 +249,7 @@ describe("buildComponentParameterForm", () => {
   it("leaves inheritedFrom unset for a parameter declared on the component's own type", () => {
     // `pi()`'s parameters (controllerType, k, Ti) are all declared
     // directly on the component's type — none are inherited.
-    const form = buildComponentParameterForm(pi())!;
+    const form = requireComponentParameterForm(pi());
     const kRef = refOf(form.refs, "k");
     expect(kRef.inheritedFrom).toBeUndefined();
     expect("inheritedFrom" in kRef).toBe(false);
@@ -295,8 +290,8 @@ describe("buildComponentParameterForm", () => {
       },
     } as unknown as ComponentElement;
 
-    const form = buildComponentParameterForm(inertia)!;
-    const j = field(form.model, "J");
+    const form = requireComponentParameterForm(inertia);
+    const j = fieldOf(form.model, "J");
     expect(j.unit).toBe("kg.m2");
     // No use-site displayUnit modifier → undefined.
     expect(j.displayUnit).toBeUndefined();
@@ -333,16 +328,16 @@ describe("buildComponentParameterForm", () => {
       },
     } as unknown as ComponentElement;
 
-    const form = buildComponentParameterForm(angleComp)!;
-    const phi = field(form.model, "phi");
+    const form = requireComponentParameterForm(angleComp);
+    const phi = fieldOf(form.model, "phi");
     expect(phi.unit).toBe("rad");
     expect(phi.displayUnit).toBe("deg");
   });
 
   it("emits no unit metadata for a unit-less Real parameter (the `k` gain case)", () => {
     // `pi().k` is a bare `Real` with no unit alias — no unit metadata.
-    const form = buildComponentParameterForm(pi())!;
-    const k = field(form.model, "k");
+    const form = requireComponentParameterForm(pi());
+    const k = fieldOf(form.model, "k");
     expect(k.unit).toBeUndefined();
     expect(k.displayUnit).toBeUndefined();
   });

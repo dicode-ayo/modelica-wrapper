@@ -130,7 +130,7 @@ async function provisionExtensionsDir(extensionsDir: string): Promise<void> {
   const required = [
     join(target, "package.json"),
     join(target, "out", "extension.js"),
-    join(target, "out", "tree-sitter.wasm"),
+    join(target, "out", "web-tree-sitter.wasm"),
     join(target, "out", "tree-sitter-modelica.wasm"),
   ];
   for (const file of required) {

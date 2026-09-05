@@ -44,6 +44,7 @@ import * as vscode from "vscode";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { pathExists } from "./fs-util.js";
+import type { FilesUnderEntry, PathClassIndex } from "./path-class-index.js";
 import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
 import { SessionQueue } from "./session-queue.js";
@@ -62,53 +63,10 @@ interface WatcherOmcClient {
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
 }
 
-/** A file holding classes at or under some scope, paired with just those classes. */
-export interface FilesUnderEntry {
-  fsPath: string;
-  classNames: string[];
-}
-
-/** Maps a normalized `.mo` path to the fully-qualified classes it declares. */
-export interface PathClassIndex {
-  get(fsPath: string): string[] | undefined;
-  set(fsPath: string, classNames: string[]): void;
-  delete(fsPath: string): void;
-  /**
-   * Every indexed file holding a class at or under `qualifiedName` (itself
-   * included), each paired with just the matching classes it declares. A
-   * cascade — `deleteClass` on a package, or a reload of it — can touch
-   * classes spread across several files, not just the file `qualifiedName`
-   * itself lives in.
-   */
-  filesUnder(qualifiedName: string): FilesUnderEntry[];
-}
-
-export function createPathClassIndex(): PathClassIndex {
-  const byPath = new Map<string, string[]>();
-  const key = (p: string): string => path.resolve(p);
-  return {
-    get: (p) => byPath.get(key(p)),
-    set: (p, names) => void byPath.set(key(p), names),
-    delete: (p) => void byPath.delete(key(p)),
-    filesUnder(qualifiedName) {
-      const prefix = `${qualifiedName}.`;
-      const found: FilesUnderEntry[] = [];
-      for (const [fsPath, names] of byPath) {
-        const matches = names.filter(
-          (name) => name === qualifiedName || name.startsWith(prefix),
-        );
-        if (matches.length > 0) found.push({ fsPath, classNames: matches });
-      }
-      return found;
-    },
-  };
-}
-
 /**
  * Packages whose reorder was skipped for a busy buffer, keyed by the owning
  * `package.mo`, so a later change that clears the block can find and re-run
- * it. Injected — not module-level state — for the same reason `PathClassIndex`
- * is.
+ * it. Injected, not module-level state, so each activation starts clean.
  */
 export interface PendingReorders {
   set(pkgFile: string, describedPath: string): void;
@@ -614,7 +572,7 @@ export function isDeclaredClassBusy(
  */
 export async function seedPathClassIndex(
   client: Pick<WatcherOmcClient, "parseFile">,
-  files: string[],
+  files: readonly string[],
   index: PathClassIndex,
 ): Promise<void> {
   for (const fsPath of files) {
@@ -644,8 +602,21 @@ export function registerMoFileWatcher(deps: {
   sourceProvider: ModelicaSourceProvider;
   guard: SelfWriteGuard;
   invalidation: ClassInvalidationRegistry;
+  /**
+   * The path→class index this watcher seeds and keeps current. Owned by
+   * extension.ts rather than here, because the OMC mutation router reads it
+   * too.
+   */
+  index: PathClassIndex;
+  /**
+   * A flat `.mo` path list for the index seed, both at activation and on
+   * every `:reset`. extension.ts hands in a scanner memoized per `:reset` and
+   * shared with `registerWorkspaceAutoload`, so the two `sessionReplaced`
+   * listeners' scans coalesce into one.
+   */
+  scanMoFiles: () => Promise<readonly string[]>;
 }): vscode.Disposable {
-  const index = createPathClassIndex();
+  const { index } = deps;
   const watcherDeps: MoWatcherDeps = {
     ensureClient: deps.ensureClient,
     libraryTree: deps.libraryTree,
@@ -664,7 +635,7 @@ export function registerMoFileWatcher(deps: {
   // Seed before reacting: a delete resolves its classes from the index, so an
   // event that lands mid-seed must wait or it would no-op a real deletion.
   const seedQueue = new SessionQueue(
-    seedWorkspaceIndex(deps.ensureClient, index),
+    seedWorkspaceIndex(deps.ensureClient, deps.scanMoFiles, index),
   );
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
@@ -748,7 +719,9 @@ export function registerMoFileWatcher(deps: {
     // retrying a mount-time seed that failed because OMC wasn't up yet.
     deps.invalidation.registerSessionReplaced(() => {
       watcherDeps.pendingReorders.clear();
-      seedQueue.enqueue(() => seedWorkspaceIndex(deps.ensureClient, index));
+      seedQueue.enqueue(() =>
+        seedWorkspaceIndex(deps.ensureClient, deps.scanMoFiles, index),
+      );
     }),
   ];
 
@@ -757,17 +730,14 @@ export function registerMoFileWatcher(deps: {
 
 async function seedWorkspaceIndex(
   ensureClient: () => Promise<WatcherOmcClient>,
+  scanMoFiles: () => Promise<readonly string[]>,
   index: PathClassIndex,
 ): Promise<void> {
   try {
-    const uris = await vscode.workspace.findFiles("**/*.mo");
-    if (uris.length === 0) return;
+    const files = await scanMoFiles();
+    if (files.length === 0) return;
     const client = await ensureClient();
-    await seedPathClassIndex(
-      client,
-      uris.map((u) => u.fsPath),
-      index,
-    );
+    await seedPathClassIndex(client, files, index);
   } catch (err) {
     log.warn("moWatcher", `index seed failed: ${asMessage(err)}`);
   }

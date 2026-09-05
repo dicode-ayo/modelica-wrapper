@@ -5,8 +5,9 @@
  * The terminal (`repl-pty.ts`) wraps the result in ANSI coloring and prints
  * it; this module only decides what the output text should be.
  *
- * Meta-commands (lines starting with `:`) are handled inline. Everything
- * else is forwarded to `client.call()`. After a forwarded call we drain
+ * Meta-commands (lines starting with `:`) dispatch through `META_HANDLERS`,
+ * one per verb in `repl-help.ts`'s `META_COMMANDS`. Everything else is
+ * forwarded to `client.call()`. After a forwarded call we drain
  * `client.getErrorString()` and surface any non-empty error buffer in
  * addition to the OMC reply — OMC can return a value AND a diagnostic in
  * the same step (e.g. typing a malformed expression). We separately mark
@@ -23,7 +24,7 @@ import type { OmcClient } from "@dicode/omc-client";
 import type { OmcCommand } from "@dicode/omc-client";
 
 import { diagnoseOmcError } from "./repl-diagnose.js";
-import { formatHelp } from "./repl-help.js";
+import { formatHelp, type MetaCommandName } from "./repl-help.js";
 
 export interface ReplDependencies {
   /** Lazy/cached singleton OMC client. */
@@ -110,43 +111,52 @@ export async function evalLine(
   }
 }
 
+type MetaHandler = (
+  arg: string,
+  deps: ReplDependencies,
+) => Promise<ReplResult> | ReplResult;
+
+/**
+ * One handler per `MetaCommandName`. `Record` forces this object literal to
+ * cover every verb in `META_COMMANDS` (and no others) — adding, removing, or
+ * renaming a verb there without updating this map is a compile error rather
+ * than a silent runtime "unknown meta-command".
+ */
+const META_HANDLERS: Record<MetaCommandName, MetaHandler> = {
+  ":help": (arg) => {
+    const { output, unknown } = formatHelp(arg);
+    return { output, isError: unknown };
+  },
+  ":clear": () => ({ output: "", isError: false, clearScreen: true }),
+  ":exit": () => ({ output: "bye", isError: false, closeTerminal: true }),
+  ":load": metaLoad,
+  ":cd": metaCd,
+  ":reset": (_arg, deps) => metaReset(deps),
+};
+
+function isMetaCommandName(cmd: string): cmd is MetaCommandName {
+  return Object.prototype.hasOwnProperty.call(META_HANDLERS, cmd);
+}
+
 async function handleMeta(
   line: string,
   deps: ReplDependencies,
 ): Promise<ReplResult> {
   // Split into command + remainder so `:load /path with spaces` keeps the
   // remainder intact. Modelica path arguments commonly contain spaces.
-  const spaceIdx = line.indexOf(" ");
+  // Splits on any whitespace, matching repl-complete.ts's selectSource so
+  // the two agree on where the verb ends.
+  const spaceIdx = line.search(/\s/);
   const cmd = spaceIdx === -1 ? line : line.slice(0, spaceIdx);
   const arg = spaceIdx === -1 ? "" : line.slice(spaceIdx + 1).trim();
 
-  switch (cmd) {
-    case ":help": {
-      const { output, unknown } = formatHelp(arg);
-      return { output, isError: unknown };
-    }
-
-    case ":clear":
-      return { output: "", isError: false, clearScreen: true };
-
-    case ":exit":
-      return { output: "bye", isError: false, closeTerminal: true };
-
-    case ":load":
-      return metaLoad(arg, deps);
-
-    case ":cd":
-      return metaCd(arg, deps);
-
-    case ":reset":
-      return metaReset(deps);
-
-    default:
-      return {
-        output: `error: unknown meta-command "${cmd}" (try :help)`,
-        isError: true,
-      };
+  if (!isMetaCommandName(cmd)) {
+    return {
+      output: `error: unknown meta-command "${cmd}" (try :help)`,
+      isError: true,
+    };
   }
+  return META_HANDLERS[cmd](arg, deps);
 }
 
 async function metaLoad(

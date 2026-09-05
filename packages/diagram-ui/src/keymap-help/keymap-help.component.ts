@@ -129,29 +129,31 @@ export class OmKeymapHelp extends LitElement {
         light-dismiss
         @wa-hide=${this.onDialogHide}
       >
-        ${this.groups.length === 0
-          ? html`<p class="empty">No keyboard shortcuts are available.</p>`
-          : this.groups.map(
-              (group) => html`
-                <section>
-                  <h3>${group.category}</h3>
-                  <dl>
-                    ${group.items.map(
-                      (item) => html`
-                        <div class="row" ?data-disabled=${!item.enabled}>
-                          <dt>${item.title}</dt>
-                          <dd>
-                            ${item.chords.map(
-                              (chord) => html`<kbd>${chord}</kbd>`,
-                            )}
-                          </dd>
-                        </div>
-                      `,
-                    )}
-                  </dl>
-                </section>
-              `,
-            )}
+        ${
+          this.groups.length === 0
+            ? html`<p class="empty">No keyboard shortcuts are available.</p>`
+            : this.groups.map(
+                (group) => html`
+                  <section>
+                    <h3>${group.category}</h3>
+                    <dl>
+                      ${group.items.map(
+                        (item) => html`
+                          <div class="row" ?data-disabled=${!item.enabled}>
+                            <dt>${item.title}</dt>
+                            <dd>
+                              ${item.chords.map(
+                                (chord) => html`<kbd>${chord}</kbd>`,
+                              )}
+                            </dd>
+                          </div>
+                        `,
+                      )}
+                    </dl>
+                  </section>
+                `,
+              )
+        }
       </wa-dialog>
     `;
   }

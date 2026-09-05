@@ -17,6 +17,7 @@ import * as vscode from "vscode";
 import { OmcClient, reapOrphanedOmcSessions } from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
+import { errorDetail } from "./error-detail.js";
 import { DiagramEditorProvider } from "./diagram/diagram-editor-provider.js";
 import {
   DIAGRAM_VIEW_TYPE,
@@ -42,12 +43,15 @@ import {
   ModelicaSourceProvider,
 } from "./source-provider.js";
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
+import { createPathClassIndex } from "./path-class-index.js";
 import {
   createOmcClientCache,
   type OmcClientCache,
 } from "./omc-client-cache.js";
+import { createOmcSetup } from "./omc-setup.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
+import { publishOmcMutations } from "./omc-mutation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
@@ -57,6 +61,7 @@ import {
   registerWorkspaceAutoload,
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
+import { createMoFileScanner } from "./workspace-mo-scan.js";
 
 // Only `deactivate()` outlives `activate()`'s scope.
 let closeOmcClientCache: (() => Promise<void>) | undefined;
@@ -84,18 +89,56 @@ export async function activate(
   // number of caches is invisible here.
   const invalidation = new ClassInvalidationRegistry();
 
+  // Shared by registerWorkspaceAutoload's `:reset` entry-point derivation and
+  // registerMoFileWatcher's `:reset` index reseed, so the two `sessionReplaced`
+  // listeners run one recursive `.mo` glob between them instead of one each.
+  // `null` disables `files.exclude` filtering, matching discoverEntryPoints's
+  // raw `fsp.readdir` walk so `:reset` and activation see the same file set.
+  // The seed therefore parses `files.exclude`d paths as well;
+  // deriveEntryPoints re-applies its own top-level and dot-prefix filtering.
+  const moFileScanner = createMoFileScanner(async () =>
+    (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath),
+  );
+
+  // Seeded and kept current by the `.mo` watcher; the mutation router reads it
+  // to resolve a file-scoped announcement to the classes that file declares.
+  const pathClassIndex = createPathClassIndex();
+
+  // Replacing the session is what re-runs the workspace sweep and rebuilds the
+  // sidebar: a user who points at an `omc` after activation found none has an
+  // empty tree until the load happens against the new process.
+  const omcSetup = createOmcSetup({
+    onOmcChanged: () => {
+      void resetClient().catch((err: unknown) => {
+        log.warn(
+          "omc",
+          `replacing the OMC session failed: ${errorDetail(err)}`,
+        );
+      });
+    },
+  });
+
   // `onReset` closes over the per-activation `ClassInvalidationRegistry`, so
   // this can't be built at module scope.
   const omcClientCache: OmcClientCache<OmcClient> = createOmcClientCache(
     async () => {
-      const cfg = vscode.workspace.getConfiguration("modelica");
-      const omcPath = cfg.get<string>("omcPath") ?? "";
+      const omcPath = await omcSetup.omcPath();
       const c = await OmcClient.create({ omcPath });
+      // The subscription lives on `c` and dies with it, so there is nothing
+      // for `context.subscriptions` to hold.
+      publishOmcMutations(c, sourceProvider, invalidation, pathClassIndex);
       await cdIntoWorkspaceCacheDir(c);
+      void omcSetup.reportVersion(c, omcPath);
       return c;
     },
     (c) => c.close(),
-    () => invalidation.sessionReplaced(),
+    () => {
+      // Invalidated before the fan-out so every sessionReplaced listener —
+      // whichever runs first — sees a fresh scan rather than one memoized
+      // from before this reset.
+      moFileScanner.invalidate();
+      invalidation.sessionReplaced();
+    },
   );
   closeOmcClientCache = () => omcClientCache.shutdown();
   const ensureClient = (): Promise<OmcClient> => omcClientCache.ensure();
@@ -125,6 +168,7 @@ export async function activate(
         multiEntityBatchToast(skipped.map((s) => s.fileName)),
       );
     },
+    scanMoFiles: () => moFileScanner.scan(),
   };
   // One queue for both the activation-time sweep (`.run()` below) and every
   // `:reset` (its own `sessionReplaced` listener), so a reset landing mid-sweep
@@ -194,10 +238,13 @@ export async function activate(
       sourceProvider,
       guard: selfWriteGuard,
       invalidation,
+      index: pathClassIndex,
+      scanMoFiles: () => moFileScanner.scan(),
     }),
   );
 
   context.subscriptions.push(
+    omcSetup,
     libraryTree,
     libraryView,
     autoload,
@@ -243,7 +290,9 @@ export async function activate(
   // on `recoverRestoredCustomEditors`.
   void recoverRestoredCustomEditors();
 
-  // Non-blocking — we don't want to delay activation on OMC startup.
+  // Neither blocks: OMC startup is slow, and the missing-OpenModelica
+  // notification waits on the user.
+  void omcSetup.start();
   autoload.run();
 
   // Exported API surface. Tested separately via the `repl-eval` integration

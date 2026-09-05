@@ -101,11 +101,10 @@ export function buildEdge(
     options.worldPerPixel,
   );
 
-  const hitArea = buildHitTube(
+  const hitArea = buildEdgeHitTube(
     `${name}.hit`,
     options.points,
     options.hitRadius ?? DEFAULT_HIT_RADIUS,
-    HIT_HOVER_COLOR,
   );
   hitArea.zIndex = zIndex;
 
@@ -145,13 +144,29 @@ export function rebuildHitTube(
   hitRadius: number = DEFAULT_HIT_RADIUS,
   zOffset: number = EDGE_Z_OFFSET,
 ): Graphics {
-  const hitArea = buildHitTube(name, newPoints, hitRadius, HIT_HOVER_COLOR);
+  const hitArea = buildEdgeHitTube(name, newPoints, hitRadius);
   hitArea.zIndex = -zOffset;
   if (parent) {
     parent.sortableChildren = true;
     parent.addChild(hitArea);
   }
   return hitArea;
+}
+
+/**
+ * Build an edge's pick band. The hit area excludes a `hitRadius` disc
+ * around each terminal point: a route ends at the center of the connector
+ * it lands on, and that spot must stay pickable as the connector so a
+ * connection can start from or drop onto an already-connected one.
+ */
+function buildEdgeHitTube(
+  name: string,
+  points: Point[],
+  hitRadius: number,
+): Graphics {
+  return buildHitTube(name, points, hitRadius, HIT_HOVER_COLOR, {
+    excludeEnds: true,
+  });
 }
 
 function drawEdgeLine(

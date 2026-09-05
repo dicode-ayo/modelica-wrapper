@@ -39,6 +39,7 @@ import {
   pasteClipboardItems,
 } from "./copy-paste.js";
 import {
+  compareBufferToClass,
   defaultScheduler,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
@@ -94,12 +95,10 @@ import {
 export { DIAGRAM_VIEW_TYPE, ICON_VIEW_TYPE };
 
 /**
- * Stamp of the layout the `init` message seeds the webview with. The
- * controller's own counter starts here and `publishLayout` bumps it, so the
- * stamp on the wire and the one reports are checked against never diverge —
- * `init` goes out before the controller can have published anything.
+ * First stamp the controller mints. The webview holds 0 until a push lands,
+ * so a report raised before it has seen one always reads as stale.
  */
-export const INITIAL_LAYOUT_VERSION = 1;
+const INITIAL_LAYOUT_VERSION = 1;
 
 /**
  * Resolve the Modelica class a `.mo` document stands for. The
@@ -368,7 +367,7 @@ export function resolveDiagramEditor(
         gate.send({
           type: "init",
           layout,
-          layoutVersion: INITIAL_LAYOUT_VERSION,
+          layoutVersion: controller.canonicalLayoutVersion,
           className,
           readOnly: !verdict.ok,
           hasClipboard: !diagramClipboard.isEmpty,
@@ -460,11 +459,13 @@ export class DiagramEditController {
    * carrying something the webview has no other way to learn.
    */
   private settleOwed = false;
-  // True from the moment a reverse sync is enqueued until it resolves —
-  // covers the gap between the debounce timer firing and the queued unit's
-  // `loadString`/refetch actually completing, which `reverseTimer` alone
-  // (cleared the instant the timer fires) does not.
-  private reverseSyncInFlight = false;
+  /**
+   * The class's canonical source as of the render the webview holds, so a sync
+   * whose buffer matched can tell this editor's own announced edit from
+   * somebody else's mutation. `undefined` means unknown, which re-renders —
+   * the safe direction, since a stale render is what deletes what it never saw.
+   */
+  private renderedSource: string | undefined;
 
   // Per-modal submit state, captured when a modal opens and read back when it
   // submits — mirrors the diagram panel's closure state.
@@ -491,6 +492,7 @@ export class DiagramEditController {
   private readonly refetch: (
     client: OmcClient,
     className: string,
+    forceInstantiate?: boolean,
   ) => Promise<DiagramLayout>;
 
   constructor(
@@ -507,6 +509,14 @@ export class DiagramEditController {
     this.shadow = makeShadow(() => this.onForeignChange());
     this.librarySource = new LibrarySource(deps.client);
     this.refetch = mode === "icon" ? fetchIconLayout : fetchDiagramLayout;
+  }
+
+  /**
+   * Stamp the `init` that seeds the webview carries, so the counter reports
+   * are checked against and the one on the wire have a single owner.
+   */
+  get canonicalLayoutVersion(): number {
+    return this.layoutVersion;
   }
 
   /**
@@ -531,18 +541,8 @@ export class DiagramEditController {
    */
   handle(msg: WebviewToExtension): Promise<void> {
     // Every message, so an undo lands in OMC before the next unit reads the class.
-    const racing = this.flushRacingReverseSync();
+    this.flushPendingReverseSync();
     if (msg.type === "change") {
-      if (racing) {
-        // The webview computed this against the diagram as it stood before the
-        // reverse sync racing it. Reconciling it afterwards would read whatever
-        // the sync restored as something the user deleted. Drop it: the sync's
-        // own `layout` push resyncs the webview to reconcile against.
-        this.reportError(
-          "the diagram was resynced from an external change — please retry the edit",
-        );
-        return this.queue;
-      }
       this.pendingChange = { layout: msg.layout, basedOn: msg.basedOn };
     }
     return this.enqueue(() => this.dispatch(msg));
@@ -567,37 +567,64 @@ export class DiagramEditController {
   }
 
   /**
-   * Flush a pending reverse sync ahead of the caller and report whether one is
-   * racing it — either still a timer (not yet enqueued) or already
-   * enqueued/running (`loadString`/refetch in flight). Flushing rather than
-   * letting the timer fire on its own is what keeps a racing edit from reading
-   * a class the sync has not reverted yet, whichever window it lands in.
+   * Enqueue a pending reverse sync ahead of the caller rather than letting its
+   * timer fire on its own, so a racing edit never reads a class the sync has
+   * not reverted yet. The queue then orders the two, and the sync itself
+   * decides whether the edit survives it — see `publishSyncedLayout`.
    */
-  private flushRacingReverseSync(): boolean {
-    if (this.reverseTimer !== undefined) {
-      this.reverseTimer.cancel();
-      this.runReverseSyncNow();
-      return true;
-    }
-    return this.reverseSyncInFlight;
+  private flushPendingReverseSync(): void {
+    if (this.reverseTimer === undefined) return;
+    this.reverseTimer.cancel();
+    this.runReverseSyncNow();
   }
 
   private runReverseSyncNow(): void {
     this.reverseTimer = undefined;
-    this.reverseSyncInFlight = true;
-    // Same reason the racing `change` above is dropped: this one was reported
-    // against the pre-sync diagram too.
+    void this.enqueue(() => this.reverseSync());
+  }
+
+  /**
+   * Push a layout the webview has not seen, dropping any report it made while
+   * the sync ran. Such a report was computed against the diagram as it stood
+   * before the sync, so reconciling it afterwards would misread the gap. The
+   * `basedOn` echo does mark such a report stale, but the stale-base reconcile
+   * only drops the untrusted edit kinds — a trusted move or waypoint edit
+   * would still land against state the webview never saw. Dropping it here
+   * rather than when the sync starts covers reports that land during the
+   * sync's own OMC calls, and leaves this push as the state the webview
+   * reconciles against next.
+   */
+  private publishSyncedLayout(layout: DiagramLayout): void {
     if (this.pendingChange !== null) {
       this.pendingChange = null;
       this.reportError(
         "the diagram was resynced from an external change — please retry the edit",
       );
     }
-    void this.enqueue(() =>
-      this.reverseSync().finally(() => {
-        this.reverseSyncInFlight = false;
-      }),
-    );
+    this.publishLayout(layout);
+  }
+
+  /**
+   * Settle a sync whose buffer already matched the class, so it wrote nothing.
+   * The announcement that reloaded that buffer may have carried somebody
+   * else's mutation, which this editor is not rendering yet — and a report
+   * reconciled against a render that stale deletes whatever it never saw.
+   *
+   * `source` is what tells the two apart: it still being the source this
+   * render came from means the announcement was this editor's own edit
+   * returning, the webview is already showing it, a report racing it
+   * reconciles fine, and pushing anyway would move what is under the pointer.
+   * Comparing layouts cannot answer this — `applyChange` adopts the webview's
+   * own report as `prevLayout`, and OMC materializes fields the webview never
+   * sends, the divergence `normalizeShape` exists for.
+   */
+  private async rerenderIfClassMoved(source: string): Promise<void> {
+    if (source === this.renderedSource) return;
+    const { client, className } = this.deps;
+    // Forced: the annotation-only icon fetch reflects the last elaboration, so
+    // a class just observed to change would otherwise re-render as it was.
+    this.publishSyncedLayout(await this.refetch(client, className, true));
+    this.renderedSource = source;
   }
 
   private enqueue(unit: () => Promise<void>): Promise<void> {
@@ -620,20 +647,31 @@ export class DiagramEditController {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
+      const { source, matches } = await compareBufferToClass(
+        client,
+        document,
+        className,
+      );
+      if (matches) {
+        await this.rerenderIfClassMoved(source);
+        return;
+      }
       const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);
-        // This sync dropped whatever was reported to make way for it, and then
-        // wrote nothing. Without a push the webview goes on showing an edit no
-        // class ever took.
-        this.publishLayout(this.prevLayout);
+        // Nothing was written, so the push is what keeps the webview from
+        // going on showing an edit no class ever took.
+        this.publishSyncedLayout(this.prevLayout);
         return;
       }
-      this.publishLayout(await this.refetch(client, className));
+      // OMC pretty-prints what it was handed, so the loaded text is not
+      // necessarily the source it now lists.
+      this.renderedSource = undefined;
+      this.publishSyncedLayout(await this.refetch(client, className));
       this.deps.onClassContentChanged?.(className);
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
-      this.publishLayout(this.prevLayout);
+      this.publishSyncedLayout(this.prevLayout);
     }
   }
 
@@ -1402,6 +1440,10 @@ export class DiagramEditController {
     const { contents } = await this.deps.client.listFile({
       typeName: this.deps.className,
     });
+    // Read after this edit's writes, so it is the source the webview's current
+    // render corresponds to — whether that render came from a push or from the
+    // report `applyChange` adopted.
+    this.renderedSource = contents;
     // A built-in with no listable source returns empty; writing that would wipe
     // the buffer.
     if (contents.length > 0) await this.shadow.write(contents);

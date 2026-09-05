@@ -21,13 +21,9 @@ const config: StorybookConfig = {
     "../../result-ui/stories/**/*.stories.@(ts|tsx|js|jsx)",
     "../../documentation-ui/stories/**/*.stories.@(ts|tsx|js|jsx)",
   ],
-  addons: ["@storybook/addon-essentials"],
   framework: {
     name: "@storybook/web-components-vite",
     options: {},
-  },
-  docs: {
-    autodocs: false,
   },
 };
 

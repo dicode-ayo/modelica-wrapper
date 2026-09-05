@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 # Cancel in-flight runs of this workflow when a new commit lands on the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,7 +20,9 @@ jobs:
     name: Lint + format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
 
       - name: ESLint
@@ -31,7 +36,9 @@ jobs:
     name: Lint + unit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
 
       - name: Type-check
@@ -39,6 +46,14 @@ jobs:
 
       - name: coverage.md ↔ filesystem recount
         run: pnpm --filter @dicode/omc-client coverage:recount
+
+      # Two drifts, both silent. Renovate bumps the micromamba tag but cannot
+      # recompute the digests committed beside it, so a bumped tag arrives with
+      # stale hashes; and an asset republished under an unchanged tag is worth
+      # learning here rather than from an install that dies at verification.
+      # Hence every run, not only when the pin file changes.
+      - name: micromamba digests ↔ pinned release
+        run: pnpm --filter @dicode/omc-bootstrap check:pin
 
       - name: Unit tests (parser, version, registry)
         env:
@@ -51,6 +66,8 @@ jobs:
   integration:
     name: Integration (OMC ${{ matrix.omc }})
     runs-on: ubuntu-latest
+    # OMC hangs rather than fails when a spawn cannot reach its ZMQ port.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -60,17 +77,27 @@ jobs:
       # GitHub Actions runs container jobs as root by default.
       options: --user root
     steps:
-      - name: Install Node 20 + git into the OMC container
+      - name: Prepare the OMC container
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl gnupg git
-          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-          apt-get install -y --no-install-recommends nodejs
-          npm install -g pnpm@10.25.0
+          apt-get install -y --no-install-recommends ca-certificates git
           useradd -m -s /bin/bash omcrunner
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Not ./.github/actions/setup: pnpm/action-setup installs pnpm into a
+      # root-owned directory the `runuser -u omcrunner` test steps below
+      # cannot read. `npm install -g` puts pnpm in setup-node's tool-cache
+      # prefix instead — world-readable, and on the PATH runuser preserves.
+      # Node and pnpm versions track the composite action; bump both together.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.20.0
+
+      - run: npm install -g pnpm@10.34.5
 
       - name: Verify OMC matches the pin
         run: |
@@ -82,10 +109,12 @@ jobs:
             echo "::warning::Pin/runtime mismatch — container is $OMC_RUNTIME, pin is $OMC_PIN. The integration tests still run, but a Renovate PR is probably needed to bump the pin."
           fi
 
-      - run: pnpm install --frozen-lockfile
-
       - name: Hand workspace to non-root user
         run: chown -R omcrunner:omcrunner "$GITHUB_WORKSPACE"
+
+      # As omcrunner, not root: the extension's postinstall executes
+      # checked-out code, and on a pull_request event that code is the PR's.
+      - run: runuser -u omcrunner -- pnpm install --frozen-lockfile
 
       - name: Install Modelica Standard Library for omcrunner
         run: |
@@ -114,7 +143,7 @@ jobs:
         run: runuser -u omcrunner -- pnpm --filter modelica-wrapper test
 
       - name: Build the extension bundle
-        run: pnpm --filter modelica-wrapper build
+        run: runuser -u omcrunner -- pnpm --filter modelica-wrapper build
 
   # End-to-end smoke: drive the built extension inside a real code-server via
   # Playwright. The baseline spec runs against `main`'s declarative
@@ -127,7 +156,9 @@ jobs:
     name: E2E (Playwright + code-server)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
 
       - name: Build the extension bundle
@@ -153,7 +184,7 @@ jobs:
 
       - name: Upload Playwright traces + code-server logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts
           path: |
@@ -170,7 +201,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
 
       - name: Install Playwright Chromium + system deps
@@ -181,7 +214,7 @@ jobs:
 
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagram-ui-e2e-artifacts
           path: |

@@ -15,7 +15,7 @@ import {
   multipleTopLevelClasses,
   type FileParseClient,
 } from "./single-entity-file.js";
-import { discoverEntryPoints } from "./workspace-scan.js";
+import { deriveEntryPoints } from "./workspace-scan.js";
 
 /** OMC surface the auto-loader calls. `OmcClient` satisfies it structurally. */
 export interface AutoLoadClient extends FileParseClient {
@@ -117,14 +117,18 @@ export interface WorkspaceAutoloadDeps {
   /** Told once, after every load settles — see {@link loadEntryFilesAndRefresh}. */
   refresh: () => void;
   onSkipped: (skipped: SkippedEntryFile[]) => void;
+  /**
+   * A flat list of every `.mo` path in the workspace, shared with the
+   * mo-file-watcher's own `sessionReplaced` reseed so `:reset` triggers one
+   * recursive scan instead of two.
+   */
+  scanMoFiles: () => Promise<readonly string[]>;
 }
 
 /**
- * Discover Modelica entry points across the current workspace folders and
- * load them into OMC, refreshing the sidebar once. Run directly by
- * {@link registerWorkspaceAutoload} for both the activation sweep and every
- * `:reset` — both want the same discover-then-load behavior run against
- * whatever client `ensureClient` hands back.
+ * Discover Modelica entry points from `deps.scanMoFiles`'s flat file list and
+ * load them into OMC, refreshing the sidebar once. Run at activation
+ * (`run()`) and again on every `:reset` — see {@link registerWorkspaceAutoload}.
  */
 export async function autoLoadWorkspace(
   deps: WorkspaceAutoloadDeps,
@@ -132,7 +136,7 @@ export async function autoLoadWorkspace(
   try {
     const folders = deps.folders();
     if (folders.length === 0) return;
-    const files = await discoverEntryPoints([...folders]);
+    const files = deriveEntryPoints(await deps.scanMoFiles(), folders);
     if (files.length === 0) return;
     const c = await deps.ensureClient();
     // One refresh after all loads settle — not per file, which would pile

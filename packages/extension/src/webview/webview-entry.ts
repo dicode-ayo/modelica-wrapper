@@ -34,6 +34,7 @@ import {
   type LayoutEvents,
   type OmGraphicalLayout,
   type ParameterFormSubmitDetail,
+  type ParameterPanelFocusDetail,
   type ToolId,
 } from "@dicode/diagram-ui";
 
@@ -133,8 +134,6 @@ class OmWebviewRoot extends LitElement {
     // `disconnectedCallback` is a DOM-removal hook; closing the panel tears the
     // iframe down without one, which would strand the last queued commit.
     window.addEventListener("pagehide", this.onPageHide);
-    document.addEventListener("focusin", this.onFocusChange);
-    document.addEventListener("focusout", this.onFocusChange);
     this.vscode.postMessage({ type: "ready" });
   }
 
@@ -143,28 +142,20 @@ class OmWebviewRoot extends LitElement {
     this.commits.flush();
     window.removeEventListener("message", this.onHostMessage);
     window.removeEventListener("pagehide", this.onPageHide);
-    document.removeEventListener("focusin", this.onFocusChange);
-    document.removeEventListener("focusout", this.onFocusChange);
   }
 
   private readonly onPageHide = (): void => {
     this.commits.flush();
   };
 
-  /** Last reported editable-focus state, so we only post on a transition. */
-  private inputFocused = false;
-
-  // `focusout` retargets at shadow boundaries and its `relatedTarget` is often
-  // null, so we recompute from the post-event active element rather than trust
-  // the event target. Deferred a tick so `document.activeElement` reflects the
-  // element being focused, not the one being left.
-  private readonly onFocusChange = (): void => {
-    queueMicrotask(() => {
-      const focused = isEditableTarget(deepActiveElement());
-      if (focused === this.inputFocused) return;
-      this.inputFocused = focused;
-      this.post({ type: "inputFocus", focused });
-    });
+  // The root cannot detect this for itself: a focus move is not dispatched to a
+  // node that retargets both its target and its related target to the same
+  // host, and every surface here sits in this root's shadow tree. Whichever
+  // surface holds the fields reports for itself, and only on a change.
+  private readonly onPanelFocus = (
+    e: CustomEvent<ParameterPanelFocusDetail>,
+  ): void => {
+    this.post({ type: "inputFocus", focused: e.detail.focused });
   };
 
   override render(): TemplateResult {
@@ -220,6 +211,7 @@ class OmWebviewRoot extends LitElement {
           .heading=${this.paramTitle}
           .submitLabel=${this.paramSubmitLabel}
           .crefPrefix=${this.paramCrefPrefix}
+          @om-panel-focus-change=${this.onPanelFocus}
           @om-panel-submit=${this.onParamSubmit}
           @om-panel-cancel=${this.onParamCancel}
           @om-panel-reset=${this.onParamReset}
@@ -237,14 +229,23 @@ class OmWebviewRoot extends LitElement {
     this.apply(data);
   };
 
+  /**
+   * Adopt a pushed layout and the stamp it carries together — the stamp is
+   * what the next commit echoes, so a push applied without it would report a
+   * base the host has already superseded.
+   */
+  private adoptPush(message: { layout: DiagramLayout; layoutVersion: number }) {
+    this.layout = message.layout;
+    this.layoutVersion = message.layoutVersion;
+    this.renderError = null;
+  }
+
   private apply(message: ExtensionToWebview): void {
     switch (message.type) {
       case "init":
         this.readOnly = message.readOnly;
         this.hasClipboard = message.hasClipboard;
-        this.layout = message.layout;
-        this.layoutVersion = message.layoutVersion;
-        this.renderError = null;
+        this.adoptPush(message);
         return;
       case "clipboard":
         this.hasClipboard = message.hasClipboard;
@@ -253,15 +254,13 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
-        // A refused push is discarded, not deferred: `layoutVersion` stays on
-        // the last applied push, so the next commit's `basedOn` tells the host
-        // this one was missed and its forced settle re-sends it.
+        // A refused push leaves `layoutVersion` on the last applied push, so
+        // the next commit's `basedOn` tells the host this one was missed and
+        // its forced settle re-sends it.
         if (!this.commits.canApplyPush(this.diagram?.gestureActive === true)) {
           return;
         }
-        this.layout = message.layout;
-        this.layoutVersion = message.layoutVersion;
-        this.renderError = null;
+        this.adoptPush(message);
         return;
       case "renderError":
         this.renderError = message;
@@ -416,31 +415,6 @@ class OmWebviewRoot extends LitElement {
       componentName: this.paramComponentName,
     });
   };
-}
-
-/** Innermost focused node, descending through open shadow roots. */
-function deepActiveElement(): Element | null {
-  let el: Element | null = document.activeElement;
-  while (el?.shadowRoot?.activeElement) {
-    el = el.shadowRoot.activeElement;
-  }
-  return el;
-}
-
-function isEditableTarget(node: Element | null): boolean {
-  if (node === null) return false;
-  if (node instanceof HTMLInputElement) {
-    // Buttons / checkboxes don't swallow typed characters, so a shortcut over
-    // one is still the diagram's to handle.
-    return !["button", "checkbox", "radio", "submit", "reset"].includes(
-      node.type,
-    );
-  }
-  return (
-    node instanceof HTMLTextAreaElement ||
-    node instanceof HTMLSelectElement ||
-    (node instanceof HTMLElement && node.isContentEditable)
-  );
 }
 
 declare global {

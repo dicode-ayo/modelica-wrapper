@@ -64,10 +64,7 @@ export type ExtensionToWebview =
       /**
        * Monotonic per-editor stamp of this layout. The webview echoes the
        * stamp of the last push it applied on every `change` report
-       * (`basedOn`), which is how the host tells a report built on the layout
-       * it last handed over from one built on a base that misses it — a push
-       * the webview refused, one this report crossed on the wire, or one the
-       * host withheld behind the report itself.
+       * (`basedOn`) — see `DiagramEditController.applyChange`.
        */
       layoutVersion: number;
     }

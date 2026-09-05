@@ -282,6 +282,14 @@ export function registerLanguageFeatures(
     handleClassChanged(className, cache, () => lookupCache);
   });
 
+  // A mutation with no class name to it leaves nothing to invalidate
+  // selectively: every parse tree and every cached lookup could be derived
+  // from whatever moved.
+  const onAllClassesChanged = invalidation.registerAllClassesChanged(() => {
+    cache.invalidateAll();
+    lookupCache?.invalidate();
+  });
+
   // `:reset` wipes OMC's AST without touching a single class, so the
   // per-class signal above never fires for it — `sync`'s "loaded" flags would
   // otherwise keep claiming files are in a symbol table that no longer
@@ -303,6 +311,7 @@ export function registerLanguageFeatures(
     onSave.dispose();
     onClose.dispose();
     onClassChanged.dispose();
+    onAllClassesChanged.dispose();
     onSessionReplaced.dispose();
     cache.dispose();
   });
