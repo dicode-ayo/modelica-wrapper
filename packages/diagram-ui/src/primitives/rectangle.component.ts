@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
+  buildBorderBevel,
   buildFilledRect,
   buildStroke,
   clampCornerRadius,
@@ -20,9 +21,10 @@ import {
 
 /**
  * `<om-rectangle>` — one Modelica `RectangleShape`. Renders a filled
- * region (when `fillPattern` is not `"None"`) plus a stroked outline.
- * A positive `radius` rounds the corners, clamped to half the shorter
- * side.
+ * region (when `fillPattern` is not `"None"`) plus a stroked outline, or
+ * a two-tone bevel frame instead of the outline when `borderPattern`
+ * requests one. A positive `radius` rounds the corners, clamped to half
+ * the shorter side.
  */
 @customElement("om-rectangle")
 export class OmRectangle extends OmShapePrimitive {
@@ -43,6 +45,23 @@ export class OmRectangle extends OmShapePrimitive {
 
   protected override dashPattern(): string | undefined {
     return this.shape?.pattern;
+  }
+
+  protected override strokeThickness(): {
+    thickness: number | undefined;
+  } | null {
+    const s = this.shape;
+    if (!s) {
+      return null;
+    }
+    // A bevel is drawn even with a `"None"` line pattern — the pattern
+    // gates the pen, `borderPattern` the shade frame — and its edge width
+    // rides the same floor as a stroke.
+    const beveled = s.borderPattern !== undefined && s.borderPattern !== "None";
+    if (!beveled && s.pattern === "None") {
+      return null;
+    }
+    return { thickness: s.lineThickness };
   }
 
   protected override buildMeshes(
@@ -89,6 +108,28 @@ export class OmRectangle extends OmShapePrimitive {
       );
     }
 
+    const strokeOpts = {
+      thickness: s.lineThickness,
+      lineThicknessScale: this.lineThicknessScale,
+      worldPerPixel: this.sceneCtx?.worldPerPixel(),
+    };
+    // `borderPattern` asks for a shaded bevel, not an outline — the
+    // `lineColor` stroke is replaced, never drawn underneath (a solid
+    // outline is exactly what the annotation opted out of). The bevel
+    // frame is always square: Qt's shade panel ignores the corner radius.
+    const bevel = buildBorderBevel(
+      root,
+      { x, y, width, height },
+      s.borderPattern ?? "None",
+      s.fillColor,
+      z + STROKE_Z_DELTA,
+      baseName,
+      strokeOpts,
+    );
+    if (bevel) {
+      this.resources.push(bevel);
+      return;
+    }
     const stroke = buildStroke(
       root,
       corners,
@@ -96,11 +137,7 @@ export class OmRectangle extends OmShapePrimitive {
       s.pattern,
       z + STROKE_Z_DELTA,
       `${baseName}.stroke`,
-      {
-        thickness: s.lineThickness,
-        lineThicknessScale: this.lineThicknessScale,
-        worldPerPixel: this.sceneCtx?.worldPerPixel(),
-      },
+      strokeOpts,
     );
     if (stroke) {
       this.resources.push(stroke);

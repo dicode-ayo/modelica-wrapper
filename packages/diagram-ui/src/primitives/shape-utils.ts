@@ -4,7 +4,7 @@ import {
   FILLED_SHAPE_DEFAULTS,
   LINE_DEFAULTS,
 } from "@dicode/omc-client/shapes";
-import type { FillSpec } from "@dicode/diagram-svg";
+import { bevelEdges, type FillSpec } from "@dicode/diagram-svg";
 
 import { worldScaleXY } from "../scene/ortho-camera.js";
 import { resolveFillTexture } from "./fill-texture.js";
@@ -373,8 +373,12 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 /** Modelica default stroke thickness (mm / diagram units). */
 const DEFAULT_STROKE_THICKNESS = LINE_DEFAULTS.thickness;
-/** Floor (diagram units) so a hairline still reads at default zoom. */
-const MIN_STROKE_WIDTH = 0.5;
+/** Screen-space stroke floor (CSS px). A fixed diagram-unit floor would
+ *  inflate the 0.25 spec default at every zoom (and grow when zoomed in);
+ *  flooring at one on-screen pixel instead keeps a hairline readable when
+ *  zoomed out while an honest 0.25 renders as 0.25 — OMEdit's cosmetic-pen
+ *  weight. */
+const MIN_STROKE_PX = 1;
 /** Dash / gap length, nominally in CSS pixels — `buildStroke` scales these by
  *  `worldPerPixel` so the dash rhythm reads at a constant on-screen size
  *  across zoom. Used as raw diagram units when no `worldPerPixel` is given
@@ -398,21 +402,51 @@ export function worldScaleOf(node: Container): number {
   return Math.sqrt(Math.abs(x * y)) || 1;
 }
 
+/** The stroke floor in diagram units at the current zoom. `0` (no floor)
+ *  without a usable `worldPerPixel` — a renderer-less caller keeps the
+ *  literal annotation width. */
+function strokeFloor(worldPerPixel: number | undefined): number {
+  return worldPerPixel !== undefined &&
+    Number.isFinite(worldPerPixel) &&
+    worldPerPixel > 0
+    ? MIN_STROKE_PX * worldPerPixel
+    : 0;
+}
+
+/**
+ * True when the screen-space floor, not the Modelica thickness, sets the
+ * stroke's rendered width at this zoom. While it does, a build keyed on
+ * shape data alone goes stale on zoom — callers fold `worldPerPixel` into
+ * their build key (`OmShapePrimitive.strokeZoomKey`).
+ */
+export function strokeFloorClamps(
+  thickness: number | undefined,
+  lineThicknessScale: number | undefined,
+  worldPerPixel: number | undefined,
+): boolean {
+  const naturalWidth =
+    (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
+  return naturalWidth < strokeFloor(worldPerPixel);
+}
+
 /**
  * Local (icon-space) stroke width for a Modelica `thickness`, scale-compensated
  * against `parent` the same way {@link buildStroke} compensates its own stroke
  * — so a caller drawing stroke-consistent geometry alongside the main stroke
- * (e.g. an arrowhead outline) matches its on-screen width.
+ * (e.g. an arrowhead outline) matches its on-screen width. `worldPerPixel`
+ * enables the sub-pixel floor; the resolved width then depends on zoom
+ * whenever the floor clamps (see {@link strokeFloorClamps}).
  */
 export function resolveStrokeWidth(
   parent: Container,
   thickness: number | undefined,
   lineThicknessScale: number | undefined,
+  worldPerPixel?: number | undefined,
 ): number {
   const worldScale = worldScaleOf(parent);
   const naturalWidth =
     (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
-  return Math.max(naturalWidth, MIN_STROKE_WIDTH) / worldScale;
+  return Math.max(naturalWidth, strokeFloor(worldPerPixel)) / worldScale;
 }
 
 export function buildStroke(
@@ -440,9 +474,15 @@ export function buildStroke(
   // Stroke width is scale-compensated: the rendered width is multiplied by the
   // container's diagram-space scale, so the local width divides that scale out
   // to keep the on-screen width invariant (Modelica thickness is a screen-space
-  // quantity, not an icon-space one), floored so it never goes sub-pixel.
+  // quantity, not an icon-space one), floored at one screen pixel so it never
+  // goes sub-pixel.
   const worldScale = worldScaleOf(parent);
-  const localWidth = resolveStrokeWidth(parent, thickness, lineThicknessScale);
+  const localWidth = resolveStrokeWidth(
+    parent,
+    thickness,
+    lineThicknessScale,
+    worldPerPixel,
+  );
 
   const dashRuns = dashRunsFor(pattern);
   if (dashRuns) {
@@ -477,6 +517,62 @@ export function buildStroke(
 
   parent.addChild(g);
   return { dispose: () => g.destroy() };
+}
+
+// ---------- borderPattern bevel ----------
+
+/**
+ * Two-tone bevel frame for `Rectangle.borderPattern`. The geometry and
+ * tone decision live in `bevelEdges` (`@dicode/diagram-svg`), shared with
+ * the SVG renderer; this builds the two strokes it prescribes. Callers
+ * draw this INSTEAD of the `lineColor` stroke; `null` when the pattern
+ * draws no bevel — the caller then falls back to its normal outline.
+ */
+export function buildBorderBevel(
+  parent: Container,
+  box: RectBox,
+  borderPattern: string,
+  faceColor: Color | undefined,
+  z: number,
+  baseName: string,
+  opts?: {
+    thickness?: number | undefined;
+    lineThicknessScale?: number | undefined;
+    worldPerPixel?: number | undefined;
+  },
+): OwnedResource | null {
+  const edges = bevelEdges(box, borderPattern, faceColor);
+  if (edges === null) {
+    return null;
+  }
+  const parts = [
+    buildStroke(
+      parent,
+      edges.topLeft.points,
+      edges.topLeft.color,
+      "Solid",
+      z,
+      `${baseName}.bevel-top`,
+      opts,
+    ),
+    buildStroke(
+      parent,
+      edges.bottomRight.points,
+      edges.bottomRight.color,
+      "Solid",
+      z + STROKE_Z_DELTA / 2,
+      `${baseName}.bevel-bottom`,
+      opts,
+    ),
+  ].filter((p): p is OwnedResource => p !== null);
+  if (parts.length === 0) {
+    return null;
+  }
+  return {
+    dispose: () => {
+      for (const p of parts) p.dispose();
+    },
+  };
 }
 
 /** Trace a polyline, skipping zero-length segments. Returns `false` when no

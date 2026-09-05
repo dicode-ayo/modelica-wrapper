@@ -28,7 +28,7 @@
  *    Sphere ARE handled via gradient defs (see pattern.ts).
  */
 
-import { colorToCss } from "./color.js";
+import { bevelEdges, colorToCss, type BevelEdge } from "./color.js";
 // Sub-path import: the evaluator subtree only, so the browser bundles
 // this renderer lands in don't drag the OMC transport along.
 import { expressionToString } from "@dicode/omc-client/eval";
@@ -474,13 +474,30 @@ function renderPolygon(s: PolygonShape, ctx: RenderContext): string {
 
 function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const { x, y, width, height } = extentToRect(s.extent);
-  const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
   const thickness = scaledThickness(s.lineThickness, ctx);
-  const dashArray = linePatternToDashArray(s.pattern);
-  const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   const r = clampCornerRadius(s.radius, width, height);
   const radiusAttr = r > 0 ? ` rx="${r}" ry="${r}"` : "";
+  const bevel = bevelEdges(
+    { x, y, width, height },
+    s.borderPattern,
+    s.fillColor,
+  );
+  if (bevel) {
+    // `borderPattern` asks for a shaded bevel, not an outline — the
+    // `lineColor` stroke is replaced by two-tone edge polylines
+    // (`bevelEdges` holds the shared rule).
+    const edge = (e: BevelEdge): string =>
+      `<polyline points="${pointsToAttr(e.points)}" fill="none" stroke="${colorToCss(e.color)}" stroke-width="${thickness}"/>`;
+    return [
+      `<rect x="${x}" y="${y}" width="${width}" height="${height}"${radiusAttr} fill="${fill}" stroke="none"/>`,
+      edge(bevel.topLeft),
+      edge(bevel.bottomRight),
+    ].join("");
+  }
+  const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
+  const dashArray = linePatternToDashArray(s.pattern);
+  const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}"${radiusAttr} fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
 }
 

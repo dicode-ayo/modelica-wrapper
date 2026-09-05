@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { Container, Graphics } from "pixi.js";
 import type { Color } from "@dicode/omc-client";
 
-import { buildStroke, worldScaleOf } from "../src/primitives/shape-utils.js";
+import {
+  buildStroke,
+  resolveStrokeWidth,
+  strokeFloorClamps,
+  worldScaleOf,
+} from "../src/primitives/shape-utils.js";
 import { dashCount } from "./pixi-dash.helper.js";
 
 function makeScene(): { parent: Container } {
@@ -45,6 +50,70 @@ describe("worldScaleOf", () => {
     // Degenerate zero scale falls back to 1 (no divide-by-zero radius).
     n.scale.set(0, 0);
     expect(worldScaleOf(n)).toBe(1);
+  });
+});
+
+describe("resolveStrokeWidth", () => {
+  it("keeps the 0.25 spec default literal when it clears the screen-space floor", () => {
+    const parent = new Container();
+    // Zoomed in: one screen px is 0.05 diagram units, well under 0.25 —
+    // the default thickness must NOT be inflated; a fixed diagram-unit
+    // minimum would thicken it at every zoom level.
+    expect(resolveStrokeWidth(parent, undefined, undefined, 0.05)).toBeCloseTo(
+      0.25,
+    );
+  });
+
+  it("floors the width at one screen pixel when zoomed out", () => {
+    const parent = new Container();
+    // 2 diagram units per px: 0.25 units would be an eighth of a pixel.
+    expect(resolveStrokeWidth(parent, undefined, undefined, 2)).toBeCloseTo(2);
+    expect(resolveStrokeWidth(parent, 0.5, undefined, 2)).toBeCloseTo(2);
+  });
+
+  it("leaves a thickness above the floor untouched", () => {
+    const parent = new Container();
+    expect(resolveStrokeWidth(parent, 5, undefined, 2)).toBeCloseTo(5);
+  });
+
+  it("applies no floor without a usable worldPerPixel", () => {
+    const parent = new Container();
+    expect(resolveStrokeWidth(parent, undefined, undefined)).toBeCloseTo(0.25);
+    expect(
+      resolveStrokeWidth(
+        parent,
+        undefined,
+        undefined,
+        Number.POSITIVE_INFINITY,
+      ),
+    ).toBeCloseTo(0.25);
+    expect(resolveStrokeWidth(parent, undefined, undefined, 0)).toBeCloseTo(
+      0.25,
+    );
+  });
+
+  it("divides the parent's world scale out of the floored width", () => {
+    const parent = new Container();
+    parent.scale.set(0.1, 0.1);
+    // Floored to 2 world units, then compensated so the scaled render
+    // still comes out at 2.
+    expect(resolveStrokeWidth(parent, undefined, undefined, 2)).toBeCloseTo(20);
+  });
+});
+
+describe("strokeFloorClamps", () => {
+  it("reports clamping only while the floor exceeds the natural width", () => {
+    expect(strokeFloorClamps(undefined, undefined, 2)).toBe(true);
+    expect(strokeFloorClamps(undefined, undefined, 0.05)).toBe(false);
+    expect(strokeFloorClamps(5, undefined, 2)).toBe(false);
+    expect(strokeFloorClamps(0.25, 100, 2)).toBe(false);
+  });
+
+  it("never clamps without a usable worldPerPixel", () => {
+    expect(strokeFloorClamps(undefined, undefined, undefined)).toBe(false);
+    expect(
+      strokeFloorClamps(undefined, undefined, Number.POSITIVE_INFINITY),
+    ).toBe(false);
   });
 });
 

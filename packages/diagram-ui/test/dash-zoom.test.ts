@@ -1,10 +1,13 @@
 /**
- * A dashed shape primitive's stroke should hold a constant on-screen rhythm
- * across zoom. These pin the rebuild wiring end to end: zooming the host
- * `<om-scene>` rebuilds a dashed primitive's stroke (a new Graphics, since
- * the dash period changed), but leaves a solid primitive's stroke untouched
- * (no needless churn), and the same wiring covers every dashable primitive
- * kind via `OmShapePrimitive.dashPattern()` — not just `<om-line>`.
+ * A shape primitive's stroke should hold its screen-space contracts across
+ * zoom: a dashed stroke keeps a constant on-screen rhythm, and a stroke
+ * clamped by the one-pixel width floor re-resolves as the floor moves.
+ * These pin the rebuild wiring end to end: zooming the host `<om-scene>`
+ * rebuilds a dashed stroke and a floored default-thickness stroke (a new
+ * Graphics, since period / width changed), but leaves a thick solid stroke
+ * untouched (no needless churn), and the same wiring covers every stroked
+ * primitive kind via `OmShapePrimitive.dashPattern()` /
+ * `.strokeThickness()` — not just `<om-line>`.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { Container, Graphics } from "pixi.js";
@@ -14,7 +17,10 @@ import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 
-function layoutWithLine(pattern: string | undefined): DiagramLayout {
+function layoutWithLine(
+  pattern: string | undefined,
+  thickness?: number,
+): DiagramLayout {
   return layout({
     kind: "line",
     points: [
@@ -23,10 +29,14 @@ function layoutWithLine(pattern: string | undefined): DiagramLayout {
     ],
     color: [255, 0, 0],
     ...(pattern !== undefined ? { pattern } : {}),
+    ...(thickness !== undefined ? { thickness } : {}),
   });
 }
 
-function layoutWithRectangle(pattern: string | undefined): DiagramLayout {
+function layoutWithRectangle(
+  pattern: string | undefined,
+  thickness?: number,
+): DiagramLayout {
   return layout({
     kind: "rectangle",
     extent: [
@@ -36,6 +46,7 @@ function layoutWithRectangle(pattern: string | undefined): DiagramLayout {
     lineColor: [255, 0, 0],
     fillPattern: "None",
     ...(pattern !== undefined ? { pattern } : {}),
+    ...(thickness !== undefined ? { lineThickness: thickness } : {}),
   });
 }
 
@@ -126,12 +137,44 @@ describe.each([
     expect(before.destroyed).toBe(true);
   });
 
-  it("does not rebuild a solid stroke when the scene zooms", async () => {
+  it("does not rebuild a solid stroke that clears the width floor when the scene zooms", async () => {
+    // Thickness 5 diagram units is comfortably above one screen pixel at
+    // both zoom levels, so the resolved width is zoom-independent.
+    const el = await mount(build(undefined, 5));
+    const scene = sceneOf(el);
+    const before = strokeWithLabel(el, label);
+
+    await zoomBy(el, scene, 1 / 20);
+
+    const after = strokeWithLabel(el, label);
+    expect(after).toBe(before);
+    expect(before.destroyed).toBe(false);
+  });
+
+  it("re-resolves a floored default-thickness solid stroke when the scene zooms", async () => {
+    // The spec-default 0.25 sits under the one-pixel floor at the mount
+    // zoom, so the resolved width tracks worldPerPixel until the floor
+    // disengages — a zoom must rebuild the stroke.
     const el = await mount(build(undefined));
     const scene = sceneOf(el);
     const before = strokeWithLabel(el, label);
 
     await zoomBy(el, scene, 1 / 20);
+
+    const after = strokeWithLabel(el, label);
+    expect(after).not.toBe(before);
+    expect(before.destroyed).toBe(true);
+  });
+
+  it("does not rebuild a floored solid stroke on a pure pan", async () => {
+    const el = await mount(build(undefined));
+    const scene = sceneOf(el);
+    const before = strokeWithLabel(el, label);
+
+    scene.panX = scene.panX + 50;
+    await scene.updateComplete;
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
 
     const after = strokeWithLabel(el, label);
     expect(after).toBe(before);

@@ -33,6 +33,22 @@ export class OmLine extends OmShapePrimitive {
     return this.shape?.pattern;
   }
 
+  protected override strokeThickness(): {
+    thickness: number | undefined;
+  } | null {
+    const s = this.shape;
+    if (!s) {
+      return null;
+    }
+    // Arrowhead outlines ride the stroke width even when the line pattern
+    // is `"None"`, so only a line with neither stroke nor arrows opts out.
+    const [start, end] = s.arrow ?? ["None", "None"];
+    if (s.pattern === "None" && start === "None" && end === "None") {
+      return null;
+    }
+    return { thickness: s.thickness };
+  }
+
   protected override entityBounds(): EntityBounds | null {
     const s = this.shape;
     if (!s || s.points.length < 2) {
@@ -86,6 +102,7 @@ export class OmLine extends OmShapePrimitive {
       root,
       s.thickness,
       this.lineThicknessScale,
+      this.sceneCtx?.worldPerPixel(),
     );
 
     const addArrow = (
