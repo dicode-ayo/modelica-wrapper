@@ -6,7 +6,7 @@
   "publisher": "drojdestvensky",
   "private": true,
   "engines": {
-    "vscode": "^1.95.0",
+    "vscode": "^1.136.1",
     "node": ">=24.20.0"
   },
   "categories": [
