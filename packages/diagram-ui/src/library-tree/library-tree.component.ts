@@ -13,8 +13,9 @@
  *     the matched substring highlighted.
  *
  * Events:
- *   - `om-library-select` { detail: { className } } — emitted on row
- *     activation (click / Enter).
+ *   - `om-library-select` { detail: { className, view } } — emitted on row
+ *     activation (double-click / Enter); `view` is the editor surface the
+ *     row's restriction routes to (`activationViewFor`).
  *   - `om-library-context-menu` { detail: { className, restriction,
  *     displayName, x, y } } — emitted on row right-click; the embedder decides
  *     what actions apply and runs them.
@@ -59,9 +60,9 @@ import { bindItemProps } from "./bind-item-props.js";
 import { iconStyleFor } from "./restriction-icon.js";
 import {
   LIBRARY_TREE_ROOT_ID,
+  activationViewFor,
   createLibraryDataLoader,
   isExpandable,
-  isOpenableRestriction,
   isPlaceableRestriction,
   matchLabel,
   type LibraryTreeNode,
@@ -329,7 +330,7 @@ export class OmLibraryTree extends LitElement {
       },
       onPrimaryAction: (item) => {
         const node = item.getItemData();
-        this.fireSelect(node.className, node.restriction);
+        this.activate(node.className, node.restriction);
       },
       canDrag: (items) =>
         items.every((item) => {
@@ -461,7 +462,7 @@ export class OmLibraryTree extends LitElement {
         @pointerdown=${(e: PointerEvent) =>
           this.onRowPointerDown(e, node.className, node.restriction)}
         @click=${() => this.onItemClick(item)}
-        @dblclick=${() => this.fireSelect(node.className, node.restriction)}
+        @dblclick=${() => this.activate(node.className, node.restriction)}
         @contextmenu=${(e: MouseEvent) =>
           this.onRowContextMenu(
             e,
@@ -582,7 +583,7 @@ export class OmLibraryTree extends LitElement {
             : "false"
         }
         @click=${() => this.onSearchRowClick(q)}
-        @dblclick=${() => this.fireSelect(q, row.restriction)}
+        @dblclick=${() => this.activate(q, row.restriction)}
         @keydown=${(e: KeyboardEvent) =>
           this.onSearchRowKeydown(e, q, row.restriction)}
         @pointerdown=${(e: PointerEvent) =>
@@ -680,7 +681,7 @@ export class OmLibraryTree extends LitElement {
   ): void {
     if (event.key === "Enter") {
       event.preventDefault();
-      this.fireSelect(className, restriction);
+      this.activate(className, restriction);
     } else if (event.key === " ") {
       event.preventDefault();
       this.selectedClassName = className;
@@ -767,17 +768,19 @@ export class OmLibraryTree extends LitElement {
     }
   }
 
-  // Only classes with a meaningful diagram open; packages / connectors / the
-  // synthetic filtered-tree ancestors don't emit select (opening a package as a
-  // diagram wedges the view).
-  private fireSelect(
+  // Row activation (double-click / Enter / primaryAction) — the single path
+  // both tree rows and search rows go through, so the two surfaces cannot
+  // diverge. Every concrete row routes to an editor surface per its
+  // restriction (`activationViewFor`); only a loading placeholder (empty
+  // className) has nothing to activate.
+  private activate(
     className: string,
     restriction: LibraryClassRestriction,
   ): void {
-    if (!isOpenable(className, restriction)) return;
+    if (className === "") return;
     this.dispatchEvent(
       new CustomEvent<LibraryEvents["om-library-select"]>("om-library-select", {
-        detail: { className },
+        detail: { className, view: activationViewFor(restriction) },
         bubbles: true,
         composed: true,
       }),
@@ -894,15 +897,6 @@ function isPlaceable(
   restriction: LibraryClassRestriction,
 ): boolean {
   return className !== "" && isPlaceableRestriction(restriction);
-}
-
-/** A concrete class with a diagram worth opening. Narrower than
- *  {@link isPlaceable}: a connector can be placed but has no diagram. */
-function isOpenable(
-  className: string,
-  restriction: LibraryClassRestriction,
-): boolean {
-  return className !== "" && isOpenableRestriction(restriction);
 }
 
 /**

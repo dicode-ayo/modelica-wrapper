@@ -36,9 +36,17 @@ export interface LibraryClassInfo {
   restriction: LibraryClassRestriction;
 }
 
-/** Class the user picked from the tree / search results. */
+/**
+ * Editor surface a row activation routes to. The restriction → view decision
+ * lives in `activationViewFor` (`library-tree-model.ts`).
+ */
+export type LibraryActivationView = "diagram" | "documentation" | "source";
+
+/** Class the user activated in the tree / search results, and the editor
+ *  surface its restriction routes to. */
 export interface LibrarySelectDetail {
   className: string;
+  view: LibraryActivationView;
 }
 
 /** `om-library-cancel` carries no detail; the type is here for symmetry. */

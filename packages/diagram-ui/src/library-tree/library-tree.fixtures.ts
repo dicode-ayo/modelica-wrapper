@@ -15,6 +15,7 @@ export const FAKE_TREE: Record<string, LibraryClassInfo[]> = {
     { qualified: "Complex", restriction: "operator record" },
     { qualified: "Sine", restriction: "model" },
     { qualified: "Resistor", restriction: "model" },
+    { qualified: "Pin", restriction: "connector" },
   ],
   Modelica: [{ qualified: "Modelica.Blocks", restriction: "package" }],
   // A non-package restriction that nests a class, same as #345's repro.
