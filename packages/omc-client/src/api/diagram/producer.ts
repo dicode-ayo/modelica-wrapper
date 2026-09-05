@@ -26,6 +26,7 @@ import type {
   ModelInstance,
   RecordValue,
 } from "../../_shared/modelInstance.js";
+import { hasDrawnShapes } from "../../shapes/layers.js";
 import type {
   ClassDef,
   Color,
@@ -266,6 +267,29 @@ function collectLabels(mi: ModelInstance): LabelLayout[] {
   return out;
 }
 
+/**
+ * The layers an icon context shows for a class, with the annotation
+ * fallback applied: the `Icon` annotation's layers, or the `Diagram`
+ * annotation's when the icon draws nothing. MLS §18.2 gives a class two
+ * graphical representations without requiring both; a hand-written
+ * connector often carries only a `Diagram`, and without the fallback it
+ * renders as nothing while its port disc stays hit-testable. Applies to
+ * the class CATALOG only (`ClassDef` / `PortDef`) — a host class's own
+ * `DiagramLayout.iconLayers` / `diagramLayers` are positionally addressed
+ * by `shape:<idx>` keys and diffed into source writes, so a substituted
+ * layer there would shift indices and leak into user source.
+ */
+function iconContextLayers(mi: ModelInstance): {
+  layers: IconLayer[];
+  from: "icon" | "diagram";
+} {
+  const icon = collectLayers(mi, "icon");
+  if (hasDrawnShapes(icon)) return { layers: icon, from: "icon" };
+  const diagram = collectLayers(mi, "diagram");
+  if (hasDrawnShapes(diagram)) return { layers: diagram, from: "diagram" };
+  return { layers: icon, from: "icon" };
+}
+
 // ---------- class registry ----------
 
 /**
@@ -278,8 +302,12 @@ function buildClassDef(
   typeMi: ModelInstance,
   registry: Map<string, ClassDef>,
 ): ClassDef {
-  const iconLayers = collectLayers(typeMi, "icon");
-  const cs = coordinateSystemForKind(typeMi, "icon");
+  const icon = iconContextLayers(typeMi);
+  const diagramLayers = collectLayers(typeMi, "diagram");
+  // Each layer set is scaled against the annotation it came from, so an icon
+  // sourced from the `Diagram` fallback isn't measured in the icon's system.
+  const cs = coordinateSystemForKind(typeMi, icon.from);
+  const diagramCs = coordinateSystemForKind(typeMi, "diagram");
   const connectors: Record<string, PortDef> = {};
   for (const { from, element } of walkConnectors(typeMi)) {
     const port = portFromConnector(element, from, registry);
@@ -288,10 +316,14 @@ function buildClassDef(
   const def: ClassDef = {
     name: typeMi.name,
     restriction: typeMi.restriction,
-    iconLayers,
+    iconLayers: icon.layers,
     connectors,
     parameters: collectParameters(typeMi),
   };
+  if (hasDrawnShapes(diagramLayers)) {
+    def.diagramLayers = diagramLayers;
+    if (diagramCs) def.diagramCoordinateSystem = diagramCs;
+  }
   if (cs) def.coordinateSystem = cs;
   return def;
 }
@@ -358,7 +390,7 @@ function portFromConnector(
   const typeMi = el.type;
   const typeName = typeMi.name;
   registerClass(typeMi, registry);
-  const iconLayers = collectLayers(typeMi, "icon");
+  const { layers: iconLayers } = iconContextLayers(typeMi);
   const port: PortDef = {
     name: el.name,
     typeName,
@@ -465,12 +497,23 @@ function instanceFromSubComponent(
   return instance;
 }
 
+/**
+ * Placement rule (MLS §18.2): `Placement.transformation` positions an
+ * element in the enclosing class's diagram layer, `iconTransformation` in
+ * its icon layer — so a standalone connector takes the transformation
+ * matching the layout's `kind`, each falling back to the other when only
+ * one is declared (`placementFor`). Each kind additionally carries the
+ * unread counterpart when the declaration defines both — `diagramPlacement`
+ * on an icon-kind layout, `iconPlacement` on a diagram-kind one — so write
+ * paths can re-emit both keywords.
+ */
 function instanceFromConnector(
   el: ComponentElement,
+  kind: "icon" | "diagram",
   registry: Map<string, ClassDef>,
 ): ConnectorInstance | undefined {
   if (typeof el.type !== "object" || el.type === null) return undefined;
-  const placement = placementFor(el, "icon");
+  const placement = placementFor(el, kind);
   if (!placement) return undefined;
   const classRef = registerClass(el.type, registry);
   const inst: ConnectorInstance = {
@@ -478,8 +521,11 @@ function instanceFromConnector(
     classRef,
     placement,
   };
-  const diagram = counterpartPlacementFor(el, "icon");
-  if (diagram) inst.diagramPlacement = diagram;
+  const counterpart = counterpartPlacementFor(el, kind);
+  if (counterpart) {
+    if (kind === "icon") inst.diagramPlacement = counterpart;
+    else inst.iconPlacement = counterpart;
+  }
   if (el.comment !== undefined) inst.comment = el.comment;
   if (el.prefixes !== undefined) inst.prefixes = el.prefixes;
   if (el.type.source) inst.source = el.type.source;
@@ -683,7 +729,7 @@ export function produceDiagramLayout(
     if (!isConditionTrue(element.condition)) continue;
     // Also seed the connector's class into the registry so consumers can
     // look up its own icon via `classes[connector.classRef]`.
-    const inst = instanceFromConnector(element, registry);
+    const inst = instanceFromConnector(element, kind, registry);
     if (inst) {
       // Later (more-derived) declarations override earlier ones if they
       // collide; walkConnectors yields ancestors first, so this is a

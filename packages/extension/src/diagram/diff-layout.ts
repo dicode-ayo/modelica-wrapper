@@ -1,4 +1,4 @@
-import { moveWithin } from "@dicode/omc-client";
+import { connectorPlacementKeywords, moveWithin } from "@dicode/omc-client";
 
 import {
   BITMAP_DEFAULTS,
@@ -188,17 +188,18 @@ interface PlacedEntity {
   classRef: string;
   placement: Placement;
   diagramPlacement?: Placement | undefined;
+  iconPlacement?: Placement | undefined;
 }
 
 /**
  * Emit a delete or a placement edit per entity in `prev`.
  *
- * A connector is read from the icon view, so its `placement` is the icon
- * transformation and `diagramPlacement` the counterpart; writing the former
- * as the diagram one would put icon geometry under the wrong keyword. A
- * component has only the one, and no counterpart.
+ * Which keyword each placement belongs under depends on the view `layout`
+ * was produced in, so `kind` is resolved through
+ * {@link connectorPlacementKeywords} rather than assumed here.
  */
 function diffPlacements(
+  kind: DiagramLayout["kind"],
   prev: Readonly<Record<string, PlacedEntity>>,
   next: Readonly<Record<string, PlacedEntity>>,
   edits: LayoutEdit[],
@@ -212,13 +213,16 @@ function diffPlacements(
     if (!placementDiffers(before.placement, after.placement)) {
       continue;
     }
-    const icon = after.diagramPlacement;
+    const { transformation, iconTransformation } = connectorPlacementKeywords(
+      kind,
+      after,
+    );
     edits.push({
       kind: "componentPlacement",
       componentName: name,
       componentClass: after.classRef,
-      transformation: icon ?? after.placement,
-      ...(icon !== undefined && { iconTransformation: after.placement }),
+      transformation,
+      ...(iconTransformation !== undefined && { iconTransformation }),
     });
   }
 }
@@ -232,11 +236,11 @@ export function diffLayouts(
   // Components: detect placement changes + deletions. Additions are
   // deferred — adding a component from outside the diagram is its own
   // dragging gesture in a future stage.
-  diffPlacements(prev.components, next.components, edits);
+  diffPlacements(next.kind, prev.components, next.components, edits);
   // Standalone connectors (ports declared on the host class) diff the same
   // way; only their counterpart transformation differs, which
   // `diffPlacements` reads off the record.
-  diffPlacements(prev.connectors, next.connectors, edits);
+  diffPlacements(next.kind, prev.connectors, next.connectors, edits);
 
   // Connections: keyed by (lhs, rhs) endpoints. If a slot's endpoints
   // change we generally treat it as delete-old + add-new — but FIRST we

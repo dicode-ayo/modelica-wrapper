@@ -190,7 +190,7 @@ export interface PortDef {
   typeName: string;
   /** Placement of the port on the host class's coordinate system. */
   placement: Placement;
-  /** Walked icon for the connector class itself. */
+  /** Walked icon for the connector class itself, with the same Icon→Diagram fallback as `ClassDef.iconLayers`. */
   iconLayers: IconLayer[];
   /** Class that DECLARED this port — host class name, or an ancestor in its extends chain. */
   from: string;
@@ -240,8 +240,31 @@ export interface ParameterDef {
 export interface ClassDef {
   name: string;
   restriction: string;
+  /**
+   * Layers an icon context shows for this class. Sourced from the `Icon`
+   * annotation; when that draws nothing, the producer substitutes the
+   * `Diagram` annotation's layers (see `iconContextLayers` in the producer
+   * for the rule) — a hand-written connector often carries only a
+   * `Diagram` and would otherwise render as nothing while staying
+   * hit-testable.
+   */
   iconLayers: IconLayer[];
+  /**
+   * The `Diagram` annotation's layers, present only when that annotation
+   * draws something. A diagram context showing the class itself (a
+   * standalone connector on the host) renders these, falling back to
+   * `iconLayers` when absent.
+   */
+  diagramLayers?: IconLayer[] | undefined;
+  /** The system `iconLayers` is drawn against. */
   coordinateSystem?: CoordinateSystem | undefined;
+  /**
+   * The system `diagramLayers` is drawn against. A class declaring both
+   * annotations can give them different extents, so a renderer showing the
+   * diagram layers must scale against this one — `coordinateSystem` follows
+   * whichever annotation `iconLayers` came from.
+   */
+  diagramCoordinateSystem?: CoordinateSystem | undefined;
   /** Ports declared on this class or any of its ancestors. */
   connectors: Record<string, PortDef>;
   /**
@@ -300,16 +323,61 @@ export interface ComponentInstance {
 export interface ConnectorInstance {
   name: string;
   classRef: string;
+  /**
+   * The transformation for the layout's `kind` view: `transformation` in a
+   * diagram-kind layout, `iconTransformation` in an icon-kind one (each
+   * falling back to the other when only one is declared) — see
+   * `instanceFromConnector` in the producer for the rule.
+   */
   placement: Placement;
   /**
-   * The connector's diagram-view `transformation`, when the declaration
-   * defines both. `placement` above is the icon-view one, so a declaration
-   * rebuilt from `placement` alone loses its position on the diagram.
+   * The unread counterpart transformation, present only when the declaration
+   * defines both keywords. At most one of the two is ever set: an icon-kind
+   * layout carries `diagramPlacement`, a diagram-kind one `iconPlacement`.
+   * Resolve them with {@link connectorPlacementKeywords} rather than reading
+   * either field directly — a write path that assumes one view re-emits the
+   * placement under the wrong keyword.
    */
   diagramPlacement?: Placement | undefined;
+  /** The icon-kind mirror of `diagramPlacement`. */
+  iconPlacement?: Placement | undefined;
   comment?: string | undefined;
   prefixes?: Prefixes | undefined;
   source?: SourceLocation | undefined;
+}
+
+/**
+ * The Modelica keywords a connector's placements belong under, resolved from
+ * the view the layout was produced in (MLS §18.2): `placement` is the
+ * `transformation` in a diagram-kind layout and the `iconTransformation` in
+ * an icon-kind one, with the counterpart supplying the other keyword.
+ *
+ * Every write path resolves here, so the mapping is stated once. Reading
+ * `placement` as the `transformation` regardless of kind drops the
+ * `iconTransformation` from a declaration that had both.
+ *
+ * An entity with no counterpart — a component, or a connector declaring a
+ * single keyword — yields its `placement` as the `transformation` alone.
+ */
+export function connectorPlacementKeywords(
+  kind: "icon" | "diagram",
+  entity: {
+    placement: Placement;
+    diagramPlacement?: Placement | undefined;
+    iconPlacement?: Placement | undefined;
+  },
+): { transformation: Placement; iconTransformation: Placement | undefined } {
+  if (kind === "diagram") {
+    return {
+      transformation: entity.placement,
+      iconTransformation: entity.iconPlacement,
+    };
+  }
+  const diagram = entity.diagramPlacement;
+  return {
+    transformation: diagram ?? entity.placement,
+    iconTransformation: diagram === undefined ? undefined : entity.placement,
+  };
 }
 
 export interface ConnectionEndpoint {
@@ -552,7 +620,9 @@ export const ClassDefSchema = z
     name: z.string(),
     restriction: z.string(),
     iconLayers: z.array(IconLayerSchema),
+    diagramLayers: z.array(IconLayerSchema).optional(),
     coordinateSystem: CoordinateSystemSchema.optional(),
+    diagramCoordinateSystem: CoordinateSystemSchema.optional(),
     connectors: z.record(z.string(), PortDefSchema),
     parameters: z.record(z.string(), ParameterDefSchema),
   })
@@ -576,6 +646,8 @@ export const ConnectorInstanceSchema = z
     name: z.string(),
     classRef: z.string(),
     placement: PlacementSchema,
+    diagramPlacement: PlacementSchema.optional(),
+    iconPlacement: PlacementSchema.optional(),
     comment: z.string().optional(),
     source: SourceLocationSchema.optional(),
   })

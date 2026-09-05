@@ -12,11 +12,13 @@ import type {
   IconLayer,
   Shape,
 } from "@dicode/omc-client";
+import { hasDrawnShapes } from "@dicode/omc-client/shapes";
 import { colorToCss } from "@dicode/diagram-svg";
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";
 
 import { renderShape } from "../primitives/render-shape.js";
+import { withNoIconFallback } from "../icon-provider/no-icon.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
@@ -735,7 +737,7 @@ export class OmGraphicalLayout extends LitElement {
     return html`<om-component
       .nodeId=${id}
       .placement=${comp.placement}
-      .layers=${cls?.iconLayers ?? []}
+      .layers=${withNoIconFallback(cls?.iconLayers ?? [])}
       .coordinateSystem=${cls?.coordinateSystem ?? undefined}
       .lineThicknessScale=${this.lineThicknessScale}
       .substitutions=${substitutions}
@@ -758,7 +760,7 @@ export class OmGraphicalLayout extends LitElement {
                   html`<om-connector
                     .nodeId=${pid}
                     .placement=${port.placement}
-                    .layers=${port.iconLayers}
+                    .layers=${withNoIconFallback(port.iconLayers)}
                     .coordinateSystem=${cls.coordinateSystem ?? undefined}
                     .lineThicknessScale=${this.lineThicknessScale}
                     ?readonly=${this.readonly}
@@ -776,11 +778,25 @@ export class OmGraphicalLayout extends LitElement {
   ): TemplateResult {
     const cls = layout.classes[conn.classRef];
     const key = formatConnectorKey(null, id);
+    // A diagram view shows the connector class's own diagram layer when it
+    // draws one (MLS §18.2 — e.g. RealInput's smaller triangle + name),
+    // falling back to its icon. Nested ports above stay on the icon layer:
+    // that is what an enclosing diagram shows for a component's connectors.
+    //
+    // The two annotations can declare different extents, so the layers and
+    // the system they are measured in have to be chosen together.
+    const diagramLayers = cls?.diagramLayers ?? [];
+    const showsDiagram =
+      layout.kind === "diagram" && hasDrawnShapes(diagramLayers);
+    const layers = showsDiagram ? diagramLayers : (cls?.iconLayers ?? []);
+    const coordinateSystem = showsDiagram
+      ? (cls?.diagramCoordinateSystem ?? cls?.coordinateSystem)
+      : cls?.coordinateSystem;
     return html`<om-connector
       .nodeId=${id}
       .placement=${conn.placement}
-      .layers=${cls?.iconLayers ?? []}
-      .coordinateSystem=${cls?.coordinateSystem ?? undefined}
+      .layers=${withNoIconFallback(layers)}
+      .coordinateSystem=${coordinateSystem ?? undefined}
       .lineThicknessScale=${this.lineThicknessScale}
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}
