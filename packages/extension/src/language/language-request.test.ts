@@ -5,8 +5,10 @@
  *
  * `vscode` is the repo's mock; a minimal fake document/token stand in for the
  * editor (mirrors `document-scope.test.ts`), the parse cache and OMC client
- * are plain mocks, and `compute` is a spy — this suite pins the procedure
- * itself (ordering, cancellation, error handling), not any one feature.
+ * are plain mocks, and `compute`/`map` are spies — this suite pins the
+ * procedure itself (ordering, cancellation, error handling), not any one
+ * feature. `map` is the identity function in most cases below; only the
+ * load-on-touch test needs it to do anything.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -28,10 +30,10 @@ vi.mock("../logger.js", () => ({
 
 import { log } from "../logger.js";
 
+import type { DocumentSync } from "./document-scope.js";
 import { runLanguageRequest } from "./language-request.js";
+import type { RequestParseCache } from "./language-request.js";
 import type { OwningClassClient } from "./owning-class.js";
-import type { ParseCache } from "./parse.js";
-import type { OmcSync } from "./sync.js";
 
 /** A `modelica-source:` document: `resolveDocumentOwner` derives its FQN from
  *  the path alone, with no filesystem walk or client call — the cheapest way
@@ -56,18 +58,21 @@ function token(isCancellationRequested = false): vscode.CancellationToken {
   return { isCancellationRequested } as vscode.CancellationToken;
 }
 
-function fakeCache(tree: Tree = {} as Tree): ParseCache {
-  return { parse: vi.fn(() => Promise.resolve(tree)) } as unknown as ParseCache;
+function fakeCache(tree: Tree = {} as Tree): RequestParseCache {
+  return { parse: vi.fn(() => Promise.resolve(tree)) };
 }
 
-function fakeSync(): OmcSync {
-  return {
-    ensureLoaded: vi.fn(() => Promise.resolve(true)),
-  } as unknown as OmcSync;
+function fakeSync(): DocumentSync {
+  return { ensureLoaded: vi.fn(() => Promise.resolve(true)) };
 }
 
 function fakeClient(): OwningClassClient {
   return { parseFile: vi.fn(() => Promise.resolve({ classNames: [] })) };
+}
+
+/** The identity `map` — most tests below assert on `compute`'s raw result. */
+function identity<T>(result: T): T {
+  return result;
 }
 
 describe("runLanguageRequest — owning class", () => {
@@ -82,12 +87,63 @@ describe("runLanguageRequest — owning class", () => {
         ensureClient: () => Promise.resolve(fakeClient()),
         sync: fakeSync(),
         compute,
+        map: identity,
         recheckTokenAfterCompute: false,
         failureContext: "test provider failed",
       },
     );
     expect(result).toBeUndefined();
     expect(compute).not.toHaveBeenCalled();
+  });
+});
+
+describe("runLanguageRequest — load-on-touch", () => {
+  it("resolves and loads a real file's owning class before parsing and computing", async () => {
+    // No `probe` seam is threaded through from `runLanguageRequest`, so this
+    // exercises `resolveOwningClass` against the real filesystem — safe here
+    // because `/definitely-not-a-real-package-root` cannot contain a
+    // `package.mo`, so the ancestor walk terminates immediately.
+    const filePath = "/definitely-not-a-real-package-root/Foo.mo";
+    const calls: string[] = [];
+    const ensureLoaded = vi.fn((path: string) => {
+      calls.push(`ensureLoaded:${path}`);
+      return Promise.resolve(true);
+    });
+    const client: OwningClassClient = {
+      parseFile: vi.fn(() => Promise.resolve({ classNames: ["Foo"] })),
+    };
+    const cache: RequestParseCache = {
+      parse: vi.fn(() => {
+        calls.push("parse");
+        return Promise.resolve({} as Tree);
+      }),
+    };
+    const compute = vi.fn((_tree, _offset, owningClass: string) => {
+      calls.push(`compute:${owningClass}`);
+      return Promise.resolve({ value: 1 });
+    });
+    const document = {
+      uri: { scheme: "file", fsPath: filePath },
+      offsetAt: vi.fn(() => 0),
+    } as unknown as vscode.TextDocument;
+
+    const result = await runLanguageRequest(
+      document,
+      {} as vscode.Position,
+      token(),
+      {
+        cache,
+        ensureClient: () => Promise.resolve(client),
+        sync: { ensureLoaded },
+        compute,
+        map: identity,
+        recheckTokenAfterCompute: false,
+        failureContext: "test provider failed",
+      },
+    );
+
+    expect(calls).toEqual([`ensureLoaded:${filePath}`, "parse", "compute:Foo"]);
+    expect(result).toEqual({ value: 1 });
   });
 });
 
@@ -104,6 +160,7 @@ describe("runLanguageRequest — cancellation before compute", () => {
         ensureClient: () => Promise.resolve(fakeClient()),
         sync: fakeSync(),
         compute,
+        map: identity,
         recheckTokenAfterCompute: false,
         failureContext: "test provider failed",
       },
@@ -115,11 +172,12 @@ describe("runLanguageRequest — cancellation before compute", () => {
 });
 
 describe("runLanguageRequest — happy path", () => {
-  it("parses, computes, and returns the result with the derived owning class", async () => {
+  it("parses, computes, maps, and returns the result with the derived owning class", async () => {
     const tree = { marker: "tree" } as unknown as Tree;
     const cache = fakeCache(tree);
     const client = fakeClient();
     const compute = vi.fn(() => Promise.resolve({ value: 42 }));
+    const map = vi.fn((result: { value: number }) => `mapped:${result.value}`);
 
     const result = await runLanguageRequest(
       virtualDocument("Pkg.Foo"),
@@ -130,17 +188,63 @@ describe("runLanguageRequest — happy path", () => {
         ensureClient: () => Promise.resolve(client),
         sync: fakeSync(),
         compute,
+        map,
         recheckTokenAfterCompute: false,
         failureContext: "test provider failed",
       },
     );
 
-    expect(result).toEqual({ value: 42 });
+    expect(result).toBe("mapped:42");
     expect(compute).toHaveBeenCalledWith(tree, 7, "Pkg.Foo", client);
+    expect(map).toHaveBeenCalledWith({ value: 42 }, expect.anything());
+  });
+
+  it("returns undefined without calling map when compute resolves to undefined", async () => {
+    const compute = vi.fn(() => Promise.resolve(undefined));
+    const map = vi.fn();
+
+    const result = await runLanguageRequest(
+      virtualDocument("Pkg.Foo"),
+      {} as vscode.Position,
+      token(),
+      {
+        cache: fakeCache(),
+        ensureClient: () => Promise.resolve(fakeClient()),
+        sync: fakeSync(),
+        compute,
+        map,
+        recheckTokenAfterCompute: false,
+        failureContext: "test provider failed",
+      },
+    );
+
+    expect(result).toBeUndefined();
+    expect(map).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when map itself reports no result (e.g. an empty candidate list)", async () => {
+    const compute = vi.fn(() => Promise.resolve({ value: 1 }));
+
+    const result = await runLanguageRequest(
+      virtualDocument("Pkg.Foo"),
+      {} as vscode.Position,
+      token(),
+      {
+        cache: fakeCache(),
+        ensureClient: () => Promise.resolve(fakeClient()),
+        sync: fakeSync(),
+        compute,
+        map: () => undefined,
+        recheckTokenAfterCompute: false,
+        failureContext: "test provider failed",
+      },
+    );
+
+    expect(result).toBeUndefined();
   });
 });
 
-describe("runLanguageRequest — the second token check is a parameter", () => {
+describe("runLanguageRequest — cancellation during compute", () => {
   it("keeps compute's result when recheckTokenAfterCompute is false, even if cancelled meanwhile", async () => {
     const t = token(false);
     const compute = vi.fn(() => {
@@ -158,6 +262,7 @@ describe("runLanguageRequest — the second token check is a parameter", () => {
         ensureClient: () => Promise.resolve(fakeClient()),
         sync: fakeSync(),
         compute,
+        map: identity,
         recheckTokenAfterCompute: false,
         failureContext: "test provider failed",
       },
@@ -182,6 +287,7 @@ describe("runLanguageRequest — the second token check is a parameter", () => {
         ensureClient: () => Promise.resolve(fakeClient()),
         sync: fakeSync(),
         compute,
+        map: identity,
         recheckTokenAfterCompute: true,
         failureContext: "test provider failed",
       },
@@ -204,6 +310,7 @@ describe("runLanguageRequest — never throws out", () => {
         ensureClient: () => Promise.resolve(fakeClient()),
         sync: fakeSync(),
         compute,
+        map: identity,
         recheckTokenAfterCompute: false,
         failureContext: "test provider failed",
       },
@@ -227,6 +334,33 @@ describe("runLanguageRequest — never throws out", () => {
         ensureClient: () => Promise.reject(new Error("no client")),
         sync: fakeSync(),
         compute: vi.fn(),
+        map: identity,
+        recheckTokenAfterCompute: false,
+        failureContext: "test provider failed",
+      },
+    );
+
+    expect(result).toBeUndefined();
+    expect(log.error).toHaveBeenCalledWith(
+      "language",
+      "test provider failed",
+      expect.any(Error),
+    );
+  });
+
+  it("swallows a thrown error from map and logs it", async () => {
+    const result = await runLanguageRequest(
+      virtualDocument("Pkg.Foo"),
+      {} as vscode.Position,
+      token(),
+      {
+        cache: fakeCache(),
+        ensureClient: () => Promise.resolve(fakeClient()),
+        sync: fakeSync(),
+        compute: vi.fn(() => Promise.resolve({ value: 1 })),
+        map: () => {
+          throw new Error("mapping failed");
+        },
         recheckTokenAfterCompute: false,
         failureContext: "test provider failed",
       },

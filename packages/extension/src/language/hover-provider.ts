@@ -161,22 +161,23 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
-    const result = await runLanguageRequest(document, position, token, {
+    return runLanguageRequest(document, position, token, {
       cache: this.cache,
       ensureClient: this.ensureClient,
       sync: this.sync,
       compute: computeHover,
+      // Underline the identifier under the cursor so the hover anchors to it
+      // rather than the whole token run.
+      map: (result, doc) =>
+        new vscode.Hover(
+          new vscode.MarkdownString(result.markdown),
+          new vscode.Range(
+            doc.positionAt(result.startIndex),
+            doc.positionAt(result.endIndex),
+          ),
+        ),
       recheckTokenAfterCompute: false,
       failureContext: "hover provider failed",
     });
-    if (!result) return undefined;
-
-    // Underline the identifier under the cursor so the hover anchors to it
-    // rather than the whole token run.
-    const range = new vscode.Range(
-      document.positionAt(result.startIndex),
-      document.positionAt(result.endIndex),
-    );
-    return new vscode.Hover(new vscode.MarkdownString(result.markdown), range);
   }
 }

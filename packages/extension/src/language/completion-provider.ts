@@ -19,7 +19,7 @@ import { log } from "../logger.js";
 import { runLanguageRequest } from "./language-request.js";
 import type { OwningClassClient } from "./owning-class.js";
 import type { ParseCache } from "./parse.js";
-import { OmcSync } from "./sync.js";
+import type { OmcSync } from "./sync.js";
 
 /** The trigger character that fires member-access completion. */
 export const COMPLETION_TRIGGER_CHARACTER = ".";
@@ -65,41 +65,40 @@ export class ModelicaCompletionProvider
     position: vscode.Position,
     token: vscode.CancellationToken,
   ): Promise<vscode.CompletionList | undefined> {
-    const computed = await runLanguageRequest(document, position, token, {
+    return runLanguageRequest(document, position, token, {
       cache: this.cache,
       ensureClient: this.ensureClient,
       sync: this.sync,
       compute: (tree, offset, owningClass, client) =>
         computeCompletions(tree, offset, owningClass, client, { logger: log }),
-      // A multi-round-trip candidate search can outlast the keystroke that
-      // asked for it; definition and hover don't need this second check.
+      map: (computed) => {
+        if (computed.candidates.length === 0) return undefined;
+        const items = computed.candidates.map((c) => {
+          const item = new vscode.CompletionItem(
+            c.label,
+            toVscodeCompletionKind(c.kind),
+          );
+          if (c.detail !== undefined) item.detail = c.detail;
+          // Dotted class names need an explicit filter/insert so VSCode's
+          // word-based filtering matches the bare typed prefix and accepting
+          // the item inserts the simple name rather than the FQN.
+          if (c.filterText !== undefined) item.filterText = c.filterText;
+          if (c.insertText !== undefined) {
+            // A snippet's insertText carries placeholder syntax; wrap it so
+            // VSCode expands the template instead of inserting it verbatim.
+            item.insertText = c.isSnippet
+              ? new vscode.SnippetString(c.insertText)
+              : c.insertText;
+          }
+          return item;
+        });
+        // `isIncomplete` true makes VSCode re-invoke as the prefix grows (the
+        // fuzzy global net depends on it); false lets it filter this set
+        // locally.
+        return new vscode.CompletionList(items, computed.isIncomplete);
+      },
       recheckTokenAfterCompute: true,
       failureContext: "completion provider failed",
     });
-    if (!computed || computed.candidates.length === 0) return undefined;
-
-    const items = computed.candidates.map((c) => {
-      const item = new vscode.CompletionItem(
-        c.label,
-        toVscodeCompletionKind(c.kind),
-      );
-      if (c.detail !== undefined) item.detail = c.detail;
-      // Dotted class names need an explicit filter/insert so VSCode's
-      // word-based filtering matches the bare typed prefix and accepting the
-      // item inserts the simple name rather than the FQN.
-      if (c.filterText !== undefined) item.filterText = c.filterText;
-      if (c.insertText !== undefined) {
-        // A snippet's insertText carries placeholder syntax; wrap it so
-        // VSCode expands the template instead of inserting it verbatim.
-        item.insertText = c.isSnippet
-          ? new vscode.SnippetString(c.insertText)
-          : c.insertText;
-      }
-      return item;
-    });
-
-    // `isIncomplete` true makes VSCode re-invoke as the prefix grows (the
-    // fuzzy global net depends on it); false lets it filter this set locally.
-    return new vscode.CompletionList(items, computed.isIncomplete);
   }
 }

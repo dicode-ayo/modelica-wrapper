@@ -81,20 +81,19 @@ export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
     position: vscode.Position,
     token: vscode.CancellationToken,
   ): Promise<vscode.Location | undefined> {
-    const site = await runLanguageRequest(document, position, token, {
+    return runLanguageRequest(document, position, token, {
       cache: this.cache,
       ensureClient: this.ensureClient,
       sync: this.sync,
       compute: computeDefinition,
+      // `list(<FQN>)` is the single class, so `(0, 0)` is its declaration.
+      map: (site) =>
+        new vscode.Location(
+          sourceUriFor(site.qualifiedName),
+          new vscode.Position(0, 0),
+        ),
       recheckTokenAfterCompute: false,
       failureContext: "definition provider failed",
     });
-    if (!site) return undefined;
-
-    // `list(<FQN>)` is the single class, so `(0, 0)` is its declaration.
-    return new vscode.Location(
-      sourceUriFor(site.qualifiedName),
-      new vscode.Position(0, 0),
-    );
   }
 }
