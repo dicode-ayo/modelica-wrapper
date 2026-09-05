@@ -29,6 +29,7 @@ import "../debug/perf-hud.component.js";
 import "../context-menu/context-menu.component.js";
 import "../keymap-help/keymap-help.component.js";
 import type { OmScene, RendererFactory } from "../scene/scene.component.js";
+import type { TextMode } from "../primitives/text-mode.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
 import {
@@ -313,6 +314,11 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   rendererFactory: RendererFactory | undefined = undefined;
 
+  /** Pixi text class forwarded to the inner `<om-scene>`, which publishes it
+   *  on `textModeContext`. */
+  @property({ type: String, attribute: "text-mode" })
+  textMode: TextMode | undefined = undefined;
+
   /** Optional picker factory. Defaults to `defaultPicker` (scene raycast);
    *  tests inject a deterministic picker so pointer gestures resolve to
    *  known entities without a live render. */
@@ -520,6 +526,7 @@ export class OmGraphicalLayout extends LitElement {
         class=${this.dropActive ? "om-drop-active" : nothing}
         @om-view-change=${this.onViewChange}
         .rendererFactory=${this.rendererFactory ?? undefined}
+        .textMode=${this.textMode ?? undefined}
         ?debug=${this.debug}
         camera-mode=${this.cameraMode}
         tabindex="0"
