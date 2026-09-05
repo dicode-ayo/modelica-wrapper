@@ -65,7 +65,7 @@
     "@apidevtools/json-schema-ref-parser": "^16.0.1",
     "@types/node": "^24.13.3",
     "@vitest/coverage-istanbul": "^4.1.11",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }
 }
