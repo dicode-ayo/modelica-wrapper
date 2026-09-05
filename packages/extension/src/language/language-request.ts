@@ -14,7 +14,7 @@ import type { Tree } from "web-tree-sitter";
 import { log } from "../logger.js";
 
 import { resolveDocumentOwner, type DocumentSync } from "./document-scope.js";
-import type { OwningClassClient } from "./owning-class.js";
+import type { FileProbe, OwningClassClient } from "./owning-class.js";
 
 /** Parse-cache surface the procedure needs; the real `ParseCache` satisfies it. */
 export interface RequestParseCache {
@@ -23,8 +23,8 @@ export interface RequestParseCache {
 
 /**
  * What a language-feature provider supplies beyond the shared procedure: its
- * OMC surface, its pure `compute`, its `vscode`-mapping, and where the two
- * cancellation checks and the failure log line differ per feature.
+ * OMC surface, its pure `compute`, its `vscode`-mapping, and where the
+ * post-compute cancellation check and the failure log line differ per feature.
  */
 export interface LanguageRequestDeps<
   Client extends OwningClassClient,
@@ -34,6 +34,9 @@ export interface LanguageRequestDeps<
   readonly cache: RequestParseCache;
   readonly ensureClient: () => Promise<Client>;
   readonly sync: DocumentSync;
+  /** Overrides `resolveDocumentOwner`'s package-directory filesystem check —
+   *  a test seam, not a knob for a real caller (all three providers omit it). */
+  readonly probe?: FileProbe;
   readonly compute: (
     tree: Tree,
     offset: number,
@@ -42,10 +45,7 @@ export interface LanguageRequestDeps<
   ) => Promise<Result | undefined>;
   /** Map a `compute` result to the provider's `vscode` return type, or
    *  `undefined` to report no result (e.g. completion's empty candidate list). */
-  readonly map: (
-    result: Result,
-    document: vscode.TextDocument,
-  ) => Mapped | undefined;
+  readonly map: (result: Result) => Mapped | undefined;
   /**
    * Re-check cancellation after `compute` resolves. Completion's candidate
    * search spans several OMC round-trips and can outlast the keystroke that
@@ -76,7 +76,10 @@ export async function runLanguageRequest<
     const client = await deps.ensureClient();
     // Derive the owning class and load-on-touch (real files only; a virtual
     // `modelica-source:` class is already loaded — see `document-scope.ts`).
-    const owning = await resolveDocumentOwner(document, client, deps.sync);
+    const owning = await resolveDocumentOwner(document, client, deps.sync, {
+      // `exactOptionalPropertyTypes` forbids passing `probe: undefined`.
+      ...(deps.probe ? { probe: deps.probe } : {}),
+    });
     if (!owning) return undefined;
 
     // Bail between the load and resolve round-trips so a cursor that has
@@ -94,7 +97,7 @@ export async function runLanguageRequest<
       return undefined;
     }
     if (result === undefined) return undefined;
-    return deps.map(result, document);
+    return deps.map(result);
   } catch (err) {
     log.error("language", deps.failureContext, err);
     return undefined;

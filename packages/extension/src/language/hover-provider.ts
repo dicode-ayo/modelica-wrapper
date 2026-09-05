@@ -168,12 +168,12 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
       compute: computeHover,
       // Underline the identifier under the cursor so the hover anchors to it
       // rather than the whole token run.
-      map: (result, doc) =>
+      map: (result) =>
         new vscode.Hover(
           new vscode.MarkdownString(result.markdown),
           new vscode.Range(
-            doc.positionAt(result.startIndex),
-            doc.positionAt(result.endIndex),
+            document.positionAt(result.startIndex),
+            document.positionAt(result.endIndex),
           ),
         ),
       recheckTokenAfterCompute: false,

@@ -7,8 +7,8 @@
  * editor (mirrors `document-scope.test.ts`), the parse cache and OMC client
  * are plain mocks, and `compute`/`map` are spies — this suite pins the
  * procedure itself (ordering, cancellation, error handling), not any one
- * feature. `map` is the identity function in most cases below; only the
- * load-on-touch test needs it to do anything.
+ * feature. `map` is the identity function in most cases below; the happy-path
+ * test is the one that pins that it runs at all.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -31,8 +31,10 @@ vi.mock("../logger.js", () => ({
 import { log } from "../logger.js";
 
 import type { DocumentSync } from "./document-scope.js";
-import { runLanguageRequest } from "./language-request.js";
-import type { RequestParseCache } from "./language-request.js";
+import {
+  runLanguageRequest,
+  type RequestParseCache,
+} from "./language-request.js";
 import type { OwningClassClient } from "./owning-class.js";
 
 /** A `modelica-source:` document: `resolveDocumentOwner` derives its FQN from
@@ -99,11 +101,7 @@ describe("runLanguageRequest — owning class", () => {
 
 describe("runLanguageRequest — load-on-touch", () => {
   it("resolves and loads a real file's owning class before parsing and computing", async () => {
-    // No `probe` seam is threaded through from `runLanguageRequest`, so this
-    // exercises `resolveOwningClass` against the real filesystem — safe here
-    // because `/definitely-not-a-real-package-root` cannot contain a
-    // `package.mo`, so the ancestor walk terminates immediately.
-    const filePath = "/definitely-not-a-real-package-root/Foo.mo";
+    const filePath = "/work/Foo.mo";
     const calls: string[] = [];
     const ensureLoaded = vi.fn((path: string) => {
       calls.push(`ensureLoaded:${path}`);
@@ -135,6 +133,9 @@ describe("runLanguageRequest — load-on-touch", () => {
         cache,
         ensureClient: () => Promise.resolve(client),
         sync: { ensureLoaded },
+        // No package.mo above `filePath` — mirrors `document-scope.test.ts`'s
+        // `noPackages` probe rather than depending on the real filesystem.
+        probe: () => Promise.resolve(false),
         compute,
         map: identity,
         recheckTokenAfterCompute: false,
@@ -196,7 +197,7 @@ describe("runLanguageRequest — happy path", () => {
 
     expect(result).toBe("mapped:42");
     expect(compute).toHaveBeenCalledWith(tree, 7, "Pkg.Foo", client);
-    expect(map).toHaveBeenCalledWith({ value: 42 }, expect.anything());
+    expect(map).toHaveBeenCalledWith({ value: 42 });
   });
 
   it("returns undefined without calling map when compute resolves to undefined", async () => {
