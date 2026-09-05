@@ -21,7 +21,7 @@ import {
 
 import { log } from "../logger.js";
 
-import { resolveDocumentOwner } from "./document-scope.js";
+import { runLanguageRequest } from "./language-request.js";
 import type { OwningClassClient } from "./owning-class.js";
 import type { ParseCache } from "./parse.js";
 import type { OmcSync } from "./sync.js";
@@ -161,39 +161,22 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
-    try {
-      const client = await this.ensureClient();
-      // Derive the owning class and load-on-touch (real files only; a virtual
-      // `modelica-source:` class is already loaded — see `document-scope.ts`).
-      const owning = await resolveDocumentOwner(document, client, this.sync);
-      if (!owning) return undefined;
+    const result = await runLanguageRequest(document, position, token, {
+      cache: this.cache,
+      ensureClient: this.ensureClient,
+      sync: this.sync,
+      compute: computeHover,
+      recheckTokenAfterCompute: false,
+      failureContext: "hover provider failed",
+    });
+    if (!result) return undefined;
 
-      // Bail between the load and resolve round-trips so a cursor that has
-      // already moved on doesn't issue further OMC calls.
-      if (token.isCancellationRequested) return undefined;
-
-      const tree = await this.cache.parse(document);
-      const result = await computeHover(
-        tree,
-        document.offsetAt(position),
-        owning.qualifiedName,
-        client,
-      );
-      if (!result) return undefined;
-
-      // Underline the identifier under the cursor so the hover anchors to it
-      // rather than the whole token run.
-      const range = new vscode.Range(
-        document.positionAt(result.startIndex),
-        document.positionAt(result.endIndex),
-      );
-      return new vscode.Hover(
-        new vscode.MarkdownString(result.markdown),
-        range,
-      );
-    } catch (err) {
-      log.error("language", "hover provider failed", err);
-      return undefined;
-    }
+    // Underline the identifier under the cursor so the hover anchors to it
+    // rather than the whole token run.
+    const range = new vscode.Range(
+      document.positionAt(result.startIndex),
+      document.positionAt(result.endIndex),
+    );
+    return new vscode.Hover(new vscode.MarkdownString(result.markdown), range);
   }
 }

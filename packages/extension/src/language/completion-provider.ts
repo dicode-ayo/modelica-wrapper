@@ -16,7 +16,7 @@ import {
 
 import { log } from "../logger.js";
 
-import { resolveDocumentOwner } from "./document-scope.js";
+import { runLanguageRequest } from "./language-request.js";
 import type { OwningClassClient } from "./owning-class.js";
 import type { ParseCache } from "./parse.js";
 import { OmcSync } from "./sync.js";
@@ -65,55 +65,41 @@ export class ModelicaCompletionProvider
     position: vscode.Position,
     token: vscode.CancellationToken,
   ): Promise<vscode.CompletionList | undefined> {
-    try {
-      const client = await this.ensureClient();
-      // Real files load on touch; a virtual `modelica-source:` class is already
-      // loaded (see `document-scope.ts`).
-      const owning = await resolveDocumentOwner(document, client, this.sync);
-      if (!owning) return undefined;
+    const computed = await runLanguageRequest(document, position, token, {
+      cache: this.cache,
+      ensureClient: this.ensureClient,
+      sync: this.sync,
+      compute: (tree, offset, owningClass, client) =>
+        computeCompletions(tree, offset, owningClass, client, { logger: log }),
+      // A multi-round-trip candidate search can outlast the keystroke that
+      // asked for it; definition and hover don't need this second check.
+      recheckTokenAfterCompute: true,
+      failureContext: "completion provider failed",
+    });
+    if (!computed || computed.candidates.length === 0) return undefined;
 
-      // Bail between the load and resolve round-trips so a cursor that has
-      // already moved on doesn't issue further OMC calls.
-      if (token.isCancellationRequested) return undefined;
-
-      const tree = await this.cache.parse(document);
-      const { candidates, isIncomplete } = await computeCompletions(
-        tree,
-        document.offsetAt(position),
-        owning.qualifiedName,
-        client,
-        { logger: log },
+    const items = computed.candidates.map((c) => {
+      const item = new vscode.CompletionItem(
+        c.label,
+        toVscodeCompletionKind(c.kind),
       );
-      if (token.isCancellationRequested) return undefined;
-      if (candidates.length === 0) return undefined;
+      if (c.detail !== undefined) item.detail = c.detail;
+      // Dotted class names need an explicit filter/insert so VSCode's
+      // word-based filtering matches the bare typed prefix and accepting the
+      // item inserts the simple name rather than the FQN.
+      if (c.filterText !== undefined) item.filterText = c.filterText;
+      if (c.insertText !== undefined) {
+        // A snippet's insertText carries placeholder syntax; wrap it so
+        // VSCode expands the template instead of inserting it verbatim.
+        item.insertText = c.isSnippet
+          ? new vscode.SnippetString(c.insertText)
+          : c.insertText;
+      }
+      return item;
+    });
 
-      const items = candidates.map((c) => {
-        const item = new vscode.CompletionItem(
-          c.label,
-          toVscodeCompletionKind(c.kind),
-        );
-        if (c.detail !== undefined) item.detail = c.detail;
-        // Dotted class names need an explicit filter/insert so VSCode's
-        // word-based filtering matches the bare typed prefix and accepting the
-        // item inserts the simple name rather than the FQN.
-        if (c.filterText !== undefined) item.filterText = c.filterText;
-        if (c.insertText !== undefined) {
-          // A snippet's insertText carries placeholder syntax; wrap it so
-          // VSCode expands the template instead of inserting it verbatim.
-          item.insertText = c.isSnippet
-            ? new vscode.SnippetString(c.insertText)
-            : c.insertText;
-        }
-        return item;
-      });
-
-      // `isIncomplete` true makes VSCode re-invoke as the prefix grows (the
-      // fuzzy global net depends on it); false lets it filter this set locally.
-      return new vscode.CompletionList(items, isIncomplete);
-    } catch (err) {
-      // A provider must never throw out — degrade to "no completions".
-      log.error("language", "completion provider failed", err);
-      return undefined;
-    }
+    // `isIncomplete` true makes VSCode re-invoke as the prefix grows (the
+    // fuzzy global net depends on it); false lets it filter this set locally.
+    return new vscode.CompletionList(items, computed.isIncomplete);
   }
 }
