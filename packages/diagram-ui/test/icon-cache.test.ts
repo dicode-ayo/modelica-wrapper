@@ -16,8 +16,8 @@ describe("IconCache", () => {
       const first = layers.at(0);
       return first !== undefined ? `svg:${first.from}` : "";
     });
-    const rasterize = vi.fn(
-      (): Promise<Texture> => Promise.resolve(new Texture()),
+    const rasterize = vi.fn((): Promise<Texture> =>
+      Promise.resolve(new Texture()),
     );
 
     const cache = new IconCache(renderSvg, rasterize);
@@ -77,8 +77,8 @@ describe("IconCache", () => {
 
   it("uses the size hint as part of the cache key", async () => {
     const renderSvg = () => "svg";
-    const rasterize = vi.fn(
-      (): Promise<Texture> => Promise.resolve(new Texture()),
+    const rasterize = vi.fn((): Promise<Texture> =>
+      Promise.resolve(new Texture()),
     );
     const cache = new IconCache(renderSvg, rasterize);
     await cache.resolve({ layers: makeLayers("S"), size: 128 });

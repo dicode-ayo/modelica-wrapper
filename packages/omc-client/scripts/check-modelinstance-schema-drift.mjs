@@ -121,6 +121,7 @@ async function fetchJson(url) {
   } catch (err) {
     throw new Error(
       `failed to parse upstream JSON at ${url} after applying known patches: ${err.message}`,
+      { cause: err },
     );
   }
 }

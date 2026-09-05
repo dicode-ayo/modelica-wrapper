@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ModelInstance, ParameterField } from "@dicode/omc-client";
+import type { ModelInstance } from "@dicode/omc-client";
 
+import {
+  fieldOf,
+  requireClassParameterForm,
+} from "../../test-support/parameter-forms.js";
 import { refOf } from "../../test-support/parameter-refs.js";
 import {
   buildClassParameterForm,
@@ -25,15 +29,6 @@ function instance(elements: unknown[]): ModelInstance {
     restriction: "model",
     elements,
   } as unknown as ModelInstance;
-}
-
-function field(
-  model: { fields: ParameterField[] },
-  name: string,
-): ParameterField {
-  const f = model.fields.find((x) => x.name === name);
-  if (!f) throw new Error(`no field ${name}`);
-  return f;
 }
 
 describe("buildClassParameterForm", () => {
@@ -64,8 +59,8 @@ describe("buildClassParameterForm", () => {
         comment: "Reference distance to move",
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
-    const f = field(form.model, "driveAngle");
+    const form = requireClassParameterForm(mi);
+    const f = fieldOf(form.model, "driveAngle");
     expect(f.kind).toBe("number");
     expect(f.value).toBe(1.5708);
     expect(f.label).toBe("Reference distance to move");
@@ -89,8 +84,8 @@ describe("buildClassParameterForm", () => {
         prefixes: { variability: "parameter" },
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
-    expect(field(form.model, "useReset").kind).toBe("boolean");
+    const form = requireClassParameterForm(mi);
+    expect(fieldOf(form.model, "useReset").kind).toBe("boolean");
     expect(form.values).toEqual({ useReset: false });
     const useResetRef = refOf(form.refs, "useReset");
     expect(useResetRef.kind).toBe("boolean");
@@ -123,8 +118,8 @@ describe("buildClassParameterForm", () => {
         comment: "Type of controller",
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
-    const f = field(form.model, "controllerType");
+    const form = requireClassParameterForm(mi);
+    const f = fieldOf(form.model, "controllerType");
     expect(f.kind).toBe("enum");
     expect(f.enumChoices).toEqual(["P", "PI", "PD", "PID"]);
     expect(f.enumTypeName).toBe("Modelica.Blocks.Types.SimpleController");
@@ -159,9 +154,9 @@ describe("buildClassParameterForm", () => {
         prefixes: { variability: "parameter" },
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     expect(form.model.fields.map((f) => f.name)).toEqual(["ok", "weird"]);
-    expect(field(form.model, "weird").kind).toBe("unsupported");
+    expect(fieldOf(form.model, "weird").kind).toBe("unsupported");
     const weirdRef = refOf(form.refs, "weird");
     expect(weirdRef.kind).toBe("unsupported");
   });
@@ -190,10 +185,10 @@ describe("buildClassParameterForm", () => {
         annotation: { Dialog: { enable: enableExpr } },
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
-    expect(field(form.model, "y_reset").dialog.enable).toEqual(enableExpr);
+    const form = requireClassParameterForm(mi);
+    expect(fieldOf(form.model, "y_reset").dialog.enable).toEqual(enableExpr);
     // The other field has no enable expression so the key must be absent.
-    expect(field(form.model, "use_reset").dialog.enable).toBeUndefined();
+    expect(fieldOf(form.model, "use_reset").dialog.enable).toBeUndefined();
   });
 
   it("reads Dialog tab + group from the annotation when present", () => {
@@ -224,7 +219,7 @@ describe("buildClassParameterForm", () => {
         prefixes: { variability: "parameter" },
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     expect(form.refs.k).toMatchObject({ tab: "Advanced", group: "Tuning" });
     expect(form.refs.Tstart).toMatchObject({
       tab: "General",
@@ -246,7 +241,7 @@ describe("buildClassParameterForm", () => {
         prefixes: { variability: "parameter" },
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     expect(form.values).toEqual({ T0: 273.15 });
   });
 
@@ -273,9 +268,9 @@ describe("buildClassParameterForm", () => {
         },
       ],
     } as unknown as ModelInstance;
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     expect(form.model.fields.map((f) => f.name)).toEqual(["k"]);
-    expect(field(form.model, "k").kind).toBe("number");
+    expect(fieldOf(form.model, "k").kind).toBe("number");
     expect(form.values).toEqual({ k: 2 });
     const kRef = refOf(form.refs, "k");
     expect(kRef.kind).toBe("number");
@@ -317,7 +312,7 @@ describe("buildClassParameterForm", () => {
         },
       ],
     } as unknown as ModelInstance;
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     const kRef = refOf(form.refs, "k");
     expect(kRef.kind).toBe("number");
     expect(form.values).toEqual({ k: 7 });
@@ -334,7 +329,7 @@ describe("buildClassParameterForm", () => {
         prefixes: { variability: "parameter" },
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     const kRef = refOf(form.refs, "k");
     expect(kRef.inheritedFrom).toBeUndefined();
     expect("inheritedFrom" in kRef).toBe(false);
@@ -370,7 +365,7 @@ describe("buildClassParameterForm", () => {
         },
       ],
     } as unknown as ModelInstance;
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     const kRef = refOf(form.refs, "k");
     const jRef = refOf(form.refs, "j");
     expect(kRef.inheritedFrom).toBe("Test.Base");
@@ -407,7 +402,7 @@ describe("buildClassParameterForm", () => {
         },
       ],
     } as unknown as ModelInstance;
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     const kRef = refOf(form.refs, "k");
     expect(kRef.inheritedFrom).toBeUndefined();
   });
@@ -444,9 +439,9 @@ describe("buildClassParameterForm", () => {
         },
       ],
     } as unknown as ModelInstance;
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     expect(form.values).toEqual({ k: 7 });
-    expect(field(form.model, "k").label).toBe("from Derived");
+    expect(fieldOf(form.model, "k").label).toBe("from Derived");
   });
 
   it("prefers the evaluated literal when the binding is a complex expression", () => {
@@ -466,7 +461,7 @@ describe("buildClassParameterForm", () => {
         prefixes: { variability: "parameter" },
       },
     ]);
-    const form = buildClassParameterForm(mi)!;
+    const form = requireClassParameterForm(mi);
     expect(form.values).toEqual({ yMin: -12 });
   });
 });

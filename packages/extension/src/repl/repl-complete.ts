@@ -16,7 +16,7 @@
 
 import { omcFunctionNames } from "@dicode/omc-client";
 
-import { META_COMMANDS } from "./repl-help.js";
+import { META_COMMANDS, type MetaCommand } from "./repl-help.js";
 
 export interface CompletionPlan {
   /** Substring of the buffer that should be replaced. */
@@ -36,7 +36,7 @@ export function computeCompletion(
   const match = /[A-Za-z0-9_:]*$/.exec(before);
   const prefix = match ? match[0] : "";
 
-  const source = selectSource(buffer, prefix);
+  const source = selectSource(before, prefix);
   const candidates = source.filter((c) => c.startsWith(prefix)).sort();
   return {
     prefix,
@@ -46,21 +46,38 @@ export function computeCompletion(
 }
 
 /**
- * Decide which candidate set to draw from given the current input.
- *
- *   - If the buffer up to the cursor LOOKS like a meta-command line
- *     (begins with `:` and has no space yet) → meta-command names.
- *   - If the buffer starts with `:help <something` or `:help ` →
- *     OMC function names (most useful expansion target).
- *   - Otherwise → OMC function names.
+ * Each meta-command's `argKind`, keyed by name — derived from META_COMMANDS
+ * so this and `repl-help.ts` can't drift apart. A verb with no entry (not a
+ * meta-command at all) falls through to OMC function names, same as
+ * `"omc-name"`.
  */
-function selectSource(buffer: string, prefix: string): string[] {
-  const trimmed = buffer.trimStart();
-  if (trimmed.startsWith(":") && !trimmed.slice(1).includes(" ")) {
-    // No space yet — completing the meta verb itself. Anchor on `:`.
+const META_COMMAND_ARG_KINDS: ReadonlyMap<string, MetaCommand["argKind"]> =
+  new Map(META_COMMANDS.map((m) => [m.name, m.argKind]));
+
+/**
+ * Decide which candidate set to draw from given the input up to the cursor.
+ *
+ *   - If it LOOKS like a meta-command line (begins with `:` and has no
+ *     whitespace yet) → meta-command names.
+ *   - If the meta verb already typed takes a `"path"` argument (`:load`,
+ *     `:cd`) or no argument at all (`"none"`, e.g. `:clear`) → no
+ *     candidates; OMC function names are never a valid completion there.
+ *   - Otherwise → OMC function names. This covers `"omc-name"` verbs
+ *     (`:help `, where an OMC name is the useful expansion target) and any
+ *     word that isn't a known meta-verb.
+ */
+function selectSource(before: string, prefix: string): string[] {
+  const trimmed = before.trimStart();
+  const spaceIndex = trimmed.search(/\s/);
+  if (trimmed.startsWith(":") && spaceIndex === -1) {
+    // No whitespace yet — completing the meta verb itself. Anchor on `:`.
     if (prefix.startsWith(":") || prefix === "") {
       return META_COMMANDS.map((m) => m.name);
     }
+  }
+  if (spaceIndex !== -1) {
+    const argKind = META_COMMAND_ARG_KINDS.get(trimmed.slice(0, spaceIndex));
+    if (argKind === "path" || argKind === "none") return [];
   }
   // Anywhere else: OMC function names. `omcFunctionNames` is already sorted
   // but we re-sort after filtering above so a smaller pool stays sorted.

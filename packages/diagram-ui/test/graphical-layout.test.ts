@@ -307,8 +307,7 @@ describe("<om-graphical-layout>", () => {
     // `test/diagram-commands.test.ts`).
     const el = await mountLayout({ layout: tinyLayout() });
     const help = el.shadowRoot?.querySelector("om-keymap-help") as
-      | (HTMLElement & { open: boolean })
-      | null;
+      (HTMLElement & { open: boolean }) | null;
     expect(help).not.toBeNull();
     expect(help?.open).toBe(false);
   });

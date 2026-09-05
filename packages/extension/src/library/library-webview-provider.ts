@@ -88,27 +88,25 @@ export class LibraryWebviewProvider
   /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
   private readonly searches = new Map<string, AbortController>();
 
-  private readonly onClassChanged: vscode.Disposable;
-  private readonly onSessionReplaced: vscode.Disposable;
+  private readonly onInvalidation: vscode.Disposable;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: EnsureClient,
     invalidation: ClassInvalidationRegistry,
   ) {
-    this.onClassChanged = invalidation.register((className) =>
-      this.classChanged(className),
+    // Both coarse signals drop the icon cache: neither an unattributable
+    // mutation nor a dead session leaves a cached icon trustworthy, and
+    // neither names the classes it invalidated.
+    this.onInvalidation = vscode.Disposable.from(
+      invalidation.register((className) => this.classChanged(className)),
+      invalidation.registerAllClassesChanged(() => this.refresh()),
+      invalidation.registerSessionReplaced(() => this.refresh()),
     );
-    // `refresh()` rather than a re-list: an icon cached from the dead
-    // session would otherwise keep serving its stale bytes.
-    this.onSessionReplaced = invalidation.registerSessionReplaced(() => {
-      this.refresh();
-    });
   }
 
   dispose(): void {
-    this.onClassChanged.dispose();
-    this.onSessionReplaced.dispose();
+    this.onInvalidation.dispose();
   }
 
   /** Drop everything this sidebar derives from `className`'s definition: its

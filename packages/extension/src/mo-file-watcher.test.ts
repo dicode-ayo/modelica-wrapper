@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
+import { makeWatcherClient } from "../test-support/mock-watcher-client.js";
 import {
   recordedMessages,
   resetTabs,
@@ -14,7 +15,6 @@ import {
 } from "../test-support/vscode-mock.js";
 
 import {
-  createPathClassIndex,
   createPendingReorders,
   handleMoChange,
   handleMoDelete,
@@ -26,6 +26,7 @@ import {
   type MoWatcherDeps,
 } from "./mo-file-watcher.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
+import { createPathClassIndex } from "./path-class-index.js";
 import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { publishSourceChanges } from "./source-invalidation.js";
@@ -1082,51 +1083,6 @@ describe("seedPathClassIndex", () => {
   });
 });
 
-describe("createPathClassIndex", () => {
-  it("normalizes paths so a differently-spelled lookup still resolves", () => {
-    const index = createPathClassIndex();
-    index.set("/ws/pkg/Bar.mo", ["Bar"]);
-    expect(index.get("/ws/pkg/../pkg/Bar.mo")).toEqual(["Bar"]);
-  });
-
-  describe("filesUnder", () => {
-    it("pairs the package's own file and every nested member's file with just its matching classes", () => {
-      const index = createPathClassIndex();
-      index.set("/ws/My/Pkg/package.mo", ["My.Pkg"]);
-      index.set("/ws/My/Pkg/Bar.mo", ["My.Pkg.Bar"]);
-      index.set("/ws/My/Other.mo", ["My.Other"]);
-
-      const found = index.filesUnder("My.Pkg");
-
-      expect(found).toEqual(
-        expect.arrayContaining([
-          {
-            fsPath: path.resolve("/ws/My/Pkg/package.mo"),
-            classNames: ["My.Pkg"],
-          },
-          {
-            fsPath: path.resolve("/ws/My/Pkg/Bar.mo"),
-            classNames: ["My.Pkg.Bar"],
-          },
-        ]),
-      );
-      expect(found).not.toContainEqual(
-        expect.objectContaining({ fsPath: path.resolve("/ws/My/Other.mo") }),
-      );
-    });
-
-    it("doesn't treat a same-prefixed sibling as nested", () => {
-      const index = createPathClassIndex();
-      index.set("/ws/My/Pkg.mo", ["My.Pkg"]);
-      index.set("/ws/My/PkgTwo.mo", ["My.PkgTwo"]);
-
-      expect(index.filesUnder("My.Pkg")).toEqual([
-        { fsPath: path.resolve("/ws/My/Pkg.mo"), classNames: ["My.Pkg"] },
-      ]);
-    });
-  });
-});
-
 describe("createPendingReorders", () => {
   it("returns a set pair through entries(), and drops it on delete", () => {
     const pending = createPendingReorders();
@@ -1236,16 +1192,7 @@ describe("class invalidation from a `.mo` change", () => {
 });
 
 describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
-  function makeWatcherClient() {
-    return {
-      parseFile: vi.fn(async () => ({ classNames: ["My.Pkg.Bar"] })),
-      loadFile: vi.fn(async () => ({ success: true })),
-      deleteClass: vi.fn(async () => ({ success: true })),
-    };
-  }
-
   it("re-seeds the path→class index from disk against the replaced session", async () => {
-    setFindFilesResult([FILE]);
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const disposable = registerMoFileWatcher({
@@ -1258,6 +1205,8 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
+      scanMoFiles: async () => [FILE],
     });
 
     // The initial mount seed.
@@ -1272,7 +1221,6 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
   });
 
   it("stops re-seeding once the returned disposable is disposed", async () => {
-    setFindFilesResult([FILE]);
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const disposable = registerMoFileWatcher({
@@ -1285,6 +1233,8 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
+      scanMoFiles: async () => [FILE],
     });
     await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
 
@@ -1300,6 +1250,8 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
     const client = makeWatcherClient();
     const invalidation = new ClassInvalidationRegistry();
     const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+    const scanMoFiles = async (): Promise<readonly string[]> =>
+      (await vscode.workspace.findFiles("**/*.mo", null)).map((u) => u.fsPath);
 
     // `ensureClient()`'s 2nd call overall is the first reseed's — block it so
     // the test can fire a second `:reset` while that reseed is still pending,
@@ -1324,6 +1276,8 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       } as unknown as ModelicaSourceProvider,
       guard: createSelfWriteGuard(),
       invalidation,
+      index: createPathClassIndex(),
+      scanMoFiles,
     });
 
     // The mount seed settles (its ensureClient() call isn't blocked).
@@ -1347,6 +1301,36 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
     // behind resolves.
     await vi.waitFor(() => expect(findFilesSpy).toHaveBeenCalledTimes(3));
     await vi.waitFor(() => expect(ensureCalls).toBe(3));
+
+    disposable.dispose();
+    findFilesSpy.mockRestore();
+  });
+
+  it("uses the injected scanMoFiles instead of a fresh findFiles glob, for both the mount seed and :reset (#484)", async () => {
+    const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const scanMoFiles = vi.fn(async () => [FILE]);
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+      index: createPathClassIndex(),
+      scanMoFiles,
+    });
+
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+    invalidation.sessionReplaced();
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(2));
+
+    expect(scanMoFiles).toHaveBeenCalledTimes(2);
+    expect(findFilesSpy).not.toHaveBeenCalled();
 
     disposable.dispose();
     findFilesSpy.mockRestore();

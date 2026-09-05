@@ -90,8 +90,7 @@ describe("DragMode", () => {
     mode.update({ x: 5, y: 5 }, move(5, 5));
 
     const drag = events.find((e) => e.type === "drag") as
-      | CapturedEvent<"drag">
-      | undefined;
+      CapturedEvent<"drag"> | undefined;
     expect(drag).toBeDefined();
     expect(drag!.detail.keys.sort()).toEqual(["c:C1", "c:R1"]);
   });

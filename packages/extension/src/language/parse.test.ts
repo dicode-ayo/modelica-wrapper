@@ -141,6 +141,23 @@ describe("ParseCache", () => {
     expect(a.rootNode.text).toBe(doc.text);
   });
 
+  it("frees every document's tree on invalidateAll()", async () => {
+    const cache = new ParseCache(wasmDir);
+    const first = await cache.parse(
+      fakeDocument(Uri.file("/ws/E.mo"), 1, "model E end E;"),
+    );
+    const second = await cache.parse(
+      fakeDocument(Uri.file("/ws/F.mo"), 1, "model F end F;"),
+    );
+
+    cache.invalidateAll();
+
+    expect(cache.size).toBe(0);
+    expect(isLive(first)).toBe(false);
+    expect(isLive(second)).toBe(false);
+    expect(cache.stats).toEqual({ turns: 0, generations: 0, borrowed: 0 });
+  });
+
   it("does not free a tree an in-flight parse still holds as its reparse base when invalidate() races it", async () => {
     const cache = new ParseCache(wasmDir);
     const uri = Uri.file("/ws/D.mo");

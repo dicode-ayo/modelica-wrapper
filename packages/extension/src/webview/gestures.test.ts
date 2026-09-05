@@ -173,7 +173,7 @@ describe("isGestureMessage", () => {
     expect(
       isGestureMessage(
         { type: "change", layout: layout(), basedOn: NaN },
-        vi.fn(),
+        reject,
       ),
     ).toBe(false);
     expect(reject).toHaveBeenCalledWith(

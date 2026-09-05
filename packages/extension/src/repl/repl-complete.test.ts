@@ -89,6 +89,79 @@ describe("computeCompletion — meta-commands", () => {
   });
 });
 
+describe("computeCompletion — path-argument meta-commands", () => {
+  it("offers nothing for a `:load` path, even one ending like an OMC name", () => {
+    // "modifierToJSON" sorts alphabetically ahead of the "mo" this path ends in.
+    const buf = ":load /tmp/scratchpad/LoadProbe.mo";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+    expect(plan.commonPrefix).toBe("");
+  });
+
+  it("offers nothing for a `:cd` path", () => {
+    const buf = ":cd /tmp/some/dir";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it("decides on the text up to the cursor, not text after it", () => {
+    // Cursor sits right after the verb; the path typed after the cursor
+    // hasn't been reached yet, so the verb itself is still a completion
+    // target.
+    const buf = ":load /tmp/scratchpad/LoadProbe.mo";
+    const plan = computeCompletion(buf, ":load".length);
+    expect(plan.candidates).toEqual([":load"]);
+    expect(plan.prefix).toBe(":load");
+  });
+
+  it("still completes the `:load` verb itself before the space", () => {
+    const plan = computeCompletion(":lo", 3);
+    expect(plan.candidates).toEqual([":load"]);
+  });
+
+  it("still completes the `:cd` verb itself before the space", () => {
+    const plan = computeCompletion(":c", 2);
+    expect(plan.candidates).toEqual([":cd", ":clear"]);
+  });
+
+  it("still completes OMC names after `:help `", () => {
+    const buf = ":help getCl";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toContain("getClassInformation");
+  });
+});
+
+describe("computeCompletion — no-argument meta-commands", () => {
+  it("offers nothing for `:clear`'s argument", () => {
+    const buf = ":clear ge";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it("offers nothing for `:reset`'s argument", () => {
+    const buf = ":reset ge";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it("offers nothing for `:exit`'s argument", () => {
+    const buf = ":exit ge";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toEqual([]);
+  });
+
+  it("still completes the `:clear` verb itself before the space", () => {
+    const plan = computeCompletion(":cle", 4);
+    expect(plan.candidates).toEqual([":clear"]);
+  });
+
+  it("still completes OMC names after `:help `", () => {
+    const buf = ":help ge";
+    const plan = computeCompletion(buf, buf.length);
+    expect(plan.candidates).toContain("getClassInformation");
+  });
+});
+
 describe("computeCompletion — cursor position", () => {
   it("completes the word ending at the cursor, ignoring text after", () => {
     // Cursor sits right after `getCl` — text after shouldn't be considered.
@@ -128,6 +201,16 @@ describe("computeGhost", () => {
     // The buffer is itself an OMC function name; the only candidate IS
     // the buffer, so the tail is empty.
     expect(computeGhost("simulate", "simulate".length)).toBe("");
+  });
+
+  it("suggests nothing for a `:load` path argument", () => {
+    const buf = ":load /tmp/scratchpad/LoadProbe.mo";
+    expect(computeGhost(buf, buf.length)).toBe("");
+  });
+
+  it("suggests nothing for a `:clear` argument", () => {
+    const buf = ":clear ge";
+    expect(computeGhost(buf, buf.length)).toBe("");
   });
 });
 

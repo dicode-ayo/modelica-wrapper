@@ -76,8 +76,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto(STORY, { waitUntil: "networkidle" });
   await page.waitForFunction(() => {
     const el = document.querySelector("om-graphical-layout") as
-      | (HTMLElement & { layout?: { components?: object } })
-      | null;
+      (HTMLElement & { layout?: { components?: object } }) | null;
     return Boolean(el?.layout?.components);
   });
 });

@@ -73,8 +73,7 @@ function makePanel(active = false): {
   const posted: DocExtensionToWebview[] = [];
   let listener: ((m: { type: "ready" }) => void) | undefined;
   let viewStateListener:
-    | ((e: { webviewPanel: { active: boolean } }) => void)
-    | undefined;
+    ((e: { webviewPanel: { active: boolean } }) => void) | undefined;
   let disposeListener: (() => void) | undefined;
   const webview: FakeWebview = {
     options: undefined,
@@ -704,6 +703,42 @@ describe("DocumentationEditController write path", () => {
 
     expect(calls.loaded).toEqual(["undone text"]);
     expect(posted.some((m) => m.type === "doc")).toBe(true);
+  });
+
+  it("does not reverse-sync a mutation announced back into its own buffer", async () => {
+    // A documentation edit announces the class from the OMC call seam, so the
+    // source provider reloads the document this editor is showing. That reload
+    // is not one of the shadow buffer's own writes, so it arrives as a foreign
+    // change — but the buffer it left behind is the class's own source.
+    const { client, calls } = makeEditClient({ info: "<html><p>x</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushTimer } = manualScheduler();
+    const controller = new DocumentationEditController(
+      {
+        client,
+        document: srcDoc(LISTED),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
+      factory,
+      scheduler,
+    );
+
+    controller.start();
+    await flush();
+    posted.length = 0; // drop the initial doc
+
+    fireForeign();
+    flushTimer();
+    await flush();
+
+    // The positive half: the guard ran and decided to skip, rather than the
+    // foreign change never reaching the controller at all.
+    expect(client.listFile).toHaveBeenCalledWith({ typeName: CLASS });
+    expect(calls.loaded).toEqual([]);
+    expect(posted).toEqual([]);
   });
 
   it("refuses a reverse sync on a read-only class and never loads it into OMC", async () => {

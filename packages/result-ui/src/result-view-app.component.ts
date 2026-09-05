@@ -100,21 +100,23 @@ export class OmResultViewApp extends LitElement {
       this.statusMessage !== null &&
       this.statusMessage !== this.dismissedMessage;
     return html`
-      ${showBanner
-        ? html`
-            <div class="status-banner">
-              <span>${this.statusMessage}</span>
-              <om-icon-button
-                label="Dismiss"
-                @click=${() => {
-                  this.dismissedMessage = this.statusMessage;
-                }}
-              >
-                ✕
-              </om-icon-button>
-            </div>
-          `
-        : nothing}
+      ${
+        showBanner
+          ? html`
+              <div class="status-banner">
+                <span>${this.statusMessage}</span>
+                <om-icon-button
+                  label="Dismiss"
+                  @click=${() => {
+                    this.dismissedMessage = this.statusMessage;
+                  }}
+                >
+                  ✕
+                </om-icon-button>
+              </div>
+            `
+          : nothing
+      }
       <div class="content">
         <div class="rail">
           <om-results-drawer
@@ -124,9 +126,11 @@ export class OmResultViewApp extends LitElement {
         </div>
         <div class="cards">
           <div class="cards-wrap">
-            ${this.plotsLoading
-              ? html`<div class="loading">Fetching data…</div>`
-              : nothing}
+            ${
+              this.plotsLoading
+                ? html`<div class="loading">Fetching data…</div>`
+                : nothing
+            }
             <om-cards-list
               .cards=${this.doc.cards}
               .results=${this.doc.results}

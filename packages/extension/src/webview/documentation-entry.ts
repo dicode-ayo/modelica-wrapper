@@ -115,12 +115,14 @@ export class OmDocumentationRoot extends LitElement {
         @om-documentation-edit-source=${this.onEditSource}
         @om-documentation-open-link=${this.onOpenLink}
       ></om-documentation-editor>
-      ${hasInterfaceSections(this.interface)
-        ? html`<om-documentation-interface
-            .model=${this.interface}
-            @om-documentation-open-link=${this.onOpenLink}
-          ></om-documentation-interface>`
-        : nothing}
+      ${
+        hasInterfaceSections(this.interface)
+          ? html`<om-documentation-interface
+              .model=${this.interface}
+              @om-documentation-open-link=${this.onOpenLink}
+            ></om-documentation-interface>`
+          : nothing
+      }
       <style>
         om-documentation-root {
           --om-doc-page-pad: 1rem;

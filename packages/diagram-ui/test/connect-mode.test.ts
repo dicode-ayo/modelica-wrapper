@@ -136,6 +136,27 @@ describe("ConnectMode", () => {
     expect(overEmpty.toKey).toBeNull();
   });
 
+  it("snaps toKey to the owning connector when the drop lands on a port disc", () => {
+    const source = portMesh("out");
+    const comp = new Container();
+    tagEntity(comp, "component", "R1");
+    const conn = new Container();
+    tagEntity(conn, "connector", "p");
+    comp.addChild(conn);
+    const disc = new Container();
+    tagEntity(disc, "port", "p");
+    conn.addChild(disc);
+    const events: DragEvents["connection"][] = [];
+    let picked: Container = source;
+    const mode = makeMode({ picker: () => picked, events });
+
+    mode.begin(start(source, { x: 0, y: 0 }));
+    picked = disc;
+    mode.commit({ x: 80, y: 0 }, at(80, 0));
+
+    expect(lastOf(events).toKey).toBe("k:R1.p");
+  });
+
   it("never snaps toKey back onto the source connector", () => {
     const source = portMesh("self");
     const sourceConn = connectorMesh("self");

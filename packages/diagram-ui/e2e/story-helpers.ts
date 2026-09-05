@@ -27,8 +27,7 @@ export async function boxOf(
 export async function waitForLayout(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const el = document.querySelector("om-graphical-layout") as
-      | (HTMLElement & { layout?: { components?: object } })
-      | null;
+      (HTMLElement & { layout?: { components?: object } }) | null;
     return Boolean(el?.layout?.components);
   });
 }

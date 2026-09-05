@@ -71,8 +71,7 @@ export interface ChangeClassRequestDetail {
  * was selected, rather than carrying a payload of its own.
  */
 export type ClipboardRequestDetail =
-  | { action: "copy"; keys: string[] }
-  | { action: "paste" };
+  { action: "copy"; keys: string[] } | { action: "paste" };
 
 /**
  * User asked to open an entity's source. Editors live host-side, so the

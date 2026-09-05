@@ -77,8 +77,7 @@ const meta: Meta<StoryArgs> = {
         class="om-tool-status"
         style="position:absolute;left:8px;bottom:8px;margin:0;font-size:11px;color:#444;"
       >
-tool: select</pre
-      >
+tool: select</pre>
     </div>
   `,
 };

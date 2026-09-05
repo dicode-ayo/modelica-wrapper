@@ -83,6 +83,7 @@ async function main() {
         `'${GRAMMAR_WASM_FILENAME}' (sha256 ${GRAMMAR_WASM_SHA256}) at:\n` +
         `  ${targetPath}\n` +
         `and re-run the install — the existing-file hash check will accept it.`,
+      { cause: err },
     );
   }
 

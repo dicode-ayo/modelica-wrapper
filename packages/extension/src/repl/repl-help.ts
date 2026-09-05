@@ -3,7 +3,10 @@
  *
  * REPL-specific bits live here:
  *   - `META_COMMANDS` — the `:help`, `:load`, `:cd`, … set the REPL adds
- *     on top of OMC's API. Mirrored in `repl-eval.ts` (single source).
+ *     on top of OMC's API. The verb names are the single source of truth
+ *     for help text, tab completion (`repl-complete.ts`), and dispatch
+ *     (`repl-eval.ts`'s `META_HANDLERS`, keyed by `MetaCommandName` so a
+ *     verb added here without a matching handler fails to compile).
  *   - Topic routing — which kind of help the user is asking for.
  *
  * Everything else (per-function rendering, category lists, the OMC API
@@ -21,23 +24,51 @@ import {
   type OmcFnName,
 } from "@dicode/omc-client";
 
+export interface MetaCommand {
+  name: string;
+  summary: string;
+  /**
+   * What kind of argument the command takes, used to pick the right
+   * completion source: `"path"` for a filesystem path, `"omc-name"` for an
+   * OMC category or function name, `"none"` for a command that takes no
+   * argument at all.
+   */
+  argKind: "path" | "omc-name" | "none";
+}
+
 /**
  * Meta-commands recognised by the REPL. Kept here (rather than in
  * `repl-eval.ts`) so the help renderer + the completion source share a
  * single source of truth.
  */
-export const META_COMMANDS: ReadonlyArray<{ name: string; summary: string }> = [
-  { name: ":help", summary: "Show help (`:help <category|name>` for details)" },
-  { name: ":clear", summary: "Clear the terminal screen" },
-  { name: ":load", summary: "Call loadFile on a path (`:load <path>`)" },
+export const META_COMMANDS = [
+  {
+    name: ":help",
+    summary: "Show help (`:help <category|name>` for details)",
+    argKind: "omc-name",
+  },
+  { name: ":clear", summary: "Clear the terminal screen", argKind: "none" },
+  {
+    name: ":load",
+    summary: "Call loadFile on a path (`:load <path>`)",
+    argKind: "path",
+  },
   {
     name: ":cd",
     summary:
       "Show or change OMC's working directory (`:cd` to print, `:cd <path>` to change)",
+    argKind: "path",
   },
-  { name: ":reset", summary: "Close OMC and start a fresh subprocess" },
-  { name: ":exit", summary: "Close this REPL terminal" },
-];
+  {
+    name: ":reset",
+    summary: "Close OMC and start a fresh subprocess",
+    argKind: "none",
+  },
+  { name: ":exit", summary: "Close this REPL terminal", argKind: "none" },
+] as const satisfies ReadonlyArray<MetaCommand>;
+
+/** The exact set of meta-command verbs, derived from `META_COMMANDS`. */
+export type MetaCommandName = (typeof META_COMMANDS)[number]["name"];
 
 const META_LABEL_WIDTH = 16;
 
@@ -88,6 +119,6 @@ function formatOverview(): string {
   return lines.join("\n");
 }
 
-function formatMeta(m: { name: string; summary: string }): string {
+function formatMeta(m: MetaCommand): string {
   return `${m.name}\n  ${m.summary}`;
 }

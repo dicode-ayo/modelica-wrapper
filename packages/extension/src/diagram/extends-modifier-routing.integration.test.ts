@@ -27,8 +27,8 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { OmcClient } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
+import { requireClassParameterForm } from "../../test-support/parameter-forms.js";
 import { refOf } from "../../test-support/parameter-refs.js";
-import { buildClassParameterForm } from "./parameter-edits.js";
 
 describeIf("inherited-parameter write routing (#24)", () => {
   let client: OmcClient;
@@ -72,7 +72,7 @@ end ${pkg};
     const { instance } = await client.getModelInstance({
       typeName: derivedClass,
     });
-    const form = buildClassParameterForm(instance)!;
+    const form = requireClassParameterForm(instance);
     const kRef = refOf(form.refs, "k");
     // The qualified ancestor name is what the submit handler passes as
     // `extendsBase`. OMC may emit it short (`Base`) or fully qualified
@@ -85,7 +85,7 @@ end ${pkg};
     const { instance } = await client.getModelInstance({
       typeName: derivedClass,
     });
-    const form = buildClassParameterForm(instance)!;
+    const form = requireClassParameterForm(instance);
     const { inheritedFrom } = refOf(form.refs, "k");
     if (inheritedFrom === undefined)
       throw new Error("expected 'k' to be inherited");
@@ -136,7 +136,7 @@ end ${tri};
 
     try {
       const { instance } = await client.getModelInstance({ typeName: triC });
-      const form = buildClassParameterForm(instance)!;
+      const form = requireClassParameterForm(instance);
       const { inheritedFrom } = refOf(form.refs, "p");
       if (inheritedFrom === undefined)
         throw new Error("expected 'p' to be inherited");

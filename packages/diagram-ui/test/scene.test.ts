@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { Circle, Container, Rectangle } from "pixi.js";
 
 import "../src/scene/scene.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
+import type { SceneContext } from "../src/scene/scene-context.js";
+import { buildEdge } from "../src/connection/edge-build.js";
+import { entityKeyForNode, tagEntity } from "../src/interaction/node-keys.js";
 
 /**
  * Tests run under happy-dom with a renderer-less Pixi scene graph, so no
@@ -112,6 +116,96 @@ describe("<om-scene>", () => {
     if (pt === null) throw new Error("pt is null");
     expect(pt.x).toBeCloseTo(5);
     expect(pt.y).toBeCloseTo(-3);
+  });
+
+  describe("pick with an edge terminating on a connector at each end", () => {
+    // Default zoom 100 on the 800x600 fallback canvas → 3 px per diagram
+    // unit, diagram origin at the canvas center.
+    const PPU = H / (2 * 100);
+    const canvasPt = (x: number, y: number) => ({
+      x: W / 2 + PPU * x,
+      y: H / 2 - PPU * y,
+    });
+
+    /**
+     * Component R1 spanning x 10..30 with its port `p` at (30, 0), a
+     * standalone connector `src` at (0, 0), and a connection routed
+     * between the two centers — the edge's pick band therefore runs
+     * across both connectors, the component body and empty space.
+     *
+     * `src` carries the `zIndex` an `OmConnector` gets from its `zOffset`
+     * of -1.5; the nested port has none of its own, inheriting its owning
+     * component's 0.
+     */
+    async function mountPickScene(): Promise<SceneContext> {
+      const el = await mountScene();
+      const ctx = el.sceneContextValue;
+      if (!ctx) throw new Error("no scene context");
+      const comp = new Container();
+      tagEntity(comp, "component", "R1");
+      comp.eventMode = "static";
+      comp.hitArea = new Rectangle(10, -5, 20, 10);
+      const conn = new Container();
+      tagEntity(conn, "connector", "p");
+      conn.eventMode = "static";
+      conn.hitArea = new Circle(0, 0, 3);
+      conn.position.set(30, 0);
+      comp.addChild(conn);
+      ctx.diagramRoot.addChild(comp);
+      const standalone = new Container();
+      tagEntity(standalone, "connector", "src");
+      standalone.eventMode = "static";
+      standalone.hitArea = new Circle(0, 0, 3);
+      standalone.zIndex = 1.5;
+      ctx.diagramRoot.addChild(standalone);
+      const meshes = buildEdge(ctx.diagramRoot, "om-edge:0", {
+        points: [
+          [0, 0],
+          [30, 0],
+        ],
+      });
+      if (!meshes) throw new Error("expected edge meshes");
+      tagEntity(meshes.line, "edge", "0");
+      tagEntity(meshes.hitArea, "edge", "0");
+      return ctx;
+    }
+
+    function kindAt(
+      ctx: SceneContext,
+      x: number,
+      y: number,
+    ): { kind: string; nodeId: string } | null {
+      const pt = canvasPt(x, y);
+      const hit = ctx.pick(pt.x, pt.y);
+      const entity = hit ? entityKeyForNode(hit) : null;
+      return entity ? { kind: entity.kind, nodeId: entity.nodeId } : null;
+    }
+
+    it("resolves the connector, not the edge band, over the port body", async () => {
+      const ctx = await mountPickScene();
+      expect(kindAt(ctx, 28, 0)).toEqual({ kind: "connector", nodeId: "R1.p" });
+    });
+
+    it("resolves the connector at the route's terminal point", async () => {
+      const ctx = await mountPickScene();
+      expect(kindAt(ctx, 30, 0)).toEqual({ kind: "connector", nodeId: "R1.p" });
+    });
+
+    it("keeps the edge pick where the band crosses the component body", async () => {
+      const ctx = await mountPickScene();
+      expect(kindAt(ctx, 15, 0)).toEqual({ kind: "edge", nodeId: "0" });
+    });
+
+    it("keeps the edge pick over empty space", async () => {
+      const ctx = await mountPickScene();
+      expect(kindAt(ctx, 5, 0)).toEqual({ kind: "edge", nodeId: "0" });
+    });
+
+    it("resolves the standalone connector the band overlaps at the far end", async () => {
+      const ctx = await mountPickScene();
+      expect(kindAt(ctx, 0, 0)).toEqual({ kind: "connector", nodeId: "src" });
+      expect(kindAt(ctx, 2, 0)).toEqual({ kind: "connector", nodeId: "src" });
+    });
   });
 
   it("emits om-view-change events when PanZoom updates the view", async () => {
