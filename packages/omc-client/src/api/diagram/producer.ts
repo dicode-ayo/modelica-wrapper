@@ -26,6 +26,7 @@ import type {
   ModelInstance,
   RecordValue,
 } from "../../_shared/modelInstance.js";
+import { hasDrawnShapes } from "../../_shared/diagramLayout.js";
 import type {
   ClassDef,
   Color,
@@ -266,10 +267,6 @@ function collectLabels(mi: ModelInstance): LabelLayout[] {
   return out;
 }
 
-function hasShapes(layers: IconLayer[]): boolean {
-  return layers.some((layer) => layer.shapes.length > 0);
-}
-
 /**
  * The layers an icon context shows for a class, with the annotation
  * fallback applied: the `Icon` annotation's layers, or the `Diagram`
@@ -287,9 +284,9 @@ function iconContextLayers(mi: ModelInstance): {
   from: "icon" | "diagram";
 } {
   const icon = collectLayers(mi, "icon");
-  if (hasShapes(icon)) return { layers: icon, from: "icon" };
+  if (hasDrawnShapes(icon)) return { layers: icon, from: "icon" };
   const diagram = collectLayers(mi, "diagram");
-  if (hasShapes(diagram)) return { layers: diagram, from: "diagram" };
+  if (hasDrawnShapes(diagram)) return { layers: diagram, from: "diagram" };
   return { layers: icon, from: "icon" };
 }
 
@@ -307,9 +304,10 @@ function buildClassDef(
 ): ClassDef {
   const icon = iconContextLayers(typeMi);
   const diagramLayers = collectLayers(typeMi, "diagram");
-  // The coordinate system follows the annotation the layers came from, so
-  // a diagram-sourced fallback isn't scaled against the icon's system.
+  // Each layer set is scaled against the annotation it came from, so an icon
+  // sourced from the `Diagram` fallback isn't measured in the icon's system.
   const cs = coordinateSystemForKind(typeMi, icon.from);
+  const diagramCs = coordinateSystemForKind(typeMi, "diagram");
   const connectors: Record<string, PortDef> = {};
   for (const { from, element } of walkConnectors(typeMi)) {
     const port = portFromConnector(element, from, registry);
@@ -322,7 +320,10 @@ function buildClassDef(
     connectors,
     parameters: collectParameters(typeMi),
   };
-  if (hasShapes(diagramLayers)) def.diagramLayers = diagramLayers;
+  if (hasDrawnShapes(diagramLayers)) {
+    def.diagramLayers = diagramLayers;
+    if (diagramCs) def.diagramCoordinateSystem = diagramCs;
+  }
   if (cs) def.coordinateSystem = cs;
   return def;
 }
@@ -520,12 +521,10 @@ function instanceFromConnector(
     classRef,
     placement,
   };
-  if (kind === "icon") {
-    const diagram = counterpartPlacementFor(el, "icon");
-    if (diagram) inst.diagramPlacement = diagram;
-  } else {
-    const icon = counterpartPlacementFor(el, "diagram");
-    if (icon) inst.iconPlacement = icon;
+  const counterpart = counterpartPlacementFor(el, kind);
+  if (counterpart) {
+    if (kind === "icon") inst.diagramPlacement = counterpart;
+    else inst.iconPlacement = counterpart;
   }
   if (el.comment !== undefined) inst.comment = el.comment;
   if (el.prefixes !== undefined) inst.prefixes = el.prefixes;

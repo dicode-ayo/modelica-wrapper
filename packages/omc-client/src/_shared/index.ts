@@ -74,6 +74,8 @@ export {
 export {
   LineShapeSchema,
   moveWithin,
+  connectorPlacementKeywords,
+  hasDrawnShapes,
   PolygonShapeSchema,
   RectangleShapeSchema,
   EllipseShapeSchema,

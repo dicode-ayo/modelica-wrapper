@@ -4,23 +4,21 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
 import { repeat } from "lit/directives/repeat.js";
 import { styleMap } from "lit/directives/style-map.js";
-import type {
-  ClassDef,
-  ComponentInstance,
-  ConnectorInstance,
-  DiagramLayout,
-  IconLayer,
-  Shape,
+import {
+  hasDrawnShapes,
+  type ClassDef,
+  type ComponentInstance,
+  type ConnectorInstance,
+  type DiagramLayout,
+  type IconLayer,
+  type Shape,
 } from "@dicode/omc-client";
 import { colorToCss } from "@dicode/diagram-svg";
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";
 
 import { renderShape } from "../primitives/render-shape.js";
-import {
-  hasDrawnShapes,
-  withNoIconFallback,
-} from "../icon-provider/no-icon.js";
+import { withNoIconFallback } from "../icon-provider/no-icon.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
@@ -784,16 +782,21 @@ export class OmGraphicalLayout extends LitElement {
     // draws one (MLS §18.2 — e.g. RealInput's smaller triangle + name),
     // falling back to its icon. Nested ports above stay on the icon layer:
     // that is what an enclosing diagram shows for a component's connectors.
+    //
+    // The two annotations can declare different extents, so the layers and
+    // the system they are measured in have to be chosen together.
     const diagramLayers = cls?.diagramLayers ?? [];
-    const layers =
-      layout.kind === "diagram" && hasDrawnShapes(diagramLayers)
-        ? diagramLayers
-        : (cls?.iconLayers ?? []);
+    const showsDiagram =
+      layout.kind === "diagram" && hasDrawnShapes(diagramLayers);
+    const layers = showsDiagram ? diagramLayers : (cls?.iconLayers ?? []);
+    const coordinateSystem = showsDiagram
+      ? (cls?.diagramCoordinateSystem ?? cls?.coordinateSystem)
+      : cls?.coordinateSystem;
     return html`<om-connector
       .nodeId=${id}
       .placement=${conn.placement}
       .layers=${withNoIconFallback(layers)}
-      .coordinateSystem=${cls?.coordinateSystem ?? undefined}
+      .coordinateSystem=${coordinateSystem ?? undefined}
       .lineThicknessScale=${this.lineThicknessScale}
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}

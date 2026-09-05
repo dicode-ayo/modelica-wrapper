@@ -2128,9 +2128,7 @@ describe("produceDiagramLayout: catalog Icon→Diagram layer fallback (issue #51
   });
 
   it("never substitutes into the host class's own layer sets", () => {
-    // The host's own layers are positionally addressed by `shape:<idx>` keys
-    // and diffed into source writes — a substituted layer there would shift
-    // indices and leak into user source.
+    // Why this must hold: `iconContextLayers` in the producer.
     const diagramOnlyHost = ModelInstanceSchema.parse({
       name: "Synth.DiagramOnlyHost",
       restriction: "model",
