@@ -16,6 +16,12 @@ import { ensureLabelLayer } from "./label-texture.js";
 
 const ANCHOR_ORIGIN = new Point(0, 0);
 
+/** Screen-px size used when `fontSize` is unset or non-positive. Modelica
+ *  materializes `Text.fontSize` as `0` ("fit the extent"), which a
+ *  screen-space overlay with no extent cannot honour — it reads as the
+ *  default size instead of an invisible zero-height glyph. */
+const DEFAULT_LABEL_FONT_SIZE = 12;
+
 /**
  * `<om-label>` — places a text label in the scene linked to an in-world
  * anchor `Container`. The visible `Text` lives in a screen-space overlay
@@ -28,7 +34,9 @@ const ANCHOR_ORIGIN = new Point(0, 0);
  *   - `x`, `y`            — diagram-coord position (parent local space)
  *   - `text`              — string OR Modelica `Expression` (auto-stringified)
  *   - `rotation`          — degrees, applied to the rendered text
- *   - `fontSize`          — screen px (default 12)
+ *   - `fontSize`          — screen px (default 12; a non-positive value —
+ *                           Modelica's `0` = "fit the extent" — also
+ *                           renders at the default)
  *   - `color`             — `#rrggbb` text colour
  *
  * Labels can be:
@@ -129,7 +137,7 @@ export class OmLabel extends LitElement {
       text: "",
       style: new TextStyle({
         fill: this.color,
-        fontSize: this.fontSize,
+        fontSize: this.resolvedFontSize,
         fontFamily: "sans-serif",
       }),
     });
@@ -165,7 +173,7 @@ export class OmLabel extends LitElement {
     const text = this.text2d;
     if (text) {
       text.text = this.pendingText;
-      text.style.fontSize = this.fontSize;
+      text.style.fontSize = this.resolvedFontSize;
       text.style.fill = this.color;
       text.rotation = (this.rotation * Math.PI) / 180;
       this.reproject();
@@ -191,6 +199,12 @@ export class OmLabel extends LitElement {
    *  overlay `Text` is suppressed without a renderer. */
   get currentText(): string {
     return this.text2d?.text ?? this.pendingText;
+  }
+
+  /** The screen-px size the overlay `Text` renders at: `fontSize` when
+   *  positive, else {@link DEFAULT_LABEL_FONT_SIZE}. */
+  get resolvedFontSize(): number {
+    return this.fontSize > 0 ? this.fontSize : DEFAULT_LABEL_FONT_SIZE;
   }
 }
 

@@ -52,6 +52,48 @@ describe("<om-graphical-layout>", () => {
     ).toBe(1);
   });
 
+  it("renders a host diagram Text once, world-space — no <om-label> for layout.labels", async () => {
+    // `labels` mirrors the host's diagram `Text` annotations, which render
+    // through the host shape layers as `<om-text>` (extent-sized, zoom
+    // tracking). An `<om-label>` copy would draw the text a second time in
+    // screen space — and at fontSize 0 an invisible one.
+    const layout: DiagramLayout = {
+      ...emptyLayout(),
+      className: "T",
+      diagramLayers: [
+        {
+          from: "T",
+          shapes: [
+            {
+              kind: "text",
+              extent: [
+                [-100, -20],
+                [100, 20],
+              ],
+              textString: "reference speed",
+            },
+          ],
+        },
+      ],
+      labels: [
+        {
+          text: "reference speed",
+          extent: [
+            [-100, -20],
+            [100, 20],
+          ],
+          rotation: 0,
+          fontSize: 0,
+        },
+      ],
+    };
+    const el = await mountLayout({ layout });
+    const shadowRoot = el.shadowRoot;
+    if (!shadowRoot) throw new Error("no shadowRoot");
+    expect(shadowRoot.querySelectorAll("om-label")).toHaveLength(0);
+    expect(shadowRoot.querySelectorAll("om-text")).toHaveLength(1);
+  });
+
   it("does not render a component whose placement hides it", async () => {
     const layout = tinyLayout();
     const b1 = layout.components["b1"];
