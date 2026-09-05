@@ -259,6 +259,17 @@ export function resetTabs(): void {
   closedTabs.length = 0;
 }
 
+/** Documents `window.showTextDocument` was asked to open, in call order. */
+export const shownTextDocuments: Array<{
+  uri: UriImpl;
+  options?: { preview?: boolean; selection?: Range } | undefined;
+}> = [];
+
+/** Clear the shown-document record between tests. */
+export function resetShownTextDocuments(): void {
+  shownTextDocuments.length = 0;
+}
+
 let activeTextEditorValue: { document: { uri: UriImpl } } | undefined;
 
 /** Set (or clear) the URI the mock's `window.activeTextEditor` reports. */
@@ -779,6 +790,13 @@ export function resetStatusBarItems(): void {
 export const window = {
   get activeTextEditor(): { document: { uri: UriImpl } } | undefined {
     return activeTextEditorValue;
+  },
+  showTextDocument(
+    document: { uri: UriImpl },
+    options?: { preview?: boolean; selection?: Range },
+  ): Promise<{ document: { uri: UriImpl } }> {
+    shownTextDocuments.push({ uri: document.uri, options });
+    return Promise.resolve({ document });
   },
   tabGroups: {
     get activeTabGroup(): { tabs: Tab[] } {

@@ -50,6 +50,17 @@ const SAMPLES: WebviewToExtension[] = [
   { type: "resetComponentParameters", componentName: "r1" },
   { type: "addComponent", className: "A.B", position: { x: 1, y: 2 } },
   { type: "changeClassRequest", componentName: "r1", currentClass: "A" },
+  {
+    type: "goToSource",
+    source: {
+      filename: "/lib/A.mo",
+      lineStart: 1,
+      columnStart: 1,
+      lineEnd: 2,
+      columnEnd: 10,
+    },
+    fallbackClassName: "A",
+  },
   { type: "copySelection", keys: ["a"] },
   { type: "paste" },
 ];
@@ -121,6 +132,23 @@ describe("isGestureMessage", () => {
     expect(isGestureMessage(raw, reject)).toBe(false);
     expect(reject).toHaveBeenCalledWith(
       expect.stringContaining("parametersSubmit.kind"),
+    );
+  });
+
+  it("rejects a goToSource whose source is not a location, naming the field", () => {
+    const reject = vi.fn();
+    expect(
+      isGestureMessage(
+        {
+          type: "goToSource",
+          source: { filename: "/lib/A.mo", lineStart: "1" },
+          fallbackClassName: "A",
+        },
+        reject,
+      ),
+    ).toBe(false);
+    expect(reject).toHaveBeenCalledWith(
+      expect.stringContaining("goToSource.source"),
     );
   });
 

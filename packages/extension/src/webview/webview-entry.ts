@@ -185,6 +185,7 @@ class OmWebviewRoot extends LitElement {
           (this.activeTool = e.detail.tool)}
         @om-change-class-request=${this.onChangeClassRequest}
         @om-clipboard-request=${this.onClipboardRequest}
+        @om-go-to-source=${this.onGoToSource}
       ></om-graphical-layout>
       <om-overlay-stack anchor="top-right">
         <om-action-panel
@@ -371,6 +372,13 @@ class OmWebviewRoot extends LitElement {
   ): void => {
     const { componentName, currentClass } = e.detail;
     this.post({ type: "changeClassRequest", componentName, currentClass });
+  };
+
+  private onGoToSource = (
+    e: CustomEvent<LayoutEvents["om-go-to-source"]>,
+  ): void => {
+    const { source, fallbackClassName } = e.detail;
+    this.post({ type: "goToSource", source, fallbackClassName });
   };
 
   private onClipboardRequest = (

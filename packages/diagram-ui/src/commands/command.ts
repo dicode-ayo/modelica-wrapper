@@ -1,6 +1,17 @@
-import type { DiagramLayout } from "@dicode/omc-client";
+import type { DiagramLayout, SourceLocation } from "@dicode/omc-client";
 
 import type { ContextKeys } from "../interaction/context-keys.js";
+
+/**
+ * A resolved "open this source" request. The location is OMC-reported
+ * (1-based, inclusive end column); the host converts. `fallbackClassName`
+ * names the class whose `modelica-source:` view stands in when
+ * `source.filename` is not an openable file (e.g. a `loadString`ed class).
+ */
+export interface GoToSourceRequest {
+  source: SourceLocation;
+  fallbackClassName: string;
+}
 
 /**
  * The diagram surface a command acts on. A structural interface so the host
@@ -26,6 +37,8 @@ export interface CommandTarget {
    * selection and performs the writes.
    */
   requestClipboard?(action: "copy" | "paste"): void;
+  /** Delegates opening an entity's source to the host, which owns editors. */
+  requestGoToSource?(request: GoToSourceRequest): void;
   /** Opens the keyboard-shortcuts help dialog. */
   showKeymapHelp?(): void;
 }

@@ -6,13 +6,16 @@ import type {
   DiagramLayout,
   OmcClient,
   Shape,
+  SourceLocation,
 } from "@dicode/omc-client";
 import { produceSimulationModel } from "@dicode/omc-client";
 
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 
+import { pathExists } from "../fs-util.js";
+import { omcRangeToVscodeRange } from "../language/position.js";
 import { log } from "../logger.js";
-import { qualifiedNameFromUri } from "../source-provider.js";
+import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import {
   iconHonorsGesture,
   isGestureMessage,
@@ -713,6 +716,9 @@ export class DiagramEditController {
       case "changeClassRequest":
         await this.onChangeClassRequest(msg.componentName, msg.currentClass);
         return;
+      case "goToSource":
+        await this.onGoToSource(msg.source, msg.fallbackClassName);
+        return;
       case "resetComponentParameters":
         await this.onResetComponentParameters(msg.componentName);
         return;
@@ -1316,6 +1322,52 @@ export class DiagramEditController {
       title: `Shape: ${found.shape.kind}`,
       submitLabel: "Apply",
     });
+  }
+
+  /**
+   * Open the source behind a diagram entity (go-to-definition /
+   * go-to-declaration). `source` is OMC-reported — 1-based with an inclusive
+   * end column, the `getClassInformation` convention `omcRangeToVscodeRange`
+   * converts; `go-to-source.integration.test.ts` pins that `getModelInstance`
+   * locations share it. A filename that is not on disk (a `loadString`ed
+   * class, OMC's `<interactive>` marker) falls back to the class's
+   * `modelica-source:` view, mirroring `modelica.viewSource`.
+   */
+  private async onGoToSource(
+    source: SourceLocation,
+    fallbackClassName: string,
+  ): Promise<void> {
+    try {
+      if (await pathExists(source.filename)) {
+        const range = omcRangeToVscodeRange({
+          lineNumberStart: source.lineStart,
+          columnNumberStart: source.columnStart,
+          lineNumberEnd: source.lineEnd,
+          columnNumberEnd: source.columnEnd,
+        });
+        const doc = await vscode.workspace.openTextDocument(
+          vscode.Uri.file(source.filename),
+        );
+        await vscode.window.showTextDocument(doc, {
+          preview: false,
+          selection: new vscode.Range(
+            range.start.line,
+            range.start.character,
+            range.end.line,
+            range.end.character,
+          ),
+        });
+        return;
+      }
+      const doc = await vscode.workspace.openTextDocument(
+        sourceUriFor(fallbackClassName),
+      );
+      await vscode.window.showTextDocument(doc, { preview: false });
+    } catch (err) {
+      this.reportError(
+        `go to source for ${fallbackClassName} failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   private async onChangeClassRequest(

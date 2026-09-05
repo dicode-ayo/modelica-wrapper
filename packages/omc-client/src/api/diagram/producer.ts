@@ -20,11 +20,13 @@
  * scope; this is documented at the call site in `registerClass`.
  */
 
+import { SourceLocationSchema } from "../../_shared/modelInstance.js";
 import type {
   ComponentElement,
   ConnectionNode,
   ModelInstance,
   RecordValue,
+  SourceLocation,
 } from "../../_shared/modelInstance.js";
 import type {
   ClassDef,
@@ -454,6 +456,16 @@ function dimsFromElement(el: ComponentElement): string[] | undefined {
 
 // ---------- per-instance components & connectors ----------
 
+/**
+ * `source` on an element / connection node arrives through the schema's
+ * passthrough as `unknown`, so it is only kept when it decodes as a real
+ * location.
+ */
+function sourceOf(node: { source?: unknown }): SourceLocation | undefined {
+  const parsed = SourceLocationSchema.safeParse(node.source);
+  return parsed.success ? parsed.data : undefined;
+}
+
 function instanceFromSubComponent(
   el: ComponentElement,
   kind: "icon" | "diagram",
@@ -472,6 +484,8 @@ function instanceFromSubComponent(
   if (el.comment !== undefined) instance.comment = el.comment;
   if (el.prefixes !== undefined) instance.prefixes = el.prefixes;
   if (el.type.source) instance.source = el.type.source;
+  const declared = sourceOf(el);
+  if (declared) instance.declarationSource = declared;
   // Array dimensions: a vector / matrix component carries `dims`; surface
   // the reduced sizes so the renderer can append `[3]` / `[2, 4]` to the
   // `%name` label (OMEdit `TextAnnotation.cpp:691-714`).
@@ -530,6 +544,8 @@ function instanceFromConnector(
   if (el.comment !== undefined) inst.comment = el.comment;
   if (el.prefixes !== undefined) inst.prefixes = el.prefixes;
   if (el.type.source) inst.source = el.type.source;
+  const declared = sourceOf(el);
+  if (declared) inst.declarationSource = declared;
   return inst;
 }
 
@@ -692,7 +708,10 @@ function emitConnection(c: ConnectionNode): ConnectionLayout | undefined {
   if (arrowSize !== undefined) style.arrowSize = arrowSize;
   const smooth = smoothFromLine(line);
   if (smooth) style.smooth = smooth;
-  return { lhs, rhs, waypoints, ...style };
+  const out: ConnectionLayout = { lhs, rhs, waypoints, ...style };
+  const source = sourceOf(c);
+  if (source) out.source = source;
+  return out;
 }
 
 // ---------- entry point ----------

@@ -406,6 +406,9 @@ export interface ComponentElement {
   value?: unknown;
   condition?: unknown;
   dims?: unknown;
+  /** Declaration location; `unknown` because OMC omits or malforms it on
+   *  some nodes — the producer's `sourceOf` validates before use. */
+  source?: unknown;
   annotation?: Annotation | undefined;
   [key: string]: unknown;
 }
@@ -424,6 +427,9 @@ export interface ConnectionNode {
   lhs: ComponentRef;
   rhs: ComponentRef;
   annotation?: Annotation | undefined;
+  /** Equation location; `unknown` because OMC omits or malforms it on
+   *  some nodes — the producer's `sourceOf` validates before use. */
+  source?: unknown;
   [key: string]: unknown;
 }
 

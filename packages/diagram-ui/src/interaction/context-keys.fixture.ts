@@ -19,6 +19,8 @@ export function makeContextKeys(
     hasClipboard: false,
     vertexTarget: false,
     polySelection: false,
+    hasDefinitionSource: false,
+    hasDeclarationSource: false,
     ...overrides,
   };
 }

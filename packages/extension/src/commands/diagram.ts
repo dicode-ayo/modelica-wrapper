@@ -98,6 +98,7 @@ const KEYBOUND_COMMANDS: ReadonlyArray<readonly [string, DiagramCommandId]> = [
   ["modelica.diagram.bringForward", "diagram.bringForward"],
   ["modelica.diagram.sendBackward", "diagram.sendBackward"],
   ["modelica.diagram.sendToBack", "diagram.sendToBack"],
+  ["modelica.diagram.goToDefinition", "diagram.goToDefinition"],
   ["modelica.diagram.showKeymapHelp", "diagram.showKeymapHelp"],
 ];
 
