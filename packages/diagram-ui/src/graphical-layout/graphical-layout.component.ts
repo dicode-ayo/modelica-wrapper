@@ -4,15 +4,15 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
 import { repeat } from "lit/directives/repeat.js";
 import { styleMap } from "lit/directives/style-map.js";
-import {
-  hasDrawnShapes,
-  type ClassDef,
-  type ComponentInstance,
-  type ConnectorInstance,
-  type DiagramLayout,
-  type IconLayer,
-  type Shape,
+import type {
+  ClassDef,
+  ComponentInstance,
+  ConnectorInstance,
+  DiagramLayout,
+  IconLayer,
+  Shape,
 } from "@dicode/omc-client";
+import { hasDrawnShapes } from "@dicode/omc-client/shapes";
 import { colorToCss } from "@dicode/diagram-svg";
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";

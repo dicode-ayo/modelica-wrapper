@@ -1,4 +1,5 @@
-import { hasDrawnShapes, type IconLayer } from "@dicode/omc-client";
+import type { IconLayer } from "@dicode/omc-client";
+import { hasDrawnShapes } from "@dicode/omc-client/shapes";
 
 /**
  * Stand-in visual for a catalog class whose `Icon` AND `Diagram`

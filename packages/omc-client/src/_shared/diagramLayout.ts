@@ -175,15 +175,6 @@ export interface IconLayer {
   coordinateSystem?: CoordinateSystem | undefined;
 }
 
-/**
- * Whether anything in `layers` actually draws. A layer set that fails this
- * is omitted by the producer, but the schema still admits an empty array, so
- * every layer-availability decision tests content rather than presence.
- */
-export function hasDrawnShapes(layers: IconLayer[]): boolean {
-  return layers.some((layer) => layer.shapes.length > 0);
-}
-
 export interface Placement {
   extent: Extent;
   origin?: Point | undefined;

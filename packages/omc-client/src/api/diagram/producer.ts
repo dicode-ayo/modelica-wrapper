@@ -26,7 +26,7 @@ import type {
   ModelInstance,
   RecordValue,
 } from "../../_shared/modelInstance.js";
-import { hasDrawnShapes } from "../../_shared/diagramLayout.js";
+import { hasDrawnShapes } from "../../shapes/layers.js";
 import type {
   ClassDef,
   Color,
