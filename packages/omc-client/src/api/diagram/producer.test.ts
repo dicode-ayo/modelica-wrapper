@@ -52,12 +52,15 @@ const SOLID_FILL = { $kind: "enum", name: "FillPattern.Solid", index: 1 };
 const NO_BORDER = { $kind: "enum", name: "BorderPattern.None", index: 1 };
 const NO_SMOOTH = { $kind: "enum", name: "Smooth.None", index: 1 };
 
-function rectShape(extent: [[number, number], [number, number]]): unknown {
+function rectShape(
+  extent: [[number, number], [number, number]],
+  visible = true,
+): unknown {
   return {
     $kind: "record",
     name: "Rectangle",
     elements: [
-      true, // visible
+      visible,
       [0, 0], // origin
       0, // rotation
       [0, 0, 0], // lineColor
@@ -2033,6 +2036,34 @@ const DualLayerPinClass: unknown = {
   },
 };
 
+/** Connector whose Icon holds only a hidden shape; the Diagram draws. */
+const HiddenIconPinClass: unknown = {
+  name: "Synth.Interfaces.HiddenIconPin",
+  restriction: "connector",
+  annotation: {
+    Icon: {
+      graphics: [
+        rectShape(
+          [
+            [-100, -100],
+            [100, 100],
+          ],
+          false,
+        ),
+      ],
+    },
+    Diagram: {
+      graphics: [
+        polygonShape([
+          [-100, 100],
+          [100, 0],
+          [-100, -100],
+        ]),
+      ],
+    },
+  },
+};
+
 function hostWithConnector(connectorClass: unknown): ModelInstance {
   return ModelInstanceSchema.parse({
     name: "Synth.FallbackHost",
@@ -2067,6 +2098,17 @@ describe("produceDiagramLayout: catalog Icon→Diagram layer fallback (issue #51
       [-100, -100],
       [100, 100],
     ]);
+  });
+
+  it("treats an Icon whose only shapes are hidden as drawing nothing", () => {
+    const layout = produceDiagramLayout(
+      hostWithConnector(HiddenIconPinClass),
+      "diagram",
+    );
+    const cls = layout.classes["Synth.Interfaces.HiddenIconPin"];
+    expect(cls?.iconLayers.flatMap((l) => l.shapes.map((s) => s.kind))).toEqual(
+      ["polygon"],
+    );
   });
 
   it("keeps Icon layers when the Icon draws, and surfaces diagramLayers separately", () => {
