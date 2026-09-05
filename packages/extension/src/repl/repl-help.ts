@@ -4,8 +4,9 @@
  * REPL-specific bits live here:
  *   - `META_COMMANDS` — the `:help`, `:load`, `:cd`, … set the REPL adds
  *     on top of OMC's API. The verb names are the single source of truth
- *     for help text and completion; `repl-eval.ts`'s dispatcher still
- *     hand-writes each verb as its own `switch` case (#588).
+ *     for help text, tab completion (`repl-complete.ts`), and dispatch
+ *     (`repl-eval.ts`'s `META_HANDLERS`, keyed by `MetaCommandName` so a
+ *     verb added here without a matching handler fails to compile).
  *   - Topic routing — which kind of help the user is asking for.
  *
  * Everything else (per-function rendering, category lists, the OMC API
@@ -40,7 +41,7 @@ export interface MetaCommand {
  * `repl-eval.ts`) so the help renderer + the completion source share a
  * single source of truth.
  */
-export const META_COMMANDS: ReadonlyArray<MetaCommand> = [
+export const META_COMMANDS = [
   {
     name: ":help",
     summary: "Show help (`:help <category|name>` for details)",
@@ -64,7 +65,10 @@ export const META_COMMANDS: ReadonlyArray<MetaCommand> = [
     argKind: "none",
   },
   { name: ":exit", summary: "Close this REPL terminal", argKind: "none" },
-];
+] as const satisfies ReadonlyArray<MetaCommand>;
+
+/** The exact set of meta-command verbs, derived from `META_COMMANDS`. */
+export type MetaCommandName = (typeof META_COMMANDS)[number]["name"];
 
 const META_LABEL_WIDTH = 16;
 
