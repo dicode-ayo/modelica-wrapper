@@ -34,8 +34,8 @@ export interface LanguageRequestDeps<
   readonly cache: RequestParseCache;
   readonly ensureClient: () => Promise<Client>;
   readonly sync: DocumentSync;
-  /** Overrides `resolveDocumentOwner`'s package-directory filesystem check —
-   *  a test seam, not a knob for a real caller (all three providers omit it). */
+  /** Overrides `resolveDocumentOwner`'s package-directory filesystem check;
+   *  defaults to the real filesystem. */
   readonly probe?: FileProbe;
   readonly compute: (
     tree: Tree,
@@ -77,8 +77,7 @@ export async function runLanguageRequest<
     // Derive the owning class and load-on-touch (real files only; a virtual
     // `modelica-source:` class is already loaded — see `document-scope.ts`).
     const owning = await resolveDocumentOwner(document, client, deps.sync, {
-      // `exactOptionalPropertyTypes` forbids passing `probe: undefined`.
-      ...(deps.probe ? { probe: deps.probe } : {}),
+      probe: deps.probe,
     });
     if (!owning) return undefined;
 
