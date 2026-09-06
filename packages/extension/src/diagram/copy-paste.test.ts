@@ -698,6 +698,62 @@ describe("pasteClipboardItems", () => {
     );
   });
 
+  it("orders each before final, per Modelica's element-modification-or-replaceable grammar", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: {
+                singleState: { final: true, each: true, $value: "true" },
+              },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(each final singleState=true)",
+    );
+  });
+
+  it("drops a $type key rather than writing it back as an invalid modifier", async () => {
+    // `$type` names a redeclare-choice's type on a modifier that is itself a
+    // redeclare element (OMC's `scodeModifier` schema) — not a submodifier
+    // writable as `name=value`.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: {
+                redeclare1: { $type: "Some.Qualified.Type", $value: "true" },
+              },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(redeclare1=true)",
+    );
+    expect(client.data()).not.toContain("$type");
+  });
+
   it("writes a bare constrainedby clause when the constraint has no modifier", async () => {
     const client = pasteClient();
     await pasteClipboardItems(

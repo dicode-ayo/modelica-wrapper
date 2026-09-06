@@ -468,17 +468,24 @@ function constrainedByClause(prefixes: Prefixes | undefined): string {
 
 /**
  * A `Modifier` record rendered back out as a Modelica modification list —
- * `final singleState=true, redeclare package X` — the same shape
- * `topLevelModifierMap` (`diagram-ui/label/build-substitutions.ts`) reads,
- * written to source text instead of a display map. `$value` is a leaf
- * binding, `final`/`each` are per-entry flags rather than nested modifiers,
- * and any other key nests recursively (`name(nested=...)`).
+ * `each final singleState=true` — the same shape `topLevelModifierMap`
+ * (`diagram-ui/label/build-substitutions.ts`) reads, written to source text
+ * instead of a display map. `$value` is a leaf binding, `final`/`each` are
+ * per-entry flags rather than nested modifiers, `$type` names a redeclare
+ * choice's type rather than a submodifier (OMC's `scodeModifier` schema —
+ * not writable back as `name=value` without knowing the redeclare element it
+ * names, so it is dropped rather than emitted as invalid syntax), and any
+ * other key nests recursively (`name(nested=...)`).
  */
 function modifierListText(mod: Modifier | undefined): string {
   if (mod === undefined || mod === null || typeof mod !== "object") return "";
   return Object.entries(mod)
     .filter(
-      ([name]) => name !== "$value" && name !== "final" && name !== "each",
+      ([name]) =>
+        name !== "$value" &&
+        name !== "final" &&
+        name !== "each" &&
+        name !== "$type",
     )
     .map(([name, value]) => modifierEntryText(name, value))
     .join(", ");
@@ -488,13 +495,15 @@ function modifierEntryText(name: string, mod: Modifier): string {
   if (mod === null || typeof mod !== "object") {
     return `${name}=${String(mod)}`;
   }
-  const finalWord = mod.final === true ? "final " : "";
+  // Modelica's grammar orders these `each` before `final`
+  // (`element-modification-or-replaceable`); the reverse is a parse error.
   const eachWord = mod.each === true ? "each " : "";
+  const finalWord = mod.final === true ? "final " : "";
   const nested = modifierListText(mod);
   const nestedClause = nested === "" ? "" : `(${nested})`;
   const leaf = "$value" in mod ? modifierLeafText(mod.$value) : "";
   const valueClause = leaf === "" ? "" : `=${leaf}`;
-  return `${finalWord}${eachWord}${name}${nestedClause}${valueClause}`;
+  return `${eachWord}${finalWord}${name}${nestedClause}${valueClause}`;
 }
 
 /** A leaf `Modifier` value as source text; `""` for a shape with nothing to bind. */
