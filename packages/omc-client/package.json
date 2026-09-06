@@ -1,6 +1,6 @@
 {
   "name": "@dicode/omc-client",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "TypeScript client for OpenModelica's interactive ZeroMQ scripting API. Typed wrappers, Zod-validated outputs, no VSCode dependencies.",
   "type": "module",
   "main": "./src/index.ts",

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.3](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/result-ui-v0.0.2...@dicode/result-ui-v0.0.3) (2026-09-06)
+
+
+### Bug Fixes
+
+* **deps:** update dependency echarts to ^5.6.0 ([#520](https://github.com/dicode-ayo/modelica-wrapper/issues/520)) ([fc7ffb6](https://github.com/dicode-ayo/modelica-wrapper/commit/fc7ffb65e90a4b22a1282539edeb3e61fbb7c4a9))
+* **deps:** update dependency echarts to v6 ([#549](https://github.com/dicode-ayo/modelica-wrapper/issues/549)) ([1e105ff](https://github.com/dicode-ayo/modelica-wrapper/commit/1e105ffaaf5b71be5a3b897007fde3c58db111bf))
+* **deps:** update dependency lit to ^3.3.3 ([#521](https://github.com/dicode-ayo/modelica-wrapper/issues/521)) ([a120e52](https://github.com/dicode-ayo/modelica-wrapper/commit/a120e525d86f57562052e8f239c7654394df811d))
+
+
+### Tests
+
+* measure coverage with Istanbul across the workspace ([#518](https://github.com/dicode-ayo/modelica-wrapper/issues/518)) ([c96d600](https://github.com/dicode-ayo/modelica-wrapper/commit/c96d600376302606a5b44657e9cfebc675a5deb2))
+
 ## [0.0.2](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/result-ui-v0.0.1...@dicode/result-ui-v0.0.2) (2026-07-20)
 
 
