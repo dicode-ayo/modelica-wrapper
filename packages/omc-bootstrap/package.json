@@ -1,6 +1,6 @@
 {
   "name": "@dicode/omc-bootstrap",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Locates OpenModelica for the extension. No VSCode dependency, no OMC protocol knowledge.",
   "type": "module",
   "main": "./src/index.ts",

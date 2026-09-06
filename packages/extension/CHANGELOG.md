@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.0.4](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.3...modelica-wrapper-v0.0.4) (2026-09-06)
+
+
+### Features
+
+* **extension:** install OpenModelica from the editor ([#570](https://github.com/dicode-ayo/modelica-wrapper/issues/570)) ([c12726c](https://github.com/dicode-ayo/modelica-wrapper/commit/c12726cc96e0e379668602d1eda220098206779d))
+* **extension:** surface which OpenModelica the extension uses ([#567](https://github.com/dicode-ayo/modelica-wrapper/issues/567)) ([8a38aa5](https://github.com/dicode-ayo/modelica-wrapper/commit/8a38aa5ad34a6f3db966c473f7e1375b3b76445e)), closes [#563](https://github.com/dicode-ayo/modelica-wrapper/issues/563)
+* **omc-bootstrap:** discard the package cache once a prefix has landed ([#572](https://github.com/dicode-ayo/modelica-wrapper/issues/572)) ([fd9e62f](https://github.com/dicode-ayo/modelica-wrapper/commit/fd9e62f2d208ec2db9835b96ddbf18cf725ab0b0))
+* **omc-bootstrap:** install OpenModelica from a committed lockfile ([#589](https://github.com/dicode-ayo/modelica-wrapper/issues/589)) ([fec79df](https://github.com/dicode-ayo/modelica-wrapper/commit/fec79df905864608bb170a43b4bc07f07f7c26c1))
+* **omc-client:** announce OMC mutations from the call seam ([#582](https://github.com/dicode-ayo/modelica-wrapper/issues/582)) ([e1a3014](https://github.com/dicode-ayo/modelica-wrapper/commit/e1a3014e9abd4283c77e8bb3d77ad226e14dff44)), closes [#577](https://github.com/dicode-ayo/modelica-wrapper/issues/577)
+
+
+### Bug Fixes
+
+* **deps:** update dependency lit to ^3.3.3 ([#521](https://github.com/dicode-ayo/modelica-wrapper/issues/521)) ([a120e52](https://github.com/dicode-ayo/modelica-wrapper/commit/a120e525d86f57562052e8f239c7654394df811d))
+* **deps:** update dependency web-tree-sitter to ^0.27.0 ([#528](https://github.com/dicode-ayo/modelica-wrapper/issues/528)) ([1d84cff](https://github.com/dicode-ayo/modelica-wrapper/commit/1d84cffce97ca410ff97be72ab43e9c4a258b064))
+* **deps:** update dependency zeromq to ^6.6.0 ([#529](https://github.com/dicode-ayo/modelica-wrapper/issues/529)) ([4fbe086](https://github.com/dicode-ayo/modelica-wrapper/commit/4fbe08690da28db661204821cbc08768160d0c55))
+* **diagram:** report parameter-field focus from the panel that owns it ([#585](https://github.com/dicode-ayo/modelica-wrapper/issues/585)) ([6e4f625](https://github.com/dicode-ayo/modelica-wrapper/commit/6e4f625a8e8a2d94d5e48b2fe60abaa43370d05e))
+* **diagram:** stop an editor reverse-syncing against its own announcement ([#583](https://github.com/dicode-ayo/modelica-wrapper/issues/583)) ([02aa151](https://github.com/dicode-ayo/modelica-wrapper/commit/02aa151f0d7b828dc362e545a64a80c869b4c9f9)), closes [#581](https://github.com/dicode-ayo/modelica-wrapper/issues/581)
+* **diagram:** version layout pushes so a stale report cannot delete a fresh component ([aa7ae5c](https://github.com/dicode-ayo/modelica-wrapper/commit/aa7ae5cbeba31701a6da802d1526fe4ccb2e7940)), closes [#513](https://github.com/dicode-ayo/modelica-wrapper/issues/513)
+* **repl:** stop no-argument meta-commands from offering OMC-name completions ([#592](https://github.com/dicode-ayo/modelica-wrapper/issues/592)) ([d1ab2a4](https://github.com/dicode-ayo/modelica-wrapper/commit/d1ab2a43485eec0c7b801f9490c0753c369ee1ba))
+* **repl:** stop tab-completion from rewriting :load/:cd path arguments ([e6781dd](https://github.com/dicode-ayo/modelica-wrapper/commit/e6781dd0e1659b0034ec95781ed8e52adb8b6a71)), closes [#579](https://github.com/dicode-ayo/modelica-wrapper/issues/579)
+
+
+### Performance Improvements
+
+* **extension:** share one workspace scan between sessionReplaced listeners ([#569](https://github.com/dicode-ayo/modelica-wrapper/issues/569)) ([071ac6a](https://github.com/dicode-ayo/modelica-wrapper/commit/071ac6ab1156e2dedee9e67215867cc5bf570e29))
+
+
+### Code Refactoring
+
+* **language:** extract the shared definition/hover/completion request procedure ([#596](https://github.com/dicode-ayo/modelica-wrapper/issues/596)) ([e442332](https://github.com/dicode-ayo/modelica-wrapper/commit/e4423321f3113566345ab3d17fbc7417bd87a2a5))
+* **repl:** derive meta-command dispatch from META_COMMANDS ([#588](https://github.com/dicode-ayo/modelica-wrapper/issues/588)) ([#594](https://github.com/dicode-ayo/modelica-wrapper/issues/594)) ([6c98ad8](https://github.com/dicode-ayo/modelica-wrapper/commit/6c98ad8ae7475715a775ab6bd994efbdae6bde6a))
+
+
+### Tests
+
+* **diagram:** sweep non-null assertions from parameter-edits and display-unit tests ([#575](https://github.com/dicode-ayo/modelica-wrapper/issues/575)) ([ec03bf0](https://github.com/dicode-ayo/modelica-wrapper/commit/ec03bf0d15a66cc57f1edffc1022090d3c67d20a))
+* measure coverage with Istanbul across the workspace ([#518](https://github.com/dicode-ayo/modelica-wrapper/issues/518)) ([c96d600](https://github.com/dicode-ayo/modelica-wrapper/commit/c96d600376302606a5b44657e9cfebc675a5deb2))
+
 ## [0.0.3](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.2...modelica-wrapper-v0.0.3) (2026-08-29)
 
 

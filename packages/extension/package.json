@@ -2,7 +2,7 @@
   "name": "modelica-wrapper",
   "displayName": "Modelica",
   "description": "Graphical model editor and simulation runner for Modelica, backed by OpenModelica.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "drojdestvensky",
   "private": true,
   "engines": {
