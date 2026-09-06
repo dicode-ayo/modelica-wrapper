@@ -341,6 +341,20 @@ const ModifierLazy = z.lazy(() =>
 );
 export const ModifierSchema = ModifierLazy as unknown as z.ZodType<Modifier>;
 
+/**
+ * The constraining clause of a constrained `replaceable` — `prefixes.replaceable`
+ * carries this instead of a bare `true` when the declaration has one (see
+ * `PrefixesSchema.replaceable`). Matches `definitions.replaceablePrefix.oneOf[1]`
+ * in the vendored `getModelInstance.schema.json`.
+ */
+export const ReplaceableConstraintSchema = z
+  .object({
+    constrainedby: z.string(),
+    modifiers: ModifierSchema.optional(),
+  })
+  .passthrough();
+export type ReplaceableConstraint = z.infer<typeof ReplaceableConstraintSchema>;
+
 export const PrefixesSchema = z
   .object({
     partial: z.boolean().optional(),
@@ -357,7 +371,7 @@ export const PrefixesSchema = z
      * object]`, and a bare `z.boolean()` fails the whole instance parse on any
      * class containing a constrained replaceable.
      */
-    replaceable: z.union([z.boolean(), z.object({}).passthrough()]).optional(),
+    replaceable: z.union([z.boolean(), ReplaceableConstraintSchema]).optional(),
     redeclare: z.boolean().optional(),
   })
   .passthrough();

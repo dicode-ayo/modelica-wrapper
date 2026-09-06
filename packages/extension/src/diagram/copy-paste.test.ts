@@ -672,6 +672,95 @@ describe("pasteClipboardItems", () => {
     );
   });
 
+  it("keeps a replaceable declaration's constrainedby clause and its modifier", async () => {
+    // A bare `replaceable` word without its constraining clause accepts
+    // redeclarations the original refused (issue #395).
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { singleState: { final: true, $value: "true" } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "replaceable Modelica.Blocks.Math.Gain gain2 constrainedby Modelica.Media.Interfaces.PartialMedium(final singleState=true) annotation",
+    );
+  });
+
+  it("writes a bare constrainedby clause when the constraint has no modifier", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "replaceable Modelica.Blocks.Math.Gain gain2 constrainedby Modelica.Media.Interfaces.PartialMedium annotation",
+    );
+  });
+
+  it("renders a nested constrainedby modifier as a nested modification, not a flat leaf", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { state: { min: { $value: "0" } } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(state(min=0))",
+    );
+  });
+
+  it("emits no constrainedby clause for a bare (unconstrained) replaceable", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ prefixes: { replaceable: true } })],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "replaceable Modelica.Blocks.Math.Gain gain2 annotation",
+    );
+    expect(client.data()).not.toContain("constrainedby");
+  });
+
   it("emits flow/stream from the connector prefix OMC actually sends", async () => {
     // OMC reports these as `connector: "flow" | "stream"`, not as booleans —
     // reading a boolean drops the prefix silently.

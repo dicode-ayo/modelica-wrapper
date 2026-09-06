@@ -2,6 +2,7 @@ import { shapeToRecord } from "@dicode/omc-client";
 import type {
   ConnectionEndpoint,
   DiagramLayout,
+  Modifier,
   Placement,
   Prefixes,
 } from "@dicode/omc-client";
@@ -354,8 +355,9 @@ export async function pasteClipboardItems(
  * `partial` is a class prefix, not an element one. `public` has no prefix
  * word: a protected component pastes into the public section, which is the
  * one declaration property this does not preserve. A constrained
- * `replaceable` emits the bare word without its `constrainedby` clause
- * (issue #395).
+ * `replaceable`'s `constrainedby` clause is a separate word, written by
+ * {@link constrainedByClause} between the declaration's own modifiers and its
+ * comment — not here alongside the bare `replaceable` word.
  */
 function prefixWords(prefixes: Prefixes | undefined): string {
   if (!prefixes) return "";
@@ -446,7 +448,60 @@ function componentDeclaration(
     item.comment === undefined || item.comment === ""
       ? ""
       : ` ${JSON.stringify(item.comment)}`;
-  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)});`;
+  const constrainedBy = constrainedByClause(item.prefixes);
+  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${constrainedBy}${comment} annotation(${placementClause(item, offset, layer)});`;
+}
+
+/**
+ * The `constrainedby ConstrainingClass(mods)` clause on a constrained
+ * `replaceable` — written between the declaration's own modifiers and its
+ * comment, matching where OMEdit's `Component::toString` places it. `""` for
+ * an unconstrained (or bare) `replaceable`, where `prefixes.replaceable` is a
+ * plain `true` rather than the constraint object.
+ */
+function constrainedByClause(prefixes: Prefixes | undefined): string {
+  const replaceable = prefixes?.replaceable;
+  if (typeof replaceable !== "object") return "";
+  const mods = modifierListText(replaceable.modifiers);
+  return ` constrainedby ${replaceable.constrainedby}${mods === "" ? "" : `(${mods})`}`;
+}
+
+/**
+ * A `Modifier` record rendered back out as a Modelica modification list —
+ * `final singleState=true, redeclare package X` — the same shape
+ * `topLevelModifierMap` (`diagram-ui/label/build-substitutions.ts`) reads,
+ * written to source text instead of a display map. `$value` is a leaf
+ * binding, `final`/`each` are per-entry flags rather than nested modifiers,
+ * and any other key nests recursively (`name(nested=...)`).
+ */
+function modifierListText(mod: Modifier | undefined): string {
+  if (mod === undefined || mod === null || typeof mod !== "object") return "";
+  return Object.entries(mod)
+    .filter(
+      ([name]) => name !== "$value" && name !== "final" && name !== "each",
+    )
+    .map(([name, value]) => modifierEntryText(name, value))
+    .join(", ");
+}
+
+function modifierEntryText(name: string, mod: Modifier): string {
+  if (mod === null || typeof mod !== "object") {
+    return `${name}=${String(mod)}`;
+  }
+  const finalWord = mod.final === true ? "final " : "";
+  const eachWord = mod.each === true ? "each " : "";
+  const nested = modifierListText(mod);
+  const nestedClause = nested === "" ? "" : `(${nested})`;
+  const leaf = "$value" in mod ? modifierLeafText(mod.$value) : "";
+  const valueClause = leaf === "" ? "" : `=${leaf}`;
+  return `${finalWord}${eachWord}${name}${nestedClause}${valueClause}`;
+}
+
+/** A leaf `Modifier` value as source text; `""` for a shape with nothing to bind. */
+function modifierLeafText(mod: Modifier | undefined): string {
+  if (mod === undefined || mod === null) return "";
+  if (typeof mod === "object") return "";
+  return String(mod);
 }
 
 /** `connect(a, b) annotation (Line(...));`, or `null` when an endpoint's
