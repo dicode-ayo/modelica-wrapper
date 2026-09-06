@@ -28,7 +28,7 @@ import {
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 
-import { resolveDocumentOwner } from "./document-scope.js";
+import { runLanguageRequest } from "./language-request.js";
 import type { OwningClassClient } from "./owning-class.js";
 import type { ParseCache } from "./parse.js";
 import type { OmcSync } from "./sync.js";
@@ -81,35 +81,19 @@ export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
     position: vscode.Position,
     token: vscode.CancellationToken,
   ): Promise<vscode.Location | undefined> {
-    try {
-      const client = await this.ensureClient();
-      // Derive the owning class and load-on-touch (real files only; a virtual
-      // `modelica-source:` class is already loaded — see `document-scope.ts`).
-      const owning = await resolveDocumentOwner(document, client, this.sync);
-      if (!owning) return undefined;
-
-      // Bail between the load and resolve round-trips so a cursor that has
-      // already moved on doesn't issue further OMC calls.
-      if (token.isCancellationRequested) return undefined;
-
-      const tree = await this.cache.parse(document);
-      const site = await computeDefinition(
-        tree,
-        document.offsetAt(position),
-        owning.qualifiedName,
-        client,
-      );
-      if (!site) return undefined;
-
+    return runLanguageRequest(document, position, token, {
+      cache: this.cache,
+      ensureClient: this.ensureClient,
+      sync: this.sync,
+      compute: computeDefinition,
       // `list(<FQN>)` is the single class, so `(0, 0)` is its declaration.
-      return new vscode.Location(
-        sourceUriFor(site.qualifiedName),
-        new vscode.Position(0, 0),
-      );
-    } catch (err) {
-      // A provider must never throw out — degrade to "no definition".
-      log.error("language", "definition provider failed", err);
-      return undefined;
-    }
+      map: (site) =>
+        new vscode.Location(
+          sourceUriFor(site.qualifiedName),
+          new vscode.Position(0, 0),
+        ),
+      recheckTokenAfterCompute: false,
+      failureContext: "definition provider failed",
+    });
   }
 }

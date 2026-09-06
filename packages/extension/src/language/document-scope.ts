@@ -49,7 +49,7 @@ export async function resolveDocumentOwner(
   document: vscode.TextDocument,
   client: OwningClassClient,
   sync: DocumentSync,
-  options: { probe?: FileProbe } = {},
+  options: { probe?: FileProbe | undefined } = {},
 ): Promise<{ readonly qualifiedName: string } | undefined> {
   // Virtual `modelica-source:` URIs have the FQN as their basename and are
   // already loaded in OMC (their source came from there); no walk, no load.
