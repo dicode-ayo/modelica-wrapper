@@ -355,9 +355,8 @@ export async function pasteClipboardItems(
  * `partial` is a class prefix, not an element one. `public` has no prefix
  * word: a protected component pastes into the public section, which is the
  * one declaration property this does not preserve. A constrained
- * `replaceable`'s `constrainedby` clause is a separate word, written by
- * {@link constrainedByClause} between the declaration's own modifiers and its
- * comment — not here alongside the bare `replaceable` word.
+ * `replaceable`'s `constrainedby` clause is written by
+ * {@link constrainedByClause}.
  */
 function prefixWords(prefixes: Prefixes | undefined): string {
   if (!prefixes) return "";
@@ -467,42 +466,47 @@ function constrainedByClause(prefixes: Prefixes | undefined): string {
 }
 
 /**
+ * `$value`/`final`/`each` are per-entry flags or the entry's own leaf
+ * binding, never a submodifier name; `$type` names the type of a redeclare
+ * element in a `choices` annotation (OMC's `scodeModifier` schema) and is
+ * likewise not a submodifier.
+ */
+const MODIFIER_ENTRY_KEYS = new Set(["$value", "final", "each", "$type"]);
+
+/**
  * A `Modifier` record rendered back out as a Modelica modification list —
- * `each final singleState=true` — the same shape `topLevelModifierMap`
- * (`diagram-ui/label/build-substitutions.ts`) reads, written to source text
- * instead of a display map. `$value` is a leaf binding, `final`/`each` are
- * per-entry flags rather than nested modifiers, `$type` names a redeclare
- * choice's type rather than a submodifier (OMC's `scodeModifier` schema —
- * not writable back as `name=value` without knowing the redeclare element it
- * names, so it is dropped rather than emitted as invalid syntax), and any
- * other key nests recursively (`name(nested=...)`).
+ * `each final singleState=true`. An entry with nothing writable (see
+ * {@link modifierEntryText}) is dropped rather than emitted as invalid
+ * syntax.
  */
 function modifierListText(mod: Modifier | undefined): string {
   if (mod === undefined || mod === null || typeof mod !== "object") return "";
   return Object.entries(mod)
-    .filter(
-      ([name]) =>
-        name !== "$value" &&
-        name !== "final" &&
-        name !== "each" &&
-        name !== "$type",
-    )
+    .filter(([name]) => !MODIFIER_ENTRY_KEYS.has(name))
     .map(([name, value]) => modifierEntryText(name, value))
+    .filter((entry) => entry !== "")
     .join(", ");
 }
 
+/**
+ * One entry as `each final name(nested)=value`, or `""` for an entry with
+ * nothing writable: a `null` binding (not a Modelica literal), or a
+ * redeclare (`$type` present) whose element declaration this modifier tree
+ * doesn't carry.
+ */
 function modifierEntryText(name: string, mod: Modifier): string {
-  if (mod === null || typeof mod !== "object") {
-    return `${name}=${String(mod)}`;
-  }
+  if (mod === null) return "";
+  if (typeof mod !== "object") return `${name}=${String(mod)}`;
+  if ("$type" in mod) return "";
   // Modelica's grammar orders these `each` before `final`
   // (`element-modification-or-replaceable`); the reverse is a parse error.
   const eachWord = mod.each === true ? "each " : "";
   const finalWord = mod.final === true ? "final " : "";
   const nested = modifierListText(mod);
   const nestedClause = nested === "" ? "" : `(${nested})`;
-  const leaf = "$value" in mod ? modifierLeafText(mod.$value) : "";
+  const leaf = modifierLeafText(mod.$value);
   const valueClause = leaf === "" ? "" : `=${leaf}`;
+  if (nestedClause === "" && valueClause === "") return "";
   return `${eachWord}${finalWord}${name}${nestedClause}${valueClause}`;
 }
 

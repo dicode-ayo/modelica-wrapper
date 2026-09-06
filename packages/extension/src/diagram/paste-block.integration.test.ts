@@ -265,6 +265,55 @@ end Donor;
     expect(contents).toContain('"the port"');
   });
 
+  it("keeps a constrained replaceable's constrainedby clause and its own Placement discoverable after paste (issue #395)", async () => {
+    // A `constrainedby` clause's own trailing comment/annotation shares a
+    // syntax position with the constraining-clause's `choicesAllMatching`
+    // metadata (see `ReplaceableConstraint` in omc-client) — writing the
+    // component's description and `Placement` there, as OMEdit's own
+    // `Component::toString` does, needs confirming it round-trips back onto
+    // the *component*, not only onto `prefixes.replaceable`.
+    const donor = `${pkg}.ReplaceableDonor`;
+    await client.loadString({
+      data: `within ${pkg};
+model ReplaceableDonor
+  replaceable Modelica.Blocks.Interfaces.SISO blk constrainedby
+    Modelica.Blocks.Interfaces.SISO "a replaceable block" annotation(
+      Placement(transformation(extent = {{-20, -20}, {20, 20}})));
+  annotation(Diagram(coordinateSystem(extent={{-200,-200},{200,200}})));
+end ReplaceableDonor;
+`,
+      filename: `<fixture:${pkg}replaceableDonor>`,
+    });
+
+    const { fetchDiagramLayout } = await import("./open-diagram.js");
+    const src = await fetchDiagramLayout(client, donor);
+    const items = await captureClipboardItems(client, src, ["c:blk"]);
+
+    const result = await pasteClipboardItems(
+      client,
+      cls,
+      emptyLayout(cls),
+      items,
+      "diagram",
+      0,
+    );
+    expect(result.failed).toEqual([]);
+
+    const { contents } = await client.listFile({ typeName: cls });
+    expect(contents).toContain("constrainedby Modelica.Blocks.Interfaces.SISO");
+
+    // The assertion a mocked client can't make: the pasted component's own
+    // Placement is still readable through the normal diagram-layout path,
+    // not stranded under the constraining clause's own annotation.
+    const pasted = await fetchDiagramLayout(client, cls);
+    const blk = pasted.components["blk1"];
+    expect(blk).toBeDefined();
+    expect(blk?.placement.extent).toEqual([
+      [-20, -20],
+      [20, 20],
+    ]);
+  });
+
   it("reports a rejected block and leaves the class untouched", async () => {
     const before = await client.listFile({ typeName: cls });
     const result = await pasteClipboardItems(

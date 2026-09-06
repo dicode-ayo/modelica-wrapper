@@ -724,10 +724,12 @@ describe("pasteClipboardItems", () => {
     );
   });
 
-  it("drops a $type key rather than writing it back as an invalid modifier", async () => {
+  it("drops a redeclare-choice entry (a $type key) rather than writing it back as an invalid modifier", async () => {
     // `$type` names a redeclare-choice's type on a modifier that is itself a
-    // redeclare element (OMC's `scodeModifier` schema) — not a submodifier
-    // writable as `name=value`.
+    // redeclare element (OMC's `scodeModifier` schema) — its element
+    // declaration isn't reconstructable from `$value` alone, so the whole
+    // entry is dropped rather than written back as `redeclare1=true`
+    // (a plain binding, not the redeclare it actually was).
     const client = pasteClient();
     await pasteClipboardItems(
       client,
@@ -740,6 +742,7 @@ describe("pasteClipboardItems", () => {
               constrainedby: "Modelica.Media.Interfaces.PartialMedium",
               modifiers: {
                 redeclare1: { $type: "Some.Qualified.Type", $value: "true" },
+                singleState: { $value: "true" },
               },
             },
           },
@@ -749,9 +752,38 @@ describe("pasteClipboardItems", () => {
       0,
     );
     expect(client.data()).toContain(
-      "constrainedby Modelica.Media.Interfaces.PartialMedium(redeclare1=true)",
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true)",
     );
+    expect(client.data()).not.toContain("redeclare1");
     expect(client.data()).not.toContain("$type");
+  });
+
+  it("drops a null modifier binding rather than writing an invalid `=null`", async () => {
+    // `Modifier` includes `null`; `null` is not a Modelica literal, so an
+    // entry with a `null` $value is dropped rather than emitted as `foo=null`
+    // (which would fail OMC's all-or-nothing parse of the whole paste block).
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { foo: null, singleState: { $value: "true" } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true)",
+    );
+    expect(client.data()).not.toContain("null");
   });
 
   it("writes a bare constrainedby clause when the constraint has no modifier", async () => {

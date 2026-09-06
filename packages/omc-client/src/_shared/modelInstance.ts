@@ -344,8 +344,10 @@ export const ModifierSchema = ModifierLazy as unknown as z.ZodType<Modifier>;
 /**
  * The constraining clause of a constrained `replaceable` — `prefixes.replaceable`
  * carries this instead of a bare `true` when the declaration has one (see
- * `PrefixesSchema.replaceable`). Matches `definitions.replaceablePrefix.oneOf[1]`
- * in the vendored `getModelInstance.schema.json`.
+ * `PrefixesSchema.replaceable`). `definitions.replaceablePrefix.oneOf[1]` in the
+ * vendored `getModelInstance.schema.json` also permits a `comment` and an
+ * `annotation` on the clause itself (e.g. `choicesAllMatching`); those pass
+ * through untyped via `.passthrough()` rather than being named here.
  */
 export const ReplaceableConstraintSchema = z
   .object({
