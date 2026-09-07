@@ -17,10 +17,7 @@ import type { Tree } from "web-tree-sitter";
 
 import type * as vscode from "vscode";
 
-vi.mock(
-  "../logger.js",
-  async () => await import("../../test-support/logger-mock.js"),
-);
+vi.mock("../logger.js", () => import("../../test-support/logger-mock.js"));
 
 import { log } from "../logger.js";
 

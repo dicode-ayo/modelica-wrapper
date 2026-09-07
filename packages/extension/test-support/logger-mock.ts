@@ -1,12 +1,12 @@
-/**
- * `../logger.js`'s `vi.mock` replacement, shared by every extension unit test
- * that mocks the logger instead of exercising the real `OutputChannel`. Kept
- * in sync with `logger.ts`'s actual exported surface by hand — there is only
- * one copy to update now.
- */
-
 import { vi } from "vitest";
 
+import type { log as realLog } from "../src/logger.js";
+
+/**
+ * `vi.mock` replacement for `src/logger.js` in unit tests that don't exercise
+ * the real `OutputChannel`. The `satisfies` clause fails `tsc` if `logger.ts`
+ * grows, drops or renames a method.
+ */
 export const log = {
   debug: vi.fn(),
   info: vi.fn(),
@@ -14,4 +14,4 @@ export const log = {
   error: vi.fn(),
   show: vi.fn(),
   dispose: vi.fn(),
-};
+} satisfies Record<keyof typeof realLog, unknown>;

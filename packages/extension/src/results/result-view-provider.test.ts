@@ -33,10 +33,7 @@ import { parseResultViewDoc, serializeResultViewDoc } from "./result-doc.js";
 import type { ResultReader } from "./result-cache.js";
 import { ResultViewEditorProvider } from "./result-view-provider.js";
 
-vi.mock(
-  "../logger.js",
-  async () => await import("../../test-support/logger-mock.js"),
-);
+vi.mock("../logger.js", () => import("../../test-support/logger-mock.js"));
 
 const EXT_URI = vscode.Uri.file("/ext");
 
