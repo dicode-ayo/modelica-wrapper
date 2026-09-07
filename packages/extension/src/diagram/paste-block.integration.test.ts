@@ -266,12 +266,12 @@ end Donor;
   });
 
   it("keeps a constrained replaceable's constrainedby clause and its own Placement discoverable after paste (issue #395)", async () => {
-    // A `constrainedby` clause's own trailing comment/annotation shares a
-    // syntax position with the constraining clause's own `choicesAllMatching`
-    // metadata (see `ReplaceableConstraint` in omc-client). The component's
-    // description and `Placement` are written there, as OMEdit's
-    // `Component::toString` does, and read back onto the *component* rather
-    // than onto `prefixes.replaceable`.
+    // The comment and annotation trailing a `constrainedby` clause belong to
+    // the constraining clause per the grammar (that is where
+    // `choicesAllMatching` lives), but OMC reads the component's description
+    // and `Placement` back off them onto the *component*, not onto
+    // `prefixes.replaceable`. Writing them there matches OMEdit's
+    // `Component::toString`.
     const donor = `${pkg}.ReplaceableDonor`;
     await client.loadString({
       data: `within ${pkg};

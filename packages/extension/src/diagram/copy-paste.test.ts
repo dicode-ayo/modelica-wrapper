@@ -701,8 +701,7 @@ describe("pasteClipboardItems", () => {
   it("keeps the declaration's own modifiers and the constraint's modifiers independent", async () => {
     // `item.modifiers` (the declaration's own, read via getElementModifierNames)
     // and `prefixes.replaceable.modifiers` (the constraining clause's own) are
-    // two separate sources feeding two separate parenthesized clauses — this
-    // pins that they render side by side rather than merging or duplicating.
+    // two separate sources feeding two separate parenthesized clauses.
     const client = pasteClient();
     await pasteClipboardItems(
       client,

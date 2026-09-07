@@ -478,6 +478,12 @@ const MODIFIER_ENTRY_KEYS = new Set(["$value", "final", "each", "$type"]);
  * `each final singleState=true`. An entry with nothing writable (see
  * {@link modifierEntryText}) is dropped rather than emitted as invalid
  * syntax.
+ *
+ * `scodeModifier`'s own `oneOf` also permits `mod` itself to be a bare
+ * string; a constraining clause's modification is always a parenthesized
+ * `class-modification` list, so a real OMC report has never been seen to use
+ * that shape here — this drops it the same as any other non-object rather
+ * than special-casing an unobserved one.
  */
 function modifierListText(mod: Modifier | undefined): string {
   if (mod === undefined || mod === null || typeof mod !== "object") return "";
