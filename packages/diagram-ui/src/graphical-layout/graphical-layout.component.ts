@@ -26,7 +26,6 @@ import "../axis/grid-axis.component.js";
 import "../component/component.component.js";
 import "../connector/connector.component.js";
 import "../connection/connection.component.js";
-import "../label/label.component.js";
 import "../debug/perf-hud.component.js";
 import "../context-menu/context-menu.component.js";
 import "../keymap-help/keymap-help.component.js";
@@ -202,7 +201,6 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
  *     <om-component>...<om-connector>     # nested ports
  *     <om-connector>                       # host-level ports
  *     <om-connection>                      # routed edges + junctions
- *     <om-label>                           # host-level text
  *   </om-scene>
  *
  * Interaction wiring (driven by E1 + E3 + E4):
@@ -523,6 +521,10 @@ export class OmGraphicalLayout extends LitElement {
       ([, comp]) => comp.placement.visible !== false,
     );
     const connectorEntries = Object.entries(active.connectors);
+    // `active.labels` is a subset of the host's diagram `Text` annotations,
+    // which already draw in world space through the host shape layers
+    // (`renderHostShapes` / `renderHostShapeEntities`) — sized to their
+    // extent and tracking zoom. Rendering it here would draw them twice.
     return html`
       <om-scene
         class=${this.dropActive ? "om-drop-active" : nothing}
@@ -567,19 +569,6 @@ export class OmGraphicalLayout extends LitElement {
               .stroke=${conn.color ? colorToCss(conn.color) : undefined}
               .selectedKeys=${this.selectedKeys}
             ></om-connection>`,
-        )}
-        ${repeat(
-          active.labels,
-          (_, idx) => `lbl:${idx}`,
-          (label, idx) =>
-            html`<om-label
-              .nodeId=${String(idx)}
-              .text=${label.text}
-              .x=${(label.extent[0][0] + label.extent[1][0]) / 2}
-              .y=${(label.extent[0][1] + label.extent[1][1]) / 2}
-              .rotation=${label.rotation}
-              .fontSize=${label.fontSize ?? 12}
-            ></om-label>`,
         )}
         <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>

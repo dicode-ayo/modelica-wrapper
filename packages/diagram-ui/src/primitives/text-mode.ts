@@ -10,7 +10,7 @@ import { assertUnreachable } from "@dicode/modelica-lang-core";
  *   atlas and `ensureCharacters` grows the glyph set on demand. The atlas
  *   density is fixed and there is no per-instance `resolution`.
  * - `canvas` — `Text`. Rasterized through a 2D canvas into its own texture
- *   per string. The only class whose `resolution` can be raised on zoom-in.
+ *   per string, so its `resolution` tracks the zoom.
  * - `html` — `HTMLText`. Laid out by the browser via an SVG `foreignObject`.
  *   Its texture resolves after the draw that requests it, and it drops text
  *   below roughly a pixel of rendered height.

@@ -235,9 +235,11 @@ function collectLayers(
  * graphics where `name === "Text"`; non-text diagram shapes (frames,
  * legends drawn as Rectangle/Line) stay in `diagramLayers`.
  *
- * Note: this populates DiagramLayout.labels regardless of the requested
- * `kind`, since labels can be useful in either rendering mode. A renderer
- * that wants to skip them in icon mode can filter by `layout.kind`.
+ * These shapes also reach `diagramLayers` — `collectLayers` does not
+ * filter `Text` — so `DiagramLayout.labels` is a redundant view of them,
+ * kept for consumers that want the annotations alone. `<om-graphical-layout>`
+ * renders the layers and ignores this field; a consumer that renders both
+ * draws every annotation twice.
  */
 function collectLabels(mi: ModelInstance): LabelLayout[] {
   const out: LabelLayout[] = [];

@@ -1,6 +1,6 @@
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
-import { type Container } from "pixi.js";
+import { CanvasTextMetrics, TextStyle, type Container } from "pixi.js";
 import {
   interpolateTemplate,
   type TextSubstitutions,
@@ -15,6 +15,12 @@ import {
 } from "./shape-primitive.js";
 import { colorToCss, extentToRect } from "./shape-utils.js";
 import {
+  FONT_FIT_FACTOR,
+  TRIAL_FONT_SIZE,
+  fitFontSize,
+  quantizeTextResolution,
+} from "./text-sizing.js";
+import {
   createSceneText,
   requiresDeferredRasterization,
   supportsDynamicResolution,
@@ -26,33 +32,20 @@ import { textModeContext } from "./text-mode-context.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
 import { placementMirrorSigns, worldScaleXY } from "../scene/ortho-camera.js";
 
-/**
- * Em-size vs box-height fudge: a `font-size: Npx` font has cap+descender
- * height ≈ 0.95N, so a glyph sized to the full extent height overshoots the
- * box. Pulling the rendered font down by this factor keeps glyphs inside the
- * extent — matching the on-screen size OMEdit draws.
- */
-const FONT_FIT_FACTOR = 0.7;
-
-/** Floor on the `Text` resolution. Keeps tiny labels legible when zoomed
- *  out — the glyphs would otherwise rasterize to a handful of texels. */
-const MIN_TEXT_RESOLUTION = 1;
-/** Ceiling on the `Text` resolution. Caps glyph-atlas allocation on deep
- *  zoom; a label gains nothing visible past this density. */
-const MAX_TEXT_RESOLUTION = 8;
-
 /** Frames to nudge after building a text whose texture rasterizes async.
  *  Bounded so a failed rasterization cannot pin a repaint loop. */
 const DEFERRED_RASTER_FRAMES = 8;
 
 /**
  * `<om-text>` — one Modelica `TextShape`, rendered through the Pixi text class
- * {@link getTextMode} selects. The text counter-flips locally so it reads
- * upright and unmirrored whatever the ancestor transforms do.
+ * {@link textModeContext} selects. The text counter-flips locally so it reads
+ * upright and unmirrored whatever the ancestor transforms do, and it is sized
+ * to its extent (see `text-sizing.js`).
  *
  * Under the default `bitmap` mode the glyph density is the font atlas's and
- * fixed; `canvas` mode instead raises `resolution` on zoom-in so glyphs stay
- * crisp (never lowered on zoom-out — the cap bounds the atlas).
+ * fixed; `canvas` mode instead retargets `resolution` to the zoom in both
+ * directions, so glyphs stay crisp zoomed in and keep sampling near their
+ * rendered size zoomed out.
  */
 @customElement("om-text")
 export class OmText extends OmShapePrimitive {
@@ -72,7 +65,7 @@ export class OmText extends OmShapePrimitive {
   private textMode: TextMode | undefined = undefined;
 
   private text: SceneText | null = null;
-  private currentResolution = MIN_TEXT_RESOLUTION;
+  private currentResolution = 1;
   private rasterizationFrame: number | null = null;
 
   protected override onViewChange(): void {
@@ -122,7 +115,7 @@ export class OmText extends OmShapePrimitive {
     inEntityFrame = false,
   ): void {
     this.text = null;
-    this.currentResolution = MIN_TEXT_RESOLUTION;
+    this.currentResolution = 1;
 
     const s = this.shape;
     if (!s) {
@@ -137,12 +130,13 @@ export class OmText extends OmShapePrimitive {
       return;
     }
 
-    // Modelica `fontSize == 0` means "auto-fit to extent": default to the
-    // extent height so the glyph is proportional to the box.
-    const fontUnits = s.fontSize && s.fontSize > 0 ? s.fontSize : height;
     const fontFamily =
       s.fontName && s.fontName.length > 0 ? s.fontName : "sans-serif";
     const align = horizontalAlign(s.horizontalAlignment);
+    const fontSize =
+      s.fontSize && s.fontSize > 0
+        ? s.fontSize * FONT_FIT_FACTOR
+        : fittedFontSize(body, fontFamily, align, width, height);
 
     const root = this.graphicRoot(
       parent,
@@ -156,7 +150,7 @@ export class OmText extends OmShapePrimitive {
       text: body,
       style: {
         fontFamily,
-        fontSize: Math.max(0.01, fontUnits * FONT_FIT_FACTOR),
+        fontSize,
         fill: colorToCss(s.textColor, "rgb(0,0,0)"),
         align,
       },
@@ -225,10 +219,11 @@ export class OmText extends OmShapePrimitive {
   }
 
   /**
-   * Raise the text resolution to match the on-screen texel density at the
-   * current zoom. No-op on pan, on zoom-out (resolution is never lowered —
-   * the ceiling bounds the atlas), and for a text class whose density is
-   * fixed by its font atlas (see {@link supportsDynamicResolution}).
+   * Retarget the text resolution to the on-screen texel density at the
+   * current zoom — both directions, quantized by `quantizeTextResolution`
+   * so a pure pan (and small zoom jitter within a quantization step) is a
+   * no-op rather than a re-rasterize. Skipped for a text class whose
+   * density is fixed by its font atlas (see {@link supportsDynamicResolution}).
    */
   private applyResolution(): void {
     const text = this.text;
@@ -244,17 +239,47 @@ export class OmText extends OmShapePrimitive {
     // gives device pixels per text-local unit at this zoom.
     const scale = worldScaleXY(text);
     const density = Math.max(scale.x, scale.y) / wpp;
-    const target = Math.min(
-      MAX_TEXT_RESOLUTION,
-      Math.max(MIN_TEXT_RESOLUTION, Math.ceil(density)),
-    );
-    if (target <= this.currentResolution) {
+    const target = quantizeTextResolution(density);
+    if (target === this.currentResolution) {
       return;
     }
     this.currentResolution = target;
     text.resolution = target;
     this.requestRender();
   }
+}
+
+/**
+ * Font size for Modelica `fontSize == 0` — §18.6.5.5: scale the text to
+ * fit the extent. Measures the string at a trial size and fits both
+ * dimensions with a uniform scale (`fitFontSize`). Falls back to a
+ * height-proportional size when glyph metrics are unavailable (headless:
+ * no 2D canvas — width then goes unchecked, matching what a renderer-less
+ * build can know).
+ */
+function fittedFontSize(
+  body: string,
+  fontFamily: string,
+  align: Align,
+  width: number,
+  height: number,
+): number {
+  try {
+    const m = CanvasTextMetrics.measureText(
+      body,
+      new TextStyle({ fontFamily, fontSize: TRIAL_FONT_SIZE, align }),
+    );
+    const fitted = fitFontSize(
+      { width, height },
+      { width: m.width, height: m.height, atFontSize: TRIAL_FONT_SIZE },
+    );
+    if (fitted !== null) {
+      return fitted;
+    }
+  } catch {
+    // No measurable 2D context; use the heuristic below.
+  }
+  return height * FONT_FIT_FACTOR;
 }
 
 type Align = "left" | "center" | "right";
