@@ -1,9 +1,9 @@
 /**
- * `fetchIconLayout` resolves an icon from the cheap filtered annotation call and
+ * `libraryIconSvg` resolves an icon from the cheap filtered annotation call and
  * only instantiates the class when that call fails to answer at all. A class
  * that merely has no Icon must not be instantiated: OMC never returns for the
  * builtins, and a deep hierarchy costs seconds on a channel every other call
- * shares.
+ * shares — and the library tree fans this out over every visible class.
  *
  * `open-diagram.ts` imports `vscode`; the extension's vitest config aliases
  * it to a mock, so this runs in plain Node.
@@ -100,15 +100,14 @@ function makeClient(handlers: {
   return { client, calls };
 }
 
-describe("fetchIconLayout: when the annotation path is trusted", () => {
+describe("libraryIconSvg: when the annotation path is trusted", () => {
   it("uses the cheap annotation path when it returns a usable Icon", async () => {
     const { client, calls } = makeClient({
       annotation: async () => ({ instance: WITH_ICON }),
     });
-    const layout = await fetchIconLayout(client, "Pkg.HasIcon");
+    const { svg } = await libraryIconSvg(client, "Pkg.HasIcon");
     expect(calls).toEqual(["getModelInstanceAnnotation"]);
-    expect(layout.kind).toBe("icon");
-    expect(layout.iconLayers.length).toBeGreaterThan(0);
+    expect(svg).toBeDefined();
   });
 
   it("does not instantiate a class whose annotation carries no Icon", async () => {
@@ -116,11 +115,11 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
       annotation: async () => ({ instance: NULL_ANNOTATION }),
       full: async () => ({ instance: WITH_ICON }),
     });
-    const layout = await fetchIconLayout(client, "Pkg.NullAnno");
+    const { svg } = await libraryIconSvg(client, "Pkg.NullAnno");
     // Instantiating here is what hangs OMC on `String` and costs seconds on
     // deep models, to rediscover there is nothing to paint.
     expect(calls).toEqual(["getModelInstanceAnnotation"]);
-    expect(layout.iconLayers).toHaveLength(0);
+    expect(svg).toBeUndefined();
   });
 
   // An empty OMC reply throws in `JSON.parse` and a malformed one fails the
@@ -132,9 +131,9 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
       },
       full: async () => ({ instance: WITH_ICON }),
     });
-    const layout = await fetchIconLayout(client, "Pkg.Broken");
+    const { svg } = await libraryIconSvg(client, "Pkg.Broken");
     expect(calls).toEqual(["getModelInstanceAnnotation", "getModelInstance"]);
-    expect(layout.iconLayers.length).toBeGreaterThan(0);
+    expect(svg).toBeDefined();
   });
 
   it("counts an Icon inherited from an extends ancestor as usable (no fallback)", async () => {
@@ -147,10 +146,21 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
     const { client, calls } = makeClient({
       annotation: async () => ({ instance: inherited }),
     });
-    const layout = await fetchIconLayout(client, "Pkg.Derived");
+    const { svg } = await libraryIconSvg(client, "Pkg.Derived");
     expect(calls).toEqual(["getModelInstanceAnnotation"]);
     // Deleting the instantiating fallback must not cost us inherited icons.
-    expect(layout.iconLayers.length).toBeGreaterThan(0);
+    expect(svg).toBeDefined();
+  });
+
+  it("reads the icon EDITOR's layout from the full instance", async () => {
+    // The filtered tree carries no component elements, so a layout built from
+    // it shows a class's standalone connectors nowhere.
+    const { client, calls } = makeClient({
+      full: async () => ({ instance: WITH_ICON }),
+    });
+    const layout = await fetchIconLayout(client, "Pkg.HasIcon");
+    expect(calls).toEqual(["getModelInstance"]);
+    expect(layout.kind).toBe("icon");
   });
 });
 
@@ -323,7 +333,7 @@ describe("applyDiagramEdits: staleBase (issue #408)", () => {
     });
 
     expect(result).not.toBeNull();
-    expect(invoked).toContain("updateComponent");
+    expect(invoked).toContain("setElementAnnotation");
     expect(invoked).not.toContain("deleteComponent");
     expect(invoked).not.toContain("deleteConnection");
   });

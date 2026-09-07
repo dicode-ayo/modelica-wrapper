@@ -30,7 +30,7 @@ makes **no OMC calls and holds no model state** — it is a pure function of
 | --- | --- | --- |
 | Webview UI | `<om-parameter-panel>` / `<om-parameter-form>` | [parameter-form/](../packages/diagram-ui/src/parameter-form) |
 | Webview bridge | `<om-webview-root>` | [webview-entry.ts](../packages/extension/src/webview/webview-entry.ts) |
-| Host — panel | `DiagramPanel.openParameters / closeParameters` | [panel.ts](../packages/extension/src/diagram/panel.ts) |
+| Host — editor | `DiagramEditController` → `parametersOpen` / `parametersClose` | [diagram-editor-provider.ts](../packages/extension/src/diagram/diagram-editor-provider.ts) |
 | Host — handlers | `onEditComponent`, `onParametersSubmit`, `onResetComponentParameters`, `onActionParameters`, `onActionSimulate` | [open-diagram.ts](../packages/extension/src/diagram/open-diagram.ts) |
 | Host — form builders | `buildComponentParameterForm`, `buildClassParameterForm`, `buildSimulateForm` | [component-parameter-form.ts](../packages/extension/src/diagram/component-parameter-form.ts), [class-parameter-form.ts](../packages/extension/src/diagram/class-parameter-form.ts), [simulate-form.ts](../packages/extension/src/diagram/simulate-form.ts) |
 | Host — unit enrichment | `enrichFormUnitOptions` | [unit-options.ts](../packages/extension/src/diagram/unit-options.ts) |

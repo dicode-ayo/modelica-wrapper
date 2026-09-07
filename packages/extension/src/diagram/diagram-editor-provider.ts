@@ -492,7 +492,6 @@ export class DiagramEditController {
   private readonly refetch: (
     client: OmcClient,
     className: string,
-    forceInstantiate?: boolean,
   ) => Promise<DiagramLayout>;
 
   constructor(
@@ -621,9 +620,7 @@ export class DiagramEditController {
   private async rerenderIfClassMoved(source: string): Promise<void> {
     if (source === this.renderedSource) return;
     const { client, className } = this.deps;
-    // Forced: the annotation-only icon fetch reflects the last elaboration, so
-    // a class just observed to change would otherwise re-render as it was.
-    this.publishSyncedLayout(await this.refetch(client, className, true));
+    this.publishSyncedLayout(await this.refetch(client, className));
     this.renderedSource = source;
   }
 

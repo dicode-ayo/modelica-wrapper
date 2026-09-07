@@ -9,3 +9,5 @@ export {
   RECTANGLE_DEFAULTS,
   TEXT_DEFAULTS,
 } from "./defaults.js";
+
+export { hasDrawnShapes } from "./layers.js";

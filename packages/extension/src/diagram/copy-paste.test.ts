@@ -199,6 +199,52 @@ describe("captureClipboardItems", () => {
     );
   });
 
+  it("re-emits both keywords for a connector copied off a diagram-kind layout", async () => {
+    // A diagram-kind layout's `placement` is the diagram `transformation` and
+    // the declared icon counterpart rides on `iconPlacement`; the clipboard
+    // item's own fields must be the icon-view placement for `placementClause`
+    // to put each transformation back under its own keyword.
+    const base = layout();
+    const u = base.connectors["u"];
+    if (u === undefined) throw new Error("expected connector u in the layout");
+    const dual: DiagramLayout = {
+      ...base,
+      connectors: {
+        u: {
+          ...u,
+          placement: {
+            extent: [
+              [-140, -20],
+              [-100, 20],
+            ],
+          },
+          iconPlacement: {
+            extent: [
+              [-110, -10],
+              [-90, 10],
+            ],
+          },
+        },
+      },
+    };
+    const items = await captureClipboardItems(copyClient(), dual, ["k:u"]);
+    const client = pasteClient();
+    await pasteClipboardItems(client, "Demo", layout(), items, "diagram", 0);
+    expect(client.data()).toContain(
+      "Placement(transformation(extent={{-140,-20},{-100,20}}), iconTransformation(extent={{-110,-10},{-90,10}}))",
+    );
+  });
+
+  it("emits a single keyword for a diagram-kind connector with no icon counterpart", async () => {
+    const items = await captureClipboardItems(copyClient(), layout(), ["k:u"]);
+    const client = pasteClient();
+    await pasteClipboardItems(client, "Demo", layout(), items, "diagram", 0);
+    expect(client.data()).toContain(
+      "Placement(transformation(extent={{-100,-10},{-80,10}}))",
+    );
+    expect(client.data()).not.toContain("iconTransformation");
+  });
+
   it("skips a port on a sub-component — it is not a declaration of its own", async () => {
     const client = copyClient();
     expect(

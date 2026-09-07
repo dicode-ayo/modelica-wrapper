@@ -179,13 +179,14 @@ async function applyOne(
 ): Promise<void> {
   switch (edit.kind) {
     case "componentPlacement":
+      // `updateComponent` rejects a `Placement` carrying both `transformation`
+      // and `iconTransformation`, answering a bare `false` with no diagnostic.
+      // `setElementAnnotation` takes the pair, addressed by dotted element path.
       assertMutationApplied(
-        "updateComponent",
-        await client.invoke("updateComponent", {
-          componentName: edit.componentName,
-          componentClass: edit.componentClass,
-          intoTypeName: hostClass,
-          annotation: placementAnnotation({
+        "setElementAnnotation",
+        await client.invoke("setElementAnnotation", {
+          typeName: `${hostClass}.${edit.componentName}`,
+          annotationMod: placementAnnotation({
             transformation: edit.transformation,
             iconTransformation: edit.iconTransformation,
           }),

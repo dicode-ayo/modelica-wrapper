@@ -124,6 +124,7 @@ export {
   // DiagramLayout (producer output)
   LineShapeSchema,
   moveWithin,
+  connectorPlacementKeywords,
   PolygonShapeSchema,
   RectangleShapeSchema,
   EllipseShapeSchema,
