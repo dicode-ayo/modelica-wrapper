@@ -9,39 +9,59 @@ import {
 
 describe("fitFontSize", () => {
   it("fits the height when the string is short", () => {
-    // Measured 50×110 at trial 100: width allows ×2, height allows
-    // 20/110 — the height constrains.
-    expect(fitFontSize(100, 20, 50, 110, 100)).toBeCloseTo(100 * (20 / 110));
+    // Measured 50×110 at 100: width allows ×2, height allows 20/110 —
+    // the height constrains.
+    expect(
+      fitFontSize(
+        { width: 100, height: 20 },
+        { width: 50, height: 110, atFontSize: 100 },
+      ),
+    ).toBeCloseTo(100 * (20 / 110));
   });
 
   it("fits the width when the string is long — it shrinks instead of overflowing", () => {
-    // A long %name: measured 1000×110 at trial 100. A height-only fit
-    // would keep ~18 units and overflow the 100-unit box; the width fit
+    // A long %name: measured 1000×110 at 100. A height-only fit would
+    // keep ~18 units and overflow the 100-unit box; the width fit
     // shrinks to 10.
-    const fitted = fitFontSize(100, 20, 1000, 110, 100);
+    const fitted = fitFontSize(
+      { width: 100, height: 20 },
+      { width: 1000, height: 110, atFontSize: 100 },
+    );
     expect(fitted).toBeCloseTo(10);
     const heightOnly = 100 * (20 / 110);
     expect(fitted).toBeLessThan(heightOnly);
   });
 
   it("uses one uniform scale — the smaller of the two ratios — never a per-axis stretch", () => {
-    const fitted = fitFontSize(300, 40, 600, 100, 100);
+    const fitted = fitFontSize(
+      { width: 300, height: 40 },
+      { width: 600, height: 100, atFontSize: 100 },
+    );
     expect(fitted).toBeCloseTo(100 * Math.min(300 / 600, 40 / 100));
   });
 
-  it("scales linearly with the trial size", () => {
-    const a = fitFontSize(100, 20, 500, 110, 100);
-    const b = fitFontSize(100, 20, 250, 55, 50);
+  it("scales off the size the string was measured at", () => {
+    const box = { width: 100, height: 20 };
+    const a = fitFontSize(box, { width: 500, height: 110, atFontSize: 100 });
+    const b = fitFontSize(box, { width: 250, height: 55, atFontSize: 50 });
     if (a === null || b === null) throw new Error("expected fits");
     expect(a).toBeCloseTo(b);
   });
 
   it("returns null for degenerate inputs", () => {
-    expect(fitFontSize(0, 20, 50, 110)).toBeNull();
-    expect(fitFontSize(100, -1, 50, 110)).toBeNull();
-    expect(fitFontSize(100, 20, 0, 110)).toBeNull();
-    expect(fitFontSize(100, 20, 50, Number.NaN)).toBeNull();
-    expect(fitFontSize(100, 20, 50, 110, 0)).toBeNull();
+    const measured = { width: 50, height: 110, atFontSize: 100 };
+    expect(fitFontSize({ width: 0, height: 20 }, measured)).toBeNull();
+    expect(fitFontSize({ width: 100, height: -1 }, measured)).toBeNull();
+    const box = { width: 100, height: 20 };
+    expect(
+      fitFontSize(box, { width: 0, height: 110, atFontSize: 100 }),
+    ).toBeNull();
+    expect(
+      fitFontSize(box, { width: 50, height: Number.NaN, atFontSize: 100 }),
+    ).toBeNull();
+    expect(
+      fitFontSize(box, { width: 50, height: 110, atFontSize: 0 }),
+    ).toBeNull();
   });
 });
 

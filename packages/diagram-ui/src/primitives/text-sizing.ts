@@ -23,28 +23,40 @@ export const FONT_FIT_FACTOR = 0.7;
  *  measured ratios away from sub-pixel rounding. */
 export const TRIAL_FONT_SIZE = 100;
 
+/** A width × height box in diagram units. */
+export interface Size {
+  width: number;
+  height: number;
+}
+
+/** A string's measured extent, carrying the font size it was measured at
+ *  so {@link fitFontSize} can scale off it without the caller and the
+ *  measurement having to agree on a constant out of band. */
+export interface TextMeasurement extends Size {
+  atFontSize: number;
+}
+
 /**
- * Font size that fits a string measured at `trialSize`
- * (`measuredWidth`/`measuredHeight`) into a `boxWidth` × `boxHeight`
- * extent — Modelica `fontSize == 0` (§18.6.5.5: scale the text to fit the
- * extent). Both dimensions constrain and the smaller ratio wins, so the
- * glyph aspect ratio is preserved (never stretched non-uniformly) and a
- * long string shrinks instead of overflowing the box. Returns `null` when
- * any input is degenerate (non-positive or non-finite) — callers fall back
- * to the {@link FONT_FIT_FACTOR} heuristic.
+ * Font size that fits `measured` into the `box` extent — Modelica
+ * `fontSize == 0` (§18.6.5.5: scale the text to fit the extent). Both
+ * dimensions constrain and the smaller ratio wins, so the glyph aspect
+ * ratio is preserved (never stretched non-uniformly) and a long string
+ * shrinks instead of overflowing the box. Returns `null` when any input is
+ * degenerate (non-positive or non-finite) — callers fall back to the
+ * {@link FONT_FIT_FACTOR} heuristic.
  */
 export function fitFontSize(
-  boxWidth: number,
-  boxHeight: number,
-  measuredWidth: number,
-  measuredHeight: number,
-  trialSize: number = TRIAL_FONT_SIZE,
+  box: Size,
+  measured: TextMeasurement,
 ): number | null {
-  if (!isPositive(boxWidth) || !isPositive(boxHeight)) return null;
-  if (!isPositive(measuredWidth) || !isPositive(measuredHeight)) return null;
-  if (!isPositive(trialSize)) return null;
-  const scale = Math.min(boxWidth / measuredWidth, boxHeight / measuredHeight);
-  return trialSize * scale;
+  if (!isPositive(box.width) || !isPositive(box.height)) return null;
+  if (!isPositive(measured.width) || !isPositive(measured.height)) return null;
+  if (!isPositive(measured.atFontSize)) return null;
+  const scale = Math.min(
+    box.width / measured.width,
+    box.height / measured.height,
+  );
+  return measured.atFontSize * scale;
 }
 
 function isPositive(n: number): boolean {

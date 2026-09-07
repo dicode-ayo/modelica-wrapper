@@ -521,12 +521,10 @@ export class OmGraphicalLayout extends LitElement {
       ([, comp]) => comp.placement.visible !== false,
     );
     const connectorEntries = Object.entries(active.connectors);
-    // `active.labels` is not rendered: it mirrors the host's
-    // diagram `Text` annotations, which already draw WORLD-space through the
-    // host shape layers (`renderHostShapes` / `renderHostShapeEntities`) —
-    // sized to their extent (`fontSize` 0 fits it, a stated size is diagram
-    // units) and tracking zoom. A second `<om-label>` copy would paint every
-    // label twice, in screen space and detached from its extent.
+    // `active.labels` is a subset of the host's diagram `Text` annotations,
+    // which already draw in world space through the host shape layers
+    // (`renderHostShapes` / `renderHostShapeEntities`) — sized to their
+    // extent and tracking zoom. Rendering it here would draw them twice.
     return html`
       <om-scene
         class=${this.dropActive ? "om-drop-active" : nothing}

@@ -150,7 +150,7 @@ export class OmText extends OmShapePrimitive {
       text: body,
       style: {
         fontFamily,
-        fontSize: Math.max(0.01, fontSize),
+        fontSize,
         fill: colorToCss(s.textColor, "rgb(0,0,0)"),
         align,
       },
@@ -269,7 +269,10 @@ function fittedFontSize(
       body,
       new TextStyle({ fontFamily, fontSize: TRIAL_FONT_SIZE, align }),
     );
-    const fitted = fitFontSize(width, height, m.width, m.height);
+    const fitted = fitFontSize(
+      { width, height },
+      { width: m.width, height: m.height, atFontSize: TRIAL_FONT_SIZE },
+    );
     if (fitted !== null) {
       return fitted;
     }
