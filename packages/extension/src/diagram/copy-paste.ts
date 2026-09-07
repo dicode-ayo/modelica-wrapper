@@ -3,6 +3,7 @@ import type {
   ConnectionEndpoint,
   ConnectorInstance,
   DiagramLayout,
+  Modifier,
   Placement,
   Prefixes,
 } from "@dicode/omc-client";
@@ -385,8 +386,8 @@ export async function pasteClipboardItems(
  * `partial` is a class prefix, not an element one. `public` has no prefix
  * word: a protected component pastes into the public section, which is the
  * one declaration property this does not preserve. A constrained
- * `replaceable` emits the bare word without its `constrainedby` clause
- * (issue #395).
+ * `replaceable`'s `constrainedby` clause is written by
+ * {@link constrainedByClause}.
  */
 function prefixWords(prefixes: Prefixes | undefined): string {
   if (!prefixes) return "";
@@ -478,7 +479,89 @@ function componentDeclaration(
     item.comment === undefined || item.comment === ""
       ? ""
       : ` ${JSON.stringify(item.comment)}`;
-  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)});`;
+  const constrainedBy = constrainedByClause(item.prefixes);
+  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)})${constrainedBy};`;
+}
+
+/**
+ * The `constrainedby ConstrainingClass(mods)` clause on a constrained
+ * `replaceable` — written LAST, after the declaration's own comment and
+ * `annotation(Placement(...))`, never between them. Modelica's grammar gives
+ * a `replaceable` element two independent trailing-comment slots: one on the
+ * component's own declaration (right after its modifiers — where a plain,
+ * non-replaceable component's comment/annotation always goes), and a second,
+ * separate one after `constrainedby`. Writing the component's own comment
+ * and `Placement` into that second slot instead reads them as the
+ * *constraining clause's* comment/annotation, not the component's, so
+ * `element.annotation.Placement` — what `placementFor`
+ * (`omc-client/api/diagram/placement.ts`) reads placement from — comes back
+ * empty and the component drops out of the diagram layout entirely. `""` for
+ * an unconstrained (or bare) `replaceable`, where `prefixes.replaceable` is a
+ * plain `true` rather than the constraint object.
+ */
+function constrainedByClause(prefixes: Prefixes | undefined): string {
+  const replaceable = prefixes?.replaceable;
+  if (typeof replaceable !== "object") return "";
+  const mods = modifierListText(replaceable.modifiers);
+  return ` constrainedby ${replaceable.constrainedby}${mods === "" ? "" : `(${mods})`}`;
+}
+
+/**
+ * `$value`/`final`/`each` are per-entry flags or the entry's own leaf
+ * binding, never a submodifier name; `$type` names the type of a redeclare
+ * element in a `choices` annotation (OMC's `scodeModifier` schema) and is
+ * likewise not a submodifier.
+ */
+const MODIFIER_ENTRY_KEYS = new Set(["$value", "final", "each", "$type"]);
+
+/**
+ * A `Modifier` record rendered back out as a Modelica modification list —
+ * `each final singleState=true`. An entry with nothing writable (see
+ * {@link modifierEntryText}) is dropped rather than emitted as invalid
+ * syntax.
+ *
+ * `scodeModifier`'s own `oneOf` also permits `mod` itself to be a bare
+ * string; a constraining clause's modification is always a parenthesized
+ * `class-modification` list, so a real OMC report has never been seen to use
+ * that shape here — this drops it the same as any other non-object rather
+ * than special-casing an unobserved one.
+ */
+function modifierListText(mod: Modifier | undefined): string {
+  if (mod === undefined || mod === null || typeof mod !== "object") return "";
+  return Object.entries(mod)
+    .filter(([name]) => !MODIFIER_ENTRY_KEYS.has(name))
+    .map(([name, value]) => modifierEntryText(name, value))
+    .filter((entry) => entry !== "")
+    .join(", ");
+}
+
+/**
+ * One entry as `each final name(nested)=value`, or `""` for an entry with
+ * nothing writable: a `null` binding (not a Modelica literal), or a
+ * redeclare (`$type` present), whose declaration arrives under `$value` as a
+ * structured `scodeElement` that this does not render back to source.
+ */
+function modifierEntryText(name: string, mod: Modifier): string {
+  if (mod === null) return "";
+  if (typeof mod !== "object") return `${name}=${String(mod)}`;
+  if ("$type" in mod) return "";
+  // Modelica's grammar orders these `each` before `final`
+  // (`element-modification-or-replaceable`); the reverse is a parse error.
+  const eachWord = mod.each === true ? "each " : "";
+  const finalWord = mod.final === true ? "final " : "";
+  const nested = modifierListText(mod);
+  const nestedClause = nested === "" ? "" : `(${nested})`;
+  const leaf = modifierLeafText(mod.$value);
+  const valueClause = leaf === "" ? "" : `=${leaf}`;
+  if (nestedClause === "" && valueClause === "") return "";
+  return `${eachWord}${finalWord}${name}${nestedClause}${valueClause}`;
+}
+
+/** A leaf `Modifier` value as source text; `""` for a shape with nothing to bind. */
+function modifierLeafText(mod: Modifier | undefined): string {
+  if (mod === undefined || mod === null) return "";
+  if (typeof mod === "object") return "";
+  return String(mod);
 }
 
 /** `connect(a, b) annotation (Line(...));`, or `null` when an endpoint's
