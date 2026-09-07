@@ -758,11 +758,7 @@ export class OmLibraryTree extends LitElement {
     }
   }
 
-  // Row activation (double-click / Enter / primaryAction) — the single path
-  // both tree rows and search rows go through, so the two surfaces cannot
-  // diverge. Every concrete row routes to an editor surface per its
-  // restriction (`activationViewFor`); only a loading placeholder (empty
-  // className) has nothing to activate.
+  // A loading placeholder carries an empty className and has no class to open.
   private activate(
     className: string,
     restriction: LibraryClassRestriction,

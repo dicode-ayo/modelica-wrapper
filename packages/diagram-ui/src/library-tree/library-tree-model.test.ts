@@ -240,7 +240,6 @@ describe("activationViewFor", () => {
   });
 
   it("routes a package to documentation, never the diagram", () => {
-    // Opening a package as a diagram wedges the view.
     expect(activationViewFor("package")).toBe("documentation");
   });
 

@@ -778,8 +778,7 @@ describe("<om-library-tree>", () => {
     expect(priv.selectedClassName).toBe("Modelica.Blocks");
     expect(details).toEqual([]);
 
-    // Enter on a package routes to documentation — never the diagram, which a
-    // package would wedge.
+    // Enter on a package routes to documentation.
     priv.onSearchRowKeydown(
       new KeyboardEvent("keydown", { key: "Enter" }),
       "Modelica.Blocks",
@@ -812,8 +811,7 @@ describe("<om-library-tree>", () => {
     await waitFor(() => treeOf(el).getItems().length >= 2);
 
     const details = onSelectDetails(el);
-    // Same class through the tree's primaryAction and the search row's Enter
-    // handler — both surfaces go through the one `activate` path.
+    // Same class through the tree's primaryAction and the search row's Enter handler.
     treeOf(el).getItemInstance("Pin").primaryAction();
     (
       el as unknown as {
