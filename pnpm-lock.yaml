@@ -244,7 +244,7 @@ importers:
         specifier: ^0.27.0
         version: 0.27.0
       zeromq:
-        specifier: ^6.6.0
+        specifier: ^6.7.0
         version: 6.7.0
     devDependencies:
       '@types/node':
@@ -306,7 +306,7 @@ importers:
   packages/omc-client:
     dependencies:
       zeromq:
-        specifier: ^6.6.0
+        specifier: ^6.7.0
         version: 6.7.0
       zod:
         specifier: ^4.5.4
