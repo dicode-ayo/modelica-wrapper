@@ -718,6 +718,267 @@ describe("pasteClipboardItems", () => {
     );
   });
 
+  it("writes constrainedby after the comment/annotation, never between them", async () => {
+    // Modelica gives a replaceable element two independent trailing-comment
+    // slots: one on the component's own declaration (right after its
+    // modifiers), a second after `constrainedby`. Writing the component's own
+    // comment/Placement into the second slot instead reads it as the
+    // *constraining clause's* annotation, not the component's — the
+    // component then drops out of the diagram layout entirely, since
+    // `placementFor` reads placement from the component's own
+    // `element.annotation`, not `prefixes.replaceable.annotation`.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          comment: "a replaceable block",
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { singleState: { $value: "true" } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    const data = client.data();
+    const commentIndex = data.indexOf('"a replaceable block"');
+    const annotationIndex = data.indexOf("annotation(");
+    const constrainedByIndex = data.indexOf("constrainedby");
+    expect(commentIndex).toBeGreaterThan(-1);
+    expect(annotationIndex).toBeGreaterThan(-1);
+    expect(constrainedByIndex).toBeGreaterThan(-1);
+    expect(commentIndex).toBeLessThan(annotationIndex);
+    expect(annotationIndex).toBeLessThan(constrainedByIndex);
+    expect(data).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true);",
+    );
+  });
+
+  it("keeps a replaceable declaration's constrainedby clause and its modifier", async () => {
+    // A bare `replaceable` word without its constraining clause accepts
+    // redeclarations the original refused (issue #395).
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { singleState: { final: true, $value: "true" } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "replaceable Modelica.Blocks.Math.Gain gain2 annotation",
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(final singleState=true);",
+    );
+  });
+
+  it("keeps the declaration's own modifiers and the constraint's modifiers independent", async () => {
+    // `item.modifiers` (the declaration's own, read via getElementModifierNames)
+    // and `prefixes.replaceable.modifiers` (the constraining clause's own) are
+    // two separate sources feeding two separate parenthesized clauses.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          modifiers: [{ path: "k", expr: "2" }],
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { singleState: { $value: "true" } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "replaceable Modelica.Blocks.Math.Gain gain2(k = 2) annotation",
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true);",
+    );
+  });
+
+  it("orders each before final, per Modelica's element-modification-or-replaceable grammar", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: {
+                singleState: { final: true, each: true, $value: "true" },
+              },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(each final singleState=true)",
+    );
+  });
+
+  it("drops a redeclare-choice entry (a $type key) rather than writing it back as an invalid modifier", async () => {
+    // `$type` names a redeclare-choice's type on a modifier that is itself a
+    // redeclare element (OMC's `scodeModifier` schema) — its element
+    // declaration isn't reconstructable from `$value` alone, so the whole
+    // entry is dropped rather than written back as `redeclare1=true`
+    // (a plain binding, not the redeclare it actually was).
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: {
+                redeclare1: { $type: "Some.Qualified.Type", $value: "true" },
+                singleState: { $value: "true" },
+              },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true)",
+    );
+    expect(client.data()).not.toContain("redeclare1");
+    expect(client.data()).not.toContain("$type");
+  });
+
+  it("drops a null modifier binding rather than writing an invalid `=null`", async () => {
+    // `Modifier` includes `null`; `null` is not a Modelica literal, so an
+    // entry that is `null`, or one whose `$value` is, is dropped rather than
+    // emitted as `foo=null` — which would fail OMC's all-or-nothing parse of
+    // the whole paste block.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: {
+                foo: null,
+                bar: { $value: null },
+                singleState: { $value: "true" },
+              },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true)",
+    );
+    expect(client.data()).not.toContain("null");
+  });
+
+  it("writes a bare constrainedby clause when the constraint has no modifier", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "replaceable Modelica.Blocks.Math.Gain gain2 annotation",
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium;",
+    );
+  });
+
+  it("renders a nested constrainedby modifier as a nested modification, not a flat leaf", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { state: { min: { $value: "0" } } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(state(min=0))",
+    );
+  });
+
+  it("emits no constrainedby clause for a bare (unconstrained) replaceable", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ prefixes: { replaceable: true } })],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "replaceable Modelica.Blocks.Math.Gain gain2 annotation",
+    );
+    expect(client.data()).not.toContain("constrainedby");
+  });
+
   it("emits flow/stream from the connector prefix OMC actually sends", async () => {
     // OMC reports these as `connector: "flow" | "stream"`, not as booleans —
     // reading a boolean drops the prefix silently.

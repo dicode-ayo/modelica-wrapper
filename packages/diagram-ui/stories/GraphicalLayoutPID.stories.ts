@@ -1,48 +1,21 @@
 /**
- * Full-pipeline story: feeds the captured `getModelInstance` output for
- * `Modelica.Blocks.Examples.PID_Controller` through the same code path
- * the VSCode extension uses, then renders the result with
- * `<om-graphical-layout>`.
+ * Full-pipeline story: renders the `PID_Controller` layout built in
+ * `fixtures/pid-layout.ts` with `<om-graphical-layout>`, the same element
+ * the VSCode extension mounts.
  *
- *   pidController.modelInstance.json  (real OMC capture, 1.3 MB)
- *     → ModelInstanceSchema.parse              (validate)
- *     → diagram.produceDiagramLayout(mi, 'diagram')   (typed layout)
- *     → <om-graphical-layout .layout=${layout}>
- *
- * This is the heaviest visual test of the editor — every layer (icon
- * provider + texture cache, component placement, nested connectors via
- * class.connectors PortDef, multi-segment connection waypoints,
- * stroke routing) gets exercised against real Modelica data.
- *
- * Browser memory: ~1.3 MB JSON fixture plus the textures rasterised
+ * Browser memory: ~1.3 MB JSON fixture plus the textures rasterized
  * lazily per unique class — typical icon count on PID_Controller is
  * < 15, well within the icon-cache's per-SVG dedup.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
-// Deep subpath import: pulls only the pure producer (and its shape /
-// placement helpers). Importing from the package root would bring in
-// `OmcClient` + `spawnOmc` which depend on `zeromq` / `node:fs` and
-// can't bundle for the browser.
-import { produceDiagramLayout } from "@dicode/omc-client/api/diagram/index.js";
-import type { DiagramLayout, ModelInstance } from "@dicode/omc-client";
+import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 
-import pidFixture from "./fixtures/pidController.modelInstance.json";
+import { pidLayout } from "./fixtures/pid-layout.js";
 import { appendConnection } from "./fixtures/story-layout-state.js";
-
-// The fixture was captured against a real OMC and is known-valid
-// (the producer's own test suite validates it on every push). We
-// skip ModelInstanceSchema.parse here to keep the story bundle
-// browser-only — the schema module itself is browser-safe, but
-// re-exporting it from the omc-client barrel forces the OmcClient
-// class import too.
-const pidLayout = produceDiagramLayout(
-  pidFixture as unknown as ModelInstance,
-  "diagram",
-);
 
 // Mutable state — see GraphicalLayout.stories.ts for the rationale.
 // Stories share their own state; the PID fixture is large enough that
@@ -119,7 +92,7 @@ type Story = StoryObj<StoryArgs>;
 export const Editable: Story = {
   args: {
     readonly: false,
-    lineThicknessScale: 4,
+    lineThicknessScale: 1,
     perfHud: true,
   },
   parameters: { chromatic: { disableSnapshot: true } },
@@ -128,7 +101,7 @@ export const Editable: Story = {
 export const Readonly: Story = {
   args: {
     readonly: true,
-    lineThicknessScale: 4,
+    lineThicknessScale: 1,
     perfHud: true,
   },
   parameters: { chromatic: { disableSnapshot: true } },
