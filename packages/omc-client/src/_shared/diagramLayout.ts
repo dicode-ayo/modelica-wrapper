@@ -256,7 +256,15 @@ export interface ClassDef {
    * `iconLayers` when absent.
    */
   diagramLayers?: IconLayer[] | undefined;
+  /** The system `iconLayers` is drawn against. */
   coordinateSystem?: CoordinateSystem | undefined;
+  /**
+   * The system `diagramLayers` is drawn against. A class declaring both
+   * annotations can give them different extents, so a renderer showing the
+   * diagram layers must scale against this one — `coordinateSystem` follows
+   * whichever annotation `iconLayers` came from.
+   */
+  diagramCoordinateSystem?: CoordinateSystem | undefined;
   /** Ports declared on this class or any of its ancestors. */
   connectors: Record<string, PortDef>;
   /**
@@ -327,21 +335,15 @@ export interface ConnectorInstance {
    */
   placement: Placement;
   /**
-   * The connector's diagram-view `transformation`, captured when an
-   * icon-kind layout read the `iconTransformation` and the declaration
-   * defines both. Unset in a diagram-kind layout, where `placement`
-   * already is the transformation. Write paths re-emit it so a
-   * declaration rebuilt from `placement` alone keeps its position on the
-   * diagram.
+   * The unread counterpart transformation, present only when the declaration
+   * defines both keywords. At most one of the two is ever set: an icon-kind
+   * layout carries `diagramPlacement`, a diagram-kind one `iconPlacement`.
+   * Resolve them with {@link connectorPlacementKeywords} rather than reading
+   * either field directly — a write path that assumes one view re-emits the
+   * placement under the wrong keyword.
    */
   diagramPlacement?: Placement | undefined;
-  /**
-   * The connector's icon-view `iconTransformation`, captured when a
-   * diagram-kind layout read the `transformation` and the declaration
-   * defines both — the mirror of `diagramPlacement` on an icon-kind
-   * layout. Write paths (copy/paste) re-emit it so a declaration rebuilt
-   * from `placement` alone keeps its position on the icon.
-   */
+  /** The icon-kind mirror of `diagramPlacement`. */
   iconPlacement?: Placement | undefined;
   comment?: string | undefined;
   prefixes?: Prefixes | undefined;
@@ -350,6 +352,40 @@ export interface ConnectorInstance {
   source?: SourceLocation | undefined;
   /** Location of this connector's own declaration in the host class. */
   declarationSource?: SourceLocation | undefined;
+}
+
+/**
+ * The Modelica keywords a connector's placements belong under, resolved from
+ * the view the layout was produced in (MLS §18.2): `placement` is the
+ * `transformation` in a diagram-kind layout and the `iconTransformation` in
+ * an icon-kind one, with the counterpart supplying the other keyword.
+ *
+ * Every write path resolves here, so the mapping is stated once. Reading
+ * `placement` as the `transformation` regardless of kind drops the
+ * `iconTransformation` from a declaration that had both.
+ *
+ * An entity with no counterpart — a component, or a connector declaring a
+ * single keyword — yields its `placement` as the `transformation` alone.
+ */
+export function connectorPlacementKeywords(
+  kind: "icon" | "diagram",
+  entity: {
+    placement: Placement;
+    diagramPlacement?: Placement | undefined;
+    iconPlacement?: Placement | undefined;
+  },
+): { transformation: Placement; iconTransformation: Placement | undefined } {
+  if (kind === "diagram") {
+    return {
+      transformation: entity.placement,
+      iconTransformation: entity.iconPlacement,
+    };
+  }
+  const diagram = entity.diagramPlacement;
+  return {
+    transformation: diagram ?? entity.placement,
+    iconTransformation: diagram === undefined ? undefined : entity.placement,
+  };
 }
 
 export interface ConnectionEndpoint {
@@ -594,6 +630,7 @@ export const ClassDefSchema = z
     iconLayers: z.array(IconLayerSchema),
     diagramLayers: z.array(IconLayerSchema).optional(),
     coordinateSystem: CoordinateSystemSchema.optional(),
+    diagramCoordinateSystem: CoordinateSystemSchema.optional(),
     connectors: z.record(z.string(), PortDefSchema),
     parameters: z.record(z.string(), ParameterDefSchema),
   })

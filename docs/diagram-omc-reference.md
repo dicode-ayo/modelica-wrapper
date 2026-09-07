@@ -33,7 +33,7 @@ design proposal.
 | Babylon renderer | `<om-scene>` / `<om-graphical-layout>` | [diagram-ui/src/scene](../packages/diagram-ui/src/scene/scene.component.ts) · [graphical-layout](../packages/diagram-ui/src/graphical-layout/graphical-layout.component.ts) |
 | SVG renderer (icons) | `renderIconLayersToSvg()` | [packages/diagram-svg/src](../packages/diagram-svg/src) |
 | Layout diff / write-back | `diffLayouts()`, `applyEdits()` | [diff-layout.ts](../packages/extension/src/diagram/diff-layout.ts) · [apply-edits.ts](../packages/extension/src/diagram/apply-edits.ts) |
-| Undo | `SnapshotStack`, `captureSnapshot()` | [snapshot-stack.ts](../packages/extension/src/diagram/snapshot-stack.ts) · [omc-snapshot.ts](../packages/extension/src/diagram/omc-snapshot.ts) |
+| Undo | shadow buffer + `captureSnapshot()` (batch rollback) | [shadow-buffer.ts](../packages/extension/src/diagram/shadow-buffer.ts) · [omc-snapshot.ts](../packages/extension/src/diagram/omc-snapshot.ts) |
 | Library sidebar | `LibraryWebviewProvider` | [library/library-webview-provider.ts](../packages/extension/src/library/library-webview-provider.ts) |
 | Library data source | `LibrarySource` | [diagram/library-source.ts](../packages/extension/src/diagram/library-source.ts) |
 | Host↔webview wire | message catalog | [webview/protocol.ts](../packages/extension/src/webview/protocol.ts) |
@@ -219,7 +219,7 @@ like a `package` (issue #345).
 
 | Operation | Our edit kind | OMC write | Status |
 | --- | --- | --- | --- |
-| Move / resize component | `componentPlacement` | `updateComponent(…, placementAnnotation)` | ✅ (placement from view-centre on add, not pixel-precise) |
+| Move / resize component | `componentPlacement` | `setElementAnnotation(<class>.<element>, placementAnnotation)` | ✅ `updateComponent` rejects a `Placement` holding both `transformation` and `iconTransformation` |
 | Delete component | `componentDeleted` | `deleteComponent` | ✅ |
 | Add component (library→canvas) | — | `addComponent` | ✅ via `onAddComponent`, position = view centre; `isPartial` refuses `partial` classes before the write (issue #277) |
 | Connection add/delete/reroute | `connectionAdded/Deleted/Waypoints` | `addConnection`/`deleteConnection`/`updateConnection` | ✅ (drag *existing* waypoints only; `Line` style round-trips alongside the route, issue #219) |
@@ -228,7 +228,7 @@ like a `package` (issue #345).
 | Class params | — | `setParameterValue` / `setExtendsModifierValue` | ✅ |
 | Change component class | — | `setElementType` | ✅ [open-diagram.ts](../packages/extension/src/diagram/open-diagram.ts) `pickClassToSwap` — candidates filtered by connection compatibility (issue #239, see below) |
 | Reset to defaults | — | `removeElementModifiers(keepRedeclares)` | ✅ [clear-modifiers.ts](../packages/extension/src/diagram/clear-modifiers.ts) |
-| Undo | snapshot | `listFile`+`getSourceFile` / `loadString` restore | ✅ [snapshot-stack.ts](../packages/extension/src/diagram/snapshot-stack.ts) |
+| Undo | — | shadow-buffer `WorkspaceEdit`, reversed by `loadString` on a foreign change | ⚠️ walks into stale session states (issue #602) |
 
 **Change-class candidate filtering** ([change-class-filter.ts](../packages/extension/src/diagram/change-class-filter.ts), issue #239). `setElementType` swaps a component's class even when the new class drops a connector its existing `connect()` equations reference, leaving dangling connections. `pickClassToSwap` keeps only candidates that expose a matching port (name + connector type) for every currently-connected port. Each candidate's ports come from a cached `getElements` walk over its extends chain — never `getModelInstance`, which never returns for builtins like `String` and would stall the shared OMC socket. `getElements` reports only locally-declared elements and omits `extends` rows, so the chain is walked explicitly.
 

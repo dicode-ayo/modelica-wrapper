@@ -11,7 +11,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { ClassDef, DiagramLayout, IconLayer } from "@dicode/omc-client";
+import type {
+  ClassDef,
+  CoordinateSystem,
+  DiagramLayout,
+  IconLayer,
+} from "@dicode/omc-client";
 
 import type { OmShapeElement } from "../base/shape-element.js";
 import { NO_ICON_LAYERS } from "../icon-provider/no-icon.js";
@@ -49,6 +54,20 @@ const DIAGRAM_LAYERS: IconLayer[] = [
     ],
   },
 ];
+
+/** Deliberately different extents, so a mismatched pairing is visible. */
+const ICON_CS: CoordinateSystem = {
+  extent: [
+    [-100, -100],
+    [100, 100],
+  ],
+};
+const DIAGRAM_CS: CoordinateSystem = {
+  extent: [
+    [-40, -40],
+    [40, 40],
+  ],
+};
 
 function classDef(overrides: Partial<ClassDef> = {}): ClassDef {
   return {
@@ -205,15 +224,26 @@ describe("<om-graphical-layout> standalone connector layer selection (issue #516
     const cls = classDef({
       iconLayers: ICON_LAYERS,
       diagramLayers: DIAGRAM_LAYERS,
+      coordinateSystem: ICON_CS,
+      diagramCoordinateSystem: DIAGRAM_CS,
     });
     const el = await mountLayout({ layout: connectorLayout("diagram", cls) });
-    expect(standaloneConnector(el).layers).toBe(DIAGRAM_LAYERS);
+    const conn = standaloneConnector(el);
+    expect(conn.layers).toBe(DIAGRAM_LAYERS);
+    // Scaling the diagram layers against the icon's system draws them at the
+    // wrong size — the two are chosen together.
+    expect(conn.coordinateSystem).toBe(DIAGRAM_CS);
   });
 
   it("falls back to icon layers when the class has no diagram layers", async () => {
-    const cls = classDef({ iconLayers: ICON_LAYERS });
+    const cls = classDef({
+      iconLayers: ICON_LAYERS,
+      coordinateSystem: ICON_CS,
+    });
     const el = await mountLayout({ layout: connectorLayout("diagram", cls) });
-    expect(standaloneConnector(el).layers).toBe(ICON_LAYERS);
+    const conn = standaloneConnector(el);
+    expect(conn.layers).toBe(ICON_LAYERS);
+    expect(conn.coordinateSystem).toBe(ICON_CS);
   });
 
   it("falls back to icon layers when the diagram layers draw nothing", async () => {
@@ -228,9 +258,13 @@ describe("<om-graphical-layout> standalone connector layer selection (issue #516
     const cls = classDef({
       iconLayers: ICON_LAYERS,
       diagramLayers: DIAGRAM_LAYERS,
+      coordinateSystem: ICON_CS,
+      diagramCoordinateSystem: DIAGRAM_CS,
     });
     const el = await mountLayout({ layout: connectorLayout("icon", cls) });
-    expect(standaloneConnector(el).layers).toBe(ICON_LAYERS);
+    const conn = standaloneConnector(el);
+    expect(conn.layers).toBe(ICON_LAYERS);
+    expect(conn.coordinateSystem).toBe(ICON_CS);
   });
 
   it("keeps nested ports on the icon layer in a diagram-kind layout", async () => {

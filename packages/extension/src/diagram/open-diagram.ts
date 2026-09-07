@@ -599,12 +599,21 @@ async function fetchIconInstance(
   return fetchModelInstance(client, className);
 }
 
+/**
+ * The icon EDITOR's layout: an icon-kind layout that still carries the host's
+ * standalone connectors, so their `iconTransformation` placements can be seen
+ * and dragged.
+ *
+ * Reads the full `getModelInstance`: the filtered annotation tree
+ * `libraryIconSvg` uses carries no component elements, so a layout produced
+ * from it has an empty `connectors` map. The library tree, which fans out over
+ * every visible class, keeps the cheap call.
+ */
 export async function fetchIconLayout(
   client: OmcClient,
   className: string,
-  forceInstantiate = false,
 ): Promise<DiagramLayout> {
-  const instance = await fetchIconInstance(client, className, forceInstantiate);
+  const instance = await fetchModelInstance(client, className);
   return diagram.produceDiagramLayout(instance, "icon");
 }
 

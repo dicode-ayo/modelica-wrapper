@@ -36,6 +36,35 @@ describe("mutationFor", () => {
     });
   });
 
+  it("announces an element path as the class enclosing it", () => {
+    // The path itself names nothing a cache is keyed by, so announcing it
+    // verbatim reaches no listener — indistinguishable from silence.
+    expect(
+      mutationFor(
+        "setElementAnnotation(Demo.Circuit.r1, $Code((Placement(transformation(extent={{0,0},{10,10}})))))",
+      ),
+    ).toEqual({
+      fn: "setElementAnnotation",
+      scope: { kind: "class", className: "Demo.Circuit" },
+    });
+  });
+
+  it("splits an element path outside its quoted identifier", () => {
+    expect(
+      mutationFor("setElementAnnotation(Demo.'a.b'.r1, $Code((Dialog())))"),
+    ).toEqual({
+      fn: "setElementAnnotation",
+      scope: { kind: "class", className: "Demo.'a.b'" },
+    });
+  });
+
+  it("goes coarse for an element path with no enclosing class", () => {
+    expect(mutationFor("setElementAnnotation(r1, $Code((Dialog())))")).toEqual({
+      fn: "setElementAnnotation",
+      scope: { kind: "coarse" },
+    });
+  });
+
   it("scopes a load to its file rather than the whole session", () => {
     expect(
       mutationFor(

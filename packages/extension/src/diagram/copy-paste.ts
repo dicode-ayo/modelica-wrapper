@@ -1,8 +1,9 @@
-import { shapeToRecord } from "@dicode/omc-client";
+import { connectorPlacementKeywords, shapeToRecord } from "@dicode/omc-client";
 import type {
   ConnectionEndpoint,
   ConnectorInstance,
   DiagramLayout,
+  Modifier,
   Placement,
   Prefixes,
 } from "@dicode/omc-client";
@@ -136,34 +137,31 @@ export async function captureClipboardItems(
 }
 
 /**
- * Map a connector's per-view placements onto the clipboard item's shape:
- * `placementClause` re-emits the item's own fields as `iconTransformation`
- * and `diagramPlacement` as `transformation` whenever both are present, so
- * a diagram-kind layout — whose `placement` IS the diagram transformation
- * and whose icon counterpart rides on `iconPlacement` — swaps the two here.
- * With no counterpart the declaration had a single keyword, and the paste
- * writes a single `transformation` back.
+ * Map a connector's per-view placements onto the clipboard item's shape,
+ * whose own fields carry the `iconTransformation` and whose
+ * `diagramPlacement` carries the `transformation` (see `placementClause`).
  *
- * `Placement.visible` sits on the annotation, not on either transformation,
- * and `placementFor` attaches it to the kind-view placement — so it moves
- * with the swap onto the item's own fields.
+ * `Placement.visible` sits on the annotation rather than on either
+ * transformation, and `placementFor` attaches it to the kind-view placement,
+ * so it is re-attached to whichever placement lands on the item's fields.
  */
 function connectorViewPlacements(
   kind: DiagramLayout["kind"],
   connector: ConnectorInstance,
 ): { placement: Placement; diagramPlacement: Placement | undefined } {
-  if (kind === "diagram" && connector.iconPlacement !== undefined) {
-    return {
-      placement:
-        connector.placement.visible === false
-          ? { ...connector.iconPlacement, visible: false }
-          : connector.iconPlacement,
-      diagramPlacement: connector.placement,
-    };
+  const { transformation, iconTransformation } = connectorPlacementKeywords(
+    kind,
+    connector,
+  );
+  if (iconTransformation === undefined) {
+    return { placement: transformation, diagramPlacement: undefined };
   }
   return {
-    placement: connector.placement,
-    diagramPlacement: connector.diagramPlacement,
+    placement:
+      connector.placement.visible === false
+        ? { ...iconTransformation, visible: false }
+        : iconTransformation,
+    diagramPlacement: transformation,
   };
 }
 
@@ -388,8 +386,8 @@ export async function pasteClipboardItems(
  * `partial` is a class prefix, not an element one. `public` has no prefix
  * word: a protected component pastes into the public section, which is the
  * one declaration property this does not preserve. A constrained
- * `replaceable` emits the bare word without its `constrainedby` clause
- * (issue #395).
+ * `replaceable`'s `constrainedby` clause is written by
+ * {@link constrainedByClause}.
  */
 function prefixWords(prefixes: Prefixes | undefined): string {
   if (!prefixes) return "";
@@ -436,8 +434,9 @@ function placementClause(
   const parts: string[] = [];
   if (item.visible === false) parts.push("visible=false");
   const diagram = item.diagramPlacement;
-  // With both, the item's own fields are the icon-view placement — a connector
-  // is read from the icon view, whichever editor is open.
+  // With both, the item's own fields are the icon-view placement
+  // (`connectorViewPlacements` normalizes to that shape whichever view was
+  // copied from).
   //
   // The offset is a drop point in the pasted view's coordinates, so only that
   // view's transformation takes it; the other lives in a different coordinate
@@ -480,7 +479,89 @@ function componentDeclaration(
     item.comment === undefined || item.comment === ""
       ? ""
       : ` ${JSON.stringify(item.comment)}`;
-  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)});`;
+  const constrainedBy = constrainedByClause(item.prefixes);
+  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)})${constrainedBy};`;
+}
+
+/**
+ * The `constrainedby ConstrainingClass(mods)` clause on a constrained
+ * `replaceable` — written LAST, after the declaration's own comment and
+ * `annotation(Placement(...))`, never between them. Modelica's grammar gives
+ * a `replaceable` element two independent trailing-comment slots: one on the
+ * component's own declaration (right after its modifiers — where a plain,
+ * non-replaceable component's comment/annotation always goes), and a second,
+ * separate one after `constrainedby`. Writing the component's own comment
+ * and `Placement` into that second slot instead reads them as the
+ * *constraining clause's* comment/annotation, not the component's, so
+ * `element.annotation.Placement` — what `placementFor`
+ * (`omc-client/api/diagram/placement.ts`) reads placement from — comes back
+ * empty and the component drops out of the diagram layout entirely. `""` for
+ * an unconstrained (or bare) `replaceable`, where `prefixes.replaceable` is a
+ * plain `true` rather than the constraint object.
+ */
+function constrainedByClause(prefixes: Prefixes | undefined): string {
+  const replaceable = prefixes?.replaceable;
+  if (typeof replaceable !== "object") return "";
+  const mods = modifierListText(replaceable.modifiers);
+  return ` constrainedby ${replaceable.constrainedby}${mods === "" ? "" : `(${mods})`}`;
+}
+
+/**
+ * `$value`/`final`/`each` are per-entry flags or the entry's own leaf
+ * binding, never a submodifier name; `$type` names the type of a redeclare
+ * element in a `choices` annotation (OMC's `scodeModifier` schema) and is
+ * likewise not a submodifier.
+ */
+const MODIFIER_ENTRY_KEYS = new Set(["$value", "final", "each", "$type"]);
+
+/**
+ * A `Modifier` record rendered back out as a Modelica modification list —
+ * `each final singleState=true`. An entry with nothing writable (see
+ * {@link modifierEntryText}) is dropped rather than emitted as invalid
+ * syntax.
+ *
+ * `scodeModifier`'s own `oneOf` also permits `mod` itself to be a bare
+ * string; a constraining clause's modification is always a parenthesized
+ * `class-modification` list, so a real OMC report has never been seen to use
+ * that shape here — this drops it the same as any other non-object rather
+ * than special-casing an unobserved one.
+ */
+function modifierListText(mod: Modifier | undefined): string {
+  if (mod === undefined || mod === null || typeof mod !== "object") return "";
+  return Object.entries(mod)
+    .filter(([name]) => !MODIFIER_ENTRY_KEYS.has(name))
+    .map(([name, value]) => modifierEntryText(name, value))
+    .filter((entry) => entry !== "")
+    .join(", ");
+}
+
+/**
+ * One entry as `each final name(nested)=value`, or `""` for an entry with
+ * nothing writable: a `null` binding (not a Modelica literal), or a
+ * redeclare (`$type` present), whose declaration arrives under `$value` as a
+ * structured `scodeElement` that this does not render back to source.
+ */
+function modifierEntryText(name: string, mod: Modifier): string {
+  if (mod === null) return "";
+  if (typeof mod !== "object") return `${name}=${String(mod)}`;
+  if ("$type" in mod) return "";
+  // Modelica's grammar orders these `each` before `final`
+  // (`element-modification-or-replaceable`); the reverse is a parse error.
+  const eachWord = mod.each === true ? "each " : "";
+  const finalWord = mod.final === true ? "final " : "";
+  const nested = modifierListText(mod);
+  const nestedClause = nested === "" ? "" : `(${nested})`;
+  const leaf = modifierLeafText(mod.$value);
+  const valueClause = leaf === "" ? "" : `=${leaf}`;
+  if (nestedClause === "" && valueClause === "") return "";
+  return `${eachWord}${finalWord}${name}${nestedClause}${valueClause}`;
+}
+
+/** A leaf `Modifier` value as source text; `""` for a shape with nothing to bind. */
+function modifierLeafText(mod: Modifier | undefined): string {
+  if (mod === undefined || mod === null) return "";
+  if (typeof mod === "object") return "";
+  return String(mod);
 }
 
 /** `connect(a, b) annotation (Line(...));`, or `null` when an endpoint's

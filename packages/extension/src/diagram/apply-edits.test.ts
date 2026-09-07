@@ -39,7 +39,6 @@ function mockClient(results: InvokeResult[]): {
 const placement: LayoutEdit = {
   kind: "componentPlacement",
   componentName: "gain",
-  componentClass: "Modelica.Blocks.Math.Gain",
   transformation: {
     extent: [
       [-10, -10],
@@ -86,7 +85,7 @@ describe("applyEdits: success accounting", () => {
     // succeed-vs-fail unambiguous by giving each a distinct result.
     const { client, invoke } = mockClient([
       { success: true }, // addConnection (ordered first)
-      { success: false, diagnostic: "rejected placement" }, // updateComponent
+      { success: false, diagnostic: "rejected placement" }, // setElementAnnotation
     ]);
     const result = await applyEdits(client, "MyPkg.M", [placement, addConn]);
     expect(invoke).toHaveBeenCalledTimes(2);

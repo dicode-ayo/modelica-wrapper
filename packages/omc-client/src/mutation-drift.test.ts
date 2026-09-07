@@ -19,6 +19,8 @@ import { REGISTRY, type OmcFnName } from "./registry.js";
 
 const CLASS = "Probe.Cls";
 const FILE = "/probe/File.mo";
+/** An element inside {@link CLASS}, for the entries addressing one by path. */
+const ELEMENT = `${CLASS}.r`;
 
 const TRANSITION = {
   from: "s1",
@@ -50,7 +52,10 @@ const PROBES: Record<string, Record<string, unknown>> = {
     modifier: "r.R",
   },
   setElementModifierValue: { typeName: CLASS, elementName: "r.R", expr: "1" },
-  setElementAnnotation: { typeName: CLASS, annotationMod: "annotate(Icon())" },
+  setElementAnnotation: {
+    typeName: ELEMENT,
+    annotationMod: "annotate(Icon())",
+  },
   setElementType: { typeName: CLASS, newTypeName: "Probe.Other" },
   removeElementModifiers: { typeName: CLASS, componentName: "r" },
   addComponent: {
@@ -173,12 +178,14 @@ describe("positional entries against the wrappers that build the commands", () =
 
     const mutation = mutationFor(await commandFor(name as OmcFnName, probe));
 
+    // `"element"` addresses a member by path; what changed is the class
+    // holding it, so both class-shaped kinds land on the same announcement.
     expect(mutation).toEqual({
       fn: name as OmcFunction,
       scope:
-        entry.as === "class"
-          ? { kind: "class", className: CLASS }
-          : { kind: "file", fileName: FILE },
+        entry.as === "file"
+          ? { kind: "file", fileName: FILE }
+          : { kind: "class", className: CLASS },
     });
   });
 });

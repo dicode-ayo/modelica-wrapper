@@ -12,15 +12,13 @@ import type {
   IconLayer,
   Shape,
 } from "@dicode/omc-client";
+import { hasDrawnShapes } from "@dicode/omc-client/shapes";
 import { colorToCss } from "@dicode/diagram-svg";
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";
 
 import { renderShape } from "../primitives/render-shape.js";
-import {
-  hasDrawnShapes,
-  withNoIconFallback,
-} from "../icon-provider/no-icon.js";
+import { withNoIconFallback } from "../icon-provider/no-icon.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
@@ -32,6 +30,7 @@ import "../debug/perf-hud.component.js";
 import "../context-menu/context-menu.component.js";
 import "../keymap-help/keymap-help.component.js";
 import type { OmScene, RendererFactory } from "../scene/scene.component.js";
+import type { TextMode } from "../primitives/text-mode.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
 import {
@@ -317,6 +316,11 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   rendererFactory: RendererFactory | undefined = undefined;
 
+  /** Pixi text class forwarded to the inner `<om-scene>`, which publishes it
+   *  on `textModeContext`. */
+  @property({ type: String, attribute: "text-mode" })
+  textMode: TextMode | undefined = undefined;
+
   /** Optional picker factory. Defaults to `defaultPicker` (scene raycast);
    *  tests inject a deterministic picker so pointer gestures resolve to
    *  known entities without a live render. */
@@ -519,17 +523,16 @@ export class OmGraphicalLayout extends LitElement {
       ([, comp]) => comp.placement.visible !== false,
     );
     const connectorEntries = Object.entries(active.connectors);
-    // `active.labels` is not rendered: it mirrors the host's
-    // diagram `Text` annotations, which already draw WORLD-space through the
-    // host shape layers (`renderHostShapes` / `renderHostShapeEntities`) —
-    // sized to their extent (`fontSize` 0 fits it, a stated size is diagram
-    // units) and tracking zoom. A second `<om-label>` copy would paint every
-    // label twice, in screen space and detached from its extent.
+    // `active.labels` is a subset of the host's diagram `Text` annotations,
+    // which already draw in world space through the host shape layers
+    // (`renderHostShapes` / `renderHostShapeEntities`) — sized to their
+    // extent and tracking zoom. Rendering it here would draw them twice.
     return html`
       <om-scene
         class=${this.dropActive ? "om-drop-active" : nothing}
         @om-view-change=${this.onViewChange}
         .rendererFactory=${this.rendererFactory ?? undefined}
+        .textMode=${this.textMode ?? undefined}
         ?debug=${this.debug}
         camera-mode=${this.cameraMode}
         tabindex="0"
@@ -777,16 +780,21 @@ export class OmGraphicalLayout extends LitElement {
     // draws one (MLS §18.2 — e.g. RealInput's smaller triangle + name),
     // falling back to its icon. Nested ports above stay on the icon layer:
     // that is what an enclosing diagram shows for a component's connectors.
+    //
+    // The two annotations can declare different extents, so the layers and
+    // the system they are measured in have to be chosen together.
     const diagramLayers = cls?.diagramLayers ?? [];
-    const layers =
-      layout.kind === "diagram" && hasDrawnShapes(diagramLayers)
-        ? diagramLayers
-        : (cls?.iconLayers ?? []);
+    const showsDiagram =
+      layout.kind === "diagram" && hasDrawnShapes(diagramLayers);
+    const layers = showsDiagram ? diagramLayers : (cls?.iconLayers ?? []);
+    const coordinateSystem = showsDiagram
+      ? (cls?.diagramCoordinateSystem ?? cls?.coordinateSystem)
+      : cls?.coordinateSystem;
     return html`<om-connector
       .nodeId=${id}
       .placement=${conn.placement}
       .layers=${withNoIconFallback(layers)}
-      .coordinateSystem=${cls?.coordinateSystem ?? undefined}
+      .coordinateSystem=${coordinateSystem ?? undefined}
       .lineThicknessScale=${this.lineThicknessScale}
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}

@@ -265,6 +265,61 @@ end Donor;
     expect(contents).toContain('"the port"');
   });
 
+  it("keeps a constrained replaceable's constrainedby clause and its own Placement discoverable after paste (issue #395)", async () => {
+    // The comment and annotation trailing a `constrainedby` clause belong to
+    // the *constraining clause* per the grammar (that is where
+    // `choicesAllMatching` lives), not to the component — so the component's
+    // own description and `Placement` sit on the component's declaration,
+    // ahead of `constrainedby`, exactly where a non-replaceable component's
+    // would go. `placementFor` (`omc-client/api/diagram/placement.ts`) reads
+    // placement from the component's own annotation only, so a Placement
+    // sitting after `constrainedby` instead would never reach it, and the
+    // component would never reach `src.components` either.
+    //
+    // The declared type is a concrete block (`Gain`) — `SISO` is `partial`
+    // and OMC can't instantiate a directly-declared component of a partial
+    // type, so `blk` would never reach `src.components` at all. The
+    // constraint itself can still name the partial interface `Gain` satisfies.
+    const donor = `${pkg}.ReplaceableDonor`;
+    await client.loadString({
+      data: `within ${pkg};
+model ReplaceableDonor
+  replaceable Modelica.Blocks.Math.Gain blk "a replaceable block" annotation(
+    Placement(transformation(extent = {{-20, -20}, {20, 20}})))
+    constrainedby Modelica.Blocks.Interfaces.SISO;
+  annotation(Diagram(coordinateSystem(extent={{-200,-200},{200,200}})));
+end ReplaceableDonor;
+`,
+      filename: `<fixture:${pkg}replaceableDonor>`,
+    });
+
+    const { fetchDiagramLayout } = await import("./open-diagram.js");
+    const src = await fetchDiagramLayout(client, donor);
+    const items = await captureClipboardItems(client, src, ["c:blk"]);
+
+    const result = await pasteClipboardItems(
+      client,
+      cls,
+      emptyLayout(cls),
+      items,
+      "diagram",
+      0,
+    );
+    expect(result.failed).toEqual([]);
+    expect(result.added).toEqual(["blk1"]);
+
+    const { contents } = await client.listFile({ typeName: cls });
+    expect(contents).toContain("constrainedby Modelica.Blocks.Interfaces.SISO");
+
+    const pasted = await fetchDiagramLayout(client, cls);
+    const blk = pasted.components["blk1"];
+    expect(blk).toBeDefined();
+    expect(blk?.placement.extent).toEqual([
+      [-20, -20],
+      [20, 20],
+    ]);
+  });
+
   it("reports a rejected block and leaves the class untouched", async () => {
     const before = await client.listFile({ typeName: cls });
     const result = await pasteClipboardItems(

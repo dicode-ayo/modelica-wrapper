@@ -1,6 +1,6 @@
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
-import { CanvasTextMetrics, Text, TextStyle, type Container } from "pixi.js";
+import { CanvasTextMetrics, TextStyle, type Container } from "pixi.js";
 import {
   interpolateTemplate,
   type TextSubstitutions,
@@ -20,15 +20,32 @@ import {
   fitFontSize,
   quantizeTextResolution,
 } from "./text-sizing.js";
+import {
+  createSceneText,
+  requiresDeferredRasterization,
+  supportsDynamicResolution,
+  DEFAULT_TEXT_MODE,
+  type SceneText,
+  type TextMode,
+} from "./text-mode.js";
+import { textModeContext } from "./text-mode-context.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
-import { worldScaleXY } from "../scene/ortho-camera.js";
+import { placementMirrorSigns, worldScaleXY } from "../scene/ortho-camera.js";
+
+/** Frames to nudge after building a text whose texture rasterizes async.
+ *  Bounded so a failed rasterization cannot pin a repaint loop. */
+const DEFERRED_RASTER_FRAMES = 8;
 
 /**
- * `<om-text>` — one Modelica `TextShape`, rendered as a Pixi `Text`. The text
- * counter-flips locally (`scale.y < 0`) so it stays upright under the diagram
- * root's Y-flip, and its `resolution` follows the zoom in both directions so
- * glyphs stay crisp zoomed in and keep sampling near their rendered size
- * zoomed out (see `quantizeTextResolution` for the floor/ceiling rule).
+ * `<om-text>` — one Modelica `TextShape`, rendered through the Pixi text class
+ * {@link textModeContext} selects. The text counter-flips locally so it reads
+ * upright and unmirrored whatever the ancestor transforms do, and it is sized
+ * to its extent (see `text-sizing.js`).
+ *
+ * Under the default `bitmap` mode the glyph density is the font atlas's and
+ * fixed; `canvas` mode instead retargets `resolution` to the zoom in both
+ * directions, so glyphs stay crisp zoomed in and keep sampling near their
+ * rendered size zoomed out.
  */
 @customElement("om-text")
 export class OmText extends OmShapePrimitive {
@@ -44,8 +61,12 @@ export class OmText extends OmShapePrimitive {
   @consume({ context: substitutionsContext, subscribe: true })
   private substitutions: TextSubstitutions | null = null;
 
-  private text: Text | null = null;
+  @consume({ context: textModeContext, subscribe: true })
+  private textMode: TextMode | undefined = undefined;
+
+  private text: SceneText | null = null;
   private currentResolution = 1;
+  private rasterizationFrame: number | null = null;
 
   protected override onViewChange(): void {
     this.applyResolution();
@@ -67,7 +88,17 @@ export class OmText extends OmShapePrimitive {
     // Include the resolved body so a substitution change (e.g. the user
     // edits a modifier and the parameters map updates) re-runs buildMeshes.
     // The raw shape JSON alone wouldn't change.
-    return `${this.resolvedBody()}|${JSON.stringify(this.shape)}`;
+    //
+    // The mirror signs join it because the rebuild key's `worldScaleOf` is
+    // magnitude-only: flipping a component leaves that term identical, so
+    // without this the counter-mirror computed in `buildMeshes` would go
+    // stale and the glyphs would render backwards until some other edit
+    // forced a rebuild. Walking from the parent matches what `buildMeshes`
+    // sees: `graphicItemNode` sets only position and rotation, so its
+    // wrapper never contributes a sign.
+    const parent = this.parentTransform;
+    const mirror = parent ? placementMirrorSigns(parent) : { x: 1, y: 1 };
+    return `${this.textMode ?? DEFAULT_TEXT_MODE}|${this.resolvedBody()}|${mirror.x},${mirror.y}|${JSON.stringify(this.shape)}`;
   }
 
   protected override entityKind(): string {
@@ -107,23 +138,6 @@ export class OmText extends OmShapePrimitive {
         ? s.fontSize * FONT_FIT_FACTOR
         : fittedFontSize(body, fontFamily, align, width, height);
 
-    const style = new TextStyle({
-      fontFamily,
-      fontSize: Math.max(0.01, fontSize),
-      fill: colorToCss(s.textColor, "rgb(0,0,0)"),
-      align,
-    });
-    const text = new Text({ text: body, style });
-    text.label = `om-text.${this.zOrder}`;
-    text.eventMode = "none";
-    text.zIndex = z;
-    text.resolution = this.currentResolution;
-    // Anchor at the horizontal alignment edge and vertical centre; the local
-    // Y-flip pivots about that anchor so the glyph stays upright and in place.
-    text.anchor.set(anchorX(align), 0.5);
-    text.scale.set(1, -1);
-    text.position.set(alignX(align, x, width), y + height / 2);
-
     const root = this.graphicRoot(
       parent,
       s,
@@ -131,12 +145,45 @@ export class OmText extends OmShapePrimitive {
       inEntityFrame,
       z,
     );
+
+    const text = createSceneText(this.textMode ?? DEFAULT_TEXT_MODE, {
+      text: body,
+      style: {
+        fontFamily,
+        fontSize,
+        fill: colorToCss(s.textColor, "rgb(0,0,0)"),
+        align,
+      },
+    });
+    text.label = `om-text.${this.zOrder}`;
+    text.eventMode = "none";
+    text.zIndex = z;
+    if (supportsDynamicResolution(text)) {
+      text.resolution = this.currentResolution;
+    }
+    // Anchor at the horizontal alignment edge and vertical center; the local
+    // flip pivots about that anchor so the glyph stays upright and in place.
+    text.anchor.set(anchorX(align), 0.5);
+    // Glyphs read upright and unmirrored whatever the ancestors do. The `-`
+    // on Y cancels the diagram root's Y-flip; the mirror terms cancel a
+    // mirrored component placement, which would otherwise draw the text
+    // backwards — OMEdit keeps it readable. Only the glyph frame is
+    // corrected: the anchor still sits where the mirrored placement put it,
+    // so the text moves with the component.
+    const mirror = placementMirrorSigns(parent);
+    text.scale.set(mirror.x, -mirror.y);
+    text.position.set(alignX(align, x, width), y + height / 2);
+
     root.addChild(text);
     this.text = text;
     this.applyResolution();
+    if (requiresDeferredRasterization(text)) {
+      this.pumpRasterizationFrames();
+    }
 
     this.resources.push({
       dispose: () => {
+        this.cancelRasterizationFrames();
         text.destroy();
         this.text = null;
       },
@@ -144,15 +191,44 @@ export class OmText extends OmShapePrimitive {
   }
 
   /**
-   * Retarget the `Text` resolution to the on-screen texel density at the
+   * Drive a bounded run of frames so an asynchronously-rasterized text
+   * texture reaches the screen. See {@link requiresDeferredRasterization}.
+   *
+   * At most one chain is in flight per element: `updated()` rebuilds on
+   * every drag frame, so without cancelling the previous chain each drag
+   * frame would leave another one running and pin the on-demand scheduler
+   * to a full repaint long after the pointer stopped.
+   */
+  private pumpRasterizationFrames(): void {
+    this.cancelRasterizationFrames();
+    let remaining = DEFERRED_RASTER_FRAMES;
+    const step = (): void => {
+      this.requestRender();
+      remaining -= 1;
+      this.rasterizationFrame =
+        remaining > 0 ? requestAnimationFrame(step) : null;
+    };
+    this.rasterizationFrame = requestAnimationFrame(step);
+  }
+
+  private cancelRasterizationFrames(): void {
+    if (this.rasterizationFrame !== null) {
+      cancelAnimationFrame(this.rasterizationFrame);
+      this.rasterizationFrame = null;
+    }
+  }
+
+  /**
+   * Retarget the text resolution to the on-screen texel density at the
    * current zoom — both directions, quantized by `quantizeTextResolution`
    * so a pure pan (and small zoom jitter within a quantization step) is a
-   * no-op rather than a re-rasterize.
+   * no-op rather than a re-rasterize. Skipped for a text class whose
+   * density is fixed by its font atlas (see {@link supportsDynamicResolution}).
    */
   private applyResolution(): void {
     const text = this.text;
     const ctx = this.sceneCtx;
-    if (!text || !ctx) {
+    if (!text || !ctx || !supportsDynamicResolution(text)) {
       return;
     }
     const wpp = ctx.worldPerPixel();
@@ -193,7 +269,10 @@ function fittedFontSize(
       body,
       new TextStyle({ fontFamily, fontSize: TRIAL_FONT_SIZE, align }),
     );
-    const fitted = fitFontSize(width, height, m.width, m.height);
+    const fitted = fitFontSize(
+      { width, height },
+      { width: m.width, height: m.height, atFontSize: TRIAL_FONT_SIZE },
+    );
     if (fitted !== null) {
       return fitted;
     }

@@ -112,6 +112,7 @@ export {
   type RecordValue,
   type EnumLiteral,
   type Prefixes,
+  type ReplaceableConstraint,
   type Import,
   type SourceLocation,
   type ComponentRefPart,
@@ -124,6 +125,7 @@ export {
   // DiagramLayout (producer output)
   LineShapeSchema,
   moveWithin,
+  connectorPlacementKeywords,
   PolygonShapeSchema,
   RectangleShapeSchema,
   EllipseShapeSchema,
