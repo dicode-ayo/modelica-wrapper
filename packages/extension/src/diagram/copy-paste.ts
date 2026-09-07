@@ -448,13 +448,22 @@ function componentDeclaration(
       ? ""
       : ` ${JSON.stringify(item.comment)}`;
   const constrainedBy = constrainedByClause(item.prefixes);
-  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${constrainedBy}${comment} annotation(${placementClause(item, offset, layer)});`;
+  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)})${constrainedBy};`;
 }
 
 /**
  * The `constrainedby ConstrainingClass(mods)` clause on a constrained
- * `replaceable` — written between the declaration's own modifiers and its
- * comment, matching where OMEdit's `Component::toString` places it. `""` for
+ * `replaceable` — written LAST, after the declaration's own comment and
+ * `annotation(Placement(...))`, never between them. Modelica's grammar gives
+ * a `replaceable` element two independent trailing-comment slots: one on the
+ * component's own declaration (right after its modifiers — where a plain,
+ * non-replaceable component's comment/annotation always goes), and a second,
+ * separate one after `constrainedby`. Writing the component's own comment
+ * and `Placement` into that second slot instead reads them as the
+ * *constraining clause's* comment/annotation, not the component's, so
+ * `element.annotation.Placement` — what `placementFor`
+ * (`omc-client/api/diagram/placement.ts`) reads placement from — comes back
+ * empty and the component drops out of the diagram layout entirely. `""` for
  * an unconstrained (or bare) `replaceable`, where `prefixes.replaceable` is a
  * plain `true` rather than the constraint object.
  */

@@ -267,11 +267,15 @@ end Donor;
 
   it("keeps a constrained replaceable's constrainedby clause and its own Placement discoverable after paste (issue #395)", async () => {
     // The comment and annotation trailing a `constrainedby` clause belong to
-    // the constraining clause per the grammar (that is where
-    // `choicesAllMatching` lives), but OMC reads the component's description
-    // and `Placement` back off them onto the *component*, not onto
-    // `prefixes.replaceable`. Writing them there matches OMEdit's
-    // `Component::toString`.
+    // the *constraining clause* per the grammar (that is where
+    // `choicesAllMatching` lives), not to the component — so the component's
+    // own description and `Placement` sit on the component's declaration,
+    // ahead of `constrainedby`, exactly where a non-replaceable component's
+    // would go. `placementFor` (`omc-client/api/diagram/placement.ts`) reads
+    // placement from the component's own annotation only, so a Placement
+    // sitting after `constrainedby` instead would never reach it, and the
+    // component would never reach `src.components` either.
+    //
     // The declared type is a concrete block (`Gain`) — `SISO` is `partial`
     // and OMC can't instantiate a directly-declared component of a partial
     // type, so `blk` would never reach `src.components` at all. The
@@ -280,9 +284,9 @@ end Donor;
     await client.loadString({
       data: `within ${pkg};
 model ReplaceableDonor
-  replaceable Modelica.Blocks.Math.Gain blk constrainedby
-    Modelica.Blocks.Interfaces.SISO "a replaceable block" annotation(
-      Placement(transformation(extent = {{-20, -20}, {20, 20}})));
+  replaceable Modelica.Blocks.Math.Gain blk "a replaceable block" annotation(
+    Placement(transformation(extent = {{-20, -20}, {20, 20}})))
+    constrainedby Modelica.Blocks.Interfaces.SISO;
   annotation(Diagram(coordinateSystem(extent={{-200,-200},{200,200}})));
 end ReplaceableDonor;
 `,

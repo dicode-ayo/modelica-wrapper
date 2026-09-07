@@ -672,6 +672,48 @@ describe("pasteClipboardItems", () => {
     );
   });
 
+  it("writes constrainedby after the comment/annotation, never between them", async () => {
+    // Modelica gives a replaceable element two independent trailing-comment
+    // slots: one on the component's own declaration (right after its
+    // modifiers), a second after `constrainedby`. Writing the component's own
+    // comment/Placement into the second slot instead reads it as the
+    // *constraining clause's* annotation, not the component's — the
+    // component then drops out of the diagram layout entirely, since
+    // `placementFor` reads placement from the component's own
+    // `element.annotation`, not `prefixes.replaceable.annotation`.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          comment: "a replaceable block",
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { singleState: { $value: "true" } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    const data = client.data();
+    const commentIndex = data.indexOf('"a replaceable block"');
+    const annotationIndex = data.indexOf("annotation(");
+    const constrainedByIndex = data.indexOf("constrainedby");
+    expect(commentIndex).toBeGreaterThan(-1);
+    expect(annotationIndex).toBeGreaterThan(-1);
+    expect(constrainedByIndex).toBeGreaterThan(-1);
+    expect(commentIndex).toBeLessThan(annotationIndex);
+    expect(annotationIndex).toBeLessThan(constrainedByIndex);
+    expect(data).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true);",
+    );
+  });
+
   it("keeps a replaceable declaration's constrainedby clause and its modifier", async () => {
     // A bare `replaceable` word without its constraining clause accepts
     // redeclarations the original refused (issue #395).
@@ -694,7 +736,10 @@ describe("pasteClipboardItems", () => {
       0,
     );
     expect(client.data()).toContain(
-      "replaceable Modelica.Blocks.Math.Gain gain2 constrainedby Modelica.Media.Interfaces.PartialMedium(final singleState=true) annotation",
+      "replaceable Modelica.Blocks.Math.Gain gain2 annotation",
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(final singleState=true);",
     );
   });
 
@@ -722,7 +767,10 @@ describe("pasteClipboardItems", () => {
       0,
     );
     expect(client.data()).toContain(
-      "replaceable Modelica.Blocks.Math.Gain gain2(k = 2) constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true) annotation",
+      "replaceable Modelica.Blocks.Math.Gain gain2(k = 2) annotation",
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true);",
     );
   });
 
@@ -838,7 +886,10 @@ describe("pasteClipboardItems", () => {
       0,
     );
     expect(client.data()).toContain(
-      "replaceable Modelica.Blocks.Math.Gain gain2 constrainedby Modelica.Media.Interfaces.PartialMedium annotation",
+      "replaceable Modelica.Blocks.Math.Gain gain2 annotation",
+    );
+    expect(client.data()).toContain(
+      "constrainedby Modelica.Media.Interfaces.PartialMedium;",
     );
   });
 
