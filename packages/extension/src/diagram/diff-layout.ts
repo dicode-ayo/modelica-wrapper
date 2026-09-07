@@ -73,7 +73,7 @@ export type LayoutEdit =
       componentName: string;
       componentClass: string;
       /**
-       * The whole placement, not its parts. `updateComponent` replaces the
+       * The whole placement, not its parts. `setElementAnnotation` replaces the
        * annotation outright, so every field the declaration had has to be
        * re-emitted — dropping `origin` moves the entity, dropping `visible`
        * un-hides it.
@@ -833,7 +833,7 @@ function isReindexOf(a: string, b: string): boolean {
 }
 
 /**
- * Builds a Modelica `Placement(...)` annotation string for `updateComponent`.
+ * Builds a Modelica `Placement(...)` annotation string for `setElementAnnotation`.
  *
  * `origin` is emitted only when the declaration has one. It adds to the
  * extent rather than replacing it, so a placement that carries both has to

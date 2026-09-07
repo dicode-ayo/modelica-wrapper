@@ -52,12 +52,15 @@ export interface OmcMutation {
  *   its parent's membership, which appears nowhere in the call.
  *   `setCommandLineOptions` names no class at all, yet can change what
  *   instantiation reports. All are rare enough that one extra refresh is cheap.
- * - `{ pos, as }` — argument `pos` holds the affected class name or file path.
+ * - `{ pos, as }` — argument `pos` holds the affected class name, file path, or
+ *   — for `"element"` — a dotted path to an element *inside* a class, whose
+ *   enclosing scope is what changed. Announcing such a path as the class names
+ *   something no cache is keyed by, which reads as silence.
  */
 export type MutationEntry =
   | "readOnly"
   | "coarse"
-  | { readonly pos: number; readonly as: "class" | "file" };
+  | { readonly pos: number; readonly as: "class" | "file" | "element" };
 
 /**
  * Argument positions follow OMC's own signatures, which disagree with
@@ -221,7 +224,7 @@ export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
   getElementModifierValue: "readOnly",
   getElementModifierValues: "readOnly",
   setElementModifierValue: { pos: 0, as: "class" },
-  setElementAnnotation: { pos: 0, as: "class" },
+  setElementAnnotation: { pos: 0, as: "element" },
   setElementType: { pos: 0, as: "class" },
   removeElementModifiers: { pos: 0, as: "class" },
 
@@ -349,11 +352,35 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
   const name = arg === undefined ? undefined : asString(arg);
   if (name === undefined || name === "") return coarseMutation(head.name);
 
-  return {
-    fn: head.name,
-    scope:
-      entry.as === "class"
-        ? { kind: "class", className: name }
-        : { kind: "file", fileName: name },
-  };
+  if (entry.as === "file")
+    return { fn: head.name, scope: { kind: "file", fileName: name } };
+  if (entry.as === "class") {
+    return { fn: head.name, scope: { kind: "class", className: name } };
+  }
+  const scope = enclosingScope(name);
+  return scope === ""
+    ? coarseMutation(head.name)
+    : { fn: head.name, scope: { kind: "class", className: scope } };
+}
+
+/**
+ * `qualified` minus its trailing segment, or `""` when it has only one.
+ *
+ * The split skips a quoted identifier (Modelica spec §2.3.1), which may itself
+ * contain a `.` — `A.'b.c'` encloses to `A`, not to `A.'b`.
+ */
+function enclosingScope(qualified: string): string {
+  let cut = -1;
+  for (let i = 0; i < qualified.length; i++) {
+    const c = qualified[i];
+    if (c === "'") {
+      // Skip to the closing quote so a dot inside it never splits the name.
+      i++;
+      while (i < qualified.length && qualified[i] !== "'") {
+        if (qualified[i] === "\\") i++;
+        i++;
+      }
+    } else if (c === ".") cut = i;
+  }
+  return cut === -1 ? "" : qualified.slice(0, cut);
 }

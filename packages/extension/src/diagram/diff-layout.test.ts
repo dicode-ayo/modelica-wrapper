@@ -300,7 +300,7 @@ describe("diffLayouts", () => {
     });
 
     /**
-     * `updateComponent` replaces the whole annotation, so a counterpart the
+     * `setElementAnnotation` replaces the whole annotation, so a counterpart the
      * edit omits is erased from the user's source. Which keyword each
      * placement belongs under flips with the layout's `kind`, and getting it
      * backwards writes the moved geometry under the view it was not measured
@@ -840,8 +840,8 @@ describe("placementAnnotation", () => {
     ).toBe("Placement(transformation(extent={{-10,-5},{10,5}}, rotation=90))");
   });
 
-  it("re-emits origin and visible, which updateComponent would otherwise drop", () => {
-    // `updateComponent` replaces the whole annotation, so a field left out
+  it("re-emits origin and visible, which the placement write would otherwise drop", () => {
+    // The placement write replaces the whole annotation, so a field left out
     // here is a field the declaration loses on its first move.
     expect(
       placementAnnotation({
