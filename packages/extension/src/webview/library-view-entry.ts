@@ -7,7 +7,8 @@
  * `WebviewLibraryDataSource` bridge. The tree's single root fetch drives the
  * empty / error chrome (via `om-library-root-loaded`) — a webview view gets no
  * `viewsWelcome`, and a second probe fetch would race the tree's own on the one
- * OMC socket. A row double-click opens the class's diagram; a row press-drag
+ * OMC socket. A row double-click opens the class in the editor surface its
+ * restriction routes to (diagram / documentation / source); a row press-drag
  * begins host-mediated placement onto the diagram canvas (HTML5 drag can't
  * cross the webview iframe, so only the class name is relayed — the diagram
  * draws its own ghost). A row right-click opens `<om-context-menu>` with the
@@ -252,8 +253,9 @@ export class OmLibraryViewRoot extends LitElement {
     e: CustomEvent<LibraryEvents["om-library-select"]>,
   ): void => {
     this.vscode.postMessage({
-      type: "openDiagram",
+      type: "openClassView",
       className: e.detail.className,
+      view: e.detail.view,
     });
   };
 

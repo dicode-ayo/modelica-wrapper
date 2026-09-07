@@ -5,7 +5,7 @@
  * The library list / search / icon request+response payloads are shared with
  * the `WebviewLibraryDataSource` bridge — composed from its exported types so
  * bridge and protocol can't drift. This view adds the sidebar-only affordances:
- * opening a diagram on select, the Load-Library empty-state action, the
+ * opening a class view on select, the Load-Library empty-state action, the
  * host-mediated placement gesture, a host-driven reload, and a row's
  * context-menu action — a webview view has no native per-item context menu, so
  * the target row's `LibraryNode` fields travel over this message instead.
@@ -42,12 +42,21 @@ export type ExtensionToLibraryView =
       className: string;
     };
 
+/**
+ * Wire-format mirror of diagram-ui's `LibraryActivationView` — the editor
+ * surface a row activation routes to, decided per restriction by
+ * `activationViewFor` in the webview.
+ */
+export type LibraryActivationView = "diagram" | "documentation" | "source";
+
 export type LibraryViewToExtension =
   | LibraryRequestMessage
   | {
-      // A class row was activated (click / Enter) — open its diagram.
-      type: "openDiagram";
+      // A class row was activated (double-click / Enter) — open the view its
+      // restriction routes to.
+      type: "openClassView";
       className: string;
+      view: LibraryActivationView;
     }
   | {
       // A class row was pressed and dragged toward the canvas. The host relays

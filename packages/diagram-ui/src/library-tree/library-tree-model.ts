@@ -8,6 +8,7 @@
 import { leafName } from "@dicode/modelica-lang-core";
 
 import type {
+  LibraryActivationView,
   LibraryDataSource,
   LibraryClassInfo,
   LibraryClassRestriction,
@@ -59,24 +60,44 @@ export function isExpandable(
 }
 
 /**
- * Restrictions with a diagram worth opening. Opening a package as a diagram
- * wedges the view; a connector or record has no diagram layer to show. Gates
- * select and open.
+ * The editor surface activating a row (double-click / Enter) routes to, by
+ * restriction. Every restriction routes somewhere — activation never refuses a
+ * row:
+ * - `model` / `block` / `class`: diagram view.
+ * - `connector` / `expandable connector`: diagram view too — MSL connectors
+ *   declare both Icon and Diagram layers, and OMEdit opens them the same way.
+ * - `package`: documentation view. Opening a package as a diagram wedges the
+ *   view, so a package never routes there.
+ * - everything else (`record`, `type`, `function`, the `operator` kinds,
+ *   `unknown`): source view — always legible, even with no graphical layer.
  */
-export function isOpenableRestriction(r: LibraryClassRestriction): boolean {
-  return r === "model" || r === "block" || r === "class";
+export function activationViewFor(
+  r: LibraryClassRestriction,
+): LibraryActivationView {
+  switch (r) {
+    case "model":
+    case "block":
+    case "class":
+    case "connector":
+    case "expandable connector":
+      return "diagram";
+    case "package":
+      return "documentation";
+    default:
+      return "source";
+  }
 }
 
 /**
- * Restrictions a diagram can hold as a component. Wider than
- * {@link isOpenableRestriction}: a connector or a record is instantiable even
- * though it has no diagram of its own. Mirrors what OMEdit accepts on a drop
- * (`GraphicsView::addComponent`); OMC itself validates nothing and will write a
- * package in as a component if asked. Gates drag and placement.
+ * Restrictions a diagram can hold as a component. Mirrors what OMEdit accepts
+ * on a drop (`GraphicsView::addComponent`); OMC itself validates nothing and
+ * will write a package in as a component if asked. Gates drag and placement.
  */
 export function isPlaceableRestriction(r: LibraryClassRestriction): boolean {
   return (
-    isOpenableRestriction(r) ||
+    r === "model" ||
+    r === "block" ||
+    r === "class" ||
     r === "connector" ||
     r === "expandable connector" ||
     r === "record"
