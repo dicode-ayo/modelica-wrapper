@@ -348,11 +348,15 @@ export const ModifierSchema = ModifierLazy as unknown as z.ZodType<Modifier>;
  * vendored `getModelInstance.schema.json` also permits a `comment` and an
  * `annotation` on the clause itself (e.g. `choicesAllMatching`); those pass
  * through untyped via `.passthrough()` rather than being named here.
+ *
+ * `modifiers` cannot reject: `scodeModifier` permits `$value` to be a whole
+ * element declaration, whose `dims`/`annotation` carry arrays that `Modifier`
+ * has no branch for, and a rejection here fails the entire instance parse.
  */
 export const ReplaceableConstraintSchema = z
   .object({
     constrainedby: z.string(),
-    modifiers: ModifierSchema.optional(),
+    modifiers: ModifierSchema.optional().catch(undefined),
   })
   .passthrough();
 export type ReplaceableConstraint = z.infer<typeof ReplaceableConstraintSchema>;

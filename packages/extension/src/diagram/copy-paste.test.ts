@@ -698,6 +698,35 @@ describe("pasteClipboardItems", () => {
     );
   });
 
+  it("keeps the declaration's own modifiers and the constraint's modifiers independent", async () => {
+    // `item.modifiers` (the declaration's own, read via getElementModifierNames)
+    // and `prefixes.replaceable.modifiers` (the constraining clause's own) are
+    // two separate sources feeding two separate parenthesized clauses — this
+    // pins that they render side by side rather than merging or duplicating.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          modifiers: [{ path: "k", expr: "2" }],
+          prefixes: {
+            replaceable: {
+              constrainedby: "Modelica.Media.Interfaces.PartialMedium",
+              modifiers: { singleState: { $value: "true" } },
+            },
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "replaceable Modelica.Blocks.Math.Gain gain2(k = 2) constrainedby Modelica.Media.Interfaces.PartialMedium(singleState=true) annotation",
+    );
+  });
+
   it("orders each before final, per Modelica's element-modification-or-replaceable grammar", async () => {
     const client = pasteClient();
     await pasteClipboardItems(
@@ -760,8 +789,9 @@ describe("pasteClipboardItems", () => {
 
   it("drops a null modifier binding rather than writing an invalid `=null`", async () => {
     // `Modifier` includes `null`; `null` is not a Modelica literal, so an
-    // entry with a `null` $value is dropped rather than emitted as `foo=null`
-    // (which would fail OMC's all-or-nothing parse of the whole paste block).
+    // entry that is `null`, or one whose `$value` is, is dropped rather than
+    // emitted as `foo=null` — which would fail OMC's all-or-nothing parse of
+    // the whole paste block.
     const client = pasteClient();
     await pasteClipboardItems(
       client,
@@ -772,7 +802,11 @@ describe("pasteClipboardItems", () => {
           prefixes: {
             replaceable: {
               constrainedby: "Modelica.Media.Interfaces.PartialMedium",
-              modifiers: { foo: null, singleState: { $value: "true" } },
+              modifiers: {
+                foo: null,
+                bar: { $value: null },
+                singleState: { $value: "true" },
+              },
             },
           },
         }),

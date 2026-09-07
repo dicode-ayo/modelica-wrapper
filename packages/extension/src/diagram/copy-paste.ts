@@ -491,8 +491,8 @@ function modifierListText(mod: Modifier | undefined): string {
 /**
  * One entry as `each final name(nested)=value`, or `""` for an entry with
  * nothing writable: a `null` binding (not a Modelica literal), or a
- * redeclare (`$type` present) whose element declaration this modifier tree
- * doesn't carry.
+ * redeclare (`$type` present), whose declaration arrives under `$value` as a
+ * structured `scodeElement` that this does not render back to source.
  */
 function modifierEntryText(name: string, mod: Modifier): string {
   if (mod === null) return "";

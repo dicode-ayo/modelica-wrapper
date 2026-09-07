@@ -267,11 +267,11 @@ end Donor;
 
   it("keeps a constrained replaceable's constrainedby clause and its own Placement discoverable after paste (issue #395)", async () => {
     // A `constrainedby` clause's own trailing comment/annotation shares a
-    // syntax position with the constraining-clause's `choicesAllMatching`
-    // metadata (see `ReplaceableConstraint` in omc-client) — writing the
-    // component's description and `Placement` there, as OMEdit's own
-    // `Component::toString` does, needs confirming it round-trips back onto
-    // the *component*, not only onto `prefixes.replaceable`.
+    // syntax position with the constraining clause's own `choicesAllMatching`
+    // metadata (see `ReplaceableConstraint` in omc-client). The component's
+    // description and `Placement` are written there, as OMEdit's
+    // `Component::toString` does, and read back onto the *component* rather
+    // than onto `prefixes.replaceable`.
     const donor = `${pkg}.ReplaceableDonor`;
     await client.loadString({
       data: `within ${pkg};
@@ -298,13 +298,11 @@ end ReplaceableDonor;
       0,
     );
     expect(result.failed).toEqual([]);
+    expect(result.added).toEqual(["blk1"]);
 
     const { contents } = await client.listFile({ typeName: cls });
     expect(contents).toContain("constrainedby Modelica.Blocks.Interfaces.SISO");
 
-    // The assertion a mocked client can't make: the pasted component's own
-    // Placement is still readable through the normal diagram-layout path,
-    // not stranded under the constraining clause's own annotation.
     const pasted = await fetchDiagramLayout(client, cls);
     const blk = pasted.components["blk1"];
     expect(blk).toBeDefined();
