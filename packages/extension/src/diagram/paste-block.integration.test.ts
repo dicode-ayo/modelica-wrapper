@@ -272,11 +272,15 @@ end Donor;
     // and `Placement` back off them onto the *component*, not onto
     // `prefixes.replaceable`. Writing them there matches OMEdit's
     // `Component::toString`.
+    // The declared type is a concrete block (`Gain`) — `SISO` is `partial`
+    // and OMC can't instantiate a directly-declared component of a partial
+    // type, so `blk` would never reach `src.components` at all. The
+    // constraint itself can still name the partial interface `Gain` satisfies.
     const donor = `${pkg}.ReplaceableDonor`;
     await client.loadString({
       data: `within ${pkg};
 model ReplaceableDonor
-  replaceable Modelica.Blocks.Interfaces.SISO blk constrainedby
+  replaceable Modelica.Blocks.Math.Gain blk constrainedby
     Modelica.Blocks.Interfaces.SISO "a replaceable block" annotation(
       Placement(transformation(extent = {{-20, -20}, {20, 20}})));
   annotation(Diagram(coordinateSystem(extent={{-200,-200},{200,200}})));
