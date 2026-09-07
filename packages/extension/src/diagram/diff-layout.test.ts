@@ -94,7 +94,6 @@ describe("diffLayouts", () => {
       {
         kind: "componentPlacement",
         componentName: "R1",
-        componentClass: "Modelica.Electrical.Resistor",
         transformation: {
           extent: [
             [5, -5],
@@ -130,7 +129,6 @@ describe("diffLayouts", () => {
     expect(diffLayouts(a, b)).toContainEqual({
       kind: "componentPlacement",
       componentName: "R1",
-      componentClass: "Modelica.Electrical.Resistor",
       transformation: {
         extent: [
           [25, -15],
@@ -246,7 +244,6 @@ describe("diffLayouts", () => {
       expect(edits).toContainEqual({
         kind: "componentPlacement",
         componentName: "p",
-        componentClass: "Modelica.Electrical.Interfaces.Pin",
         transformation: {
           extent: [
             [10, -5],
@@ -277,7 +274,6 @@ describe("diffLayouts", () => {
       expect(edits).toContainEqual({
         kind: "componentPlacement",
         componentName: "p",
-        componentClass: "Modelica.Electrical.Interfaces.Pin",
         transformation: {
           extent: [
             [-5, -5],
@@ -350,7 +346,6 @@ describe("diffLayouts", () => {
         expect(diffLayouts(a, b)).toContainEqual({
           kind: "componentPlacement",
           componentName: "p",
-          componentClass: "Modelica.Electrical.Interfaces.Pin",
           transformation: {
             extent: [
               [0, -20],
@@ -373,7 +368,6 @@ describe("diffLayouts", () => {
         expect(diffLayouts(a, b)).toContainEqual({
           kind: "componentPlacement",
           componentName: "p",
-          componentClass: "Modelica.Electrical.Interfaces.Pin",
           transformation: DIAGRAM,
           iconTransformation: {
             extent: [

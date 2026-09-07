@@ -368,6 +368,10 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
  *
  * The split skips a quoted identifier (Modelica spec §2.3.1), which may itself
  * contain a `.` — `A.'b.c'` encloses to `A`, not to `A.'b`.
+ *
+ * `lang-core` exports the same split, but reaching it means depending on that
+ * package's root barrel and the tree-sitter runtime behind it. This package
+ * carries only zeromq and zod, and every consumer would inherit the parser.
  */
 function enclosingScope(qualified: string): string {
   let cut = -1;

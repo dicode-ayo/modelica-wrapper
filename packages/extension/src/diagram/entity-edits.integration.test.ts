@@ -122,9 +122,7 @@ end ${pkg};
 
     const { contents } = await client.listFile({ typeName: cls });
     expect(contents).toContain("extent = {{-130, -10}, {-90, 30}}");
-    // The keyword the drag did not touch has to survive the write. OMC's
-    // `updateComponent` rejects a `Placement` holding both keywords outright,
-    // so a write path routed through it either drops this one or fails.
+    // The keyword the drag did not touch has to survive the write.
     expect(contents).toContain(
       "iconTransformation(extent = {{-60, 60}, {-40, 80}})",
     );

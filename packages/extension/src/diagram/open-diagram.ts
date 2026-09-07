@@ -604,13 +604,10 @@ async function fetchIconInstance(
  * standalone connectors, so their `iconTransformation` placements can be seen
  * and dragged.
  *
- * Reads the full `getModelInstance` rather than the filtered annotation tree
- * `libraryIconSvg` uses. That tree carries no component elements at all —
- * adding `Placement` to the filter does not bring them back — so a layout
- * produced from it has an empty `connectors` map and the editor draws a class's
- * ports nowhere. One instantiation per opened editor is the same cost the
- * diagram editor already pays; the library tree, which fans out over every
- * visible class, keeps the cheap path.
+ * Reads the full `getModelInstance`: the filtered annotation tree
+ * `libraryIconSvg` uses carries no component elements, so a layout produced
+ * from it has an empty `connectors` map. The library tree, which fans out over
+ * every visible class, keeps the cheap call.
  */
 export async function fetchIconLayout(
   client: OmcClient,

@@ -71,7 +71,6 @@ export type LayoutEdit =
   | {
       kind: "componentPlacement";
       componentName: string;
-      componentClass: string;
       /**
        * The whole placement, not its parts. `setElementAnnotation` replaces the
        * annotation outright, so every field the declaration had has to be
@@ -220,7 +219,6 @@ function diffPlacements(
     edits.push({
       kind: "componentPlacement",
       componentName: name,
-      componentClass: after.classRef,
       transformation,
       ...(iconTransformation !== undefined && { iconTransformation }),
     });

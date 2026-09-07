@@ -39,7 +39,6 @@ function mockClient(results: InvokeResult[]): {
 const placement: LayoutEdit = {
   kind: "componentPlacement",
   componentName: "gain",
-  componentClass: "Modelica.Blocks.Math.Gain",
   transformation: {
     extent: [
       [-10, -10],

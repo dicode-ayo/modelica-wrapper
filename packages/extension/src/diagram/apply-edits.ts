@@ -180,10 +180,8 @@ async function applyOne(
   switch (edit.kind) {
     case "componentPlacement":
       // `updateComponent` rejects a `Placement` carrying both `transformation`
-      // and `iconTransformation` — it returns a bare `false` with no
-      // diagnostic, so a connector declaring both keywords cannot be moved
-      // through it at all. `setElementAnnotation` accepts the pair, addressing
-      // the element by its dotted path instead of a class triple.
+      // and `iconTransformation`, answering a bare `false` with no diagnostic.
+      // `setElementAnnotation` takes the pair, addressed by dotted element path.
       assertMutationApplied(
         "setElementAnnotation",
         await client.invoke("setElementAnnotation", {
