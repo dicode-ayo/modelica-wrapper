@@ -29,8 +29,8 @@ flowchart TB
     subgraph HOST["Extension host (Node)"]
         direction TB
         CMD["commands/* — openDiagram, checkModel,<br/>repl, tree, library, package"]
-        PANEL["diagram/panel.ts — DiagramPanel<br/>webview lifecycle + message dispatch"]
-        HANDLERS["diagram/open-diagram.ts — handlers<br/>apply-edits · diff-layout · snapshots ·<br/>unit options · forms · library-source"]
+        PANEL["diagram/diagram-editor-provider.ts<br/>CustomTextEditorProvider + DiagramEditController"]
+        HANDLERS["diagram/open-diagram.ts — handlers<br/>apply-edits · diff-layout · shadow buffer ·<br/>unit options · forms · library-source"]
         OCLIENT["@dicode/omc-client<br/>OmcClient + typed wrappers"]
         CMD --> PANEL --> HANDLERS --> OCLIENT
         DSVG2["diagram-svg (host-side thumbnails)"]
@@ -77,13 +77,14 @@ and it is where all the orchestration lives:
   tree commands, etc. ([commands/](../packages/extension/src/commands))
 - **OmcClient lifecycle** — created lazily on first use, `cd`'d into a per-
   workspace cache dir, disposed on deactivate.
-- **Diagram panel** — `DiagramPanel` ([panel.ts](../packages/extension/src/diagram/panel.ts))
-  owns the `WebviewPanel`, renders its CSP-locked HTML, and dispatches every
-  inbound message.
+- **Diagram editor** — `DiagramEditorProvider`
+  ([diagram-editor-provider.ts](../packages/extension/src/diagram/diagram-editor-provider.ts))
+  is a `CustomTextEditorProvider` bound to `*.mo`. It renders the CSP-locked HTML
+  and hands each inbound message to a `DiagramEditController`, which serializes
+  every gesture through one queue — OMC's socket admits one call at a time.
 - **Handlers** — [open-diagram.ts](../packages/extension/src/diagram/open-diagram.ts)
   wires every gesture to the right `omc-client` calls: layout fetch, edit diffing
-  and application, parameter forms, unit enrichment, snapshot undo, the library
-  data source.
+  and application, parameter forms, unit enrichment, the library data source.
 
 ### 3. `diagram-ui` — the editor (in the webview)
 
@@ -152,7 +153,7 @@ and emits gestures.
 ## Write flow (a diagram edit)
 
 Every mutation follows the same shape: **snapshot → apply granular edits →
-re-read → push fresh layout**.
+re-read → push fresh layout → reflect the source into the buffer**.
 
 ```mermaid
 sequenceDiagram
@@ -166,45 +167,66 @@ sequenceDiagram
     H->>C: listFile + getSourceFile (snapshot)
     C->>O: listFile / getSourceFile
     O-->>C: source text + filename
-    Note over H: push OmcSnapshot onto undo stack
-    loop each edit (ordered: deletes → adds → placements → waypoints)
-        H->>C: updateComponent / deleteComponent /<br/>addConnection / deleteConnection / updateConnection
+    Note over H: hold OmcSnapshot for rollback
+    loop each edit (see the order below)
+        H->>C: setElementAnnotation / deleteComponent /<br/>addConnection / deleteConnection / updateConnection
         C->>O: (mutation)
         O-->>C: { success, diagnostic? }
     end
     alt any edit failed
         H->>C: loadString(snapshot, merge=false)
         C->>O: loadString
-        Note over H: full rollback, discard snapshot
+        Note over H: full rollback, discard the batch
     end
-    H->>C: re-fetch layout (read flow above)
+    H->>C: listFile (canonical source)
+    H->>H: shadow buffer WorkspaceEdit → document dirty
     H->>W: postMessage(layout)
 ```
 
-Edits are **ordered** before applying (deletions first, then adds, placements,
-waypoints) so dependent operations don't trip over each other, and the whole
-batch is atomic: any failure restores the pre-batch snapshot.
+Edits are **ordered** before applying, so dependent operations don't trip over
+each other: connection deletes, component deletes, connection adds, placements,
+then waypoints and vector-port re-indexes. Graphics edits come last and in their
+own order — modifies, deletes, adds, reorders — because they address shapes by
+positional index, and a delete shifts every index after it. The whole batch is
+atomic: any failure restores the pre-batch snapshot.
 
 ## Persistence & undo model
 
 OMC mutates an **in-memory AST**; the `.mo` file is not necessarily written until
-something flushes it. Two mechanisms cover state:
+something flushes it. The editor's `TextDocument` shadows that AST, and three
+mechanisms cover state:
 
-- **Snapshots (undo)** — before each mutating gesture the host captures an
+- **Shadow buffer (dirty state and undo)** — after a gesture mutates OMC, the
+  class's canonical `listFile` source is written back into the `modelica-source:`
+  document as one `WorkspaceEdit`
+  ([shadow-buffer.ts](../packages/extension/src/diagram/shadow-buffer.ts)). That
+  edit is what flips the document dirty and what VSCode's undo history tracks; the
+  editor keeps no edit stack of its own. A write that would re-emit identical
+  source is skipped, so a gesture that changed nothing records no undo step.
+- **Reverse sync** — a change the shadow buffer did not make is foreign: an undo,
+  a redo, or a hand edit in the text view. It is debounced (150 ms), compared
+  against the class, and `loadString`ed back over it when the two differ
+  ([buffer-sync.ts](../packages/extension/src/diagram/buffer-sync.ts)). The
+  comparison matters because announcing a mutation reloads the same document, and
+  that reload arrives looking foreign too.
+- **Batch rollback** — `applyEdits(..., { snapshot: true })`
+  ([apply-edits.ts](../packages/extension/src/diagram/apply-edits.ts)) captures an
   `OmcSnapshot = { className, filename, contents }` via `listFile` +
   `getSourceFile` ([omc-snapshot.ts](../packages/extension/src/diagram/omc-snapshot.ts)),
-  prepending `within <scope>;` for package-nested classes. Undo replays a snapshot
-  with `loadString(..., merge=false)` (full replace, not additive). Snapshots live
-  in a capped FIFO `SnapshotStack`
-  ([snapshot-stack.ts](../packages/extension/src/diagram/snapshot-stack.ts)).
-- **Batch rollback** — `applyEdits(..., { snapshot: true })`
-  ([apply-edits.ts](../packages/extension/src/diagram/apply-edits.ts)) restores the
-  snapshot automatically if any edit in a batch fails, so a partial mutation never
-  reaches the user.
+  prepending `within <scope>;` for package-nested classes, and replays it with
+  `loadString(..., merge=false)` if any edit in a batch fails. Whole-class
+  snapshots sidestep having to implement an inverse for every mutator, at the cost
+  of being coarse.
 
-This is the "OMC-level undo escape hatch" — coarse-grained whole-class snapshots
-rather than fine-grained inverse operations, which sidesteps having to implement
-an inverse for every mutator.
+Saving goes the same way: the `modelica-source:` `FileSystemProvider` takes the
+buffer on `writeFile` and loads it into OMC, so a save and a reverse sync agree on
+what the class is.
+
+**Known defect** — because each reflect rewrites the whole document and each
+announcement rewrites it again, a single undo can produce two document mutations.
+The undo stack then interleaves the user's gestures with reload artifacts, and
+pressing undo repeatedly walks into stale session states
+([#602](https://github.com/dicode-ayo/modelica-wrapper/issues/602)).
 
 ## Sharp edges the design accounts for
 

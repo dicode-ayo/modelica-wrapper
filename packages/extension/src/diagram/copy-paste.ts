@@ -1,4 +1,4 @@
-import { shapeToRecord } from "@dicode/omc-client";
+import { connectorPlacementKeywords, shapeToRecord } from "@dicode/omc-client";
 import type {
   ConnectionEndpoint,
   ConnectorInstance,
@@ -136,34 +136,31 @@ export async function captureClipboardItems(
 }
 
 /**
- * Map a connector's per-view placements onto the clipboard item's shape:
- * `placementClause` re-emits the item's own fields as `iconTransformation`
- * and `diagramPlacement` as `transformation` whenever both are present, so
- * a diagram-kind layout — whose `placement` IS the diagram transformation
- * and whose icon counterpart rides on `iconPlacement` — swaps the two here.
- * With no counterpart the declaration had a single keyword, and the paste
- * writes a single `transformation` back.
+ * Map a connector's per-view placements onto the clipboard item's shape,
+ * whose own fields carry the `iconTransformation` and whose
+ * `diagramPlacement` carries the `transformation` (see `placementClause`).
  *
- * `Placement.visible` sits on the annotation, not on either transformation,
- * and `placementFor` attaches it to the kind-view placement — so it moves
- * with the swap onto the item's own fields.
+ * `Placement.visible` sits on the annotation rather than on either
+ * transformation, and `placementFor` attaches it to the kind-view placement,
+ * so it is re-attached to whichever placement lands on the item's fields.
  */
 function connectorViewPlacements(
   kind: DiagramLayout["kind"],
   connector: ConnectorInstance,
 ): { placement: Placement; diagramPlacement: Placement | undefined } {
-  if (kind === "diagram" && connector.iconPlacement !== undefined) {
-    return {
-      placement:
-        connector.placement.visible === false
-          ? { ...connector.iconPlacement, visible: false }
-          : connector.iconPlacement,
-      diagramPlacement: connector.placement,
-    };
+  const { transformation, iconTransformation } = connectorPlacementKeywords(
+    kind,
+    connector,
+  );
+  if (iconTransformation === undefined) {
+    return { placement: transformation, diagramPlacement: undefined };
   }
   return {
-    placement: connector.placement,
-    diagramPlacement: connector.diagramPlacement,
+    placement:
+      connector.placement.visible === false
+        ? { ...iconTransformation, visible: false }
+        : iconTransformation,
+    diagramPlacement: transformation,
   };
 }
 
@@ -436,8 +433,9 @@ function placementClause(
   const parts: string[] = [];
   if (item.visible === false) parts.push("visible=false");
   const diagram = item.diagramPlacement;
-  // With both, the item's own fields are the icon-view placement — a connector
-  // is read from the icon view, whichever editor is open.
+  // With both, the item's own fields are the icon-view placement
+  // (`connectorViewPlacements` normalizes to that shape whichever view was
+  // copied from).
   //
   // The offset is a drop point in the pasted view's coordinates, so only that
   // view's transformation takes it; the other lives in a different coordinate

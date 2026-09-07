@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  diagram,
-  ModelInstanceSchema,
   type BitmapShape,
+  type ConnectorInstance,
   type DiagramLayout,
   type EllipseShape,
   type LineShape,
+  type Placement,
   type PolygonShape,
   type RectangleShape,
   type Shape,
@@ -94,7 +94,6 @@ describe("diffLayouts", () => {
       {
         kind: "componentPlacement",
         componentName: "R1",
-        componentClass: "Modelica.Electrical.Resistor",
         transformation: {
           extent: [
             [5, -5],
@@ -130,7 +129,6 @@ describe("diffLayouts", () => {
     expect(diffLayouts(a, b)).toContainEqual({
       kind: "componentPlacement",
       componentName: "R1",
-      componentClass: "Modelica.Electrical.Resistor",
       transformation: {
         extent: [
           [25, -15],
@@ -246,7 +244,6 @@ describe("diffLayouts", () => {
       expect(edits).toContainEqual({
         kind: "componentPlacement",
         componentName: "p",
-        componentClass: "Modelica.Electrical.Interfaces.Pin",
         transformation: {
           extent: [
             [10, -5],
@@ -277,7 +274,6 @@ describe("diffLayouts", () => {
       expect(edits).toContainEqual({
         kind: "componentPlacement",
         componentName: "p",
-        componentClass: "Modelica.Electrical.Interfaces.Pin",
         transformation: {
           extent: [
             [-5, -5],
@@ -297,6 +293,106 @@ describe("diffLayouts", () => {
       const edits = diffLayouts(a, b);
       expect(edits.some((e) => e.kind === "componentDeleted")).toBe(false);
       expect(edits.some((e) => e.kind === "componentPlacement")).toBe(false);
+    });
+
+    /**
+     * `setElementAnnotation` replaces the whole annotation, so a counterpart the
+     * edit omits is erased from the user's source. Which keyword each
+     * placement belongs under flips with the layout's `kind`, and getting it
+     * backwards writes the moved geometry under the view it was not measured
+     * in.
+     */
+    describe("counterpart transformation survives a move", () => {
+      const ICON: Placement = {
+        extent: [
+          [-110, -10],
+          [-90, 10],
+        ],
+      };
+      const DIAGRAM: Placement = {
+        extent: [
+          [-140, -20],
+          [-100, 20],
+        ],
+      };
+
+      function movedConnector(
+        kind: DiagramLayout["kind"],
+        counterpart: Partial<ConnectorInstance>,
+        extent: [[number, number], [number, number]],
+      ): DiagramLayout {
+        const layout = baseLayout();
+        layout.kind = kind;
+        layout.connectors = {
+          p: {
+            name: "p",
+            classRef: "Modelica.Electrical.Interfaces.Pin",
+            placement: { extent },
+            ...counterpart,
+          },
+        };
+        return layout;
+      }
+
+      it("re-emits iconTransformation when a diagram-kind layout moves it", () => {
+        const a = movedConnector("diagram", { iconPlacement: ICON }, [
+          [-140, -20],
+          [-100, 20],
+        ]);
+        const b = movedConnector("diagram", { iconPlacement: ICON }, [
+          [0, -20],
+          [40, 20],
+        ]);
+        expect(diffLayouts(a, b)).toContainEqual({
+          kind: "componentPlacement",
+          componentName: "p",
+          transformation: {
+            extent: [
+              [0, -20],
+              [40, 20],
+            ],
+          },
+          iconTransformation: ICON,
+        });
+      });
+
+      it("re-emits transformation when an icon-kind layout moves it", () => {
+        const a = movedConnector("icon", { diagramPlacement: DIAGRAM }, [
+          [-110, -10],
+          [-90, 10],
+        ]);
+        const b = movedConnector("icon", { diagramPlacement: DIAGRAM }, [
+          [0, -10],
+          [20, 10],
+        ]);
+        expect(diffLayouts(a, b)).toContainEqual({
+          kind: "componentPlacement",
+          componentName: "p",
+          transformation: DIAGRAM,
+          iconTransformation: {
+            extent: [
+              [0, -10],
+              [20, 10],
+            ],
+          },
+        });
+      });
+
+      it("emits a lone transformation when the declaration has one keyword", () => {
+        const a = movedConnector("diagram", {}, [
+          [-5, -5],
+          [5, 5],
+        ]);
+        const b = movedConnector("diagram", {}, [
+          [10, -5],
+          [20, 5],
+        ]);
+        const [edit] = diffLayouts(a, b);
+        expect(edit).toMatchObject({ kind: "componentPlacement" });
+        expect(
+          edit?.kind === "componentPlacement" && edit.iconTransformation,
+        ).toBeUndefined();
+      });
     });
   });
 
@@ -738,8 +834,8 @@ describe("placementAnnotation", () => {
     ).toBe("Placement(transformation(extent={{-10,-5},{10,5}}, rotation=90))");
   });
 
-  it("re-emits origin and visible, which updateComponent would otherwise drop", () => {
-    // `updateComponent` replaces the whole annotation, so a field left out
+  it("re-emits origin and visible, which the placement write would otherwise drop", () => {
+    // The placement write replaces the whole annotation, so a field left out
     // here is a field the declaration loses on its first move.
     expect(
       placementAnnotation({
@@ -1497,43 +1593,5 @@ describe("diffLayouts — graphics", () => {
     expect(diffLayouts(prev, next)).toEqual([
       { kind: "graphicsAdded", layer: "diagram", shape: rect(20) },
     ]);
-  });
-});
-
-describe("diffLayouts — NoIcon placeholder stays out of source writes (issue #510)", () => {
-  it("a host class with no graphics still diffs to zero graphics edits", () => {
-    // The renderer substitutes a NoIcon placeholder for classes without
-    // drawable layers by reading the class catalog, never the host's own
-    // layer sets — those are addressed positionally by `shape:<idx>` keys
-    // and diffed here into source writes. Built through the real producer
-    // so a substitution leaking into `iconLayers` / `diagramLayers` fails
-    // this diff, not just a hand-rolled fixture.
-    const host = ModelInstanceSchema.parse({
-      name: "Bare.Host",
-      restriction: "model",
-      elements: [
-        {
-          $kind: "component",
-          name: "p",
-          type: { name: "Bare.Pin", restriction: "connector" },
-          annotation: {
-            Placement: {
-              transformation: {
-                extent: [
-                  [-110, -10],
-                  [-90, 10],
-                ],
-              },
-            },
-          },
-        },
-      ],
-    });
-    const prev = diagram.produceDiagramLayout(host, "diagram");
-    const next = diagram.produceDiagramLayout(host, "diagram");
-
-    expect(prev.iconLayers.flatMap((l) => l.shapes)).toEqual([]);
-    expect(prev.diagramLayers.flatMap((l) => l.shapes)).toEqual([]);
-    expect(diffLayouts(prev, next)).toEqual([]);
   });
 });

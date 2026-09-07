@@ -443,7 +443,9 @@ describe("resolveDiagramEditor: render mode", () => {
     await flush();
     fireReady();
 
-    expect(invokedFns).toContain("getModelInstanceAnnotation"); // icon path
+    // The icon editor reads the full instance: the annotation-filtered call
+    // carries no components, so the class's connectors would be missing.
+    expect(invokedFns).toEqual(["getModelInstance"]);
     const msg = posted[0];
     expect(msg?.type).toBe("init");
     if (msg?.type === "init") expect(msg.layout.kind).toBe("icon");
@@ -614,8 +616,8 @@ function makeEditClient(opts?: {
   /** The class's canonical source, read per call so a test can move it. */
   listedSource?: () => string;
   instance?: ModelInstance;
-  /** Make OMC refuse every `updateComponent`, so the batch rolls back. */
-  updateComponentFails?: boolean;
+  /** Make OMC refuse every placement write, so the batch rolls back. */
+  placementWriteFails?: boolean;
   /** Fires as each call is dispatched, to interleave a message mid-apply. */
   onInvoke?: (fn: string) => void;
   setElementTypeSuccess?: boolean;
@@ -676,10 +678,10 @@ function makeEditClient(opts?: {
         if (input !== undefined) graphicsWrites.push(input);
         return Promise.resolve({ success: true });
       }
-      if (fn === "updateComponent" && opts?.updateComponentFails) {
+      if (fn === "setElementAnnotation" && opts?.placementWriteFails) {
         return Promise.resolve({ success: false });
       }
-      // updateComponent / deleteComponent / addConnection / ... report success.
+      // setElementAnnotation / deleteComponent / addConnection / ... report success.
       return Promise.resolve({ success: true });
     }),
     getClassInformation: vi.fn((input: { typeName: string }) => {
@@ -935,7 +937,7 @@ describe("DiagramEditController: forward write path", () => {
       basedOn: 1,
     });
 
-    expect(invoked).toContain("updateComponent");
+    expect(invoked).toContain("setElementAnnotation");
     expect(listedTypes).toContain("Pkg.M");
     expect(writes).toEqual([LISTED_SOURCE]); // dirty state is VSCode-managed
   });
@@ -1543,7 +1545,7 @@ describe("DiagramEditController: forward write path", () => {
     await drain();
 
     expect(posted.filter((m) => m.type === "error")).toEqual([]);
-    expect(invoked).toContain("updateComponent");
+    expect(invoked).toContain("setElementAnnotation");
     controller.dispose();
   });
 
@@ -1672,7 +1674,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await Promise.all(reports);
     await drain();
 
-    expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(1);
+    expect(invoked.filter((f) => f === "setElementAnnotation")).toHaveLength(1);
     // And nothing said back: the webview is already showing what the class
     // now holds, so a settle could only arrive late enough to land on a
     // gesture that has moved past it.
@@ -1818,7 +1820,7 @@ describe("DiagramEditController: reconciling reports", () => {
       basedOn: 1,
     });
 
-    expect(invoked).toContain("updateComponent");
+    expect(invoked).toContain("setElementAnnotation");
     controller.dispose();
   });
 
@@ -1843,7 +1845,7 @@ describe("DiagramEditController: reconciling reports", () => {
     });
     await drain();
 
-    expect(invoked).not.toContain("updateComponent");
+    expect(invoked).not.toContain("setElementAnnotation");
     expect(posted.some((m) => m.type === "error")).toBe(true);
     // The webview moved it optimistically; nothing else would put it back.
     expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
@@ -1857,10 +1859,10 @@ describe("DiagramEditController: reconciling reports", () => {
     // the edit landing at the position before last.
     let interleave: (() => void) | undefined;
     const { client, invoked } = makeEditClient({
-      updateComponentFails: true,
+      placementWriteFails: true,
       instance: instanceWithComponent("gain1", AT(-10)),
       onInvoke: (fn) => {
-        if (fn !== "updateComponent") return;
+        if (fn !== "setElementAnnotation") return;
         const fire = interleave;
         interleave = undefined;
         fire?.();
@@ -1889,7 +1891,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await drain();
 
     expect(posted.some((m) => m.type === "error")).toBe(true);
-    expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(2);
+    expect(invoked.filter((f) => f === "setElementAnnotation")).toHaveLength(2);
     // Still one settle: the first was withheld behind the queued report.
     expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
     // The snapshot put the class back byte for byte, so nothing reached the
@@ -2002,7 +2004,7 @@ describe("DiagramEditController: stale-base reconcile (issue #408)", () => {
     await drain();
 
     // gain1's own move still lands...
-    expect(invoked).toContain("updateComponent");
+    expect(invoked).toContain("setElementAnnotation");
     // ...but gain2 is not read as a user deletion just because the report
     // doesn't mention it.
     expect(invoked).not.toContain("deleteComponent");
@@ -2595,10 +2597,6 @@ describe("DiagramEditController: icon mode", () => {
       op: { kind: "add" },
     });
     expect(writes).toContain(LISTED_SOURCE); // dirty
-    // Mode-driven re-fetch: icon mode re-reads via the annotation-filtered call,
-    // so prevLayout stays an icon layout and subsequent draws keep the icon
-    // field (a diagram-mode re-fetch would read getModelInstance instead).
-    expect(invoked).toContain("getModelInstanceAnnotation");
   });
 
   it("edits an icon-layer shape via the shape modal and reflects", async () => {
