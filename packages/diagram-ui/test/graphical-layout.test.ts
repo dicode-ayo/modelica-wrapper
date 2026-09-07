@@ -71,6 +71,7 @@ describe("<om-graphical-layout>", () => {
                 [100, 20],
               ],
               textString: "reference speed",
+              fontSize: 0,
             },
           ],
         },
