@@ -83,8 +83,8 @@ describe("getModelInstance: response handling", () => {
   it("parses a class whose constrained-replaceable carries an array-bearing modifier (a redeclare's dims)", async () => {
     // A redeclare's `$value` (`scodeModifier`) can carry a `scodeElement`
     // whose `dims`/`annotation` are arrays — `Modifier` has no branch for
-    // that, so `ReplaceableConstraintSchema.modifiers` degrades it to
-    // `undefined` (`.catch()`) rather than failing this whole parse.
+    // that, so `ReplaceableConstraintSchema.modifiers` (`DegradingModifierSchema`)
+    // drops just the array rather than failing this whole parse.
     const { ctx } = stubCtx(
       quote(
         JSON.stringify({
