@@ -342,21 +342,48 @@ const ModifierLazy = z.lazy(() =>
 export const ModifierSchema = ModifierLazy as unknown as z.ZodType<Modifier>;
 
 /**
+ * Like {@link ModifierSchema}, but a record degrades per key instead of
+ * failing the whole tree: `scodeModifier` permits an entry's `$value` to be
+ * a whole element declaration, whose `dims`/`annotation` carry arrays that
+ * `Modifier` has no branch for, and `z.record` fails atomically on one bad
+ * value — a `.catch()` over the whole field would then drop every sibling
+ * key right along with it. Recursing through this schema (rather than
+ * {@link ModifierSchema}) at every level means only the array itself is
+ * dropped from its immediate parent, at whatever depth it occurs, leaving
+ * the surrounding structure — sibling keys, and any non-array fields of the
+ * same redeclare entry — intact. Used where a rejection here would fail the
+ * entire instance parse (`ReplaceableConstraintSchema.modifiers`); every
+ * other `modifiers` site still uses {@link ModifierSchema} directly.
+ */
+const DegradingModifierSchema: z.ZodType<Modifier> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.record(z.string(), z.unknown()).transform((rec) => {
+      const out: Record<string, Modifier> = {};
+      for (const [key, value] of Object.entries(rec)) {
+        const parsed = DegradingModifierSchema.safeParse(value);
+        if (parsed.success) out[key] = parsed.data;
+      }
+      return out;
+    }),
+  ]),
+);
+
+/**
  * The constraining clause of a constrained `replaceable` — `prefixes.replaceable`
  * carries this instead of a bare `true` when the declaration has one (see
  * `PrefixesSchema.replaceable`). `definitions.replaceablePrefix.oneOf[1]` in the
  * vendored `getModelInstance.schema.json` also permits a `comment` and an
  * `annotation` on the clause itself (e.g. `choicesAllMatching`); those pass
  * through untyped via `.passthrough()` rather than being named here.
- *
- * `modifiers` cannot reject: `scodeModifier` permits `$value` to be a whole
- * element declaration, whose `dims`/`annotation` carry arrays that `Modifier`
- * has no branch for, and a rejection here fails the entire instance parse.
  */
 export const ReplaceableConstraintSchema = z
   .object({
     constrainedby: z.string(),
-    modifiers: ModifierSchema.optional().catch(undefined),
+    modifiers: DegradingModifierSchema.optional(),
   })
   .passthrough();
 export type ReplaceableConstraint = z.infer<typeof ReplaceableConstraintSchema>;
