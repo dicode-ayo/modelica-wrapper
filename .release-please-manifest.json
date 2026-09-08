@@ -1,11 +1,11 @@
 {
-  "packages/extension": "0.0.3",
-  "packages/diagram-svg": "0.0.2",
-  "packages/diagram-ui": "0.0.3",
-  "packages/omc-client": "0.0.3",
-  "packages/omc-bootstrap": "0.0.1",
-  "packages/lang-core": "0.0.3",
-  "packages/completion": "0.0.2",
-  "packages/result-ui": "0.0.2",
-  "packages/ui-common": "0.0.3"
+  "packages/extension": "0.0.4",
+  "packages/diagram-svg": "0.0.3",
+  "packages/diagram-ui": "0.0.4",
+  "packages/omc-client": "0.0.4",
+  "packages/omc-bootstrap": "0.0.2",
+  "packages/lang-core": "0.0.4",
+  "packages/completion": "0.0.3",
+  "packages/result-ui": "0.0.3",
+  "packages/ui-common": "0.0.4"
 }
