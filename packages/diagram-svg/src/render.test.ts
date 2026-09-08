@@ -111,75 +111,48 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).toContain('ry="25"');
   });
 
-  it("borderPattern Raised replaces the outline with a light/dark bevel frame", () => {
-    const svg = renderIconLayersToSvg([
-      makeLayer("Test.Raised", [
-        {
-          kind: "rectangle",
-          extent: [
-            [-50, -25],
-            [50, 25],
-          ],
-          lineColor: [0, 0, 127],
-          fillColor: [200, 100, 40],
-          fillPattern: "Solid",
-          borderPattern: "Raised",
-        } satisfies RectangleShape,
-      ]),
-    ]);
-    // The bevel stands in for the pen: no solid lineColor outline.
-    expect(svg).not.toContain('stroke="rgb(0,0,127)"');
-    expect(svg).toContain("<rect");
-    expect(svg).toContain('stroke="none"');
-    // Qt palette tones from the face color: lighter(150) top/left,
-    // darker(200) bottom/right.
-    expect(svg).toContain(
-      'points="-50,-25 -50,25 50,25" fill="none" stroke="rgb(255,156,96)"',
-    );
-    expect(svg).toContain(
-      'points="50,25 50,-25 -50,-25" fill="none" stroke="rgb(100,50,20)"',
-    );
-  });
+  it.each([undefined, 1, 10])(
+    "renders an explicit lineThickness literally at lineThicknessScale %s",
+    (lineThicknessScale) => {
+      const svg = renderIconLayersToSvg(
+        [
+          makeLayer("Test.Thick", [
+            {
+              kind: "rectangle",
+              extent: [
+                [-100, -40],
+                [100, 40],
+              ],
+              lineColor: [0, 0, 127],
+              lineThickness: 5,
+            } satisfies RectangleShape,
+          ]),
+        ],
+        { lineThicknessScale },
+      );
+      // The canvas primitives draw this annotation at 5 too; scaling
+      // here would put the two renderers apart on the same shape.
+      expect(svg).toContain('stroke-width="5"');
+    },
+  );
 
-  it("borderPattern Sunken swaps the bevel tones", () => {
-    const svg = renderIconLayersToSvg([
-      makeLayer("Test.Sunken", [
-        {
-          kind: "rectangle",
-          extent: [
-            [-50, -25],
-            [50, 25],
-          ],
-          fillColor: [200, 100, 40],
-          fillPattern: "Solid",
-          borderPattern: "Sunken",
-        } satisfies RectangleShape,
-      ]),
-    ]);
-    expect(svg).toContain(
-      'points="-50,-25 -50,25 50,25" fill="none" stroke="rgb(100,50,20)"',
+  it("scales only the spec default when lineThickness is omitted", () => {
+    const svg = renderIconLayersToSvg(
+      [
+        makeLayer("Test.Default", [
+          {
+            kind: "rectangle",
+            extent: [
+              [-50, -25],
+              [50, 25],
+            ],
+            lineColor: [0, 0, 0],
+          } satisfies RectangleShape,
+        ]),
+      ],
+      { lineThicknessScale: 4 },
     );
-    expect(svg).toContain(
-      'points="50,25 50,-25 -50,-25" fill="none" stroke="rgb(255,156,96)"',
-    );
-  });
-
-  it("borderPattern None keeps the plain outline", () => {
-    const svg = renderIconLayersToSvg([
-      makeLayer("Test.NoBevel", [
-        {
-          kind: "rectangle",
-          extent: [
-            [-50, -25],
-            [50, 25],
-          ],
-          lineColor: [0, 0, 127],
-          borderPattern: "None",
-        } satisfies RectangleShape,
-      ]),
-    ]);
-    expect(svg).toContain('stroke="rgb(0,0,127)"');
-    expect(svg).not.toContain("<polyline");
+    expect(svg).toContain('stroke-width="5"');
   });
 
   it("omits rx/ry for a zero or missing radius", () => {
@@ -262,29 +235,6 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).toContain('stroke="rgb(255,0,0)"');
     expect(svg).toContain('fill="none"');
     expect(svg).toContain('stroke-dasharray="8 4"');
-    // Explicit `thickness: 2` × default `lineThicknessScale: 10` = 20.
-    // The scale applies uniformly to spec-default AND explicit values
-    // so the relative weight of one shape vs another stays intact.
-    expect(svg).toContain('stroke-width="20"');
-  });
-
-  it("lineThicknessScale: 1 renders strokes at the raw annotation values", () => {
-    const svg = renderIconLayersToSvg(
-      [
-        makeLayer("Test.Wire", [
-          {
-            kind: "line",
-            points: [
-              [0, 0],
-              [10, 10],
-            ],
-            color: [0, 0, 0],
-            thickness: 2,
-          },
-        ]),
-      ],
-      { lineThicknessScale: 1 },
-    );
     expect(svg).toContain('stroke-width="2"');
   });
 
@@ -292,7 +242,6 @@ describe("renderIconLayersToSvg", () => {
     // SPEC_DEFAULT_THICKNESS = 0.25 × 5 (lifted from the literal
     // Modelica default so unspecified strokes stay legible at typical
     // zoom). DEFAULT_LINE_THICKNESS_SCALE = 10 then multiplies it.
-    // The multiplier also applies to explicit annotation values.
     const svg = renderIconLayersToSvg([
       makeLayer("Test.Wire", [
         {

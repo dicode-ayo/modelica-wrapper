@@ -28,7 +28,7 @@
  *    Sphere ARE handled via gradient defs (see pattern.ts).
  */
 
-import { bevelEdges, colorToCss, type BevelEdge } from "./color.js";
+import { colorToCss } from "./color.js";
 // Sub-path import: the evaluator subtree only, so the browser bundles
 // this renderer lands in don't drag the OMC transport along.
 import { expressionToString } from "@dicode/omc-client/eval";
@@ -84,15 +84,13 @@ export interface RenderOptions {
    */
   expandViewBoxToShapes?: boolean | undefined;
   /**
-   * Multiplier applied to every `stroke-width` (the bumped
-   * spec-default fallback AND explicit `lineThickness` annotations).
-   * Modelica thicknesses are in icon coordinate units; at the
-   * canonical `[-100,100]` extent rendered at ~200 CSS pixels they
-   * produce hair-thin strokes that disappear on high-density
-   * displays. Default `10` keeps strokes legible at typical zoom
-   * while still preserving the relative weights modellers intend.
+   * Multiplier applied to the spec-default stroke width used when a
+   * shape omits `thickness` / `lineThickness`. Modelica's `0.25` icon
+   * units render hair-thin at the canonical `[-100,100]` extent, so the
+   * fallback is lifted to stay legible; default `10`.
    *
-   * Pass `1` to render at the literal annotation thickness.
+   * An explicit annotation thickness is never multiplied — see
+   * {@link scaledThickness}.
    */
   lineThicknessScale?: number | undefined;
 }
@@ -101,10 +99,9 @@ const DEFAULT_LINE_THICKNESS_SCALE = 10;
 /**
  * Fallback stroke width when a shape's annotation omits `thickness` /
  * `lineThickness`. Modelica's spec default is `0.25` icon units, but
- * that renders as a hair-thin near-invisible line at typical zoom. We
- * lift the fallback to `0.25 × 5 = 1.25` so unspecified strokes stay
- * legible. Explicit annotation values are NOT touched here — they
- * only get the uniform `lineThicknessScale` multiplier.
+ * that renders as a hair-thin near-invisible line at typical zoom, so
+ * the fallback is lifted to `0.25 × 5 = 1.25` before
+ * `lineThicknessScale` is applied on top.
  */
 const SPEC_DEFAULT_THICKNESS = 0.25 * 5;
 
@@ -417,14 +414,15 @@ function renderShapeBody(shape: Shape, ctx: RenderContext): string {
 }
 
 /**
- * Apply the user's `lineThicknessScale` to an annotation's
- * (explicit-or-default) stroke width. Modelica's spec default of
- * `0.25` icon units is too thin on most displays — see
- * `RenderOptions.lineThicknessScale` for why. Defaults to `2× spec`.
+ * Stroke width for an annotation's `thickness` / `lineThickness`.
+ *
+ * An explicit value is a modelling decision and renders literally, so
+ * this renderer agrees with `@dicode/diagram-ui`'s canvas primitives on
+ * the same annotation. `lineThicknessScale` lifts only the omitted-value
+ * fallback, which is the case the multiplier exists for.
  */
 function scaledThickness(raw: number | undefined, ctx: RenderContext): number {
-  const base = raw ?? SPEC_DEFAULT_THICKNESS;
-  return base * ctx.lineThicknessScale;
+  return raw ?? SPEC_DEFAULT_THICKNESS * ctx.lineThicknessScale;
 }
 
 /**
@@ -472,32 +470,20 @@ function renderPolygon(s: PolygonShape, ctx: RenderContext): string {
 
 // ---- rectangle ----
 
+/**
+ * `borderPattern` is decoded and round-tripped but never drawn: OMEdit
+ * paints the `lineColor` outline for every value, and a shaded bevel in
+ * its place drops the outline the same annotation asks for.
+ */
 function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const { x, y, width, height } = extentToRect(s.extent);
+  const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
   const thickness = scaledThickness(s.lineThickness, ctx);
-  const r = clampCornerRadius(s.radius, width, height);
-  const radiusAttr = r > 0 ? ` rx="${r}" ry="${r}"` : "";
-  const bevel = bevelEdges(
-    { x, y, width, height },
-    s.borderPattern,
-    s.fillColor,
-  );
-  if (bevel) {
-    // `borderPattern` asks for a shaded bevel, not an outline — the
-    // `lineColor` stroke is replaced by two-tone edge polylines
-    // (`bevelEdges` holds the shared rule).
-    const edge = (e: BevelEdge): string =>
-      `<polyline points="${pointsToAttr(e.points)}" fill="none" stroke="${colorToCss(e.color)}" stroke-width="${thickness}"/>`;
-    return [
-      `<rect x="${x}" y="${y}" width="${width}" height="${height}"${radiusAttr} fill="${fill}" stroke="none"/>`,
-      edge(bevel.topLeft),
-      edge(bevel.bottomRight),
-    ].join("");
-  }
-  const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
+  const r = clampCornerRadius(s.radius, width, height);
+  const radiusAttr = r > 0 ? ` rx="${r}" ry="${r}"` : "";
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}"${radiusAttr} fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
 }
 
