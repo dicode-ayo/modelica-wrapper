@@ -1,6 +1,6 @@
 {
   "name": "@dicode/modelica-lang-core",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Pure Modelica cursor classification + semantic resolution. No VSCode dependency.",
   "type": "module",
   "main": "./src/index.ts",

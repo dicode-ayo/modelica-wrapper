@@ -1,6 +1,6 @@
 {
   "name": "@dicode/diagram-ui",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Lit + PixiJS custom elements (<om-*>) for the Modelica graphical layout editor. Loaded inside the VSCode extension's webview.",
   "type": "module",
   "main": "./src/index.ts",

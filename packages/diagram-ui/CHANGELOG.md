@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.0.4](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-ui-v0.0.3...@dicode/diagram-ui-v0.0.4) (2026-09-08)
+
+
+### Features
+
+* **diagram-ui:** switchable Pixi text backend, canvas renderer fallback, mirrored-text fix ([#593](https://github.com/dicode-ayo/modelica-wrapper/issues/593)) ([91eb73f](https://github.com/dicode-ayo/modelica-wrapper/commit/91eb73f61e503741ec53e994cea129b7e85a06f7))
+* **library-tree:** route activation per restriction instead of refusing non-class rows ([#554](https://github.com/dicode-ayo/modelica-wrapper/issues/554)) ([6f3fc0b](https://github.com/dicode-ayo/modelica-wrapper/commit/6f3fc0b881a0d91984dff4046e0c2cf79c8df579))
+
+
+### Bug Fixes
+
+* **deps:** update dependency [@awesome](https://github.com/awesome).me/webawesome to ^3.12.0 ([#526](https://github.com/dicode-ayo/modelica-wrapper/issues/526)) ([224c673](https://github.com/dicode-ayo/modelica-wrapper/commit/224c673af470ba1834ba43cdae114cf982692361))
+* **deps:** update dependency @lit/context to ^1.1.6 ([#519](https://github.com/dicode-ayo/modelica-wrapper/issues/519)) ([f7951b0](https://github.com/dicode-ayo/modelica-wrapper/commit/f7951b02acd6fdccae778bf5c0a732ad2a99f317))
+* **deps:** update dependency lit to ^3.3.3 ([#521](https://github.com/dicode-ayo/modelica-wrapper/issues/521)) ([a120e52](https://github.com/dicode-ayo/modelica-wrapper/commit/a120e525d86f57562052e8f239c7654394df811d))
+* **deps:** update dependency pixi.js to ^8.20.1 ([#527](https://github.com/dicode-ayo/modelica-wrapper/issues/527)) ([0f32d4a](https://github.com/dicode-ayo/modelica-wrapper/commit/0f32d4aba3687b3738d5bdf928f6d2b8c332f692))
+* **diagram:** floor strokes in screen space and render lineThickness literally ([#557](https://github.com/dicode-ayo/modelica-wrapper/issues/557)) ([905f502](https://github.com/dicode-ayo/modelica-wrapper/commit/905f5021c685aa9ecb1225b0d472eebabc8f57e4)), closes [#511](https://github.com/dicode-ayo/modelica-wrapper/issues/511)
+* **diagram:** keep edge hit bands from stealing connector picks at endpoints ([#556](https://github.com/dicode-ayo/modelica-wrapper/issues/556)) ([69ebe19](https://github.com/dicode-ayo/modelica-wrapper/commit/69ebe19952f795239f978ffc04c4fe5958a91e2c))
+* **diagram:** let standalone connectors move; connect from the port disc ([#509](https://github.com/dicode-ayo/modelica-wrapper/issues/509)) ([#555](https://github.com/dicode-ayo/modelica-wrapper/issues/555)) ([535048f](https://github.com/dicode-ayo/modelica-wrapper/commit/535048ff3a610a3d6ab003f38c10701fd6b12d24))
+* **diagram:** render standalone connectors and keep both placement keywords ([c54338f](https://github.com/dicode-ayo/modelica-wrapper/commit/c54338f6be6af82f71fe457f733a1891aac0923c)), closes [#510](https://github.com/dicode-ayo/modelica-wrapper/issues/510) [#516](https://github.com/dicode-ayo/modelica-wrapper/issues/516)
+* **diagram:** report parameter-field focus from the panel that owns it ([#585](https://github.com/dicode-ayo/modelica-wrapper/issues/585)) ([6e4f625](https://github.com/dicode-ayo/modelica-wrapper/commit/6e4f625a8e8a2d94d5e48b2fe60abaa43370d05e))
+* **diagram:** size text to its extent and stop building labels at fontSize 0 ([#560](https://github.com/dicode-ayo/modelica-wrapper/issues/560)) ([95e0d7a](https://github.com/dicode-ayo/modelica-wrapper/commit/95e0d7a48667a2fa2cea886fc95161d12289f579))
+
+
+### Tests
+
+* measure coverage with Istanbul across the workspace ([#518](https://github.com/dicode-ayo/modelica-wrapper/issues/518)) ([c96d600](https://github.com/dicode-ayo/modelica-wrapper/commit/c96d600376302606a5b44657e9cfebc675a5deb2))
+
 ## [0.0.3](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-ui-v0.0.2...@dicode/diagram-ui-v0.0.3) (2026-08-29)
 
 
