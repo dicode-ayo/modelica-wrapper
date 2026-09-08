@@ -11,16 +11,7 @@ import {
   type ResultTextDocument,
 } from "./result-view-document.js";
 
-vi.mock("../logger.js", () => ({
-  log: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    show: vi.fn(),
-    dispose: vi.fn(),
-  },
-}));
+vi.mock("../logger.js", () => import("../../test-support/logger-mock.js"));
 
 function emptyDoc(): ResultTextDocument {
   return {

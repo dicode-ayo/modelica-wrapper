@@ -1,16 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DiagramLayout, PortDef, Value } from "@dicode/omc-client";
 
-vi.mock("../logger.js", () => ({
-  log: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    show: vi.fn(),
-    dispose: vi.fn(),
-  },
-}));
+vi.mock("../logger.js", () => import("../../test-support/logger-mock.js"));
 
 const {
   candidateCoversPorts,
