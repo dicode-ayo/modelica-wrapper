@@ -23,6 +23,7 @@
 import type {
   ComponentElement,
   ConnectionNode,
+  Expression,
   ModelInstance,
   RecordValue,
 } from "../../_shared/modelInstance.js";
@@ -45,6 +46,11 @@ import type {
   TextShape,
 } from "../../_shared/diagramLayout.js";
 import { decodeShape } from "./shapes.js";
+import { scopeForInstance } from "./eval-scope.js";
+import {
+  evaluateExpression,
+  type EvalScope,
+} from "../../eval/expression-evaluator.js";
 import {
   counterpartPlacementFor,
   flattenCref,
@@ -68,21 +74,23 @@ import {
 
 /**
  * Decide whether a component or port should appear in the layout given
- * its `condition` field. OMC's `getModelInstance` pre-reduces every
- * conditional predicate against the host's parameter modifiers before
- * serialization — Modelica spec §4.4.5 requires `if`-conditions to be
- * parameter-expressible, so OMC can always evaluate them. The two
- * shapes the interactive RPC actually emits:
+ * its `condition` field, evaluated against the class `scope` it's declared
+ * in. OMC's `getModelInstance` pre-reduces conditional predicates against
+ * the host's parameter modifiers before serialization in the cases
+ * checked, so the interactive RPC mostly emits one of two shapes:
  *
  *   `condition: false`              — bare boolean literal
  *   `condition: { binding: false }` — boolean inside OMC's Value wrapper
  *
- * Anything else (undefined, unreduced AST that OMC couldn't fold, an
- * unexpected shape) defaults to "visible". That preserves the
- * pre-feature behaviour and matches the form-side Dialog.enable
- * fallback policy.
+ * Nothing guarantees pre-reduction always happens, so an object shaped
+ * like an unreduced `Expression` AST (has `$kind`, not the `{ binding }`
+ * wrapper) is evaluated instead of assumed away — same "consolidate on one
+ * evaluator" reasoning as the graphic-field decoding in `shapes.ts`.
+ * `undefined`/`null` and anything the evaluator can't resolve to a boolean
+ * default to "visible", matching the form-side Dialog.enable fallback
+ * policy.
  */
-function isConditionTrue(condition: unknown): boolean {
+function isConditionTrue(condition: unknown, scope: EvalScope): boolean {
   if (condition === undefined || condition === null) return true;
   if (typeof condition === "boolean") return condition;
   if (
@@ -91,6 +99,16 @@ function isConditionTrue(condition: unknown): boolean {
     typeof (condition as { binding: unknown }).binding === "boolean"
   ) {
     return (condition as { binding: boolean }).binding;
+  }
+  if (
+    typeof condition === "object" &&
+    condition !== null &&
+    "$kind" in condition
+  ) {
+    const evaluated = evaluateExpression(condition as Expression, scope, {
+      fallback: true,
+    });
+    return typeof evaluated === "boolean" ? evaluated : true;
   }
   return true;
 }
@@ -204,10 +222,11 @@ function collectLayers(
     const graphics = primitivesVisible ? graphicsForKind(klass, kind) : [];
     const cs = coordinateSystemForKind(klass, kind);
     if (graphics.length === 0 && !cs) continue;
+    const scope = scopeForInstance(klass);
     const shapes: Shape[] = [];
     for (const g of graphics) {
       try {
-        shapes.push(decodeShape(g));
+        shapes.push(decodeShape(g, scope));
       } catch (err) {
         // Re-throw with context so the bad shape's path is identifiable
         // in fixture testing. Decoder errors already include the offending
@@ -244,11 +263,12 @@ function collectLayers(
 function collectLabels(mi: ModelInstance): LabelLayout[] {
   const out: LabelLayout[] = [];
   const graphics = mi.annotation?.Diagram?.graphics ?? [];
+  const scope = scopeForInstance(mi);
   for (const g of graphics) {
     if (g.name !== "Text") continue;
     let shape: Shape;
     try {
-      shape = decodeShape(g);
+      shape = decodeShape(g, scope);
     } catch {
       // A malformed label shouldn't kill the whole layout; skip it
       // silently here (the same shape, if it's in `diagramLayers`,
@@ -487,11 +507,13 @@ function instanceFromSubComponent(
   // but emits it in BOTH shapes — a bare `false` AND the wrapped
   // `{ binding: false }` Value form. Route the check through
   // `isConditionTrue` (issue #76, item 5) so both are gated, matching the
-  // host-level component gating. An unresolved Expression AST defaults to
-  // "visible" — same "default to visible" policy as the host path.
+  // host-level component gating. The port's condition is declared inside
+  // the sub-component's own class, so it's evaluated against that class's
+  // scope, not the outer host's.
+  const portScope = scopeForInstance(el.type);
   const hiddenPorts: string[] = [];
   for (const { element } of walkConnectors(el.type)) {
-    if (!isConditionTrue(element.condition)) {
+    if (!isConditionTrue(element.condition, portScope)) {
       hiddenPorts.push(element.name);
     }
   }
@@ -724,11 +746,12 @@ export function produceDiagramLayout(
   const labels = kind === "diagram" ? collectLabels(mi) : [];
 
   // Standalone connectors on the host class (and ancestors), inheritance-aware.
+  const hostScope = scopeForInstance(mi);
   const connectors: Record<string, ConnectorInstance> = {};
   for (const { element } of walkConnectors(mi)) {
     // Gate first — `if use_x` connectors are elided when OMC's
     // pre-reduced predicate is the literal `false`.
-    if (!isConditionTrue(element.condition)) continue;
+    if (!isConditionTrue(element.condition, hostScope)) continue;
     // Also seed the connector's class into the registry so consumers can
     // look up its own icon via `classes[connector.classRef]`.
     const inst = instanceFromConnector(element, kind, registry);
@@ -745,7 +768,7 @@ export function produceDiagramLayout(
   // are part of the ancestor's icon, NOT host-class instances).
   const components: Record<string, ComponentInstance> = {};
   for (const el of ownSubComponents(mi)) {
-    if (!isConditionTrue(el.condition)) continue;
+    if (!isConditionTrue(el.condition, hostScope)) continue;
     const inst = instanceFromSubComponent(
       el,
       kind === "icon" ? "icon" : "diagram",
@@ -759,9 +782,10 @@ export function produceDiagramLayout(
   // host (already done) and skip duplicates.
   for (const { klass } of walkExtendsChain(mi)) {
     if (klass === mi) continue;
+    const ancestorScope = scopeForInstance(klass);
     for (const el of ownSubComponents(klass)) {
       if (components[el.name]) continue;
-      if (!isConditionTrue(el.condition)) continue;
+      if (!isConditionTrue(el.condition, ancestorScope)) continue;
       const inst = instanceFromSubComponent(
         el,
         kind === "icon" ? "icon" : "diagram",

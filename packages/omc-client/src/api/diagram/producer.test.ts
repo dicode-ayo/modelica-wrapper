@@ -1486,6 +1486,279 @@ describe("produceDiagramLayout: conditional gating", () => {
   });
 });
 
+describe("produceDiagramLayout: evaluated graphic-annotation fields (issue #605)", () => {
+  it("evaluates an unreduced `visible` expression on a sub-component's own icon against its own parameter", () => {
+    // The class's icon carries `visible = <cref to its own parameter>`
+    // instead of a literal — the shape OMC leaves when a graphic field is
+    // parameter-driven rather than pre-reduced.
+    const withBracketClass: unknown = {
+      name: "Pkg.WithBracket",
+      restriction: "block",
+      elements: [
+        {
+          $kind: "component",
+          name: "showBracket",
+          type: "Boolean",
+          prefixes: { variability: "parameter" },
+          value: { binding: false },
+        },
+      ],
+      annotation: {
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [
+            {
+              $kind: "record",
+              name: "Rectangle",
+              elements: [
+                { $kind: "cref", parts: [{ name: "showBracket" }] },
+                [0, 0],
+                0,
+                [0, 0, 0],
+                [255, 255, 255],
+                SOLID_LINE,
+                SOLID_FILL,
+                1,
+                NO_BORDER,
+                [
+                  [-10, -10],
+                  [10, 10],
+                ],
+                0,
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "b",
+          type: withBracketClass,
+          annotation: placementAnno([
+            [-20, -20],
+            [20, 20],
+          ]),
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    const classDef = layout.classes["Pkg.WithBracket"];
+    expect(classDef).toBeDefined();
+    const shape = classDef?.iconLayers[0]?.shapes[0];
+    expect(shape?.kind).toBe("rectangle");
+    // `showBracket`'s resolved binding is `false`, so the cref evaluates to
+    // `false` and the shape is hidden — not left at the §18.6 default
+    // (visible=true, field omitted) the way an unresolved expression falls
+    // back to.
+    expect(shape?.visible).toBe(false);
+  });
+
+  it("falls back to the §18.6 default (shown) when the graphic expression can't be resolved", () => {
+    const unresolvableClass: unknown = {
+      name: "Pkg.Unresolvable",
+      restriction: "block",
+      elements: [],
+      annotation: {
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [
+            {
+              $kind: "record",
+              name: "Rectangle",
+              elements: [
+                // References a name with no matching component anywhere
+                // on the class — the scope can't resolve it.
+                { $kind: "cref", parts: [{ name: "notAParameter" }] },
+                [0, 0],
+                0,
+                [0, 0, 0],
+                [255, 255, 255],
+                SOLID_LINE,
+                SOLID_FILL,
+                1,
+                NO_BORDER,
+                [
+                  [-10, -10],
+                  [10, 10],
+                ],
+                0,
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "u",
+          type: unresolvableClass,
+          annotation: placementAnno([
+            [-20, -20],
+            [20, 20],
+          ]),
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    const shape = layout.classes["Pkg.Unresolvable"]?.iconLayers[0]?.shapes[0];
+    expect(shape?.kind).toBe("rectangle");
+    expect("visible" in (shape ?? {})).toBe(false);
+  });
+
+  it("isConditionTrue evaluates a non-pre-reduced Expression condition instead of defaulting to visible", () => {
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "useX",
+          type: "Boolean",
+          prefixes: { variability: "parameter" },
+          value: { binding: false },
+        },
+        {
+          $kind: "component",
+          name: "x",
+          type: GainClass,
+          modifiers: { k: "1" },
+          annotation: placementAnno([
+            [-50, -50],
+            [-30, -30],
+          ]),
+          // Unreduced AST (`not useX`), not the pre-reduced `false` /
+          // `{ binding: false }` shapes OMC normally emits for a condition.
+          condition: {
+            $kind: "unary_op",
+            op: "not",
+            exp: { $kind: "cref", parts: [{ name: "useX" }] },
+          },
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    // useX is false, so `not useX` evaluates to true — the component stays.
+    expect(layout.components.x).toBeDefined();
+  });
+
+  it("isConditionTrue hides the component when the evaluated condition is false", () => {
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "useX",
+          type: "Boolean",
+          prefixes: { variability: "parameter" },
+          value: { binding: true },
+        },
+        {
+          $kind: "component",
+          name: "x",
+          type: GainClass,
+          modifiers: { k: "1" },
+          annotation: placementAnno([
+            [-50, -50],
+            [-30, -30],
+          ]),
+          condition: {
+            $kind: "unary_op",
+            op: "not",
+            exp: { $kind: "cref", parts: [{ name: "useX" }] },
+          },
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    // useX is true, so `not useX` evaluates to false — the component is gated out.
+    expect(layout.components.x).toBeUndefined();
+  });
+});
+
 describe("produceDiagramLayout: array dimensions on sub-components", () => {
   /**
    * Build a host with one vector / matrix sub-component. OMC 1.26.7
