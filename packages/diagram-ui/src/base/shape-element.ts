@@ -64,7 +64,7 @@ export abstract class OmShapeElement extends LitElement {
    * Spec-default stroke-width multiplier accepted for host API
    * compatibility. The live value reaches shape strokes through
    * `lineThicknessScaleContext` (read by the shape primitives), not this
-   * property; this element does not apply it to its own rasterised icon.
+   * property; this element does not apply it to its own rasterized icon.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;

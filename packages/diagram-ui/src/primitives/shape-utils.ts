@@ -424,8 +424,7 @@ function strokeFloor(worldPerPixel: number | undefined): number {
  * Diagram-unit stroke width before the screen-space floor. An explicit
  * `thickness` is a modelling decision and renders literally;
  * `lineThicknessScale` lifts only the spec default, which is hair-thin
- * at icon scale. `@dicode/diagram-svg`'s `scaledThickness` applies the
- * same rule, so both renderers draw one annotation at one width.
+ * at icon scale.
  */
 function naturalStrokeWidth(
   thickness: number | undefined,
