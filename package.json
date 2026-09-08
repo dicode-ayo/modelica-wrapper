@@ -8,7 +8,6 @@
   },
   "scripts": {
     "start": "pnpm --filter @dicode/diagram-ui start",
-    "host": "pnpm build && MODELICA_DEBUG=1 code --new-window --extensionDevelopmentPath=\"$PWD/packages/extension\" \"$PWD/examples/ResistorDemo\"",
     "build": "pnpm --filter modelica-wrapper build",
     "watch": "pnpm --filter modelica-wrapper watch",
     "storybook": "pnpm --filter @dicode/storybook storybook",
