@@ -17,6 +17,7 @@ import { watchViewState } from "../scene/view-state-store.js";
 import {
   dashRunsFor,
   graphicItemNode,
+  strokeFloorClamps,
   worldScaleOf,
   zForOrder,
   type GraphicItemTransform,
@@ -153,17 +154,40 @@ export abstract class OmShapePrimitive extends LitElement {
   }
 
   /**
+   * The Modelica thickness feeding this primitive's stroke, or `null` when
+   * it draws none (text / bitmap, or a `"None"` line pattern with nothing
+   * else riding the stroke width). Lets the build key track
+   * `worldPerPixel` while the screen-space width floor clamps the stroke,
+   * so the width re-resolves on zoom (`thickness: undefined` means the
+   * spec default).
+   */
+  protected strokeThickness(): { thickness: number | undefined } | null {
+    return null;
+  }
+
+  /** `worldPerPixel` the view watcher last saw. View events fire for pans
+   *  too, and the build key serializes the whole shape — comparing the one
+   *  zoom input here keeps a pure pan from paying for that per primitive. */
+  private lastViewWpp: number | undefined = undefined;
+
+  /**
    * React to pan/zoom. The default re-runs `updated()` (via
-   * `requestUpdate()`) only when `dashPattern()` names a dashed pattern —
-   * its build key folds in `worldPerPixel` below, so the key comparison
-   * itself makes a pure pan (worldPerPixel unchanged) a cheap no-op rather
-   * than a rebuild. Override for state outside the dash/key mechanism
-   * entirely, e.g. `<om-text>`'s zoom-dependent resolution.
+   * `requestUpdate()`) only when the primitive has zoom-coupled stroke
+   * state — a dashed pattern, or a stroke the screen-space width floor may
+   * clamp — and only when `worldPerPixel` actually changed, so a pure pan
+   * never reaches the build-key comparison. Override for state outside the
+   * key mechanism entirely, e.g. `<om-text>`'s zoom-dependent resolution.
    */
   protected onViewChange(): void {
-    if (dashRunsFor(this.dashPattern())) {
-      this.requestUpdate();
+    if (!dashRunsFor(this.dashPattern()) && this.strokeThickness() === null) {
+      return;
     }
+    const wpp = this.sceneCtx?.worldPerPixel();
+    if (wpp === this.lastViewWpp) {
+      return;
+    }
+    this.lastViewWpp = wpp;
+    this.requestUpdate();
   }
 
   override render() {
@@ -182,7 +206,7 @@ export abstract class OmShapePrimitive extends LitElement {
     // The parent's world scale feeds the stroke's scale-compensated width
     // (`buildStroke`), so a placement/resize change must rebuild even though
     // the shape data is unchanged.
-    const key = `${this.zOrder}|${this.zBias}|${worldScaleOf(parent)}|${this.lineThicknessScale}|${this.dashZoomKey()}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${worldScaleOf(parent)}|${this.lineThicknessScale}|${this.strokeZoomKey()}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
       return;
     }
@@ -208,7 +232,7 @@ export abstract class OmShapePrimitive extends LitElement {
     const node = this.shapeNode;
     node.setEntityName(this.entityName());
     node.setHovered(this.hovered);
-    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.dashZoomKey()}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.strokeZoomKey()}|${this.fingerprint()}`;
     if (key !== this.lastBuiltKey) {
       this.lastBuiltKey = key;
       this.tearDownMeshes();
@@ -247,13 +271,18 @@ export abstract class OmShapePrimitive extends LitElement {
     return zForOrder(this.zOrder) - this.zBias;
   }
 
-  /** The build key's zoom term: `worldPerPixel`, but only for a dashed
-   *  pattern — a solid shape's key stays zoom-independent so panning never
-   *  rebuilds it. */
-  private dashZoomKey(): string {
-    return dashRunsFor(this.dashPattern())
-      ? String(this.sceneCtx?.worldPerPixel())
-      : "";
+  /** The build key's zoom term: `worldPerPixel`, but only while the stroke
+   *  actually depends on zoom — a dashed pattern, or a width the
+   *  screen-space floor clamps. A thick solid shape's key stays
+   *  zoom-independent so panning and zooming never rebuild it. */
+  private strokeZoomKey(): string {
+    const wpp = this.sceneCtx?.worldPerPixel();
+    const st = this.strokeThickness();
+    const zoomBound =
+      dashRunsFor(this.dashPattern()) !== null ||
+      (st !== null &&
+        strokeFloorClamps(st.thickness, this.lineThicknessScale, wpp));
+    return zoomBound ? String(wpp) : "";
   }
 
   private entityName(): string {

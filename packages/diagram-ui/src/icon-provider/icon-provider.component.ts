@@ -105,10 +105,10 @@ export class OmIconProvider extends LitElement {
   resolution: number = DEFAULT_RENDER_SIZE;
 
   /**
-   * Stroke-width scale forwarded to `renderIconLayersToSvg` when the
-   * provider builds its default SVG renderer. Only used when the
-   * caller does NOT supply a custom `renderSvg` override. `undefined`
-   * keeps the renderer's own default (currently `4`).
+   * Spec-default stroke-width scale forwarded to
+   * `renderIconLayersToSvg` when the provider builds its default SVG
+   * renderer. Only used when the caller does NOT supply a custom
+   * `renderSvg` override. `undefined` keeps the renderer's own default.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;

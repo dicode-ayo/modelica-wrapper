@@ -15,14 +15,17 @@ import {
   buildStroke,
   clampCornerRadius,
   extentToRect,
+  filledShapeStroke,
   roundedRectRing,
 } from "./shape-utils.js";
 
 /**
  * `<om-rectangle>` — one Modelica `RectangleShape`. Renders a filled
- * region (when `fillPattern` is not `"None"`) plus a stroked outline.
- * A positive `radius` rounds the corners, clamped to half the shorter
- * side.
+ * region (when `fillPattern` is not `"None"`) plus a stroked outline. A
+ * positive `radius` rounds the corners, clamped to half the shorter side.
+ *
+ * `borderPattern` is decoded and round-tripped but not drawn: OMEdit
+ * paints the `lineColor` outline for every value and draws no bevel.
  */
 @customElement("om-rectangle")
 export class OmRectangle extends OmShapePrimitive {
@@ -43,6 +46,12 @@ export class OmRectangle extends OmShapePrimitive {
 
   protected override dashPattern(): string | undefined {
     return this.shape?.pattern;
+  }
+
+  protected override strokeThickness(): {
+    thickness: number | undefined;
+  } | null {
+    return filledShapeStroke(this.shape);
   }
 
   protected override buildMeshes(

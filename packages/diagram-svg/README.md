@@ -53,7 +53,7 @@ Renders an `IconLayer[]` to an SVG string.
 | `size` | intrinsic | `number` or `{ width, height }` CSS pixels. |
 | `background` | none | Fill color for a background rect (e.g. `"white"`). |
 | `expandViewBoxToShapes` | `false` | Grow the viewBox to fit shapes beyond the coordinate system. |
-| `lineThicknessScale` | `10` | Stroke-width multiplier (spec thicknesses are tiny). |
+| `lineThicknessScale` | `10` | Multiplier for the spec-default stroke width when a shape omits `thickness` / `lineThickness`; an explicit value renders literally. |
 
 ### `renderClassIconToSvg(classDef, options?)`
 

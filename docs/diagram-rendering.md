@@ -133,8 +133,9 @@ string. It renders the same six primitives as SVG elements:
 
 Modelica's +Y-up coordinate system is handled by a root `<g transform="scale(1,-1)">`
 flip; text and bitmaps get a counter-transform so glyphs stay upright. Cylinder
-and sphere fills are emitted as gradient `<defs>`. Stroke widths are scaled by a
-`lineThicknessScale` factor (spec thicknesses are tiny).
+and sphere fills are emitted as gradient `<defs>`. An explicit `lineThickness`
+renders literally; the `lineThicknessScale` factor lifts only the spec default a
+shape falls back to when it omits one (spec thicknesses are tiny).
 
 It is used:
 

@@ -61,10 +61,10 @@ export abstract class OmShapeElement extends LitElement {
   coordinateSystem: CoordinateSystem | undefined = undefined;
 
   /**
-   * Stroke-width multiplier accepted for host API compatibility. The live
-   * scale reaches shape strokes through `lineThicknessScaleContext` (read by
-   * the shape primitives), not this property; this element does not apply it
-   * to its own rasterised icon.
+   * Spec-default stroke-width multiplier accepted for host API
+   * compatibility. The live value reaches shape strokes through
+   * `lineThicknessScaleContext` (read by the shape primitives), not this
+   * property; this element does not apply it to its own rasterized icon.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;

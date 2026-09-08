@@ -14,6 +14,7 @@ import {
   buildFilledEllipse,
   buildStroke,
   extentToRect,
+  filledShapeStroke,
 } from "./shape-utils.js";
 
 const ELLIPSE_SEGMENTS = 64;
@@ -43,6 +44,12 @@ export class OmEllipse extends OmShapePrimitive {
 
   protected override dashPattern(): string | undefined {
     return this.shape?.pattern;
+  }
+
+  protected override strokeThickness(): {
+    thickness: number | undefined;
+  } | null {
+    return filledShapeStroke(this.shape);
   }
 
   protected override buildMeshes(
