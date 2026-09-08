@@ -373,9 +373,10 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 /** Modelica default stroke thickness (mm / diagram units). */
 const DEFAULT_STROKE_THICKNESS = LINE_DEFAULTS.thickness;
-/** Screen-space stroke floor (CSS px): a hairline stays readable zoomed
- *  out while any thickness above one pixel renders literally, which is
- *  OMEdit's cosmetic-pen weight. */
+/** Screen-space stroke floor (CSS px). Below it a stroke is drawn at a
+ *  constant on-screen width instead of its annotated one, so a hairline
+ *  stays readable — Qt's cosmetic pen, which OMEdit switches on for a
+ *  sub-unit thickness inside a scaled-down component. */
 const MIN_STROKE_PX = 1;
 /** Dash / gap length, nominally in CSS pixels — `buildStroke` scales these by
  *  `worldPerPixel` so the dash rhythm reads at a constant on-screen size
@@ -438,25 +439,32 @@ function naturalStrokeWidth(
  * stroke's rendered width at this zoom. While it does, a build keyed on
  * shape data alone goes stale on zoom — callers fold `worldPerPixel` into
  * their build key (`OmShapePrimitive.strokeZoomKey`).
+ *
+ * `worldScale` converts the floor into the same local units the natural
+ * width is stated in; a shrunk component reaches the floor at a coarser
+ * zoom than an unscaled one.
  */
 export function strokeFloorClamps(
   thickness: number | undefined,
   lineThicknessScale: number | undefined,
   worldPerPixel: number | undefined,
+  worldScale: number,
 ): boolean {
   return (
     naturalStrokeWidth(thickness, lineThicknessScale) <
-    strokeFloor(worldPerPixel)
+    strokeFloor(worldPerPixel) / worldScale
   );
 }
 
 /**
- * Local (icon-space) stroke width for a Modelica `thickness`, scale-compensated
- * against `parent` the same way {@link buildStroke} compensates its own stroke
- * — so a caller drawing stroke-consistent geometry alongside the main stroke
- * (e.g. an arrowhead outline) matches its on-screen width. `worldPerPixel`
- * enables the sub-pixel floor; the resolved width then depends on zoom
- * whenever the floor clamps (see {@link strokeFloorClamps}).
+ * Local (icon-space) stroke width for a Modelica `thickness`.
+ *
+ * The thickness is an icon-space quantity: it rides `parent`'s transform,
+ * so a component placed into a small extent gets a proportionally finer
+ * outline rather than one that swallows it. Only the floor is screen-space
+ * — `worldPerPixel` converts one on-screen pixel into local units, which is
+ * what keeps a hairline visible when zoomed out. The resolved width depends
+ * on zoom only while that floor clamps (see {@link strokeFloorClamps}).
  */
 export function resolveStrokeWidth(
   parent: Container,
@@ -465,11 +473,9 @@ export function resolveStrokeWidth(
   worldPerPixel: number | undefined,
 ): number {
   const worldScale = worldScaleOf(parent);
-  return (
-    Math.max(
-      naturalStrokeWidth(thickness, lineThicknessScale),
-      strokeFloor(worldPerPixel),
-    ) / worldScale
+  return Math.max(
+    naturalStrokeWidth(thickness, lineThicknessScale),
+    strokeFloor(worldPerPixel) / worldScale,
   );
 }
 
@@ -508,11 +514,6 @@ export function buildStroke(
   g.eventMode = "none";
   g.zIndex = z;
 
-  // Stroke width is scale-compensated: the rendered width is multiplied by the
-  // container's diagram-space scale, so the local width divides that scale out
-  // to keep the on-screen width invariant (Modelica thickness is a screen-space
-  // quantity, not an icon-space one), floored at one screen pixel so it never
-  // goes sub-pixel.
   const worldScale = worldScaleOf(parent);
   const localWidth = resolveStrokeWidth(
     parent,
@@ -543,8 +544,8 @@ export function buildStroke(
   g.stroke({
     width: localWidth,
     color: colour,
-    cap: "round",
-    join: "round",
+    cap: "butt",
+    join: "miter",
     alignment: 0.5,
   });
 

@@ -21,6 +21,7 @@ interface DrawStyle {
   color: number;
   pixelLine?: boolean;
   cap?: string;
+  join?: string;
   width?: number;
 }
 function styleOf(g: Graphics, action: "fill" | "stroke"): DrawStyle | null {
@@ -93,34 +94,49 @@ describe("resolveStrokeWidth", () => {
     );
   });
 
-  it("divides the parent's world scale out of the floored width", () => {
+  it("rides the parent's scale so a shrunk component gets a finer outline", () => {
     const parent = new Container();
     parent.scale.set(0.1, 0.1);
-    // Floored to 2 world units, then compensated so the scaled render
-    // still comes out at 2.
+    // The annotated 5 is icon-space: the container multiplies it back down,
+    // so the component renders a tenth as heavy rather than swallowing itself.
+    expect(resolveStrokeWidth(parent, 5, undefined, 0.05)).toBeCloseTo(5);
+  });
+
+  it("converts the screen-space floor into the child's local units", () => {
+    const parent = new Container();
+    parent.scale.set(0.1, 0.1);
+    // One screen px is 2 world units, which is 20 local units under a 0.1
+    // scale — the floor has to grow to stay one pixel on screen.
     expect(resolveStrokeWidth(parent, undefined, undefined, 2)).toBeCloseTo(20);
   });
 });
 
 describe("strokeFloorClamps", () => {
   it("reports clamping only while the floor exceeds the natural width", () => {
-    expect(strokeFloorClamps(undefined, undefined, 2)).toBe(true);
-    expect(strokeFloorClamps(undefined, undefined, 0.05)).toBe(false);
-    expect(strokeFloorClamps(5, undefined, 2)).toBe(false);
+    expect(strokeFloorClamps(undefined, undefined, 2, 1)).toBe(true);
+    expect(strokeFloorClamps(undefined, undefined, 0.05, 1)).toBe(false);
+    expect(strokeFloorClamps(5, undefined, 2, 1)).toBe(false);
+  });
+
+  it("reaches the floor sooner for a scaled-down shape", () => {
+    // Natural 5 clears a floor of 2 unscaled, but under a 0.1 scale that
+    // floor is 20 local units and clamps.
+    expect(strokeFloorClamps(5, undefined, 2, 1)).toBe(false);
+    expect(strokeFloorClamps(5, undefined, 2, 0.1)).toBe(true);
   });
 
   it("scales the spec default out of the floor but never an explicit thickness", () => {
     // The omitted-value default lifts past the floor with the scale...
-    expect(strokeFloorClamps(undefined, 100, 2)).toBe(false);
+    expect(strokeFloorClamps(undefined, 100, 2, 1)).toBe(false);
     // ...while the same number stated explicitly renders literally, so
     // the floor still governs it.
-    expect(strokeFloorClamps(0.25, 100, 2)).toBe(true);
+    expect(strokeFloorClamps(0.25, 100, 2, 1)).toBe(true);
   });
 
   it("never clamps without a usable worldPerPixel", () => {
-    expect(strokeFloorClamps(undefined, undefined, undefined)).toBe(false);
+    expect(strokeFloorClamps(undefined, undefined, undefined, 1)).toBe(false);
     expect(
-      strokeFloorClamps(undefined, undefined, Number.POSITIVE_INFINITY),
+      strokeFloorClamps(undefined, undefined, Number.POSITIVE_INFINITY, 1),
     ).toBe(false);
   });
 });
@@ -179,8 +195,11 @@ describe("buildStroke", () => {
     const style = styleOf(g, "stroke");
     // Stroke colour is the packed RED (0xff0000) — full red, no green.
     expect(style?.color).toBe(0xff0000);
-    // Solid strokes ride the world transform (round cap, not a 1-px GL line).
-    expect(style?.cap).toBe("round");
+    // Rides the world transform rather than being a 1-px GL line. The cap is
+    // flat and the join mitred, matching Qt: round ones bulge a polyline's
+    // open ends and round off every rectangle corner.
+    expect(style?.cap).toBe("butt");
+    expect(style?.join).toBe("miter");
     expect(style?.pixelLine).toBe(false);
   });
 
@@ -204,9 +223,9 @@ describe("buildStroke", () => {
     expect(g.eventMode).toBe("none");
     const style = styleOf(g, "stroke");
     expect(style?.color).toBe(0xff0000);
-    // Dashed honours the same scale-compensated round-cap band as solid —
+    // Dashed honours the same band as solid —
     // only the path is segmented, so it is not a 1-px GL line.
-    expect(style?.cap).toBe("round");
+    expect(style?.cap).toBe("butt");
     expect(style?.pixelLine).toBe(false);
   });
 
