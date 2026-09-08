@@ -91,7 +91,8 @@ pnpm install
 pnpm --filter modelica-wrapper build     # esbuild bundle → out/
 ```
 
-Then launch the **Run Extension** target from VSCode, or package with `vsce`.
+Then launch the **Run Extension** target from VSCode, or `pnpm host` from the
+repo root for the same window from a terminal, or package with `vsce`.
 After editing the webview UI, rebuild and reload the window — the webview bundle is
 not hot-reloaded.
 
