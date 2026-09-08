@@ -130,8 +130,8 @@ describe("renderIconLayersToSvg", () => {
         ],
         { lineThicknessScale },
       );
-      // The canvas primitives draw this annotation at 5 too; scaling
-      // here would put the two renderers apart on the same shape.
+      // An explicit thickness is never scaled; only the omitted-value
+      // fallback is.
       expect(svg).toContain('stroke-width="5"');
     },
   );
@@ -154,6 +154,28 @@ describe("renderIconLayersToSvg", () => {
     );
     expect(svg).toContain('stroke-width="5"');
   });
+
+  it.each(["Raised", "Sunken", "Engraved", "None"])(
+    "draws borderPattern %s exactly as it draws no borderPattern",
+    (borderPattern) => {
+      const box = {
+        kind: "rectangle",
+        extent: [
+          [-50, -25],
+          [50, 25],
+        ],
+        lineColor: [0, 0, 127],
+        fillColor: [236, 233, 216],
+        fillPattern: "Solid",
+      } satisfies RectangleShape;
+      const withPattern = renderIconLayersToSvg([
+        makeLayer("Test.Border", [{ ...box, borderPattern }]),
+      ]);
+      expect(withPattern).toBe(
+        renderIconLayersToSvg([makeLayer("Test.Border", [box])]),
+      );
+    },
+  );
 
   it("omits rx/ry for a zero or missing radius", () => {
     const svg = renderIconLayersToSvg([

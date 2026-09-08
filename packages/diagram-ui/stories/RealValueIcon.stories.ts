@@ -2,14 +2,12 @@
  * `Modelica.Blocks.Interaction.Show.RealValue`'s Icon annotation, drawn
  * by both renderers on one page.
  *
- * The fixture is what OMC actually emits for the class — an explicit
- * navy `lineColor` at `lineThickness = 5`, a `BorderPattern.Raised` the
- * renderers ignore, and a `visible = false` `%number` label that must
- * not paint. It is the shape that caught the two renderers disagreeing,
- * so it stays as the side-by-side each is read against: `diagram-svg`'s
- * string output next to the `<om-*>` canvas primitives on the same
- * shapes, where any difference on screen is a difference between the
- * renderers rather than between two fixtures.
+ * The fixture is what OMC emits for the class — an explicit navy
+ * `lineColor` at `lineThickness = 5`, a `BorderPattern.Raised` neither
+ * renderer draws, and a `visible = false` `%number` label that must not
+ * paint. `diagram-svg`'s string output sits next to the `<om-*>` canvas
+ * primitives on those same shapes, so a difference on screen is a
+ * difference between the renderers rather than between two fixtures.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -31,13 +29,13 @@ import { renderLayers } from "../src/primitives/render-shape.js";
 const NAVY: [number, number, number] = [0, 0, 127];
 const BEIGE: [number, number, number] = [236, 233, 216];
 
-const COORDS: CoordinateSystem = {
+const COORDS = {
   extent: [
     [-100, -100],
     [100, 100],
   ],
   preserveAspectRatio: false,
-} as CoordinateSystem;
+} satisfies CoordinateSystem;
 
 const REAL_VALUE: Shape[] = [
   {
@@ -58,12 +56,11 @@ const REAL_VALUE: Shape[] = [
       [-94, -34],
       [96, 34],
     ],
-    textString: "0.0" as unknown as TextShape["textString"],
+    textString: "0.0",
     fontSize: 0,
-  } as TextShape,
+  } satisfies TextShape,
   // `visible = not use_numberPort`, which OMC reduces to `false` for a
-  // default instance. Present so a renderer that paints it regresses the
-  // story rather than passing silently.
+  // default instance.
   {
     kind: "text",
     visible: false,
@@ -71,9 +68,9 @@ const REAL_VALUE: Shape[] = [
       [-150, -70],
       [150, -50],
     ],
-    textString: "%number" as unknown as TextShape["textString"],
+    textString: "%number",
     fontSize: 0,
-  } as TextShape,
+  } satisfies TextShape,
 ];
 
 interface StoryArgs {
@@ -93,8 +90,8 @@ type Story = StoryObj<StoryArgs>;
 
 /**
  * Both renderers on the same three shapes. They agree when the navy
- * frame reads at the same weight in each — an explicit `lineThickness`
- * is drawn literally, so neither renderer may scale it.
+ * frame reads at the same weight in each: an explicit `lineThickness`
+ * is drawn literally by both, scaled by neither.
  */
 export const BothRenderers: Story = {
   render: ({ zoom }): TemplateResult => html`
@@ -110,15 +107,12 @@ export const BothRenderers: Story = {
         <div>
           <h4>diagram-svg</h4>
           ${unsafeSVG(
-            renderIconLayersToSvg(
-              [{ from: "RealValue", shapes: REAL_VALUE } as never],
-              {
-                coordinateSystem: COORDS,
-                size: 360,
-                background: "white",
-                expandViewBoxToShapes: true,
-              },
-            ),
+            renderIconLayersToSvg([{ from: "RealValue", shapes: REAL_VALUE }], {
+              coordinateSystem: COORDS,
+              size: 360,
+              background: "white",
+              expandViewBoxToShapes: true,
+            }),
           )}
         </div>
         <div style="flex:1;min-width:360px;">

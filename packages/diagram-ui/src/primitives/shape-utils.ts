@@ -373,11 +373,9 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 /** Modelica default stroke thickness (mm / diagram units). */
 const DEFAULT_STROKE_THICKNESS = LINE_DEFAULTS.thickness;
-/** Screen-space stroke floor (CSS px). A fixed diagram-unit floor would
- *  inflate the 0.25 spec default at every zoom (and grow when zoomed in);
- *  flooring at one on-screen pixel instead keeps a hairline readable when
- *  zoomed out while an honest 0.25 renders as 0.25 — OMEdit's cosmetic-pen
- *  weight. */
+/** Screen-space stroke floor (CSS px): a hairline stays readable zoomed
+ *  out while any thickness above one pixel renders literally, which is
+ *  OMEdit's cosmetic-pen weight. */
 const MIN_STROKE_PX = 1;
 /** Dash / gap length, nominally in CSS pixels — `buildStroke` scales these by
  *  `worldPerPixel` so the dash rhythm reads at a constant on-screen size
@@ -402,15 +400,38 @@ export function worldScaleOf(node: Container): number {
   return Math.sqrt(Math.abs(x * y)) || 1;
 }
 
-/** The stroke floor in diagram units at the current zoom. `0` (no floor)
- *  without a usable `worldPerPixel` — a renderer-less caller keeps the
- *  literal annotation width. */
-function strokeFloor(worldPerPixel: number | undefined): number {
+/** `worldPerPixel` when it can drive a screen-space conversion, else
+ *  `undefined` — a headless or renderer-less caller has no zoom to
+ *  convert against and keeps the literal annotation width. */
+function usableWorldPerPixel(
+  worldPerPixel: number | undefined,
+): number | undefined {
   return worldPerPixel !== undefined &&
     Number.isFinite(worldPerPixel) &&
     worldPerPixel > 0
-    ? MIN_STROKE_PX * worldPerPixel
-    : 0;
+    ? worldPerPixel
+    : undefined;
+}
+
+/** The stroke floor in diagram units at the current zoom; `0` (no floor)
+ *  when there is no usable `worldPerPixel`. */
+function strokeFloor(worldPerPixel: number | undefined): number {
+  const wpp = usableWorldPerPixel(worldPerPixel);
+  return wpp === undefined ? 0 : MIN_STROKE_PX * wpp;
+}
+
+/**
+ * Diagram-unit stroke width before the screen-space floor. An explicit
+ * `thickness` is a modelling decision and renders literally;
+ * `lineThicknessScale` lifts only the spec default, which is hair-thin
+ * at icon scale. `@dicode/diagram-svg`'s `scaledThickness` applies the
+ * same rule, so both renderers draw one annotation at one width.
+ */
+function naturalStrokeWidth(
+  thickness: number | undefined,
+  lineThicknessScale: number | undefined,
+): number {
+  return thickness ?? DEFAULT_STROKE_THICKNESS * (lineThicknessScale ?? 1);
 }
 
 /**
@@ -424,9 +445,10 @@ export function strokeFloorClamps(
   lineThicknessScale: number | undefined,
   worldPerPixel: number | undefined,
 ): boolean {
-  const naturalWidth =
-    (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
-  return naturalWidth < strokeFloor(worldPerPixel);
+  return (
+    naturalStrokeWidth(thickness, lineThicknessScale) <
+    strokeFloor(worldPerPixel)
+  );
 }
 
 /**
@@ -441,12 +463,28 @@ export function resolveStrokeWidth(
   parent: Container,
   thickness: number | undefined,
   lineThicknessScale: number | undefined,
-  worldPerPixel?: number | undefined,
+  worldPerPixel: number | undefined,
 ): number {
   const worldScale = worldScaleOf(parent);
-  const naturalWidth =
-    (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
-  return Math.max(naturalWidth, strokeFloor(worldPerPixel)) / worldScale;
+  return (
+    Math.max(
+      naturalStrokeWidth(thickness, lineThicknessScale),
+      strokeFloor(worldPerPixel),
+    ) / worldScale
+  );
+}
+
+/** Stroke inputs of a filled shape (`rectangle` / `ellipse` / `polygon`),
+ *  or `null` when its line pattern draws nothing. */
+export function filledShapeStroke(
+  shape:
+    | { pattern?: string | undefined; lineThickness?: number | undefined }
+    | null
+    | undefined,
+): { thickness: number | undefined } | null {
+  return shape && shape.pattern !== "None"
+    ? { thickness: shape.lineThickness }
+    : null;
 }
 
 export function buildStroke(
@@ -490,12 +528,8 @@ export function buildStroke(
     // the nominal CSS-pixel runs to local units the same way stroke width is
     // scale-compensated, so the dash rhythm reads constant on screen across
     // zoom (and icon scale) instead of stretching/compressing with either.
-    const dashScale =
-      worldPerPixel !== undefined &&
-      Number.isFinite(worldPerPixel) &&
-      worldPerPixel > 0
-        ? worldPerPixel / worldScale
-        : 1;
+    const wpp = usableWorldPerPixel(worldPerPixel);
+    const dashScale = wpp === undefined ? 1 : wpp / worldScale;
     const scaledRuns = dashRuns.map((r) =>
       Math.max(MIN_DASH_RUN, r * dashScale),
     );

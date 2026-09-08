@@ -15,6 +15,7 @@ import {
   buildStroke,
   clampCornerRadius,
   extentToRect,
+  filledShapeStroke,
   roundedRectRing,
 } from "./shape-utils.js";
 
@@ -23,9 +24,8 @@ import {
  * region (when `fillPattern` is not `"None"`) plus a stroked outline. A
  * positive `radius` rounds the corners, clamped to half the shorter side.
  *
- * `borderPattern` is decoded and round-tripped but never drawn: OMEdit
- * paints the `lineColor` outline for every value, and a shaded bevel in
- * its place drops the outline the same annotation asks for.
+ * `borderPattern` is decoded and round-tripped but not drawn: OMEdit
+ * paints the `lineColor` outline for every value and draws no bevel.
  */
 @customElement("om-rectangle")
 export class OmRectangle extends OmShapePrimitive {
@@ -51,8 +51,7 @@ export class OmRectangle extends OmShapePrimitive {
   protected override strokeThickness(): {
     thickness: number | undefined;
   } | null {
-    const s = this.shape;
-    return s && s.pattern !== "None" ? { thickness: s.lineThickness } : null;
+    return filledShapeStroke(this.shape);
   }
 
   protected override buildMeshes(
@@ -99,11 +98,6 @@ export class OmRectangle extends OmShapePrimitive {
       );
     }
 
-    const strokeOpts = {
-      thickness: s.lineThickness,
-      lineThicknessScale: this.lineThicknessScale,
-      worldPerPixel: this.sceneCtx?.worldPerPixel(),
-    };
     const stroke = buildStroke(
       root,
       corners,
@@ -111,7 +105,11 @@ export class OmRectangle extends OmShapePrimitive {
       s.pattern,
       z + STROKE_Z_DELTA,
       `${baseName}.stroke`,
-      strokeOpts,
+      {
+        thickness: s.lineThickness,
+        lineThicknessScale: this.lineThicknessScale,
+        worldPerPixel: this.sceneCtx?.worldPerPixel(),
+      },
     );
     if (stroke) {
       this.resources.push(stroke);

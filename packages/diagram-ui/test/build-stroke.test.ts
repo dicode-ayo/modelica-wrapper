@@ -78,7 +78,9 @@ describe("resolveStrokeWidth", () => {
 
   it("applies no floor without a usable worldPerPixel", () => {
     const parent = new Container();
-    expect(resolveStrokeWidth(parent, undefined, undefined)).toBeCloseTo(0.25);
+    expect(
+      resolveStrokeWidth(parent, undefined, undefined, undefined),
+    ).toBeCloseTo(0.25);
     expect(
       resolveStrokeWidth(
         parent,
@@ -106,7 +108,14 @@ describe("strokeFloorClamps", () => {
     expect(strokeFloorClamps(undefined, undefined, 2)).toBe(true);
     expect(strokeFloorClamps(undefined, undefined, 0.05)).toBe(false);
     expect(strokeFloorClamps(5, undefined, 2)).toBe(false);
-    expect(strokeFloorClamps(0.25, 100, 2)).toBe(false);
+  });
+
+  it("scales the spec default out of the floor but never an explicit thickness", () => {
+    // The omitted-value default lifts past the floor with the scale...
+    expect(strokeFloorClamps(undefined, 100, 2)).toBe(false);
+    // ...while the same number stated explicitly renders literally, so
+    // the floor still governs it.
+    expect(strokeFloorClamps(0.25, 100, 2)).toBe(true);
   });
 
   it("never clamps without a usable worldPerPixel", () => {

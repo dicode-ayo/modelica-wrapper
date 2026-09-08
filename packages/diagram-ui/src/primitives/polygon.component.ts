@@ -9,6 +9,7 @@ import {
   STROKE_Z_DELTA,
   buildFilledPolygon,
   buildStroke,
+  filledShapeStroke,
   pointsExtent,
   stripClosingDuplicate,
 } from "./shape-utils.js";
@@ -38,8 +39,7 @@ export class OmPolygon extends OmShapePrimitive {
   protected override strokeThickness(): {
     thickness: number | undefined;
   } | null {
-    const s = this.shape;
-    return s && s.pattern !== "None" ? { thickness: s.lineThickness } : null;
+    return filledShapeStroke(this.shape);
   }
 
   protected override entityBounds(): EntityBounds | null {

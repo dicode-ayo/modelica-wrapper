@@ -89,8 +89,7 @@ export interface RenderOptions {
    * units render hair-thin at the canonical `[-100,100]` extent, so the
    * fallback is lifted to stay legible; default `10`.
    *
-   * An explicit annotation thickness is never multiplied — see
-   * {@link scaledThickness}.
+   * An explicit annotation thickness is never multiplied.
    */
   lineThicknessScale?: number | undefined;
 }
@@ -414,12 +413,9 @@ function renderShapeBody(shape: Shape, ctx: RenderContext): string {
 }
 
 /**
- * Stroke width for an annotation's `thickness` / `lineThickness`.
- *
- * An explicit value is a modelling decision and renders literally, so
- * this renderer agrees with `@dicode/diagram-ui`'s canvas primitives on
- * the same annotation. `lineThicknessScale` lifts only the omitted-value
- * fallback, which is the case the multiplier exists for.
+ * Stroke width for an annotation's `thickness` / `lineThickness`. An
+ * explicit value renders literally; `lineThicknessScale` lifts only the
+ * omitted-value fallback.
  */
 function scaledThickness(raw: number | undefined, ctx: RenderContext): number {
   return raw ?? SPEC_DEFAULT_THICKNESS * ctx.lineThicknessScale;
@@ -471,9 +467,8 @@ function renderPolygon(s: PolygonShape, ctx: RenderContext): string {
 // ---- rectangle ----
 
 /**
- * `borderPattern` is decoded and round-tripped but never drawn: OMEdit
- * paints the `lineColor` outline for every value, and a shaded bevel in
- * its place drops the outline the same annotation asks for.
+ * `borderPattern` is decoded and round-tripped but not drawn: OMEdit
+ * paints the `lineColor` outline for every value and draws no bevel.
  */
 function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const { x, y, width, height } = extentToRect(s.extent);

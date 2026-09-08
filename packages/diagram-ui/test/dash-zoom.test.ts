@@ -5,9 +5,10 @@
  * These pin the rebuild wiring end to end: zooming the host `<om-scene>`
  * rebuilds a dashed stroke and a floored default-thickness stroke (a new
  * Graphics, since period / width changed), but leaves a thick solid stroke
- * untouched (no needless churn), and the same wiring covers every stroked
- * primitive kind via `OmShapePrimitive.dashPattern()` /
- * `.strokeThickness()` — not just `<om-line>`.
+ * untouched (no needless churn). `<om-line>` carries its own
+ * `strokeThickness()` (arrowheads ride the width even with no pen);
+ * `<om-rectangle>` stands for the three filled shapes that share
+ * `filledShapeStroke`.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { Container, Graphics } from "pixi.js";
@@ -105,15 +106,28 @@ function strokeWithLabel(el: OmGraphicalLayout, label: string): Graphics {
   return g;
 }
 
+async function settle(el: OmGraphicalLayout, scene: OmScene): Promise<void> {
+  await scene.updateComplete;
+  await el.updateComplete;
+  await new Promise((r) => setTimeout(r, 0));
+}
+
 async function zoomBy(
   el: OmGraphicalLayout,
   scene: OmScene,
   factor: number,
 ): Promise<void> {
   scene.zoom = scene.zoom * factor;
-  await scene.updateComplete;
-  await el.updateComplete;
-  await new Promise((r) => setTimeout(r, 0));
+  await settle(el, scene);
+}
+
+async function panBy(
+  el: OmGraphicalLayout,
+  scene: OmScene,
+  dx: number,
+): Promise<void> {
+  scene.panX = scene.panX + dx;
+  await settle(el, scene);
 }
 
 describe.each([
@@ -123,7 +137,7 @@ describe.each([
     build: layoutWithRectangle,
     label: "om-rectangle.0.stroke",
   },
-])("dashed $kind stroke rebuild on zoom", ({ build, label }) => {
+])("$kind stroke rebuild on zoom", ({ build, label }) => {
   it("rebuilds the dashed stroke when the scene zooms", async () => {
     const el = await mount(build("Dash"));
     const scene = sceneOf(el);
@@ -171,10 +185,7 @@ describe.each([
     const scene = sceneOf(el);
     const before = strokeWithLabel(el, label);
 
-    scene.panX = scene.panX + 50;
-    await scene.updateComplete;
-    await el.updateComplete;
-    await new Promise((r) => setTimeout(r, 0));
+    await panBy(el, scene, 50);
 
     const after = strokeWithLabel(el, label);
     expect(after).toBe(before);
@@ -186,10 +197,7 @@ describe.each([
     const scene = sceneOf(el);
     const before = strokeWithLabel(el, label);
 
-    scene.panX = scene.panX + 50;
-    await scene.updateComplete;
-    await el.updateComplete;
-    await new Promise((r) => setTimeout(r, 0));
+    await panBy(el, scene, 50);
 
     const after = strokeWithLabel(el, label);
     expect(after).toBe(before);

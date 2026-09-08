@@ -1,10 +1,10 @@
 import { createContext } from "@lit/context";
 
 /**
- * Multiplier from a shape's Modelica `lineThickness` to its on-screen stroke
- * width, provided by the host so a single value scales every solid stroke
- * (icon and host) at once. Dashed strokes stay screen-constant. `undefined`
- * falls back to the renderer default.
+ * Multiplier the host applies to the §18.6 default stroke width used when a
+ * shape omits `lineThickness`, so one value lifts every unspecified stroke
+ * (icon and host) at once. An explicit `lineThickness` is a modelling
+ * decision and renders literally, unscaled. `undefined` means no lift.
  */
 export const lineThicknessScaleContext = createContext<number | undefined>(
   Symbol("om-line-thickness-scale"),

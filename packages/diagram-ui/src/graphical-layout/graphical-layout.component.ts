@@ -339,10 +339,10 @@ export class OmGraphicalLayout extends LitElement {
   cameraMode: "2d" | "3d" = "2d";
 
   /**
-   * Stroke-width multiplier published on `lineThicknessScaleContext`;
-   * descendant shape primitives multiply their solid stroke width by it,
-   * so one value scales every primitive stroke at once. `undefined` is the
-   * renderer default.
+   * Spec-default stroke-width multiplier published on
+   * `lineThicknessScaleContext`. It lifts only the width descendant
+   * primitives fall back to when a shape omits `lineThickness`; an explicit
+   * thickness is never scaled. `undefined` means no lift.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
