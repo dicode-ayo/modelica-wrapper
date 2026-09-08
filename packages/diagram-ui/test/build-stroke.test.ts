@@ -141,6 +141,28 @@ describe("strokeFloorClamps", () => {
   });
 });
 
+describe("strokeFloorClamps and resolveStrokeWidth", () => {
+  it("agree on whether the floor is setting the width", () => {
+    // (thickness, worldPerPixel, parent scale) — a clamped and an unclamped
+    // case on each side of the scale boundary.
+    const cases: Array<[number | undefined, number, number]> = [
+      [5, 2, 1],
+      [5, 2, 0.1],
+      [undefined, 2, 1],
+      [undefined, 0.05, 0.1],
+    ];
+    for (const [thickness, wpp, scale] of cases) {
+      const parent = new Container();
+      parent.scale.set(scale, scale);
+      const natural = thickness ?? 0.25;
+      const width = resolveStrokeWidth(parent, thickness, undefined, wpp);
+      expect(strokeFloorClamps(thickness, undefined, wpp, scale)).toBe(
+        width > natural,
+      );
+    }
+  });
+});
+
 describe("buildStroke", () => {
   it("returns null for a non-drawable stroke", () => {
     const { parent } = makeScene();
@@ -196,14 +218,14 @@ describe("buildStroke", () => {
     // Stroke colour is the packed RED (0xff0000) — full red, no green.
     expect(style?.color).toBe(0xff0000);
     // Rides the world transform rather than being a 1-px GL line. The cap is
-    // flat and the join mitred, matching Qt: round ones bulge a polyline's
+    // flat and the join mitered, matching Qt: round ones bulge a polyline's
     // open ends and round off every rectangle corner.
     expect(style?.cap).toBe("butt");
     expect(style?.join).toBe("miter");
     expect(style?.pixelLine).toBe(false);
   });
 
-  it("builds a dashed stroke at the same scale-compensated band as solid", () => {
+  it("builds a dashed stroke on the same butt-capped band as solid", () => {
     const { parent } = makeScene();
     const res = buildStroke(
       parent,
@@ -223,7 +245,8 @@ describe("buildStroke", () => {
     expect(g.eventMode).toBe("none");
     const style = styleOf(g, "stroke");
     expect(style?.color).toBe(0xff0000);
-    // Dashed honours the same band as solid —
+    // Dashed honors the same band as solid: only the path is segmented, so
+    // it is not a 1-px GL line.
     // only the path is segmented, so it is not a 1-px GL line.
     expect(style?.cap).toBe("butt");
     expect(style?.pixelLine).toBe(false);

@@ -373,10 +373,11 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 /** Modelica default stroke thickness (mm / diagram units). */
 const DEFAULT_STROKE_THICKNESS = LINE_DEFAULTS.thickness;
-/** Screen-space stroke floor (CSS px). Below it a stroke is drawn at a
- *  constant on-screen width instead of its annotated one, so a hairline
- *  stays readable — Qt's cosmetic pen, which OMEdit switches on for a
- *  sub-unit thickness inside a scaled-down component. */
+/** Screen-space stroke floor (CSS px). A stroke that would render thinner
+ *  than this is drawn at this on-screen width instead of its annotated one,
+ *  whatever its thickness or the scale it sits under. It is this renderer's
+ *  counterpart to OMEdit's cosmetic pen, which Qt reserves for a zero
+ *  thickness or a sub-unit one at a painter scale below 2. */
 const MIN_STROKE_PX = 1;
 /** Dash / gap length, nominally in CSS pixels — `buildStroke` scales these by
  *  `worldPerPixel` so the dash rhythm reads at a constant on-screen size
@@ -414,11 +415,25 @@ function usableWorldPerPixel(
     : undefined;
 }
 
-/** The stroke floor in diagram units at the current zoom; `0` (no floor)
- *  when there is no usable `worldPerPixel`. */
-function strokeFloor(worldPerPixel: number | undefined): number {
+/** Local units per on-screen pixel under `worldScale`; `undefined` without
+ *  a usable `worldPerPixel`. Every screen-space quantity a shape draws —
+ *  the stroke floor and the dash rhythm — converts through this one factor,
+ *  so they cannot drift apart. */
+function localPerPixel(
+  worldPerPixel: number | undefined,
+  worldScale: number,
+): number | undefined {
   const wpp = usableWorldPerPixel(worldPerPixel);
-  return wpp === undefined ? 0 : MIN_STROKE_PX * wpp;
+  return wpp === undefined ? undefined : wpp / worldScale;
+}
+
+/** The stroke floor in local units at the current zoom; `0` (no floor) when
+ *  there is no usable `worldPerPixel`. */
+function strokeFloor(
+  worldPerPixel: number | undefined,
+  worldScale: number,
+): number {
+  return MIN_STROKE_PX * (localPerPixel(worldPerPixel, worldScale) ?? 0);
 }
 
 /**
@@ -452,7 +467,7 @@ export function strokeFloorClamps(
 ): boolean {
   return (
     naturalStrokeWidth(thickness, lineThicknessScale) <
-    strokeFloor(worldPerPixel) / worldScale
+    strokeFloor(worldPerPixel, worldScale)
   );
 }
 
@@ -475,7 +490,7 @@ export function resolveStrokeWidth(
   const worldScale = worldScaleOf(parent);
   return Math.max(
     naturalStrokeWidth(thickness, lineThicknessScale),
-    strokeFloor(worldPerPixel) / worldScale,
+    strokeFloor(worldPerPixel, worldScale),
   );
 }
 
@@ -524,12 +539,11 @@ export function buildStroke(
 
   const dashRuns = dashRunsFor(pattern);
   if (dashRuns) {
-    // Pixi has no native dash, so the path is segmented by arc length. Scale
-    // the nominal CSS-pixel runs to local units the same way stroke width is
-    // scale-compensated, so the dash rhythm reads constant on screen across
-    // zoom (and icon scale) instead of stretching/compressing with either.
-    const wpp = usableWorldPerPixel(worldPerPixel);
-    const dashScale = wpp === undefined ? 1 : wpp / worldScale;
+    // Pixi has no native dash, so the path is segmented by arc length. The
+    // nominal CSS-pixel runs convert to local units through the same factor
+    // as the stroke floor, so the dash rhythm reads constant on screen across
+    // zoom and icon scale instead of stretching with either.
+    const dashScale = localPerPixel(worldPerPixel, worldScale) ?? 1;
     const scaledRuns = dashRuns.map((r) =>
       Math.max(MIN_DASH_RUN, r * dashScale),
     );

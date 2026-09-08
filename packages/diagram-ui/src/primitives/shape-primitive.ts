@@ -203,9 +203,10 @@ export abstract class OmShapePrimitive extends LitElement {
       this.updateEditable(parent);
       return;
     }
-    // The parent's world scale sets where the screen-space floor bites, so a
-    // placement/resize change must rebuild even though the shape data is
-    // unchanged.
+    // Every screen-space conversion — the stroke floor, the dash rhythm, and
+    // `<om-text>`'s texture resolution — goes through the parent's world
+    // scale, so a placement/resize change must rebuild even though the shape
+    // data is unchanged.
     const worldScale = worldScaleOf(parent);
     const key = `${this.zOrder}|${this.zBias}|${worldScale}|${this.lineThicknessScale}|${this.strokeZoomKey(worldScale)}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
@@ -233,7 +234,7 @@ export abstract class OmShapePrimitive extends LitElement {
     const node = this.shapeNode;
     node.setEntityName(this.entityName());
     node.setHovered(this.hovered);
-    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.strokeZoomKey(worldScaleOf(parent))}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.strokeZoomKey(worldScaleOf(node.transform))}|${this.fingerprint()}`;
     if (key !== this.lastBuiltKey) {
       this.lastBuiltKey = key;
       this.tearDownMeshes();
