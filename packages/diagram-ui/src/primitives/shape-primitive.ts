@@ -203,10 +203,12 @@ export abstract class OmShapePrimitive extends LitElement {
       this.updateEditable(parent);
       return;
     }
-    // The parent's world scale feeds the stroke's scale-compensated width
-    // (`buildStroke`), so a placement/resize change must rebuild even though
-    // the shape data is unchanged.
-    const key = `${this.zOrder}|${this.zBias}|${worldScaleOf(parent)}|${this.lineThicknessScale}|${this.strokeZoomKey()}|${this.fingerprint()}`;
+    // Every screen-space conversion — the stroke floor, the dash rhythm, and
+    // `<om-text>`'s texture resolution — goes through the parent's world
+    // scale, so a placement/resize change must rebuild even though the shape
+    // data is unchanged.
+    const worldScale = worldScaleOf(parent);
+    const key = `${this.zOrder}|${this.zBias}|${worldScale}|${this.lineThicknessScale}|${this.strokeZoomKey(worldScale)}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
       return;
     }
@@ -232,7 +234,7 @@ export abstract class OmShapePrimitive extends LitElement {
     const node = this.shapeNode;
     node.setEntityName(this.entityName());
     node.setHovered(this.hovered);
-    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.strokeZoomKey()}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.strokeZoomKey(worldScaleOf(node.transform))}|${this.fingerprint()}`;
     if (key !== this.lastBuiltKey) {
       this.lastBuiltKey = key;
       this.tearDownMeshes();
@@ -274,14 +276,20 @@ export abstract class OmShapePrimitive extends LitElement {
   /** The build key's zoom term: `worldPerPixel`, but only while the stroke
    *  actually depends on zoom — a dashed pattern, or a width the
    *  screen-space floor clamps. A thick solid shape's key stays
-   *  zoom-independent so panning and zooming never rebuild it. */
-  private strokeZoomKey(): string {
+   *  zoom-independent so panning and zooming never rebuild it. The floor
+   *  is screen-space, so how far a shape is scaled decides when it bites. */
+  private strokeZoomKey(worldScale: number): string {
     const wpp = this.sceneCtx?.worldPerPixel();
     const st = this.strokeThickness();
     const zoomBound =
       dashRunsFor(this.dashPattern()) !== null ||
       (st !== null &&
-        strokeFloorClamps(st.thickness, this.lineThicknessScale, wpp));
+        strokeFloorClamps(
+          st.thickness,
+          this.lineThicknessScale,
+          wpp,
+          worldScale,
+        ));
     return zoomBound ? String(wpp) : "";
   }
 

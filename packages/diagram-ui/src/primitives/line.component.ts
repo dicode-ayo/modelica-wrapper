@@ -14,7 +14,7 @@ import { DEFAULT_ARROW_SIZE, buildArrowhead } from "./arrow-utils.js";
 /**
  * `<om-line>` — one Modelica `LineShape`. Polyline with optional arrowheads
  * at each end (`arrow` / `arrowSize`); no fill side. `thickness` is honored
- * via the shared scale-compensated stroke (`buildStroke`).
+ * in icon space via the shared stroke (`buildStroke`).
  */
 @customElement("om-line")
 export class OmLine extends OmShapePrimitive {

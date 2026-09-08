@@ -36,18 +36,16 @@ export function arrowheadVertices(
 
 /**
  * Build one Modelica arrowhead as a `Graphics` child of `parent`, at `tip`,
- * pointing in direction `(dirX, dirY)` (normalised internally). `size` is in
- * the same diagram-unit coordinate space as the line's own points — unlike
- * stroke `thickness`, `arrowSize` is not screen-space compensated.
+ * pointing in direction `(dirX, dirY)` (normalised internally). `size` and
+ * `strokeWidth` are both in the line's own diagram-unit coordinate space.
  *
  * `Arrow.None`, a zero-length direction, or a non-positive size each return
  * null. Supports `"Filled"` (solid triangle), `"Open"` (hollow V chevron),
  * and `"Half"` (single-sided wing, drawn on the CCW/left side — Modelica
  * §18.6.4 says "right side of a filled arrow" without defining an
  * orientation convention; unverified against OMEdit). Unknown values return
- * null. `strokeWidth` (already scale-compensated, see
- * {@link resolveStrokeWidth}) is the outline width for `"Open"`/`"Half"`;
- * `"Filled"` ignores it (solid fill has no stroke).
+ * null. `strokeWidth` (see {@link resolveStrokeWidth}) is the outline width
+ * for `"Open"`/`"Half"`; `"Filled"` ignores it (solid fill has no stroke).
  */
 export function buildArrowhead(
   parent: Container,
@@ -84,16 +82,16 @@ export function buildArrowhead(
     g.stroke({
       width: strokeWidth,
       color: colour,
-      cap: "round",
-      join: "round",
+      cap: "butt",
+      join: "miter",
     });
   } else if (kind === "Half") {
     g.moveTo(v.tip[0], v.tip[1]).lineTo(v.left[0], v.left[1]);
     g.stroke({
       width: strokeWidth,
       color: colour,
-      cap: "round",
-      join: "round",
+      cap: "butt",
+      join: "miter",
     });
   } else {
     g.destroy();
