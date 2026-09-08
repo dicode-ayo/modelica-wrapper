@@ -127,8 +127,8 @@ This section is spec-normative and is where "behaves weirdly" bugs usually hide.
   inherited components and connections visible**.
 - **`DynamicSelect`.** Conditional/parameter-driven graphics
   (`DynamicSelect(static, dynamic)`) — *open question*: the research did not pin
-  how OMEdit evaluates these or how they appear in `getModelInstance` JSON.
-  Likely an area we don't handle.
+  how OMEdit evaluates the DYNAMIC (simulation-time) branch or how it appears in
+  `getModelInstance` JSON. Likely an area we don't handle.
 - **Icon rotation edge case (`ModelicaSpecification#2248`, open).** Today tools
   **do** rotate/flip a component's icon graphics with its placement on
   90/180/270° / flip; there's an *open* enhancement to keep *quadratic* icons
@@ -264,10 +264,17 @@ re-investigated:
    [producer.ts](../packages/omc-client/src/api/diagram/producer.ts); an
    `extends` annotation that hides base primitives drops that layer's graphics.
 4. **`DynamicSelect`.** Resolved to its static default in
-   [expression-to-string.ts](../packages/omc-client/src/eval/expression-to-string.ts)
-   — it arrives as a `call` named `DynamicSelect` whose first argument is the
-   static branch. Conditional graphics are rendered statically by design;
-   re-evaluating them per-instance would need a simulation result to bind to.
+   [shapes.ts](../packages/omc-client/src/api/diagram/shapes.ts)'s
+   `peelDynamicSelect` — it arrives as a `call` named `DynamicSelect` whose
+   first argument is the static branch. That static branch, when it's still an
+   unreduced expression over the owning class's own parameters (e.g.
+   `visible = not useSupport`), is then evaluated against an `EvalScope` built
+   from the `ModelInstance` (`eval-scope.ts:scopeForInstance`) via the same
+   `evaluateExpression` the parameter form's `Dialog.enable` uses, and only
+   falls back to the §18.6 default when that evaluation can't produce a
+   concrete value. The DYNAMIC (simulation-time) branch of `DynamicSelect` is
+   still out of scope — re-evaluating it per-instance would need a simulation
+   result to bind to.
 
 ---
 
