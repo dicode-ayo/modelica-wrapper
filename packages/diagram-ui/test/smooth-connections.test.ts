@@ -2,10 +2,10 @@
  * `Smooth.Bezier` on a `connect()` reaches the canvas: `<om-graphical-layout>`
  * forwards a connection's `smooth` to `<om-edge>`, which strokes and picks the
  * flattened curve. The geometry itself is pinned in `@dicode/diagram-svg` and
- * the component wiring in `edge.test.ts`; these pin the layout end of it.
+ * the component wiring in `edge.test.ts`; this pins the layout end of it.
  */
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout, Point } from "@dicode/omc-client";
+import type { Point } from "@dicode/omc-client";
 
 import type { OmConnection } from "../src/connection/connection.component.js";
 import {
@@ -15,42 +15,43 @@ import {
 import { withRoute } from "./harness/layout-fixtures.js";
 import { pathVertices } from "./pixi-dash.helper.js";
 
-/** A right-angle route whose corner (50, 0) a Bezier rounds away from. */
+/** A right-angle route: two straight runs meeting at the corner (50, 0). */
 const CORNER_ROUTE: Point[] = [
   [0, 0],
   [50, 0],
   [50, 30],
 ];
 
-function curvedRoute(): DiagramLayout {
-  const base = withRoute(CORNER_ROUTE);
-  return {
-    ...base,
-    connections: base.connections.map((c) => ({ ...c, smooth: "Bezier" })),
-  };
-}
-
 describe("connection Smooth.Bezier", () => {
-  it("strokes the waypoints verbatim without smoothing", async () => {
+  it("curves the route on a layout swap while its junction stays on the waypoint", async () => {
     const el = await mountLayout({ layout: withRoute(CORNER_ROUTE) });
     expect(pathVertices(graphicsWithLabel(el, "om-edge:0"))).toEqual(
       CORNER_ROUTE,
     );
-  });
 
-  it("curves the route while its junctions stay on the waypoints", async () => {
-    // A Bezier is pulled toward each waypoint without reaching it, so the
-    // discs mark grabbable corners the stroke no longer passes through.
-    // That separation is deliberate: the waypoints remain the editable route.
-    const el = await mountLayout({ layout: curvedRoute() });
-    const drawn = pathVertices(graphicsWithLabel(el, "om-edge:0"));
-    expect(drawn.length).toBeGreaterThan(CORNER_ROUTE.length);
-    expect(drawn).not.toContainEqual([50, 0]);
+    el.layout = withRoute(CORNER_ROUTE, { smooth: "Bezier" });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
 
+    expect(pathVertices(graphicsWithLabel(el, "om-edge:0"))).not.toContainEqual(
+      [50, 0],
+    );
     const conn = el.shadowRoot?.querySelector<OmConnection>("om-connection");
     if (!conn) throw new Error("expected an om-connection");
     const [disc] = conn.junctions;
     if (disc === undefined) throw new Error("expected a junction disc");
     expect([disc.position.x, disc.position.y]).toEqual([50, 0]);
+  });
+
+  it("routes a two-waypoint connection straight even under Smooth.Bezier", async () => {
+    // Two points cannot describe a curve; the route must not gain vertices.
+    const direct: Point[] = [
+      [0, 0],
+      [50, 0],
+    ];
+    const el = await mountLayout({
+      layout: withRoute(direct, { smooth: "Bezier" }),
+    });
+    expect(pathVertices(graphicsWithLabel(el, "om-edge:0"))).toEqual(direct);
   });
 });

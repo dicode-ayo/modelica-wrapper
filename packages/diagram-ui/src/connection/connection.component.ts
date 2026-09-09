@@ -43,9 +43,8 @@ const JUNCTION_Z_INDEX = 0.01;
  *
  * Properties:
  *   - `path`             — `Point[]` of waypoints
- *   - `smooth`           — Modelica `Smooth`, forwarded; `"Bezier"` curves
- *                          the edge while the junctions stay on the
- *                          waypoints they mark
+ *   - `smooth`           — Modelica `Smooth`; `"Bezier"` curves the edge
+ *                          while the junctions stay on the waypoints
  *   - `stroke`           — CSS colour (`#rrggbb` or `rgb(r,g,b)`), forwarded
  *                          to <om-edge>
  *   - `clocked`          — dashed pattern, forwarded

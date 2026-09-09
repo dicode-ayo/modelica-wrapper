@@ -40,8 +40,8 @@ const meta: Meta<StoryArgs> = {
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Composes one <code>&lt;om-edge&gt;</code> + optional junction markers at
         internal corners. Toggle showJunctions to compare. Under
-        <code>smooth</code> the stroke rounds each corner away from the
-        junction marking it — the waypoints stay the editable route.
+        <code>smooth</code> the stroke rounds each corner away from the junction
+        marking it — the waypoints stay the editable route.
       </p>
       <div class="om-story-canvas-host">
         <om-scene .zoom=${zoom}>

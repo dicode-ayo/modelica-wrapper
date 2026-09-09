@@ -69,6 +69,12 @@ export class OmEdge extends LitElement {
    * equal `path` is a no-op — see `pointsEqual`.
    */
   private builtPath: Point[] | null = null;
+  /**
+   * Polyline the line and hit tube are stroked against: `path`, or its
+   * flattened curve under `Smooth.Bezier`. `builtPath` keeps tracking the
+   * route itself, which the curve is pulled toward without passing through.
+   */
+  private drawnPath: Point[] = [];
   /** `worldPerPixel` the line was last drawn against, so a pure pan (no
    *  zoom change) is a no-op rather than a needless re-stroke. */
   private lastDashWpp: number | undefined = undefined;
@@ -100,7 +106,7 @@ export class OmEdge extends LitElement {
   private restrokeLine(meshes: EdgeMeshes, wpp: number | undefined): void {
     updateEdgePoints(
       meshes.line,
-      this.drawnPath(),
+      this.drawnPath,
       this.effectiveColor(),
       this.clocked,
       wpp,
@@ -153,11 +159,7 @@ export class OmEdge extends LitElement {
     return this.selected ? SELECTED_EDGE_COLOR : this.baseColor;
   }
 
-  /** The polyline actually stroked and picked: the waypoints, or the
-   *  flattened curve under `Smooth.Bezier`. The waypoints stay the editable
-   *  route — a curve is pulled toward each one without passing through it,
-   *  so the drawn path is not the route. */
-  private drawnPath(): Point[] {
+  private flattenRoute(): Point[] {
     return isBezierSmooth(this.smooth)
       ? smoothLinePoints(this.path)
       : this.path;
@@ -175,8 +177,9 @@ export class OmEdge extends LitElement {
     this.baseColor = parseCssColor(this.stroke) ?? DEFAULT_EDGE_COLOR;
     const name = this.edgeName();
     const wpp = this.sceneCtx?.worldPerPixel();
+    this.drawnPath = this.flattenRoute();
     this.meshes = buildEdge(this.parentTransform, name, {
-      points: this.drawnPath(),
+      points: this.drawnPath,
       clocked: this.clocked,
       color: this.effectiveColor(),
       ...(wpp !== undefined ? { worldPerPixel: wpp } : {}),
@@ -201,12 +204,13 @@ export class OmEdge extends LitElement {
     if (!this.meshes || !this.parentTransform) {
       return;
     }
+    this.drawnPath = this.flattenRoute();
     this.restrokeLine(this.meshes, this.sceneCtx?.worldPerPixel());
     this.meshes.hitArea.destroy();
     const hit = rebuildHitTube(
       this.parentTransform,
       `${this.edgeName()}.hit`,
-      this.drawnPath(),
+      this.drawnPath,
     );
     tagEntity(hit, "edge", this.nodeId);
     this.meshes.hitArea = hit;
@@ -244,6 +248,7 @@ export class OmEdge extends LitElement {
     this.meshes.hitArea.destroy();
     this.meshes = null;
     this.builtPath = null;
+    this.drawnPath = [];
     this.appliedSelected = null;
     this.lastDashWpp = undefined;
   }
