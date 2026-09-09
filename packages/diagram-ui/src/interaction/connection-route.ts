@@ -15,12 +15,10 @@ import type {
 export function pointsEqual(a: Point[] | null, b: Point[] | null): boolean {
   if (a === b) return true;
   if (!a || !b || a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const p = a[i]!;
-    const q = b[i]!;
-    if (p[0] !== q[0] || p[1] !== q[1]) return false;
-  }
-  return true;
+  return a.every((p, i) => {
+    const q = b[i];
+    return q !== undefined && p[0] === q[0] && p[1] === q[1];
+  });
 }
 
 /** Closest point to `p` on the segment `a`–`b`, clamped to the segment. */

@@ -30,11 +30,14 @@ import {
  * (which drive the hit tube + vertex handles).
  */
 export interface EntityBounds {
+  /** Bounds the painted geometry. For a smoothed poly this is the control
+   *  polygon's extent, which contains the curve: loose, never too small. */
   extent: Extent;
   origin?: Point | undefined;
   rotation?: number | undefined;
   points?: Point[] | undefined;
-  /** The painted path, when it differs from `points` (a smoothed curve). */
+  /** The painted path the hit tube traces. `points` itself by identity when
+   *  nothing reshapes it, so the short-circuit in `setPolyPoints` holds. */
   drawnPath?: Point[] | undefined;
 }
 

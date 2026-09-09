@@ -276,7 +276,8 @@ describe("renderIconLayersToSvg", () => {
       ]),
     ]);
     expect(svg).not.toContain("<polyline");
-    expect(svg).toContain('<path d="M 0 0 L 5 5 C 5 5 10 10 15 5 L 20 0"');
+    // Coordinates are `smooth-path.test.ts`'s to pin; this is the wiring.
+    expect(svg).toMatch(/<path d="M 0 0 L [^"]*C[^"]*L 20 0"/);
     expect(svg).toContain('stroke="rgb(255,0,0)"');
     expect(svg).toContain('fill="none"');
   });
@@ -315,9 +316,7 @@ describe("renderIconLayersToSvg", () => {
       ]),
     ]);
     expect(svg).not.toContain("<polygon");
-    expect(svg).toContain(
-      '<path d="M 5 0 C 5 0 10 0 10 5 C 10 5 10 10 5 10 C 5 10 0 10 0 5 C 0 5 0 0 5 0 Z"',
-    );
+    expect(svg).toMatch(/<path d="M 5 0 C[^"]*Z"/);
     expect(svg).toContain('fill="rgb(0,128,255)"');
   });
 

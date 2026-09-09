@@ -34,6 +34,7 @@ import { colorToCss } from "./color.js";
 import { expressionToString } from "@dicode/omc-client/eval";
 import { linePatternToDashArray, resolveFill } from "./pattern.js";
 import {
+  formatCoord,
   isBezierSmooth,
   smoothLinePathData,
   smoothPolygonPathData,
@@ -601,7 +602,9 @@ function resolveBitmapHref(s: BitmapShape): string | undefined {
 function pointsToAttr(
   points: ReadonlyArray<readonly [number, number]>,
 ): string {
-  return points.map(([x, y]) => `${x},${y}`).join(" ");
+  return points
+    .map(([x, y]) => `${formatCoord(x)},${formatCoord(y)}`)
+    .join(" ");
 }
 
 interface RectBox {

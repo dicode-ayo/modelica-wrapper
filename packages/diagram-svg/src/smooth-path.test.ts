@@ -94,12 +94,15 @@ describe("smoothLinePathData", () => {
   });
 
   it("rounds coordinates so binary halving does not leak into the output", () => {
+    // (-8.3 + 4.7) / 2 is -1.7999999999999998 in binary floating point.
     const points: Pt[] = [
       [-8.3, 0],
       [4.7, 0],
       [10, 0],
     ];
-    expect(smoothLinePathData(points)).not.toContain("999999");
+    expect(smoothLinePathData(points)).toBe(
+      "M -8.3 0 L -1.8 0 C -1.8 0 4.7 0 7.35 0 L 10 0",
+    );
   });
 });
 
@@ -128,7 +131,7 @@ describe("smoothPolygonPathData", () => {
     expect(smoothPolygonPathData(open)).toBe(smoothPolygonPathData(closed));
   });
 
-  it("degrades a triangle-less ring to straight segments", () => {
+  it("degrades a ring with fewer than three vertices to straight segments", () => {
     expect(
       smoothPolygonPathData([
         [0, 0],
@@ -169,7 +172,9 @@ describe("smoothLinePoints", () => {
     expect(apex).toBeGreaterThan(5);
   });
 
-  it("emits no zero-length segments", () => {
+  it("drops the zero-length joints the construction re-states", () => {
+    // Each interior vertex is a `lineTo` onto the point the previous cubic
+    // already ended at, so every segment here has a direction.
     const sampled = smoothLinePoints([
       [0, 0],
       [10, 0],

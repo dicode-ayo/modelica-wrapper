@@ -57,7 +57,6 @@ export class OmPolygon extends OmShapePrimitive {
     if (!s || s.points.length < 3) {
       return null;
     }
-    // The control polygon still bounds the curve, which lies inside its hull.
     return {
       extent: pointsExtent(s.points),
       origin: s.origin,

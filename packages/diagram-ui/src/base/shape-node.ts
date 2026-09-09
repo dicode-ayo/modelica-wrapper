@@ -8,6 +8,7 @@ import {
   SelectionOutline,
   VertexHandles,
 } from "./selection-overlay.js";
+import { pointsEqual } from "../interaction/connection-route.js";
 import type { EntityKind } from "../interaction/entity-keys.js";
 import { clearEntityTag, tagEntity } from "../interaction/node-keys.js";
 import type { SceneContext } from "../scene/scene-context.js";
@@ -24,19 +25,6 @@ const HIGHLIGHT_COLOR = 0x6199fa;
 /** Pick tolerance (diagram units) of a poly shape's follow-the-line hit
  *  tube — matches the connection edge's `WAYPOINT_RADIUS`. */
 const POLY_HIT_RADIUS = 1.5;
-
-function samePoints(a: Point[] | null, b: Point[] | null): boolean {
-  if (a === b) {
-    return true;
-  }
-  if (a === null || b === null || a.length !== b.length) {
-    return false;
-  }
-  return a.every((p, i) => {
-    const q = b[i];
-    return q !== undefined && p[0] === q[0] && p[1] === q[1];
-  });
-}
 
 /** Opacity the hit tube reveals at while the poly is hovered — matches the
  *  connection edge's hover band. */
@@ -298,7 +286,7 @@ export class OmShapeNode {
     // match means the vertices are unedited — but a `smooth` toggle keeps
     // that same array and rewrites only the painted path, so the tube has to
     // be compared by value or it would keep tracing the old geometry.
-    if (points === this.vertices && samePoints(path, this.drawnPath)) {
+    if (points === this.vertices && pointsEqual(path, this.drawnPath)) {
       return;
     }
     this.vertices = points;

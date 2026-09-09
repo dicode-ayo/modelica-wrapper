@@ -14,8 +14,9 @@
  * cubic so the seam between the last and first vertex is rounded like every
  * other corner.
  *
- * The flattened form carries no zero-length segments: stroke builders derive
- * segment normals by differencing, and a repeated point yields no direction.
+ * OMEdit's line construction re-states each interior joint as a zero-length
+ * `lineTo`; the flattened form drops those, so no two adjacent points in it
+ * are equal and every segment has a direction.
  */
 
 /** A `[x, y]` pair in the shape's own coordinate space. */
@@ -29,8 +30,17 @@ type PathSegment =
 /** Flattening resolution: samples emitted per cubic. */
 const SAMPLES_PER_CUBIC = 16;
 
-/** Decimal places kept in emitted path data. */
+/** Decimal places kept in emitted coordinates. */
 const COORD_PRECISION = 4;
+
+/**
+ * One coordinate as SVG markup. Midpoint halving turns exact decimals into
+ * their binary neighbours (`-1.7999999999999998`), so every coordinate the
+ * renderer emits — curved or straight — goes through here.
+ */
+export function formatCoord(n: number): string {
+  return String(Number(n.toFixed(COORD_PRECISION)));
+}
 
 /** True when a shape's `smooth` field selects `Smooth.Bezier`. */
 export function isBezierSmooth(smooth: string | undefined): boolean {
@@ -181,20 +191,16 @@ function polygonSegments(ring: readonly Pt[]): PathSegment[] {
   return out;
 }
 
-function fmt(n: number): string {
-  return String(Number(n.toFixed(COORD_PRECISION)));
-}
-
 function segmentsToPathData(segments: readonly PathSegment[]): string {
   return segments
     .map((seg) => {
       switch (seg.kind) {
         case "move":
-          return `M ${fmt(seg.to[0])} ${fmt(seg.to[1])}`;
+          return `M ${formatCoord(seg.to[0])} ${formatCoord(seg.to[1])}`;
         case "line":
-          return `L ${fmt(seg.to[0])} ${fmt(seg.to[1])}`;
+          return `L ${formatCoord(seg.to[0])} ${formatCoord(seg.to[1])}`;
         case "cubic":
-          return `C ${fmt(seg.c1[0])} ${fmt(seg.c1[1])} ${fmt(seg.c2[0])} ${fmt(seg.c2[1])} ${fmt(seg.to[0])} ${fmt(seg.to[1])}`;
+          return `C ${formatCoord(seg.c1[0])} ${formatCoord(seg.c1[1])} ${formatCoord(seg.c2[0])} ${formatCoord(seg.c2[1])} ${formatCoord(seg.to[0])} ${formatCoord(seg.to[1])}`;
       }
     })
     .join(" ");
