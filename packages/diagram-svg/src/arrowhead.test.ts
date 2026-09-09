@@ -84,8 +84,8 @@ describe("lineArrowheads", () => {
     const curve = smoothLinePoints(points);
     // The flattened curve's own first and last steps, which the control-point
     // tangent has to agree with for a curve to cap where it is drawn.
-    expect(start?.direction).toEqual(unitStep(curve[1], curve[0]));
-    expect(end?.direction).toEqual(unitStep(curve.at(-2), curve.at(-1)));
+    expectDirection(start?.direction, unitStep(curve[1], curve[0]));
+    expectDirection(end?.direction, unitStep(curve.at(-2), curve.at(-1)));
   });
 });
 
@@ -138,7 +138,7 @@ describe("arrowheadPathData", () => {
   });
 });
 
-/** Unit vector from `back` to `tip`, rounded so exact directions compare equal. */
+/** Unit vector from `back` to `tip`. */
 function unitStep(
   back: readonly [number, number] | undefined,
   tip: readonly [number, number] | undefined,
@@ -150,6 +150,14 @@ function unitStep(
   const dy = tip[1] - back[1];
   const length = Math.hypot(dx, dy);
   return [dx / length, dy / length];
+}
+
+function expectDirection(
+  actual: readonly [number, number] | undefined,
+  expected: readonly [number, number],
+): void {
+  expect(actual?.[0]).toBeCloseTo(expected[0], 10);
+  expect(actual?.[1]).toBeCloseTo(expected[1], 10);
 }
 
 /** Angle at the tip between the shaft's back-direction and one base corner. */

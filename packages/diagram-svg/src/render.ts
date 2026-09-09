@@ -14,7 +14,7 @@
  *  - Shape mappers emit minimal, static SVG; gradient and hatch fills
  *    register their `<defs>` entries through the render context.
  *  - Colors / patterns / expressions go through the helper modules so the
- *    behaviour is uniform across shape kinds.
+ *    behavior is uniform across shape kinds.
  *
  * What this file does NOT do:
  *  - placement transforms / sub-component composition (that's the next
@@ -474,7 +474,7 @@ function renderArrowhead(
   const paint =
     head.kind === "Filled"
       ? `fill="${stroke}"`
-      : `fill="none" stroke="${stroke}" stroke-width="${thickness}" stroke-linejoin="miter"`;
+      : `fill="none" stroke="${stroke}" stroke-width="${thickness}"`;
   return `<path d="${arrowheadPathData(head)}" ${paint}/>`;
 }
 

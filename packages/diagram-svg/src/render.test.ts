@@ -310,14 +310,13 @@ describe("renderIconLayersToSvg", () => {
         },
       ]),
     ]);
-    // Vertices are `arrowhead.test.ts`'s to pin; this is the wiring, plus the
-    // paint each kind takes and the dash the heads must not inherit.
     expect(svg).toContain(
-      '<path d="M 4 -1.0718 L 0 0 L 4 1.0718" fill="none" stroke="rgb(255,0,0)" stroke-width="2" stroke-linejoin="miter"/>',
+      '<path d="M 4 -1.0718 L 0 0 L 4 1.0718" fill="none" stroke="rgb(255,0,0)" stroke-width="2"/>',
     );
     expect(svg).toContain(
       '<path d="M 10 0 L 6 1.0718 L 6 -1.0718 Z" fill="rgb(255,0,0)"/>',
     );
+    // Only the shaft is dashed; a head is a path of its own.
     expect(svg.match(/stroke-dasharray/g)).toHaveLength(1);
   });
 

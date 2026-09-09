@@ -73,11 +73,11 @@ export {
   type TextSubstitutions,
 } from "./text-template.js";
 export {
+  arrowheadOutline,
   arrowheadPathData,
-  arrowheadVertices,
   lineArrowheads,
   type Arrowhead,
-  type ArrowheadVertices,
+  type ArrowheadOutline,
   type ArrowKind,
 } from "./arrowhead.js";
 export {

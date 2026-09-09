@@ -1,13 +1,13 @@
 import { Container, Graphics } from "pixi.js";
 import type { Color } from "@dicode/omc-client";
-import { arrowheadVertices, type Arrowhead } from "@dicode/diagram-svg";
+import { arrowheadOutline, type Arrowhead } from "@dicode/diagram-svg";
 
 import { packColor, type OwnedResource } from "./shape-utils.js";
 
 /**
  * Build one resolved arrowhead as a `Graphics` child of `parent`. `strokeWidth`
- * (see {@link resolveStrokeWidth}) is the outline width for `"Open"` and
- * `"Half"`; `"Filled"` has no outline and ignores it.
+ * (see {@link resolveStrokeWidth}) is the outline width for the open kinds; a
+ * closed head is filled and has no outline to widen.
  */
 export function buildArrowhead(
   parent: Container,
@@ -17,41 +17,23 @@ export function buildArrowhead(
   baseName: string,
   strokeWidth: number,
 ): OwnedResource {
-  const v = arrowheadVertices(head);
-  const colour = packColor(color);
+  const { vertices, closed } = arrowheadOutline(head);
+  const [first, ...rest] = vertices;
+  const packed = packColor(color);
 
   const g = new Graphics({ label: baseName });
   g.eventMode = "none";
   g.zIndex = z;
 
-  const outline = {
-    width: strokeWidth,
-    color: colour,
-    cap: "butt",
-    join: "miter",
-  } as const;
-
-  switch (head.kind) {
-    case "Filled":
-      g.poly([
-        v.tip[0],
-        v.tip[1],
-        v.left[0],
-        v.left[1],
-        v.right[0],
-        v.right[1],
-      ]);
-      g.fill(colour);
-      break;
-    case "Open":
-      g.moveTo(v.left[0], v.left[1])
-        .lineTo(v.tip[0], v.tip[1])
-        .lineTo(v.right[0], v.right[1])
-        .stroke(outline);
-      break;
-    case "Half":
-      g.moveTo(v.tip[0], v.tip[1]).lineTo(v.left[0], v.left[1]).stroke(outline);
-      break;
+  g.moveTo(first[0], first[1]);
+  for (const [x, y] of rest) {
+    g.lineTo(x, y);
+  }
+  if (closed) {
+    g.closePath();
+    g.fill(packed);
+  } else {
+    g.stroke({ width: strokeWidth, color: packed, cap: "butt", join: "miter" });
   }
 
   parent.addChild(g);

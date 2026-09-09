@@ -7,8 +7,7 @@ import { buildArrowhead } from "../src/primitives/arrow-utils.js";
 
 const BLACK: Color = [0, 0, 0];
 
-/** A rightward head, as `lineArrowheads` resolves one. Geometry is pinned by
- *  `diagram-svg/src/arrowhead.test.ts`; these cases are the Pixi side. */
+/** A rightward head, as `lineArrowheads` resolves one. */
 const HEAD: Arrowhead = {
   kind: "Filled",
   end: "end",

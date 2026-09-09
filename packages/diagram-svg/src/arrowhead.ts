@@ -12,6 +12,12 @@
  * `Arrow.None`, an unrecognized kind, a non-positive size, and an endpoint its
  * neighbor coincides with all resolve to no head at all, so a renderer draws
  * what it is handed without re-deciding any of that.
+ *
+ * The construction is the canvas renderer's, not OMEdit's: the base sits
+ * `size` back along the shaft with the corners 15° off it, where
+ * `LineAnnotation::drawArrow` makes each wing `size` long at 30°, putting its
+ * base `size·√3/2` back. Heads here come out longer and narrower than OMEdit
+ * draws them.
  */
 
 import { LINE_DEFAULTS } from "@dicode/omc-client/shapes";
@@ -40,6 +46,16 @@ export interface ArrowheadVertices {
   readonly tip: readonly [number, number];
   readonly left: readonly [number, number];
   readonly right: readonly [number, number];
+}
+
+/** A head's outline, in the order it is drawn. Never empty. */
+export interface ArrowheadOutline {
+  readonly vertices: readonly [
+    readonly [number, number],
+    ...(readonly [number, number])[],
+  ];
+  /** The outline closes back on its first corner and is filled, not stroked. */
+  readonly closed: boolean;
 }
 
 /** Angle from the shaft centerline to each base corner. */
@@ -89,21 +105,31 @@ export function arrowheadVertices(head: Arrowhead): ArrowheadVertices {
 }
 
 /**
- * SVG path `d` for a head's outline: `Filled` a closed triangle, `Open` a V
- * left open at the base, `Half` a single wing — the counter-clockwise one, so
- * that both renderers keep the same wing. Which wing the spec intends is
- * unconfirmed, so do not "correct" the side without checking against OMEdit.
+ * The corners a head's outline visits, and whether it closes back on the
+ * first: `Filled` a closed triangle, `Open` a V left open at the base, `Half`
+ * a single wing. The spec does not say which wing `Half` keeps; OMEdit's
+ * `LineAnnotation::drawArrow` zeroes the clockwise one, so the
+ * counter-clockwise wing is the one it draws.
  */
-export function arrowheadPathData(head: Arrowhead): string {
-  const v = arrowheadVertices(head);
+export function arrowheadOutline(head: Arrowhead): ArrowheadOutline {
+  const { tip, left, right } = arrowheadVertices(head);
   switch (head.kind) {
     case "Filled":
-      return `M ${formatPoint(v.tip)} L ${formatPoint(v.left)} L ${formatPoint(v.right)} Z`;
+      return { vertices: [tip, left, right], closed: true };
     case "Open":
-      return `M ${formatPoint(v.left)} L ${formatPoint(v.tip)} L ${formatPoint(v.right)}`;
+      return { vertices: [left, tip, right], closed: false };
     case "Half":
-      return `M ${formatPoint(v.tip)} L ${formatPoint(v.left)}`;
+      return { vertices: [tip, left], closed: false };
   }
+}
+
+/** SVG path `d` for a head's outline. */
+export function arrowheadPathData(head: Arrowhead): string {
+  const { vertices, closed } = arrowheadOutline(head);
+  const d = vertices
+    .map((corner, i) => `${i === 0 ? "M" : "L"} ${formatPoint(corner)}`)
+    .join(" ");
+  return closed ? `${d} Z` : d;
 }
 
 function resolveHead(

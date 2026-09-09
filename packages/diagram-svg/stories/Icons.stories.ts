@@ -127,9 +127,8 @@ export const PolygonOnly: Story = {
 };
 
 export const LineOnly: Story = {
-  parameters: { chromatic: { disableSnapshot: true } },
   args: {
-    title: "Line (dashed, one per Arrow kind)",
+    title: "Line (one per Arrow kind, plus a Smooth.Bezier cap)",
     layers: [
       {
         from: "Demo.Wire",
@@ -160,12 +159,25 @@ export const LineOnly: Story = {
           {
             kind: "line",
             points: [
-              [-80, -60],
-              [80, -60],
+              [-80, -30],
+              [80, -30],
             ],
             color: [200, 50, 50],
             thickness: 2,
             arrow: ["Half", "Half"],
+            arrowSize: 20,
+          },
+          {
+            kind: "line",
+            points: [
+              [-80, -95],
+              [0, -55],
+              [80, -95],
+            ],
+            color: [40, 80, 200],
+            thickness: 2,
+            smooth: "Bezier",
+            arrow: ["Filled", "Filled"],
             arrowSize: 20,
           },
         ],
