@@ -6,6 +6,7 @@
  * follows.
  */
 
+import { walkExtendsChain } from "../_shared/extendsChain.js";
 import type {
   ComponentElement,
   Expression,
@@ -17,21 +18,20 @@ import { evaluateExpression } from "./expression-evaluator.js";
 /**
  * An `extends` clause contributes its base class's components to the
  * enclosing name space, so walking into one must NOT consume a path
- * segment.
+ * segment. `walkExtendsChain` yields ancestors first, so keeping the last
+ * match gives a redeclaring class precedence over the one it extends.
  */
 function findComponent(
   mi: ModelInstance,
   name: string,
 ): ComponentElement | undefined {
-  for (const el of mi.elements ?? []) {
-    if (el.$kind === "component") {
-      if (el.name === name) return el;
-    } else if (typeof el.baseClass === "object" && el.baseClass !== null) {
-      const inherited = findComponent(el.baseClass, name);
-      if (inherited) return inherited;
+  let found: ComponentElement | undefined;
+  for (const { klass } of walkExtendsChain(mi)) {
+    for (const el of klass.elements ?? []) {
+      if (el.$kind === "component" && el.name === name) found = el;
     }
   }
-  return undefined;
+  return found;
 }
 
 function isLiteral(v: unknown): v is number | boolean | string | null {

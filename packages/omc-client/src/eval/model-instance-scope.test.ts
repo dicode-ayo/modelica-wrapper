@@ -118,4 +118,25 @@ describe("modelInstanceScope", () => {
     };
     expect(modelInstanceScope(cyclic).lookup(["a"])).toBeUndefined();
   });
+
+  it("prefers a redeclaring class over the one it extends", () => {
+    const redeclared: ModelInstance = {
+      name: "Derived",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Base",
+            restriction: "model",
+            elements: [
+              { $kind: "component", name: "p", value: { binding: false } },
+            ],
+          },
+        },
+        { $kind: "component", name: "p", value: { binding: true } },
+      ],
+    };
+    expect(modelInstanceScope(redeclared).lookup(["p"])).toBe(true);
+  });
 });
