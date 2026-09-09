@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Container } from "pixi.js";
+import type { Point } from "@dicode/omc-client";
 
 import "../src/scene/scene.component.js";
 import "../src/connection/edge.component.js";
@@ -7,8 +8,9 @@ import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmEdge } from "../src/connection/edge.component.js";
 import { buildHitTube } from "../src/base/hit-tube.js";
 import { buildEdge } from "../src/connection/edge-build.js";
+import { CORNER_ROUTE } from "./harness/layout-fixtures.js";
 import { parseCssColor } from "../src/connection/parse-color.js";
-import { dashCount } from "./pixi-dash.helper.js";
+import { dashCount, pathVertices } from "./pixi-dash.helper.js";
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
@@ -150,6 +152,16 @@ describe("parseCssColor", () => {
   });
 });
 
+/** The vertex of a `CORNER_ROUTE` curve farthest off both straight runs —
+ *  the probe the polyline's pick tube cannot reach. */
+function deepestOffCorner(vertices: Point[]): Point | undefined {
+  const depth = ([x, y]: Point): number => Math.min(50 - x, y);
+  return vertices.reduce<Point | undefined>(
+    (best, v) => (best === undefined || depth(v) > depth(best) ? v : best),
+    undefined,
+  );
+}
+
 describe("<om-edge>", () => {
   it("registers as a custom element", () => {
     expect(customElements.get("om-edge")).toBeDefined();
@@ -159,11 +171,7 @@ describe("<om-edge>", () => {
     const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
     edge.nodeId = "e1";
-    edge.path = [
-      [0, 0],
-      [50, 0],
-      [50, 30],
-    ];
+    edge.path = CORNER_ROUTE;
     scene.appendChild(edge);
     await edge.updateComplete;
     expect(edge.edgeMesh).not.toBeNull();
@@ -197,11 +205,7 @@ describe("<om-edge>", () => {
     // survive, not be disposed + recreated.
     const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
-    edge.path = [
-      [0, 0],
-      [50, 0],
-      [50, 30],
-    ];
+    edge.path = CORNER_ROUTE;
     scene.appendChild(edge);
     await edge.updateComplete;
     const original = edge.edgeMesh;
@@ -263,11 +267,7 @@ describe("<om-edge>", () => {
     const originalLine = edge.edgeMesh?.line;
     expect(originalLine).toBeDefined();
 
-    edge.path = [
-      [0, 0],
-      [50, 0],
-      [50, 30],
-    ];
+    edge.path = CORNER_ROUTE;
     await edge.updateComplete;
     expect(edge.edgeMesh?.line).toBe(originalLine);
     expect(originalLine?.destroyed).toBe(false);
@@ -337,5 +337,35 @@ describe("<om-edge>", () => {
     expect((line.context.instructions as ReadonlyArray<unknown>).length).toBe(
       before.length,
     );
+  });
+
+  it("setting smooth rounds the corner away from its waypoint, in paint and in pick", async () => {
+    const scene = await mountScene();
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.path = CORNER_ROUTE;
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    const straight = edge.edgeMesh;
+    if (!straight) throw new Error("expected an edge mesh");
+    expect(pathVertices(straight.line)).toEqual(CORNER_ROUTE);
+    const straightArea = straight.hitArea.hitArea;
+    if (!straightArea) throw new Error("expected a hit area");
+
+    edge.smooth = "Bezier";
+    await edge.updateComplete;
+    const curved = edge.edgeMesh;
+    if (!curved) throw new Error("expected a rebuilt edge mesh");
+    const drawn = pathVertices(curved.line);
+    expect(drawn.length).toBeGreaterThan(CORNER_ROUTE.length);
+    expect(drawn).not.toContainEqual([50, 0]);
+    const apex = deepestOffCorner(drawn);
+    if (apex === undefined) throw new Error("expected curve vertices");
+
+    const curvedArea = curved.hitArea.hitArea;
+    if (!curvedArea) throw new Error("expected a hit area");
+    expect(curvedArea.contains(...apex)).toBe(true);
+    expect(curvedArea.contains(50, 0)).toBe(false);
+    expect(straightArea.contains(...apex)).toBe(false);
+    expect(straightArea.contains(50, 0)).toBe(true);
   });
 });

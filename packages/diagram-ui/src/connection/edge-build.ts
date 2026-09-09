@@ -202,7 +202,8 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
 
 /**
  * Hand-rolled dash segmentation (Pixi has no dashed stroke), phase restarting
- * at each vertex so dashes break at corners.
+ * at each vertex so dashes break at corners. A flattened curve, whose vertices
+ * are samples rather than corners, therefore draws solid.
  *
  * With a `worldPerPixel`, one dash+gap period is `(DEFAULT_DASH_SIZE +
  * DEFAULT_DASH_GAP) * worldPerPixel` — a fixed on-screen size, so the dash

@@ -1,4 +1,9 @@
-import type { DiagramLayout, Point, Shape } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  LineStyle,
+  Point,
+  Shape,
+} from "@dicode/omc-client";
 
 /**
  * `DiagramLayout` builders shared by the pure op suites and by the mount
@@ -79,12 +84,27 @@ export function baseLayout(): DiagramLayout {
   };
 }
 
-/** `baseLayout()` with the connection's waypoints replaced by `route`. */
-export function withRoute(route: Point[]): DiagramLayout {
+/** A right-angle route: two straight runs meeting at the corner (50, 0). */
+export const CORNER_ROUTE: Point[] = [
+  [0, 0],
+  [50, 0],
+  [50, 30],
+];
+
+/** `baseLayout()` with the connection's waypoints replaced by `route` and
+ *  any `Line` style fields (`smooth`, `color`, ...) applied on top. */
+export function withRoute(
+  route: Point[],
+  style: LineStyle = {},
+): DiagramLayout {
   const base = baseLayout();
   return {
     ...base,
-    connections: base.connections.map((c) => ({ ...c, waypoints: route })),
+    connections: base.connections.map((c) => ({
+      ...c,
+      waypoints: route,
+      ...style,
+    })),
   };
 }
 
