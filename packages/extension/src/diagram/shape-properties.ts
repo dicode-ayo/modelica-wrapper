@@ -163,10 +163,13 @@ const numberCodec: Codec<number> = {
   kind: "number",
   encode: (value) => value,
   decode: (raw) => {
-    if (typeof raw === "number" && !Number.isNaN(raw)) return raw;
+    // `Infinity` and an overflowing literal like `1e999` parse without being
+    // `NaN`, and reach the geometry as coordinates nothing downstream can
+    // draw. The OMC decoder's `asNumber` rejects them the same way.
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
     if (typeof raw === "string" && raw.trim() !== "") {
       const parsed = Number(raw);
-      return Number.isNaN(parsed) ? undefined : parsed;
+      return Number.isFinite(parsed) ? parsed : undefined;
     }
     return undefined;
   },
