@@ -10,7 +10,7 @@ import { buildHitTube } from "../src/base/hit-tube.js";
 import { buildEdge } from "../src/connection/edge-build.js";
 import { CORNER_ROUTE } from "./harness/layout-fixtures.js";
 import { parseCssColor } from "../src/connection/parse-color.js";
-import { dashCount, pathVertices } from "./pixi-dash.helper.js";
+import { dashCount, dashLength, pathVertices } from "./pixi-dash.helper.js";
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
@@ -106,6 +106,32 @@ describe("buildEdge", () => {
     // The legacy fallback still produces a dashed (segmented) line, not a
     // single continuous run.
     expect(dashCount(result.line)).toBeGreaterThan(1);
+  });
+
+  it("keeps a continuous dash phase across densely-sampled vertices instead of drawing solid (issue #621)", () => {
+    // Mimics a flattened Smooth.Bezier curve: every segment is far shorter
+    // than one dash period. Restarting the phase at each vertex (the bug)
+    // forces at least one dash per segment, each nearly filling its short
+    // span, so the whole path draws solid; carrying the phase across
+    // vertices instead reproduces the same dash rhythm a single long
+    // segment would get.
+    const total = 100;
+    const samples: Point[] = [];
+    for (let i = 0; i <= 200; i++) {
+      samples.push([(i * total) / 200, 0]);
+    }
+    const result = buildEdge(new Container(), "clocked-curve", {
+      points: samples,
+      clocked: true,
+      worldPerPixel: 1, // period = (4 + 3) * 1 = 7, run = 4
+    });
+    if (result === null) throw new Error("expected a clocked edge");
+
+    // A dash pattern covers run/period (~57%) of the path; the pre-fix
+    // per-segment restart covers effectively all of it.
+    const drawn = dashLength(result.line);
+    expect(drawn).toBeGreaterThan(total * 0.3);
+    expect(drawn).toBeLessThan(total * 0.7);
   });
 });
 

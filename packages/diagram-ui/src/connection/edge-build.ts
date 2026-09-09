@@ -201,9 +201,10 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
 }
 
 /**
- * Hand-rolled dash segmentation (Pixi has no dashed stroke), phase restarting
- * at each vertex so dashes break at corners. A flattened curve, whose vertices
- * are samples rather than corners, therefore draws solid.
+ * Hand-rolled dash segmentation (Pixi has no dashed stroke). The dash phase
+ * carries continuously across vertices (`covered`, below) rather than
+ * restarting at each one, so a flattened curve — whose vertices are samples,
+ * not corners — dashes correctly instead of drawing solid (issue #621).
  *
  * With a `worldPerPixel`, one dash+gap period is `(DEFAULT_DASH_SIZE +
  * DEFAULT_DASH_GAP) * worldPerPixel` — a fixed on-screen size, so the dash
@@ -217,6 +218,11 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
  * always the diagram root (`<om-connection>` renders directly under
  * `<om-scene>`, never nested under a component's scaled icon container), so
  * that scale is always 1 and the divide-out would be a no-op.
+ *
+ * Mirrors `shape-utils.ts`'s `strokeDashedPath` (which already gets this
+ * right for filled-shape strokes) rather than merging into it — the two
+ * derive their period/run lengths differently and stay deliberately
+ * separate; only the continuous-phase walk is shared in shape.
  */
 function appendDashedPath(
   g: Graphics,
@@ -247,6 +253,11 @@ function appendDashedPath(
   );
   const run =
     (DEFAULT_DASH_SIZE * period) / (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP);
+  const runs = [run, period - run];
+
+  let runIdx = 0;
+  let runLen = runs[0] ?? run;
+  let covered = 0;
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i];
     const b = points[i + 1];
@@ -261,15 +272,22 @@ function appendDashedPath(
     }
     const nx = dx / len;
     const ny = dy / len;
-    // Draw at least one dash so a segment shorter than one period still
-    // renders; clamp each dash to the segment end so the forced dash on a
-    // short span doesn't overshoot point `b`.
-    const count = Math.max(1, Math.floor(len / period));
-    for (let j = 0; j < count; j++) {
-      const start = period * j;
-      const end = Math.min(start + run, len);
-      g.moveTo(a[0] + start * nx, a[1] + start * ny);
-      g.lineTo(a[0] + end * nx, a[1] + end * ny);
+    let pos = 0;
+    while (pos < len - 1e-9) {
+      const step = Math.min(len - pos, runLen - covered);
+      if (runIdx % 2 === 0) {
+        g.moveTo(a[0] + pos * nx, a[1] + pos * ny).lineTo(
+          a[0] + (pos + step) * nx,
+          a[1] + (pos + step) * ny,
+        );
+      }
+      pos += step;
+      covered += step;
+      if (covered >= runLen - 1e-9) {
+        covered = 0;
+        runIdx = (runIdx + 1) % runs.length;
+        runLen = runs[runIdx] ?? run;
+      }
     }
   }
 }
