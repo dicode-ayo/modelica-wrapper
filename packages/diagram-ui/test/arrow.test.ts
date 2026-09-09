@@ -43,7 +43,7 @@ function graphicIn(parent: Container, label: string): Graphics {
 }
 
 describe("buildArrowhead", () => {
-  it("builds a non-pickable Filled triangle, filled in the arrow colour", () => {
+  it("builds a non-pickable Filled triangle, filled in the arrow color", () => {
     const parent = makeParent();
     const res = buildArrowhead(parent, HEAD, [255, 0, 0], 0, "filled", 1);
     const g = graphicIn(parent, "filled");

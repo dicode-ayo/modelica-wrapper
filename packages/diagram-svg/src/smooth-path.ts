@@ -42,6 +42,11 @@ export function formatCoord(n: number): string {
   return String(Number(n.toFixed(COORD_PRECISION)));
 }
 
+/** One point as the space-separated pair an SVG path `d` takes. */
+export function formatPoint([x, y]: readonly [number, number]): string {
+  return `${formatCoord(x)} ${formatCoord(y)}`;
+}
+
 /** True when a shape's `smooth` field selects `Smooth.Bezier`. */
 export function isBezierSmooth(smooth: string | undefined): boolean {
   return smooth === "Bezier";

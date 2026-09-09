@@ -56,7 +56,7 @@ describe("lineArrowheads", () => {
     expect(lineArrowheads({ points, arrow, arrowSize: -3 })).toEqual([]);
   });
 
-  it("drops an end with no neighbour to take a direction from", () => {
+  it("drops an end with no neighbor to take a direction from", () => {
     const arrow = ["Filled", "Filled"] as const;
     expect(lineArrowheads({ points: [], arrow })).toEqual([]);
     expect(lineArrowheads({ points: [[0, 0]], arrow })).toEqual([]);

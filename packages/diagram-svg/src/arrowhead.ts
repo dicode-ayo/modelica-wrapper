@@ -4,19 +4,19 @@
  * draw the same annotation differently.
  *
  * A head caps one end of the annotated vertex list, pointing away from its
- * neighbouring vertex. Those are the vertices, not the drawn path, and that
+ * neighboring vertex. Those are the vertices, not the drawn path, and that
  * holds under `Smooth.Bezier` too: the curve leaves `points[0]` toward
  * `points[1]` and enters the last vertex from the one before it, so the
  * control-point tangent is the drawn tangent.
  *
  * `Arrow.None`, an unrecognized kind, a non-positive size, and an endpoint its
- * neighbour coincides with all resolve to no head at all, so a renderer draws
+ * neighbor coincides with all resolve to no head at all, so a renderer draws
  * what it is handed without re-deciding any of that.
  */
 
 import { LINE_DEFAULTS } from "@dicode/omc-client/shapes";
 
-import { formatCoord } from "./smooth-path.js";
+import { formatPoint } from "./smooth-path.js";
 
 /** §18.6.5.5 `Arrow` minus `None` — the values that draw something. */
 const ARROW_KINDS = ["Filled", "Open", "Half"] as const;
@@ -42,7 +42,7 @@ export interface ArrowheadVertices {
   readonly right: readonly [number, number];
 }
 
-/** Angle from the shaft centreline to each base corner. */
+/** Angle from the shaft centerline to each base corner. */
 const HALF_ANGLE_RAD = 15 * (Math.PI / 180);
 
 /**
@@ -71,7 +71,7 @@ export function lineArrowheads(shape: {
 
 /**
  * A head's corners. The base sits `size` back along the shaft with the corners
- * ±15° off the centreline; `left` is the counter-clockwise side.
+ * ±15° off the centerline; `left` is the counter-clockwise side.
  */
 export function arrowheadVertices(head: Arrowhead): ArrowheadVertices {
   const [tipX, tipY] = head.tip;
@@ -90,9 +90,9 @@ export function arrowheadVertices(head: Arrowhead): ArrowheadVertices {
 
 /**
  * SVG path `d` for a head's outline: `Filled` a closed triangle, `Open` a V
- * left open at the base, `Half` a single wing. §18.6.4 describes `Half` as
- * "half of a filled arrow" without saying which half, so it takes the
- * counter-clockwise one.
+ * left open at the base, `Half` a single wing — the counter-clockwise one, so
+ * that both renderers keep the same wing. Which wing the spec intends is
+ * unconfirmed, so do not "correct" the side without checking against OMEdit.
  */
 export function arrowheadPathData(head: Arrowhead): string {
   const v = arrowheadVertices(head);
@@ -130,8 +130,4 @@ function resolveHead(
 
 function isArrowKind(value: string): value is ArrowKind {
   return ARROW_KINDS.some((kind) => kind === value);
-}
-
-function formatPoint([x, y]: readonly [number, number]): string {
-  return `${formatCoord(x)} ${formatCoord(y)}`;
 }

@@ -24,23 +24,34 @@ export function buildArrowhead(
   g.eventMode = "none";
   g.zIndex = z;
 
-  if (head.kind === "Filled") {
-    g.poly([v.tip[0], v.tip[1], v.left[0], v.left[1], v.right[0], v.right[1]]);
-    g.fill(colour);
-  } else {
-    if (head.kind === "Open") {
+  const outline = {
+    width: strokeWidth,
+    color: colour,
+    cap: "butt",
+    join: "miter",
+  } as const;
+
+  switch (head.kind) {
+    case "Filled":
+      g.poly([
+        v.tip[0],
+        v.tip[1],
+        v.left[0],
+        v.left[1],
+        v.right[0],
+        v.right[1],
+      ]);
+      g.fill(colour);
+      break;
+    case "Open":
       g.moveTo(v.left[0], v.left[1])
         .lineTo(v.tip[0], v.tip[1])
-        .lineTo(v.right[0], v.right[1]);
-    } else {
-      g.moveTo(v.tip[0], v.tip[1]).lineTo(v.left[0], v.left[1]);
-    }
-    g.stroke({
-      width: strokeWidth,
-      color: colour,
-      cap: "butt",
-      join: "miter",
-    });
+        .lineTo(v.right[0], v.right[1])
+        .stroke(outline);
+      break;
+    case "Half":
+      g.moveTo(v.tip[0], v.tip[1]).lineTo(v.left[0], v.left[1]).stroke(outline);
+      break;
   }
 
   parent.addChild(g);

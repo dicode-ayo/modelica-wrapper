@@ -23,7 +23,7 @@ import {
   type EllipseClosure,
 } from "@dicode/omc-client/shapes";
 
-import { formatCoord } from "./smooth-path.js";
+import { formatCoord, formatPoint } from "./smooth-path.js";
 
 export interface EllipseArc {
   readonly cx: number;
@@ -141,8 +141,4 @@ export function ellipseArcPoints(arc: EllipseArc): Array<[number, number]> {
 function pointAt(arc: EllipseArc, degrees: number): [number, number] {
   const t = (degrees * Math.PI) / 180;
   return [arc.cx + Math.cos(t) * arc.rx, arc.cy + Math.sin(t) * arc.ry];
-}
-
-function formatPoint([x, y]: readonly [number, number]): string {
-  return `${formatCoord(x)} ${formatCoord(y)}`;
 }
