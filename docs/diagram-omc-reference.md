@@ -267,15 +267,23 @@ re-investigated:
    [shapes.ts](../packages/omc-client/src/api/diagram/shapes.ts)'s
    `peelDynamicSelect` — it arrives as a `call` named `DynamicSelect` whose
    first argument is the static branch. That static branch, when it's still an
-   unreduced expression over the owning class's own parameters (e.g.
-   `visible = not useSupport`), is then evaluated against an `EvalScope` built
-   from the `ModelInstance` (`eval-scope.ts:scopeForInstance`) via the same
-   `evaluateExpression` the parameter form's `Dialog.enable` uses, and only
-   falls back to the §18.6 default when that evaluation can't produce a
-   concrete value. That evaluation covers the class actually being diagrammed
-   and its extends chain only: `DiagramLayout.classes` is keyed by class name
-   and shared across every instance of it, so a sub-component's own icon
-   fields are decoded with no scope and stay at their §18.6 default — #611.
+   unreduced expression (e.g. `visible = not torque.useSupport`), is then
+   evaluated against an `EvalScope` built from the top-level `ModelInstance`
+   (`eval-scope.ts:scopeForInstance`) via the same `evaluateExpression` the
+   parameter form's `Dialog.enable` uses, and only falls back to the §18.6
+   default when that evaluation can't produce a concrete value. OMC roots
+   every cref inside a binding at the top-level instance, not at the class
+   that declares the field, so evaluation always resolves against that root —
+   never against a narrower scope built from a sub-component's own class.
+   That evaluation covers the class actually being diagrammed and its
+   extends chain only: `DiagramLayout.classes` is keyed by class name and
+   shared across every instance of it, so a sub-component's own icon fields
+   are decoded with no scope and stay at their §18.6 default — #611. A fix
+   there must still resolve against the root scope (per the rooting rule
+   above) and attach the evaluated result per-instance rather than baking it
+   into the shared `ClassDef` — `scopeForInstance` on the sub-component's own
+   type, not the root, is exactly the bug this evaluation work already fixed
+   once.
    The DYNAMIC (simulation-time) branch of `DynamicSelect` is still out of
    scope — re-evaluating it per-instance would need a simulation result to
    bind to.

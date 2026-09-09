@@ -67,8 +67,10 @@ function literalModifierAsEvalValue(text: string): EvalValue {
 /**
  * Resolve one component's value: the evaluated literal `value.value` if
  * present, else `value.binding` evaluated against `root`, else the literal
- * `modifiers.$value` — the same three-source order `parameterDisplayValue`
- * in `producer.ts` uses.
+ * `modifiers.$value`. `parameterDisplayValue` in `producer.ts` builds a
+ * display string for the same element from only the latter two sources —
+ * the two functions serve different consumers (evaluation vs. label text)
+ * and aren't required to read the same fields.
  *
  * The binding evaluates against `root`, not `el`'s own declaring class: OMC
  * roots every cref inside a `value.binding` at the top-level instance
