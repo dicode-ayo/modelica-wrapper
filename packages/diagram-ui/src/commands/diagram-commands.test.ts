@@ -22,10 +22,15 @@ const changeClassCmd = DIAGRAM_COMMANDS.find(
 );
 if (!changeClassCmd) throw new Error("diagram.changeClass command not found");
 
-function makeLayout(componentName: string, classRef: string): DiagramLayout {
+function makeLayout(componentName: string, className: string): DiagramLayout {
   return {
     components: {
-      [componentName]: { classRef } as DiagramLayout["components"][string],
+      [componentName]: {
+        classRef: className,
+      } as DiagramLayout["components"][string],
+    },
+    classes: {
+      [className]: { name: className } as DiagramLayout["classes"][string],
     },
   } as unknown as DiagramLayout;
 }

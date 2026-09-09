@@ -56,7 +56,7 @@ export function buildSubstitutions(
   appendUnits(parameters, cls);
   return {
     name: nameWithDims(instance.name, instance.dims),
-    class: instance.classRef,
+    class: cls?.name ?? instance.classRef,
     parameters,
   };
 }

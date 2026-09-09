@@ -8,21 +8,24 @@
  *  2. Walks the same chain for standalone connectors (ports declared on
  *     the host or any ancestor).
  *  3. Walks the host's `elements` for sub-components, building a
- *     deduplicated class catalog keyed by `type.name` — each class
- *     entry has its own walked icon and connector list.
+ *     deduplicated class catalog — each class entry has its own walked
+ *     icon and connector list.
  *  4. Emits connections that have an `annotation.Line`; equation-only
  *     `connect(...)` calls (no annotation) are skipped, since they
  *     carry no diagram intent.
  *
- * v1 dedup is by `type.name` only. If the same name appears twice with
- * structurally different content (a redeclare edge case), the FIRST
- * occurrence wins. Content-hashing for redeclare collisions is out of
- * scope; this is documented at the call site in `registerClass`.
+ * A class's graphics reduce against the use site — `Torque(useSupport =
+ * true)` draws no ground symbol — so one class name can need more than one
+ * icon. The catalog keys on the class name plus the content it resolved to:
+ * identical content shares an entry, and a name that resolves two ways gets
+ * a suffixed second key. `ClassDef.name` stays the real class name, so a
+ * catalog key is an identifier and not a name to display.
  */
 
 import type {
   ComponentElement,
   ConnectionNode,
+  Expression,
   ModelInstance,
   RecordValue,
 } from "../../_shared/modelInstance.js";
@@ -44,6 +47,9 @@ import type {
   Shape,
   TextShape,
 } from "../../_shared/diagramLayout.js";
+import type { EvalScope } from "../../eval/expression-evaluator.js";
+import { evaluateExpression } from "../../eval/expression-evaluator.js";
+import { modelInstanceScope } from "../../eval/model-instance-scope.js";
 import { decodeShape } from "./shapes.js";
 import {
   counterpartPlacementFor,
@@ -67,32 +73,28 @@ import {
 // ---------- condition gating ----------
 
 /**
- * Decide whether a component or port should appear in the layout given
- * its `condition` field. OMC's `getModelInstance` pre-reduces every
- * conditional predicate against the host's parameter modifiers before
- * serialization — Modelica spec §4.4.5 requires `if`-conditions to be
- * parameter-expressible, so OMC can always evaluate them. The two
- * shapes the interactive RPC actually emits:
+ * Decide whether a component or port should appear in the layout given its
+ * `condition` field, which OMC emits either bare (`condition: false`) or
+ * inside its Value wrapper (`condition: { binding: false }`).
  *
- *   `condition: false`              — bare boolean literal
- *   `condition: { binding: false }` — boolean inside OMC's Value wrapper
+ * Modelica §4.4.5 requires an `if`-condition to be parameter-expressible,
+ * and OMC reduces them before serializing — but it does NOT reduce the
+ * equivalent expressions in graphic annotations, and nothing in the payload
+ * marks which is which. Reducing both through the same evaluator drops that
+ * distinction, so a port and the graphics drawn for it can't disagree.
  *
- * Anything else (undefined, unreduced AST that OMC couldn't fold, an
- * unexpected shape) defaults to "visible". That preserves the
- * pre-feature behaviour and matches the form-side Dialog.enable
- * fallback policy.
+ * A condition that won't reduce means "visible" — the fail-open policy the
+ * graphic decoder and the form-side Dialog.enable both follow.
  */
-function isConditionTrue(condition: unknown): boolean {
+function isConditionTrue(condition: unknown, scope: EvalScope): boolean {
   if (condition === undefined || condition === null) return true;
-  if (typeof condition === "boolean") return condition;
-  if (
-    typeof condition === "object" &&
-    "binding" in (condition as object) &&
-    typeof (condition as { binding: unknown }).binding === "boolean"
-  ) {
-    return (condition as { binding: boolean }).binding;
-  }
-  return true;
+  const expr =
+    typeof condition === "object" && "binding" in (condition as object)
+      ? (condition as { binding: unknown }).binding
+      : condition;
+  return (
+    evaluateExpression(expr as Expression, scope, { fallback: true }) !== false
+  );
 }
 
 // ---------- parameter extraction ----------
@@ -198,6 +200,7 @@ function coordinateSystemForKind(
 function collectLayers(
   mi: ModelInstance,
   kind: "icon" | "diagram",
+  scope: EvalScope,
 ): IconLayer[] {
   const out: IconLayer[] = [];
   for (const { klass, primitivesVisible } of walkLayerEntries(mi, kind)) {
@@ -207,7 +210,7 @@ function collectLayers(
     const shapes: Shape[] = [];
     for (const g of graphics) {
       try {
-        shapes.push(decodeShape(g));
+        shapes.push(decodeShape(g, scope));
       } catch (err) {
         // Re-throw with context so the bad shape's path is identifiable
         // in fixture testing. Decoder errors already include the offending
@@ -241,14 +244,14 @@ function collectLayers(
  * renders the layers and ignores this field; a consumer that renders both
  * draws every annotation twice.
  */
-function collectLabels(mi: ModelInstance): LabelLayout[] {
+function collectLabels(mi: ModelInstance, scope: EvalScope): LabelLayout[] {
   const out: LabelLayout[] = [];
   const graphics = mi.annotation?.Diagram?.graphics ?? [];
   for (const g of graphics) {
     if (g.name !== "Text") continue;
     let shape: Shape;
     try {
-      shape = decodeShape(g);
+      shape = decodeShape(g, scope);
     } catch {
       // A malformed label shouldn't kill the whole layout; skip it
       // silently here (the same shape, if it's in `diagramLayers`,
@@ -281,18 +284,40 @@ function collectLabels(mi: ModelInstance): LabelLayout[] {
  * by `shape:<idx>` keys and diffed into source writes, so a substituted
  * layer there would shift indices and leak into user source.
  */
-function iconContextLayers(mi: ModelInstance): {
+function iconContextLayers(
+  mi: ModelInstance,
+  scope: EvalScope,
+): {
   layers: IconLayer[];
   from: "icon" | "diagram";
 } {
-  const icon = collectLayers(mi, "icon");
+  const icon = collectLayers(mi, "icon", scope);
   if (hasDrawnShapes(icon)) return { layers: icon, from: "icon" };
-  const diagram = collectLayers(mi, "diagram");
+  const diagram = collectLayers(mi, "diagram", scope);
   if (hasDrawnShapes(diagram)) return { layers: diagram, from: "diagram" };
   return { layers: icon, from: "icon" };
 }
 
 // ---------- class registry ----------
+
+/**
+ * The per-layout class catalog. `keyByFingerprint` makes adoption O(1) for
+ * the common case of many instances of one class; `building` breaks cycles
+ * without parking an incomplete def in `defs`.
+ */
+interface ClassRegistry {
+  defs: Map<string, ClassDef>;
+  keyByFingerprint: Map<string, string>;
+  building: Set<string>;
+}
+
+function newClassRegistry(): ClassRegistry {
+  return {
+    defs: new Map(),
+    keyByFingerprint: new Map(),
+    building: new Set(),
+  };
+}
 
 /**
  * Build a `ClassDef` from a sub-component's `type` ModelInstance. Walks
@@ -302,17 +327,18 @@ function iconContextLayers(mi: ModelInstance): {
  */
 function buildClassDef(
   typeMi: ModelInstance,
-  registry: Map<string, ClassDef>,
+  registry: ClassRegistry,
+  scope: EvalScope,
 ): ClassDef {
-  const icon = iconContextLayers(typeMi);
-  const diagramLayers = collectLayers(typeMi, "diagram");
+  const icon = iconContextLayers(typeMi, scope);
+  const diagramLayers = collectLayers(typeMi, "diagram", scope);
   // Each layer set is scaled against the annotation it came from, so an icon
   // sourced from the `Diagram` fallback isn't measured in the icon's system.
   const cs = coordinateSystemForKind(typeMi, icon.from);
   const diagramCs = coordinateSystemForKind(typeMi, "diagram");
   const connectors: Record<string, PortDef> = {};
   for (const { from, element } of walkConnectors(typeMi)) {
-    const port = portFromConnector(element, from, registry);
+    const port = portFromConnector(element, from, registry, scope);
     if (port) connectors[port.name] = port;
   }
   const def: ClassDef = {
@@ -338,37 +364,48 @@ function buildClassDef(
  * placement preview without adding the component first.
  */
 export function produceComponentClass(mi: ModelInstance): ClassDef {
-  return buildClassDef(mi, new Map());
+  return buildClassDef(mi, newClassRegistry(), modelInstanceScope(mi));
 }
 
 /**
- * Register a class in the catalog if it's not already there.
+ * Adopt a freshly built def under a key that determines it. A class whose
+ * graphics reduce against use-site parameters no longer has one icon —
+ * `Torque(useSupport = true)` and `Torque(useSupport = false)` draw
+ * differently — so the catalog keys on the content, not the name alone.
+ * Identical content shares one entry, which is every ordinary class.
+ */
+function adopt(registry: ClassRegistry, name: string, built: ClassDef): string {
+  const fingerprint = `${name}\u0000${JSON.stringify(built)}`;
+  const seen = registry.keyByFingerprint.get(fingerprint);
+  if (seen !== undefined) return seen;
+  let key = name;
+  for (let n = 2; registry.defs.has(key); n++) key = `${name}#${n}`;
+  registry.defs.set(key, built);
+  registry.keyByFingerprint.set(fingerprint, key);
+  return key;
+}
+
+/**
+ * Register a class in the catalog, returning the key it lives under.
  *
- * v1 dedup key: `type.name`. If the same name shows up with non-equal
- * content trees (a redeclare collision), the first occurrence wins —
- * subsequent calls are no-ops. We don't content-hash today; treating
- * redeclare collisions correctly is a v2 concern.
+ * A class reached again while its own def is still being built (ports →
+ * connector class → …) resolves to the bare name rather than recursing.
+ * Modelica forbids declarative cycles, but the ModelInstance shape is just
+ * JSON, so nothing upstream guarantees it.
  */
 function registerClass(
   typeMi: ModelInstance,
-  registry: Map<string, ClassDef>,
+  registry: ClassRegistry,
+  scope: EvalScope,
 ): string {
-  const key = typeMi.name;
-  if (registry.has(key)) return key;
-  // Insert a placeholder first so cycles through ports → connector class →
-  // … cannot recurse forever. Modelica forbids declarative cycles, but the
-  // ModelInstance shape is just JSON, so be defensive.
-  const placeholder: ClassDef = {
-    name: typeMi.name,
-    restriction: typeMi.restriction,
-    iconLayers: [],
-    connectors: {},
-    parameters: {},
-  };
-  registry.set(key, placeholder);
-  const built = buildClassDef(typeMi, registry);
-  registry.set(key, built);
-  return key;
+  const name = typeMi.name;
+  if (registry.building.has(name)) return name;
+  registry.building.add(name);
+  try {
+    return adopt(registry, name, buildClassDef(typeMi, registry, scope));
+  } finally {
+    registry.building.delete(name);
+  }
 }
 
 /**
@@ -384,15 +421,16 @@ function registerClass(
 function portFromConnector(
   el: ComponentElement,
   from: string,
-  registry: Map<string, ClassDef>,
+  registry: ClassRegistry,
+  scope: EvalScope,
 ): PortDef | undefined {
   if (typeof el.type !== "object" || el.type === null) return undefined;
   const placement = placementFor(el, "icon");
   if (!placement) return undefined;
   const typeMi = el.type;
   const typeName = typeMi.name;
-  registerClass(typeMi, registry);
-  const { layers: iconLayers } = iconContextLayers(typeMi);
+  registerClass(typeMi, registry, scope);
+  const { layers: iconLayers } = iconContextLayers(typeMi, scope);
   const port: PortDef = {
     name: el.name,
     typeName,
@@ -460,12 +498,13 @@ function dimsFromElement(el: ComponentElement): string[] | undefined {
 function instanceFromSubComponent(
   el: ComponentElement,
   kind: "icon" | "diagram",
-  registry: Map<string, ClassDef>,
+  registry: ClassRegistry,
+  scope: EvalScope,
 ): ComponentInstance | undefined {
   if (typeof el.type !== "object" || el.type === null) return undefined;
   const placement = placementFor(el, kind);
   if (!placement) return undefined;
-  const classRef = registerClass(el.type, registry);
+  const classRef = registerClass(el.type, registry, scope);
   const instance: ComponentInstance = {
     name: el.name,
     classRef,
@@ -491,7 +530,7 @@ function instanceFromSubComponent(
   // "visible" — same "default to visible" policy as the host path.
   const hiddenPorts: string[] = [];
   for (const { element } of walkConnectors(el.type)) {
-    if (!isConditionTrue(element.condition)) {
+    if (!isConditionTrue(element.condition, scope)) {
       hiddenPorts.push(element.name);
     }
   }
@@ -512,12 +551,13 @@ function instanceFromSubComponent(
 function instanceFromConnector(
   el: ComponentElement,
   kind: "icon" | "diagram",
-  registry: Map<string, ClassDef>,
+  registry: ClassRegistry,
+  scope: EvalScope,
 ): ConnectorInstance | undefined {
   if (typeof el.type !== "object" || el.type === null) return undefined;
   const placement = placementFor(el, kind);
   if (!placement) return undefined;
-  const classRef = registerClass(el.type, registry);
+  const classRef = registerClass(el.type, registry, scope);
   const inst: ConnectorInstance = {
     name: el.name,
     classRef,
@@ -717,21 +757,26 @@ export function produceDiagramLayout(
   kind: "icon" | "diagram",
   resolvedParameters?: Record<string, string>,
 ): DiagramLayout {
-  const registry = new Map<string, ClassDef>();
+  const registry = newClassRegistry();
+  // Graphic expressions address parameters by their path from the OPENED
+  // class (`t.useSupport`), so every layer — host, ancestor, sub-component
+  // type — reduces against this one scope rather than a local one.
+  const scope = modelInstanceScope(mi);
 
-  const iconLayers = collectLayers(mi, "icon");
-  const diagramLayers = kind === "diagram" ? collectLayers(mi, "diagram") : [];
-  const labels = kind === "diagram" ? collectLabels(mi) : [];
+  const iconLayers = collectLayers(mi, "icon", scope);
+  const diagramLayers =
+    kind === "diagram" ? collectLayers(mi, "diagram", scope) : [];
+  const labels = kind === "diagram" ? collectLabels(mi, scope) : [];
 
   // Standalone connectors on the host class (and ancestors), inheritance-aware.
   const connectors: Record<string, ConnectorInstance> = {};
   for (const { element } of walkConnectors(mi)) {
     // Gate first — `if use_x` connectors are elided when OMC's
     // pre-reduced predicate is the literal `false`.
-    if (!isConditionTrue(element.condition)) continue;
+    if (!isConditionTrue(element.condition, scope)) continue;
     // Also seed the connector's class into the registry so consumers can
     // look up its own icon via `classes[connector.classRef]`.
-    const inst = instanceFromConnector(element, kind, registry);
+    const inst = instanceFromConnector(element, kind, registry, scope);
     if (inst) {
       // Later (more-derived) declarations override earlier ones if they
       // collide; walkConnectors yields ancestors first, so this is a
@@ -745,11 +790,12 @@ export function produceDiagramLayout(
   // are part of the ancestor's icon, NOT host-class instances).
   const components: Record<string, ComponentInstance> = {};
   for (const el of ownSubComponents(mi)) {
-    if (!isConditionTrue(el.condition)) continue;
+    if (!isConditionTrue(el.condition, scope)) continue;
     const inst = instanceFromSubComponent(
       el,
       kind === "icon" ? "icon" : "diagram",
       registry,
+      scope,
     );
     if (inst) components[inst.name] = inst;
   }
@@ -761,11 +807,12 @@ export function produceDiagramLayout(
     if (klass === mi) continue;
     for (const el of ownSubComponents(klass)) {
       if (components[el.name]) continue;
-      if (!isConditionTrue(el.condition)) continue;
+      if (!isConditionTrue(el.condition, scope)) continue;
       const inst = instanceFromSubComponent(
         el,
         kind === "icon" ? "icon" : "diagram",
         registry,
+        scope,
       );
       if (inst) components[inst.name] = inst;
     }
@@ -815,7 +862,7 @@ export function produceDiagramLayout(
   // from sub-component types — so `displayUnit` params declared ON the opened
   // model rendered in source units. `registerClass` is idempotent and walks
   // the host's extends chain for inherited parameters, matching the form.
-  registerClass(mi, registry);
+  registerClass(mi, registry, scope);
 
   const layout: DiagramLayout = {
     kind,
@@ -830,7 +877,7 @@ export function produceDiagramLayout(
     iconLayers,
     diagramLayers,
     labels,
-    classes: Object.fromEntries(registry),
+    classes: Object.fromEntries(registry.defs),
     components,
     connectors,
     connections,

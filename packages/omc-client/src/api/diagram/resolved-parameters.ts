@@ -4,14 +4,13 @@
  * `paramName → displayValue` map carried on `DiagramLayout` for
  * label `%`-substitutions.
  *
- * Earlier revisions also exposed `EvalScope` / `EvalValue` helpers
- * (`coerceInstantiatedValue`, `instantiatedParametersScope`) for the
- * producer's component / port gating path. Those were dropped once
- * we confirmed OMC's `getModelInstance` pre-reduces every `if`-
- * condition to a literal — see `producer.ts:isConditionTrue` for the
- * trace. The form-side Dialog.enable evaluator stays put (it
- * evaluates against the user's in-progress working values, which OMC
- * doesn't see).
+ * This map is for display only. Gating and graphic fields resolve
+ * against `modelInstanceScope`, built from the `getModelInstance` tree
+ * itself: OMC reduces `if`-conditions to a literal but leaves the
+ * equivalent expressions in graphic annotations unreduced, so reading
+ * either from a display-string map would lose the type. The form-side
+ * Dialog.enable evaluator is separate again — it evaluates against the
+ * user's in-progress working values, which OMC never sees.
  *
  * OMC emits each row as `<name> = <value>`. The `name` is a dotted
  * path (top-level params usually have no dot); the `value` is whatever

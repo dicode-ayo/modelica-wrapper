@@ -241,7 +241,8 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
       if (!parsed || parsed.kind !== "component") return;
       const comp = target.layout.components[parsed.nodeId];
       if (comp === undefined) return;
-      target.requestClassChange?.(parsed.nodeId, comp.classRef);
+      const cls = target.layout.classes[comp.classRef];
+      target.requestClassChange?.(parsed.nodeId, cls?.name ?? comp.classRef);
     },
   },
   {

@@ -56,15 +56,18 @@ export function resolvePortInfo(
     return null;
   }
   if (parsed.componentName === null) {
-    // Standalone host connector. Its type IS the connector class —
-    // we don't have a per-instance PortDef so we can only read the
-    // class name + suffix-infer direction. Flow/stream are unknown
-    // without fetching the connector class definition.
+    // Standalone host connector. Its type IS the connector class — we
+    // don't have a per-instance PortDef so we can only read the class name
+    // + suffix-infer direction. Flow/stream are unknown without fetching
+    // the connector class definition. `classRef` is a catalog key, which
+    // carries a suffix when two instances of a class resolved to different
+    // graphics, so the name has to come off the def.
     const conn = layout.connectors[parsed.portName];
     if (!conn) return null;
+    const typeName = layout.classes[conn.classRef]?.name ?? conn.classRef;
     return {
-      typeName: conn.classRef,
-      direction: inferDirectionFromTypeName(conn.classRef),
+      typeName,
+      direction: inferDirectionFromTypeName(typeName),
       flow: false,
       stream: false,
     };
