@@ -197,4 +197,38 @@ describe("scopeForInstance", () => {
     });
     expect(scopeForInstance(mi).lookup(["n"])).toBeNull();
   });
+
+  it("prefers the evaluated literal value.value over value.binding", () => {
+    const mi = ModelInstanceSchema.parse({
+      name: "Pkg.Host",
+      restriction: "model",
+      elements: [
+        component({
+          name: "d",
+          value: {
+            value: 0.5,
+            binding: { $kind: "cref", parts: [{ name: "other" }] },
+          },
+        }),
+      ],
+    });
+    expect(scopeForInstance(mi).lookup(["d"])).toBe(0.5);
+  });
+
+  it("falls back to the literal modifier when value.binding can't be reduced", () => {
+    const mi = ModelInstanceSchema.parse({
+      name: "Pkg.Host",
+      restriction: "model",
+      elements: [
+        component({
+          name: "d",
+          modifiers: { $value: "0.5" },
+          value: {
+            binding: { $kind: "cref", parts: [{ name: "unresolvable" }] },
+          },
+        }),
+      ],
+    });
+    expect(scopeForInstance(mi).lookup(["d"])).toBe(0.5);
+  });
 });

@@ -1871,6 +1871,68 @@ describe("produceDiagramLayout: evaluated graphic-annotation fields", () => {
     // useX is true, so `not useX` evaluates to false — the component is gated out.
     expect(layout.components.x).toBeUndefined();
   });
+
+  it("isConditionTrue unwraps a condition shaped { binding: <Expression AST> }", () => {
+    function hostWithBindingWrappedCondition(useXValue: boolean): unknown {
+      return {
+        $kind: "model",
+        name: "Pkg.Host",
+        restriction: "model",
+        annotation: {
+          Diagram: {
+            coordinateSystem: {
+              extent: [
+                [-100, -100],
+                [100, 100],
+              ],
+            },
+            graphics: [],
+          },
+        },
+        elements: [
+          {
+            $kind: "component",
+            name: "useX",
+            type: "Boolean",
+            prefixes: { variability: "parameter" },
+            value: { binding: useXValue },
+          },
+          {
+            $kind: "component",
+            name: "x",
+            type: GainClass,
+            modifiers: { k: "1" },
+            annotation: placementAnno([
+              [-50, -50],
+              [-30, -30],
+            ]),
+            // OMC wraps an unreduced condition in the same `{ binding }`
+            // envelope it uses for `value` elsewhere in the tree.
+            condition: {
+              binding: {
+                $kind: "unary_op",
+                op: "not",
+                exp: { $kind: "cref", parts: [{ name: "useX" }] },
+              },
+            },
+          },
+        ],
+        connections: [],
+      };
+    }
+
+    const visible = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostWithBindingWrappedCondition(false)),
+      "diagram",
+    );
+    expect(visible.components.x).toBeDefined();
+
+    const hidden = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostWithBindingWrappedCondition(true)),
+      "diagram",
+    );
+    expect(hidden.components.x).toBeUndefined();
+  });
 });
 
 describe("produceDiagramLayout: array dimensions on sub-components", () => {

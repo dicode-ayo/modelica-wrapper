@@ -79,24 +79,24 @@ import {
  * OMC's `getModelInstance` usually pre-reduces the predicate against the
  * host's parameter modifiers, emitting one of two shapes:
  *
- *   `condition: false`              — bare boolean literal
- *   `condition: { binding: false }` — boolean inside OMC's Value wrapper
+ *   `condition: false`                    — bare boolean literal
+ *   `condition: { binding: <literal> }`   — literal inside OMC's Value wrapper
  *
  * Pre-reduction is not guaranteed, so an unreduced `Expression` AST (has
- * `$kind`, not the `{ binding }` wrapper) is evaluated against `scope`.
- * `undefined`/`null`, and anything that doesn't resolve to a boolean,
- * default to "visible" — the same fallback policy the form-side
- * `Dialog.enable` evaluator uses.
+ * `$kind`) is evaluated against `scope`, whether it arrives bare or inside
+ * the `{ binding }` wrapper. `undefined`/`null`, and anything that doesn't
+ * resolve to a boolean, default to "visible" — the same fallback policy the
+ * form-side `Dialog.enable` evaluator uses.
  */
 function isConditionTrue(condition: unknown, scope: EvalScope): boolean {
   if (condition === undefined || condition === null) return true;
   if (typeof condition === "boolean") return condition;
   if (
     typeof condition === "object" &&
-    "binding" in (condition as object) &&
-    typeof (condition as { binding: unknown }).binding === "boolean"
+    condition !== null &&
+    "binding" in condition
   ) {
-    return (condition as { binding: boolean }).binding;
+    return isConditionTrue((condition as { binding: unknown }).binding, scope);
   }
   if (
     typeof condition === "object" &&
@@ -849,13 +849,11 @@ export function produceDiagramLayout(
   // model rendered in source units. `registerClass` is idempotent and walks
   // the host's extends chain for inherited parameters, matching the form.
   //
-  // This still builds via `buildClassDef`'s scope-free path, so
-  // `classes[mi.name]` stays the shared/unevaluated view — consistent with
-  // every other catalog entry — while `iconLayers`/`diagramLayers` above are
-  // the authoritative per-instance-evaluated view of the same class's
-  // graphics for the diagrammed host. Don't thread `hostScope` through here;
-  // that would special-case one caller of `buildClassDef` and reintroduce
-  // the per-class-identity ambiguity the shared-catalog fix eliminated.
+  // `classes[mi.name]` comes from `buildClassDef`'s scope-free path, so it
+  // stays the instance-agnostic view of the class, while `iconLayers` /
+  // `diagramLayers` above are this instance's evaluated view of the same
+  // graphics. `hostScope` must not be threaded through here: the catalog is
+  // keyed by class name and shared by every instance of that class.
   registerClass(mi, registry);
 
   const layout: DiagramLayout = {

@@ -272,9 +272,13 @@ re-investigated:
    from the `ModelInstance` (`eval-scope.ts:scopeForInstance`) via the same
    `evaluateExpression` the parameter form's `Dialog.enable` uses, and only
    falls back to the §18.6 default when that evaluation can't produce a
-   concrete value. The DYNAMIC (simulation-time) branch of `DynamicSelect` is
-   still out of scope — re-evaluating it per-instance would need a simulation
-   result to bind to.
+   concrete value. That evaluation covers the class actually being diagrammed
+   and its extends chain only: `DiagramLayout.classes` is keyed by class name
+   and shared across every instance of it, so a sub-component's own icon
+   fields are decoded with no scope and stay at their §18.6 default — #611.
+   The DYNAMIC (simulation-time) branch of `DynamicSelect` is still out of
+   scope — re-evaluating it per-instance would need a simulation result to
+   bind to.
 
 ---
 

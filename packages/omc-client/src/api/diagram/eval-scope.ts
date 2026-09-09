@@ -65,15 +65,12 @@ function literalModifierAsEvalValue(text: string): EvalValue {
 }
 
 /**
- * Resolve one component's value. Prefers `value.binding`, evaluated
- * against `mi` — `buildScope` hands the evaluator a fully recursive scope,
- * so a parameter bound to another parameter's expression is walked to
- * whatever depth the chain goes; `inProgress` guards a cyclic or
- * self-referential binding graph, since without it a malformed chain could
- * recurse forever. Falls back to the literal `modifiers.$value` when no
- * binding is present, mirroring `parameterDisplayValue` in `producer.ts` —
- * without it, a parameter whose only source is its literal modifier (no
- * `value.binding` at all) would silently under-resolve.
+ * Resolve one component's value: the evaluated literal `value.value` if
+ * present, else `value.binding` evaluated against `mi`, else the literal
+ * `modifiers.$value` — the same three-source order `parameterDisplayValue`
+ * in `producer.ts` uses. `buildScope` hands the evaluator a fully recursive
+ * scope, so a parameter bound to another parameter resolves to whatever
+ * depth the chain goes; `inProgress` bounds a cyclic binding graph.
  */
 function resolveComponentValue(
   el: ComponentElement,
@@ -81,16 +78,24 @@ function resolveComponentValue(
   inProgress: Set<ComponentElement>,
 ): EvalValue {
   const value = el.value;
-  if (value !== null && typeof value === "object" && "binding" in value) {
+  if (value !== null && typeof value === "object") {
+    const evaluated = (value as { value?: unknown }).value;
+    if (
+      typeof evaluated === "number" ||
+      typeof evaluated === "boolean" ||
+      typeof evaluated === "string"
+    ) {
+      return evaluated;
+    }
     const binding = (value as { binding?: unknown }).binding;
-    if (binding !== undefined) {
-      if (inProgress.has(el)) return undefined;
+    if (binding !== undefined && !inProgress.has(el)) {
       inProgress.add(el);
       try {
-        return evaluateExpression(
+        const result = evaluateExpression(
           binding as Expression,
           buildScope(mi, inProgress),
         );
+        if (result !== undefined) return result;
       } finally {
         inProgress.delete(el);
       }
