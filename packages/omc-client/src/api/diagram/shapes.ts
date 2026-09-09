@@ -531,6 +531,10 @@ function decodeText(
       `decodeText: expected extent at index ${fs.offset}, got ${JSON.stringify(els[fs.offset])}`,
     );
   }
+  // `textString` deliberately keeps its raw `Expression`. The renderer's
+  // `%name` substitution pass (`diagram-ui/src/primitives/text.component.ts`)
+  // reads the tree via `expressionToString`, so evaluating it here would
+  // collapse it before that pass ever sees it.
   const textString = els[fs.offset + 1];
   if (textString === undefined) {
     throw new Error(`decodeText: missing textString at index ${fs.offset + 1}`);
@@ -659,10 +663,9 @@ function annotationValueToExpression(v: Value): Expression {
  * Decode one graphic record from an `Icon`/`Diagram` annotation Value tree
  * into a typed {@link Shape}, reusing {@link decodeShape}. The write path
  * round-trips existing graphics through this so they re-serialize via the
- * same named-arg path new shapes take.
+ * same named-arg path new shapes take. No `scope` parameter: copy/paste
+ * round-tripping has no live parameter context to evaluate against.
  */
-// No `scope` param: copy/paste round-tripping has no live parameter context
-// to evaluate against.
 export function decodeAnnotationShape(record: Value): Shape {
   if (record.kind !== "call") {
     throw new Error(

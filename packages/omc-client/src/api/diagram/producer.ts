@@ -262,10 +262,9 @@ function collectLayers(
  * renders the layers and ignores this field; a consumer that renders both
  * draws every annotation twice.
  */
-function collectLabels(mi: ModelInstance): LabelLayout[] {
+function collectLabels(mi: ModelInstance, scope: EvalScope): LabelLayout[] {
   const out: LabelLayout[] = [];
   const graphics = mi.annotation?.Diagram?.graphics ?? [];
-  const scope = scopeForInstance(mi);
   for (const g of graphics) {
     if (g.name !== "Text") continue;
     let shape: Shape;
@@ -750,7 +749,7 @@ export function produceDiagramLayout(
   const iconLayers = collectLayers(mi, "icon", hostScope);
   const diagramLayers =
     kind === "diagram" ? collectLayers(mi, "diagram", hostScope) : [];
-  const labels = kind === "diagram" ? collectLabels(mi) : [];
+  const labels = kind === "diagram" ? collectLabels(mi, hostScope) : [];
 
   // Standalone connectors on the host class (and ancestors), inheritance-aware.
   const connectors: Record<string, ConnectorInstance> = {};
@@ -788,10 +787,14 @@ export function produceDiagramLayout(
   // host (already done) and skip duplicates.
   for (const { klass } of walkExtendsChain(mi)) {
     if (klass === mi) continue;
-    const ancestorScope = scopeForInstance(klass);
+    // `hostScope` already resolves every name an ancestor-local scope
+    // would, and prefers the more-derived declaration when both carry
+    // one — same "walk the chain post-order, last match wins" semantics
+    // `collectParameters` relies on above — so reuse it rather than
+    // rebuilding a scope per ancestor.
     for (const el of ownSubComponents(klass)) {
       if (components[el.name]) continue;
-      if (!isConditionTrue(el.condition, ancestorScope)) continue;
+      if (!isConditionTrue(el.condition, hostScope)) continue;
       const inst = instanceFromSubComponent(
         el,
         kind === "icon" ? "icon" : "diagram",
@@ -845,6 +848,14 @@ export function produceDiagramLayout(
   // from sub-component types — so `displayUnit` params declared ON the opened
   // model rendered in source units. `registerClass` is idempotent and walks
   // the host's extends chain for inherited parameters, matching the form.
+  //
+  // This still builds via `buildClassDef`'s scope-free path, so
+  // `classes[mi.name]` stays the shared/unevaluated view — consistent with
+  // every other catalog entry — while `iconLayers`/`diagramLayers` above are
+  // the authoritative per-instance-evaluated view of the same class's
+  // graphics for the diagrammed host. Don't thread `hostScope` through here;
+  // that would special-case one caller of `buildClassDef` and reintroduce
+  // the per-class-identity ambiguity the shared-catalog fix eliminated.
   registerClass(mi, registry);
 
   const layout: DiagramLayout = {

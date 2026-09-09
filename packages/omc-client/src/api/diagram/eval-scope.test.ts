@@ -172,4 +172,29 @@ describe("scopeForInstance", () => {
     });
     expect(scopeForInstance(mi).lookup(["unbound"])).toBeUndefined();
   });
+
+  it("falls back to the literal modifier text when there's no value.binding", () => {
+    const mi = ModelInstanceSchema.parse({
+      name: "Pkg.Host",
+      restriction: "model",
+      elements: [
+        component({ name: "d", modifiers: { $value: "0.5" } }),
+        component({ name: "useSupport", modifiers: { $value: "false" } }),
+        component({ name: "label", modifiers: { $value: '"rad"' } }),
+      ],
+    });
+    const scope = scopeForInstance(mi);
+    expect(scope.lookup(["d"])).toBe(0.5);
+    expect(scope.lookup(["useSupport"])).toBe(false);
+    expect(scope.lookup(["label"])).toBe("rad");
+  });
+
+  it("resolves a literal null binding to null rather than undefined", () => {
+    const mi = ModelInstanceSchema.parse({
+      name: "Pkg.Host",
+      restriction: "model",
+      elements: [component({ name: "n", value: { binding: null } })],
+    });
+    expect(scopeForInstance(mi).lookup(["n"])).toBeNull();
+  });
 });

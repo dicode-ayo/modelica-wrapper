@@ -14,10 +14,13 @@ import type {
   Expression,
   ModelInstance,
 } from "../../_shared/modelInstance.js";
+import {
+  modifierToDisplayString,
+  unquoteString,
+} from "../../_shared/unitResolution.js";
 import { ownComponents } from "./walker.js";
 import {
   evaluateExpression,
-  type EnumLiteralValue,
   type EvalScope,
   type EvalValue,
 } from "../../eval/expression-evaluator.js";
@@ -42,37 +45,35 @@ function findComponent(
   return found;
 }
 
-/** `binding` narrowed to an `EvalValue` when it's already a literal shape. */
-function bindingAsEvalValue(binding: unknown): EvalValue | undefined {
-  if (
-    typeof binding === "string" ||
-    typeof binding === "number" ||
-    typeof binding === "boolean"
-  ) {
-    return binding;
+/**
+ * Parse a flattened modifier display string (`modifierToDisplayString`)
+ * into an `EvalValue`. `modifiers.$value` is OMC's raw, unparsed
+ * expression text, not an `Expression` AST, so only its literal forms
+ * (booleans, quoted strings, numbers) are recognized — a compound
+ * expression (`"1 + 2"`, `"not useSupport"`) has no parser here and
+ * resolves to `undefined`.
+ */
+function literalModifierAsEvalValue(text: string): EvalValue {
+  if (text.length === 0) return undefined;
+  if (text === "true") return true;
+  if (text === "false") return false;
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    return unquoteString(text);
   }
-  if (
-    typeof binding === "object" &&
-    binding !== null &&
-    (binding as { $kind?: unknown }).$kind === "enum" &&
-    typeof (binding as { name?: unknown }).name === "string"
-  ) {
-    const tagged = binding as { name: string; index?: unknown };
-    const out: EnumLiteralValue = { $kind: "enum", name: tagged.name };
-    if (typeof tagged.index === "number") out.index = tagged.index;
-    return out;
-  }
-  return undefined;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /**
- * Resolve one component's value. Prefers `value.binding` when it's already
- * a primitive/enum literal; otherwise recurses when `value.binding` itself
- * looks like an unreduced expression, so a parameter bound to another
- * parameter's expression resolves fully — `buildScope` hands the evaluator
- * a fully recursive scope, so a chained binding is walked to whatever depth
- * it goes. `inProgress` guards a cyclic or self-referential binding graph —
- * without it a malformed chain could recurse forever.
+ * Resolve one component's value. Prefers `value.binding`, evaluated
+ * against `mi` — `buildScope` hands the evaluator a fully recursive scope,
+ * so a parameter bound to another parameter's expression is walked to
+ * whatever depth the chain goes; `inProgress` guards a cyclic or
+ * self-referential binding graph, since without it a malformed chain could
+ * recurse forever. Falls back to the literal `modifiers.$value` when no
+ * binding is present, mirroring `parameterDisplayValue` in `producer.ts` —
+ * without it, a parameter whose only source is its literal modifier (no
+ * `value.binding` at all) would silently under-resolve.
  */
 function resolveComponentValue(
   el: ComponentElement,
@@ -80,38 +81,22 @@ function resolveComponentValue(
   inProgress: Set<ComponentElement>,
 ): EvalValue {
   const value = el.value;
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return value;
+  if (value !== null && typeof value === "object" && "binding" in value) {
+    const binding = (value as { binding?: unknown }).binding;
+    if (binding !== undefined) {
+      if (inProgress.has(el)) return undefined;
+      inProgress.add(el);
+      try {
+        return evaluateExpression(
+          binding as Expression,
+          buildScope(mi, inProgress),
+        );
+      } finally {
+        inProgress.delete(el);
+      }
+    }
   }
-  if (value === null || value === undefined || typeof value !== "object") {
-    return undefined;
-  }
-  if (!("binding" in value)) return undefined;
-  const binding = (value as { binding?: unknown }).binding;
-  const primitive = bindingAsEvalValue(binding);
-  if (primitive !== undefined) return primitive;
-  if (
-    binding === null ||
-    binding === undefined ||
-    typeof binding !== "object"
-  ) {
-    return undefined;
-  }
-  if (inProgress.has(el)) return undefined;
-  inProgress.add(el);
-  try {
-    return evaluateExpression(
-      binding as Expression,
-      buildScope(mi, inProgress),
-      {},
-    );
-  } finally {
-    inProgress.delete(el);
-  }
+  return literalModifierAsEvalValue(modifierToDisplayString(el.modifiers));
 }
 
 function lookupParts(
