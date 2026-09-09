@@ -41,13 +41,23 @@ describe("ellipseArc", () => {
     expect(ellipseArc(UNIT, { closure: "Bogus" }).closure).toBe("Chord");
   });
 
-  it("keeps the span signed, and calls either direction past a turn full", () => {
+  it("keeps the span signed, and clamps either direction to one turn", () => {
     expect(ellipseArc(UNIT, { startAngle: 0, endAngle: -90 })).toMatchObject({
       span: -90,
       full: false,
     });
-    expect(ellipseArc(UNIT, { startAngle: 0, endAngle: -360 }).full).toBe(true);
-    expect(ellipseArc(UNIT, { startAngle: 90, endAngle: 450 }).full).toBe(true);
+    expect(ellipseArc(UNIT, { startAngle: 90, endAngle: 450 })).toMatchObject({
+      span: 360,
+      full: true,
+    });
+    expect(ellipseArc(UNIT, { startAngle: 0, endAngle: 900 })).toMatchObject({
+      span: 360,
+      full: true,
+    });
+    expect(ellipseArc(UNIT, { startAngle: 0, endAngle: -900 })).toMatchObject({
+      span: -360,
+      full: true,
+    });
   });
 });
 
@@ -75,6 +85,12 @@ describe("ellipseArcPathData", () => {
     expect(closure("None").endsWith("Z")).toBe(false);
   });
 
+  it("spans a whole turn as two half turns, since one A would be dropped", () => {
+    expect(ellipseArcPathData(ellipseArc(UNIT, {}))).toBe(
+      "M 1 0 A 1 1 0 1 1 -1 0 A 1 1 0 1 1 1 0 Z",
+    );
+  });
+
   it("ends where the sampled outline ends, so the two producers cannot drift", () => {
     const arc = ellipseArc(
       { x: -25, y: -14, width: 60, height: 24 },
@@ -92,8 +108,11 @@ describe("ellipseArcPathData", () => {
 });
 
 describe("ellipseArcPoints", () => {
-  it("samples a full turn at the density the ring always used, then closes it", () => {
+  it("samples a full turn as a closed 64-gon, however far past a turn it ran", () => {
     const points = ellipseArcPoints(ellipseArc(UNIT, {}));
+    expect(
+      ellipseArcPoints(ellipseArc(UNIT, { startAngle: 0, endAngle: 900 })),
+    ).toHaveLength(65);
     expect(points).toHaveLength(65);
     expect(points[0]).toEqual([1, 0]);
     expect(points.at(-1)).toEqual(points[0]);
@@ -103,14 +122,6 @@ describe("ellipseArcPoints", () => {
   it("closes a full turn even with the fill suppressed", () => {
     const points = ellipseArcPoints(ellipseArc(UNIT, { closure: "None" }));
     expect(points.at(-1)).toEqual(points[0]);
-  });
-
-  it("scales the sample count with the span", () => {
-    const points = ellipseArcPoints(
-      ellipseArc(UNIT, { ...QUARTER, closure: "None" }),
-    );
-    expect(points).toHaveLength(17);
-    expect(Math.max(...points.map(radialError))).toBeLessThan(1e-12);
   });
 
   it.each([

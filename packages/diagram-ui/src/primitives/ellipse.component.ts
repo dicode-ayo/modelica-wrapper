@@ -20,11 +20,10 @@ import {
 } from "./shape-utils.js";
 
 /**
- * `<om-ellipse>` — one Modelica `EllipseShape`. Approximates the outline as a
- * polyline sampled at a fixed resolution per turn, spanning `startAngle` to
- * `endAngle` and closed according to `closure`. A full sweep keeps the
- * dedicated ellipse fill, whose gradient maps to the extent rather than to a
- * sampled ring's bounding box.
+ * `<om-ellipse>` — one Modelica `EllipseShape`. Strokes the outline
+ * `ellipseArcPoints` samples, spanning `startAngle` to `endAngle` and closed
+ * according to `closure`. A full sweep fills through Pixi's own ellipse
+ * rather than that polyline, leaving every existing icon's fill untouched.
  */
 @customElement("om-ellipse")
 export class OmEllipse extends OmShapePrimitive {

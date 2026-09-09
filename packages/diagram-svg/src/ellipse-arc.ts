@@ -13,41 +13,44 @@
  * `EllipseClosure.None` leaves the outline open *and* suppresses the fill;
  * `Chord` closes it with a straight chord and `Radial` through the center.
  * Those two rules disagree for a full sweep, which closes whatever its
- * closure says, so `closed` and `filled` are stated separately.
+ * closure says, so `full` and `filled` are stated separately.
  */
 
 import {
   defaultEllipseClosure,
-  isEllipseClosure,
   ELLIPSE_DEFAULTS,
+  isEllipseClosure,
   type EllipseClosure,
 } from "@dicode/omc-client/shapes";
 
 import { formatCoord } from "./smooth-path.js";
 
 export interface EllipseArc {
-  cx: number;
-  cy: number;
-  rx: number;
-  ry: number;
+  readonly cx: number;
+  readonly cy: number;
+  readonly rx: number;
+  readonly ry: number;
   /** Degrees, counter-clockwise from `+x`. */
-  startAngle: number;
-  /** Signed sweep in degrees; negative sweeps clockwise. */
-  span: number;
-  closure: EllipseClosure;
-  /** The sweep wraps the whole ellipse, which no single SVG `A` can express. */
-  full: boolean;
-  /** The interior is painted. */
-  filled: boolean;
+  readonly startAngle: number;
+  /** Sweep in degrees, clamped to one turn; negative sweeps clockwise. */
+  readonly span: number;
+  readonly closure: EllipseClosure;
+  /** The sweep covers the whole ellipse, whatever the closure. */
+  readonly full: boolean;
+  /** The interior is painted; `EllipseClosure.None` suppresses it. */
+  readonly filled: boolean;
 }
 
-/** Samples per whole turn, the resolution the full ring has always drawn at. */
+/** Samples per whole turn. */
 const FULL_TURN_SEGMENTS = 64;
+
+const FULL_TURN_DEGREES = 360;
 
 /**
  * Resolves an ellipse annotation's arc fields against the spec defaults, over
- * the bounding box `extentToRect` already produced. An unrecognized `closure`
- * resolves as an absent one does.
+ * the ellipse's bounding box. A sweep past a whole turn clamps to one, so it
+ * cannot retrace itself. An unrecognized `closure` resolves as an absent one
+ * does.
  */
 export function ellipseArc(
   rect: { x: number; y: number; width: number; height: number },
@@ -59,7 +62,10 @@ export function ellipseArc(
 ): EllipseArc {
   const startAngle = shape.startAngle ?? ELLIPSE_DEFAULTS.startAngle;
   const endAngle = shape.endAngle ?? ELLIPSE_DEFAULTS.endAngle;
-  const span = endAngle - startAngle;
+  const span = Math.max(
+    -FULL_TURN_DEGREES,
+    Math.min(FULL_TURN_DEGREES, endAngle - startAngle),
+  );
   const closure = isEllipseClosure(shape.closure)
     ? shape.closure
     : defaultEllipseClosure({ startAngle, endAngle });
@@ -71,21 +77,25 @@ export function ellipseArc(
     startAngle,
     span,
     closure,
-    full: Math.abs(span) >= 360,
+    full: Math.abs(span) === FULL_TURN_DEGREES,
     filled: closure !== "None",
   };
 }
 
-/**
- * SVG path `d` for the arc's painted outline. `arc.full` has no single-`A`
- * form — draw those as the bounding `<ellipse>` instead.
- */
+/** SVG path `d` for the arc's painted outline. */
 export function ellipseArcPathData(arc: EllipseArc): string {
   const start = formatPoint(pointAt(arc, arc.startAngle));
+  const radii = `${formatCoord(arc.rx)} ${formatCoord(arc.ry)} 0`;
+  const sweep = arc.span > 0 ? 1 : 0;
+  if (arc.full) {
+    // One `A` whose endpoints coincide is dropped by the SVG spec, so a whole
+    // turn has to be two half turns.
+    const mid = formatPoint(pointAt(arc, arc.startAngle + arc.span / 2));
+    return `M ${start} A ${radii} 1 ${sweep} ${mid} A ${radii} 1 ${sweep} ${start} Z`;
+  }
   const end = formatPoint(pointAt(arc, arc.startAngle + arc.span));
   const largeArc = Math.abs(arc.span) > 180 ? 1 : 0;
-  const sweep = arc.span > 0 ? 1 : 0;
-  const sweepTo = `A ${formatCoord(arc.rx)} ${formatCoord(arc.ry)} 0 ${largeArc} ${sweep} ${end}`;
+  const sweepTo = `A ${radii} ${largeArc} ${sweep} ${end}`;
   switch (arc.closure) {
     case "None":
       return `M ${start} ${sweepTo}`;
@@ -98,8 +108,10 @@ export function ellipseArcPathData(arc: EllipseArc): string {
 
 /**
  * The arc's painted outline as a polyline, at the same resolution per turn
- * whatever the sweep. A closed outline repeats its first point last, the
- * convention the stroke builder takes and `stripClosingDuplicate` undoes.
+ * whatever the sweep. Closed, with the first point repeated last as
+ * `buildStroke` takes it and `stripClosingDuplicate` undoes it, when
+ * `arc.full` or `arc.filled`; open otherwise. A `Radial` slice starts at the
+ * center.
  */
 export function ellipseArcPoints(arc: EllipseArc): Array<[number, number]> {
   const points: Array<[number, number]> = [];
@@ -111,7 +123,9 @@ export function ellipseArcPoints(arc: EllipseArc): Array<[number, number]> {
     points.push(pointAt(arc, arc.startAngle));
     return points;
   }
-  const segments = Math.ceil((FULL_TURN_SEGMENTS * Math.abs(arc.span)) / 360);
+  const segments = Math.ceil(
+    (FULL_TURN_SEGMENTS * Math.abs(arc.span)) / FULL_TURN_DEGREES,
+  );
   // A full sweep's last sample repeats its first; the closing repeat covers it.
   const lastSample = arc.full ? segments - 1 : segments;
   for (let i = 0; i <= lastSample; i++) {

@@ -62,16 +62,13 @@ describe("om-ellipse arc sweeps", () => {
       expect(vertices.at(-1)?.every((n, i) => n === first[i])).toBe(
         closure !== "None",
       );
+      // The named quarter, not the bounding ring: every vertex, the center and
+      // the chord included, sits in the first quadrant.
+      expect(vertices.length).toBeGreaterThan(8);
+      for (const [x, y] of vertices) {
+        expect(x).toBeGreaterThanOrEqual(-1e-9);
+        expect(y).toBeGreaterThanOrEqual(-1e-9);
+      }
     },
   );
-
-  it("draws the quarter the angles name, not the bounding ring", async () => {
-    const el = await mount({ startAngle: 0, endAngle: 90, closure: "None" });
-    const vertices = pathVertices(graphicsWithLabel(el, STROKE));
-    expect(vertices.length).toBeGreaterThan(8);
-    for (const [x, y] of vertices) {
-      expect(x).toBeGreaterThanOrEqual(-1e-9);
-      expect(y).toBeGreaterThanOrEqual(-1e-9);
-    }
-  });
 });
