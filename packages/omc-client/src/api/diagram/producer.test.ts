@@ -1484,6 +1484,94 @@ describe("produceDiagramLayout: conditional gating", () => {
     );
     expect(layout.components.g!.hiddenPorts).toEqual(["support"]);
   });
+
+  it("hides a sub-component's port whose unreduced condition references a root-level name", () => {
+    // Mirrors OMC's cref rooting for `value.binding` (verified against
+    // pidController.modelInstance.json): a component several levels down
+    // can carry an expression that names a component declared on the
+    // top-level instance, not on its own enclosing class.
+    const gainWithCrefPort: unknown = {
+      $kind: "model",
+      name: "Pkg.GainWithSupport",
+      restriction: "block",
+      annotation: {
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "u",
+          type: RealInputClass,
+          annotation: placementAnno([
+            [-110, -10],
+            [-90, 10],
+          ]),
+        },
+        {
+          $kind: "component",
+          name: "support",
+          type: RealInputClass,
+          annotation: placementAnno([
+            [-10, -110],
+            [10, -90],
+          ]),
+          // Unreduced: a cref to `useSupport`, which OMC declares (and
+          // roots this cref against) on the HOST, not on `Pkg.GainWithSupport`.
+          condition: {
+            binding: { $kind: "cref", parts: [{ name: "useSupport" }] },
+          },
+        },
+      ],
+    };
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "useSupport",
+          type: "Boolean",
+          prefixes: { variability: "parameter" },
+          value: { binding: false },
+        },
+        {
+          $kind: "component",
+          name: "g",
+          type: gainWithCrefPort,
+          annotation: placementAnno([
+            [-20, -20],
+            [20, 20],
+          ]),
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    expect(layout.components.g!.hiddenPorts).toEqual(["support"]);
+  });
 });
 
 /** Icon carrying `visible = not <paramName>` instead of a literal. */

@@ -231,4 +231,34 @@ describe("scopeForInstance", () => {
     });
     expect(scopeForInstance(mi).lookup(["d"])).toBe(0.5);
   });
+
+  it("resolves a deeply-nested binding whose cref names a root-level component", () => {
+    // Mirrors `kinematicPTP.deltaq = driveAngle` in
+    // pidController.modelInstance.json: OMC roots every cref inside a
+    // `value.binding` at the top-level instance, not at the binding's own
+    // declaring class.
+    const kinematicPtpType: unknown = {
+      name: "Pkg.KinematicPTP",
+      restriction: "model",
+      elements: [
+        component({
+          name: "deltaq",
+          value: {
+            binding: { $kind: "cref", parts: [{ name: "driveAngle" }] },
+          },
+        }),
+      ],
+    };
+    const mi = ModelInstanceSchema.parse({
+      name: "Pkg.Host",
+      restriction: "model",
+      elements: [
+        component({ name: "driveAngle", value: { binding: 1.5708 } }),
+        component({ name: "kinematicPTP", type: kinematicPtpType }),
+      ],
+    });
+    expect(scopeForInstance(mi).lookup(["kinematicPTP", "deltaq"])).toBe(
+      1.5708,
+    );
+  });
 });

@@ -66,15 +66,22 @@ function literalModifierAsEvalValue(text: string): EvalValue {
 
 /**
  * Resolve one component's value: the evaluated literal `value.value` if
- * present, else `value.binding` evaluated against `mi`, else the literal
+ * present, else `value.binding` evaluated against `root`, else the literal
  * `modifiers.$value` — the same three-source order `parameterDisplayValue`
- * in `producer.ts` uses. `buildScope` hands the evaluator a fully recursive
- * scope, so a parameter bound to another parameter resolves to whatever
- * depth the chain goes; `inProgress` bounds a cyclic binding graph.
+ * in `producer.ts` uses.
+ *
+ * The binding evaluates against `root`, not `el`'s own declaring class: OMC
+ * roots every cref inside a `value.binding` at the top-level instance
+ * (`kinematicPTP.deltaq`'s binding is the bare cref `driveAngle`, a name
+ * declared on the root model several levels up), so resolving it against
+ * anything narrower leaves it unresolvable. `buildScope` hands the
+ * evaluator a fully recursive scope, so a parameter bound to another
+ * parameter resolves to whatever depth the chain goes; `inProgress` bounds
+ * a cyclic binding graph.
  */
 function resolveComponentValue(
   el: ComponentElement,
-  mi: ModelInstance,
+  root: ModelInstance,
   inProgress: Set<ComponentElement>,
 ): EvalValue {
   const value = el.value;
@@ -93,7 +100,7 @@ function resolveComponentValue(
       try {
         const result = evaluateExpression(
           binding as Expression,
-          buildScope(mi, inProgress),
+          buildScope(root, root, inProgress),
         );
         if (result !== undefined) return result;
       } finally {
@@ -104,8 +111,17 @@ function resolveComponentValue(
   return literalModifierAsEvalValue(modifierToDisplayString(el.modifiers));
 }
 
+/**
+ * Structural descent: `mi` walks toward whichever `ComponentElement` `parts`
+ * names, narrowing into each sub-component's own `type` tree as it goes —
+ * that's the only place a sub-component's own field names exist. `root`
+ * rides along unchanged so the element found at the end is resolved with
+ * `resolveComponentValue(el, root, …)`, not against the narrowed `mi` the
+ * walk ended up at.
+ */
 function lookupParts(
   mi: ModelInstance,
+  root: ModelInstance,
   parts: ReadonlyArray<string>,
   inProgress: Set<ComponentElement>,
 ): EvalValue {
@@ -114,17 +130,18 @@ function lookupParts(
   const el = findComponent(mi, name);
   if (el === undefined) return undefined;
   const rest = parts.slice(1);
-  if (rest.length === 0) return resolveComponentValue(el, mi, inProgress);
+  if (rest.length === 0) return resolveComponentValue(el, root, inProgress);
   if (typeof el.type !== "object" || el.type === null) return undefined;
-  return lookupParts(el.type, rest, inProgress);
+  return lookupParts(el.type, root, rest, inProgress);
 }
 
 function buildScope(
   mi: ModelInstance,
+  root: ModelInstance,
   inProgress: Set<ComponentElement>,
 ): EvalScope {
   return {
-    lookup: (parts) => lookupParts(mi, parts, inProgress),
+    lookup: (parts) => lookupParts(mi, root, parts, inProgress),
   };
 }
 
@@ -132,8 +149,11 @@ function buildScope(
  * Build an `EvalScope` resolving crefs against `mi`'s own elements and its
  * extends chain. A single-segment cref (`useSupport`) looks up a component
  * declared on `mi`; a multi-segment cref (`t.useSupport`) resolves `t`'s
- * own type as a nested scope and recurses.
+ * own type as a nested scope and recurses structurally to find the named
+ * element. Once found, that element's own `value.binding` is evaluated
+ * against `mi` — the root this scope was built from — regardless of how
+ * deep the structural descent went, matching where OMC roots the cref.
  */
 export function scopeForInstance(mi: ModelInstance): EvalScope {
-  return buildScope(mi, new Set<ComponentElement>());
+  return buildScope(mi, mi, new Set<ComponentElement>());
 }

@@ -482,6 +482,7 @@ function instanceFromSubComponent(
   el: ComponentElement,
   kind: "icon" | "diagram",
   registry: Map<string, ClassDef>,
+  hostScope: EvalScope,
 ): ComponentInstance | undefined {
   if (typeof el.type !== "object" || el.type === null) return undefined;
   const placement = placementFor(el, kind);
@@ -508,13 +509,12 @@ function instanceFromSubComponent(
   // but emits it in BOTH shapes — a bare `false` AND the wrapped
   // `{ binding: false }` Value form. Route the check through
   // `isConditionTrue` (issue #76, item 5) so both are gated, matching the
-  // host-level component gating. The port's condition is declared inside
-  // the sub-component's own class, so it's evaluated against that class's
-  // scope, not the outer host's.
-  const portScope = scopeForInstance(el.type);
+  // host-level component gating. An unreduced predicate evaluates against
+  // `hostScope`, not a scope rooted at `el.type`: OMC roots crefs at the
+  // top-level instance, not at the declaring class.
   const hiddenPorts: string[] = [];
   for (const { element } of walkConnectors(el.type)) {
-    if (!isConditionTrue(element.condition, portScope)) {
+    if (!isConditionTrue(element.condition, hostScope)) {
       hiddenPorts.push(element.name);
     }
   }
@@ -778,6 +778,7 @@ export function produceDiagramLayout(
       el,
       kind === "icon" ? "icon" : "diagram",
       registry,
+      hostScope,
     );
     if (inst) components[inst.name] = inst;
   }
@@ -799,6 +800,7 @@ export function produceDiagramLayout(
         el,
         kind === "icon" ? "icon" : "diagram",
         registry,
+        hostScope,
       );
       if (inst) components[inst.name] = inst;
     }
