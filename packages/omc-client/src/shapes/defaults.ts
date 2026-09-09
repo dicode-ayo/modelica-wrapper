@@ -100,6 +100,9 @@ export const BITMAP_DEFAULTS: { fileName: string; imageSource: string } = {
   imageSource: "",
 };
 
+/** §18.6.5.5 `EllipseClosure`. */
+export type EllipseClosure = "None" | "Chord" | "Radial";
+
 /**
  * §18.6.5.5: `Chord` for a full ellipse, `Radial` for an arc. The one default
  * the spec derives rather than states, so it cannot live in the table above.
@@ -107,7 +110,7 @@ export const BITMAP_DEFAULTS: { fileName: string; imageSource: string } = {
 export function defaultEllipseClosure(shape: {
   startAngle?: number | undefined;
   endAngle?: number | undefined;
-}): string {
+}): EllipseClosure {
   const { startAngle, endAngle } = ELLIPSE_DEFAULTS;
   return (shape.startAngle ?? startAngle) === startAngle &&
     (shape.endAngle ?? endAngle) === endAngle
