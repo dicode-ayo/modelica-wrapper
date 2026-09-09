@@ -1,7 +1,7 @@
 import { customElement, property } from "lit/decorators.js";
 import type { Container } from "pixi.js";
 import type { EllipseShape } from "@dicode/omc-client";
-import { ellipseArc, ellipseArcOutline, fillSpec } from "@dicode/diagram-svg";
+import { ellipseArc, ellipseArcPoints, fillSpec } from "@dicode/diagram-svg";
 
 import {
   OmShapePrimitive,
@@ -16,6 +16,7 @@ import {
   buildStroke,
   extentToRect,
   filledShapeStroke,
+  stripClosingDuplicate,
 } from "./shape-utils.js";
 
 /**
@@ -61,20 +62,12 @@ export class OmEllipse extends OmShapePrimitive {
     if (!s) {
       return;
     }
-    const { x, y, width, height } = extentToRect(s.extent);
-    if (width <= 0 || height <= 0) {
+    const rect = extentToRect(s.extent);
+    if (rect.width <= 0 || rect.height <= 0) {
       return;
     }
-    const arc = ellipseArc(
-      {
-        cx: x + width / 2,
-        cy: y + height / 2,
-        rx: width / 2,
-        ry: height / 2,
-      },
-      s,
-    );
-    const { points, closed } = ellipseArcOutline(arc);
+    const arc = ellipseArc(rect, s);
+    const points = ellipseArcPoints(arc);
 
     const renderer = this.renderer();
     const baseName = `om-ellipse.${this.zOrder}`;
@@ -90,7 +83,7 @@ export class OmEllipse extends OmShapePrimitive {
       lineColor: s.lineColor,
       pattern: s.fillPattern,
     });
-    if (arc.closure !== "None" && fill.kind !== "none") {
+    if (arc.filled && fill.kind !== "none") {
       const filled = arc.full
         ? buildFilledEllipse(
             renderer,
@@ -99,7 +92,7 @@ export class OmEllipse extends OmShapePrimitive {
             arc.cy,
             arc.rx,
             arc.ry,
-            { x, y, width, height },
+            rect,
             fill,
             z,
             `${baseName}.fill`,
@@ -107,7 +100,7 @@ export class OmEllipse extends OmShapePrimitive {
         : buildFilledPolygon(
             renderer,
             root,
-            points,
+            stripClosingDuplicate(points),
             fill,
             z,
             `${baseName}.fill`,
@@ -117,12 +110,9 @@ export class OmEllipse extends OmShapePrimitive {
       }
     }
 
-    const first = points[0];
-    const strokePoints =
-      closed && first !== undefined ? [...points, first] : points;
     const stroke = buildStroke(
       root,
-      strokePoints,
+      points,
       s.lineColor ?? DEFAULT_LINE_COLOR,
       s.pattern,
       z + STROKE_Z_DELTA,

@@ -2,13 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   ellipseArc,
-  ellipseArcOutline,
   ellipseArcPathData,
-  type EllipseBox,
+  ellipseArcPoints,
 } from "./ellipse-arc.js";
 import { formatCoord } from "./smooth-path.js";
 
-const UNIT: EllipseBox = { cx: 0, cy: 0, rx: 1, ry: 1 };
+/** The unit circle, as the bounding rect both renderers hand in. */
+const UNIT = { x: -1, y: -1, width: 2, height: 2 };
+
+const QUARTER = { startAngle: 0, endAngle: 90 } as const;
 
 /** Distance of a point from the unit circle. */
 function radialError([x, y]: readonly [number, number]): number {
@@ -16,88 +18,69 @@ function radialError([x, y]: readonly [number, number]): number {
 }
 
 describe("ellipseArc", () => {
-  it("resolves the spec defaults to a full Chord ellipse", () => {
-    const arc = ellipseArc(UNIT, {});
-    expect(arc.startAngle).toBe(0);
-    expect(arc.span).toBe(360);
-    expect(arc.closure).toBe("Chord");
-    expect(arc.full).toBe(true);
-  });
-
-  it("derives Radial for a partial span and Chord for a full one", () => {
+  it("resolves the spec defaults and derives the closure from the span", () => {
+    expect(ellipseArc(UNIT, {})).toMatchObject({
+      cx: 0,
+      cy: 0,
+      rx: 1,
+      ry: 1,
+      startAngle: 0,
+      span: 360,
+      closure: "Chord",
+      full: true,
+      filled: true,
+    });
     expect(ellipseArc(UNIT, { endAngle: 90 }).closure).toBe("Radial");
-    expect(ellipseArc(UNIT, { startAngle: 0, endAngle: 360 }).closure).toBe(
-      "Chord",
-    );
   });
 
-  it("keeps the span signed so a descending sweep stays clockwise", () => {
-    const arc = ellipseArc(UNIT, { startAngle: 0, endAngle: -90 });
-    expect(arc.span).toBe(-90);
-    expect(arc.full).toBe(false);
+  it("prefers an annotated closure but ignores one it does not recognize", () => {
+    expect(ellipseArc(UNIT, { ...QUARTER, closure: "None" })).toMatchObject({
+      closure: "None",
+      filled: false,
+    });
+    expect(ellipseArc(UNIT, { closure: "Bogus" }).closure).toBe("Chord");
   });
 
-  it("treats either sweep direction past a whole turn as full", () => {
+  it("keeps the span signed, and calls either direction past a turn full", () => {
+    expect(ellipseArc(UNIT, { startAngle: 0, endAngle: -90 })).toMatchObject({
+      span: -90,
+      full: false,
+    });
     expect(ellipseArc(UNIT, { startAngle: 0, endAngle: -360 }).full).toBe(true);
     expect(ellipseArc(UNIT, { startAngle: 90, endAngle: 450 }).full).toBe(true);
-  });
-
-  it("falls back to the derived closure when the annotated one is unknown", () => {
-    expect(ellipseArc(UNIT, { closure: "Bogus" }).closure).toBe("Chord");
-    expect(ellipseArc(UNIT, { endAngle: 90, closure: "None" }).closure).toBe(
-      "None",
-    );
   });
 });
 
 describe("ellipseArcPathData", () => {
+  const open = (fields: { startAngle: number; endAngle: number }): string =>
+    ellipseArcPathData(ellipseArc(UNIT, { ...fields, closure: "None" }));
+
   it("takes its sweep direction from the sign of the span, not from the y-flip", () => {
-    const up = ellipseArc(UNIT, {
-      startAngle: 0,
-      endAngle: 90,
-      closure: "None",
-    });
-    const down = ellipseArc(UNIT, {
-      startAngle: 0,
-      endAngle: -90,
-      closure: "None",
-    });
-    expect(ellipseArcPathData(up)).toBe("M 1 0 A 1 1 0 0 1 0 1");
-    expect(ellipseArcPathData(down)).toBe("M 1 0 A 1 1 0 0 0 0 -1");
+    expect(open({ startAngle: 0, endAngle: 90 })).toBe("M 1 0 A 1 1 0 0 1 0 1");
+    expect(open({ startAngle: 0, endAngle: -90 })).toBe(
+      "M 1 0 A 1 1 0 0 0 0 -1",
+    );
   });
 
   it("sets large-arc past a half turn", () => {
-    const short = ellipseArcPathData(
-      ellipseArc(UNIT, { startAngle: 0, endAngle: 180, closure: "None" }),
-    );
-    const long = ellipseArcPathData(
-      ellipseArc(UNIT, { startAngle: 0, endAngle: 181, closure: "None" }),
-    );
-    expect(short).toContain("A 1 1 0 0 1");
-    expect(long).toContain("A 1 1 0 1 1");
+    expect(open({ startAngle: 0, endAngle: 180 })).toContain("A 1 1 0 0 1");
+    expect(open({ startAngle: 0, endAngle: 181 })).toContain("A 1 1 0 1 1");
   });
 
   it("closes a Chord with Z and a Radial through the center", () => {
-    const chord = ellipseArcPathData(
-      ellipseArc(UNIT, { startAngle: 0, endAngle: 90, closure: "Chord" }),
-    );
-    const radial = ellipseArcPathData(
-      ellipseArc(UNIT, { startAngle: 0, endAngle: 90, closure: "Radial" }),
-    );
-    const open = ellipseArcPathData(
-      ellipseArc(UNIT, { startAngle: 0, endAngle: 90, closure: "None" }),
-    );
-    expect(chord).toBe("M 1 0 A 1 1 0 0 1 0 1 Z");
-    expect(radial).toBe("M 0 0 L 1 0 A 1 1 0 0 1 0 1 Z");
-    expect(open.endsWith("Z")).toBe(false);
+    const closure = (c: string): string =>
+      ellipseArcPathData(ellipseArc(UNIT, { ...QUARTER, closure: c }));
+    expect(closure("Chord")).toBe("M 1 0 A 1 1 0 0 1 0 1 Z");
+    expect(closure("Radial")).toBe("M 0 0 L 1 0 A 1 1 0 0 1 0 1 Z");
+    expect(closure("None").endsWith("Z")).toBe(false);
   });
 
   it("ends where the sampled outline ends, so the two producers cannot drift", () => {
     const arc = ellipseArc(
-      { cx: 5, cy: -2, rx: 30, ry: 12 },
+      { x: -25, y: -14, width: 60, height: 24 },
       { startAngle: 17, endAngle: 203, closure: "None" },
     );
-    const last = ellipseArcOutline(arc).points.at(-1);
+    const last = ellipseArcPoints(arc).at(-1);
     if (last === undefined) {
       throw new Error("expected a sampled outline");
     }
@@ -108,71 +91,50 @@ describe("ellipseArcPathData", () => {
   });
 });
 
-describe("ellipseArcOutline", () => {
-  it("samples a full turn at the density the ring always used", () => {
-    const { points, closed } = ellipseArcOutline(ellipseArc(UNIT, {}));
-    expect(points).toHaveLength(64);
+describe("ellipseArcPoints", () => {
+  it("samples a full turn at the density the ring always used, then closes it", () => {
+    const points = ellipseArcPoints(ellipseArc(UNIT, {}));
+    expect(points).toHaveLength(65);
     expect(points[0]).toEqual([1, 0]);
-    expect(closed).toBe(true);
+    expect(points.at(-1)).toEqual(points[0]);
     expect(Math.max(...points.map(radialError))).toBeLessThan(1e-12);
   });
 
-  it("scales the sample count with the span", () => {
-    const quarter = ellipseArcOutline(
-      ellipseArc(UNIT, { startAngle: 0, endAngle: 90, closure: "None" }),
-    );
-    expect(quarter.points).toHaveLength(17);
-    expect(Math.max(...quarter.points.map(radialError))).toBeLessThan(1e-12);
-  });
-
-  it("leaves an open arc open and closes the other two", () => {
-    const partial = { startAngle: 0, endAngle: 90 };
-    expect(
-      ellipseArcOutline(ellipseArc(UNIT, { ...partial, closure: "None" }))
-        .closed,
-    ).toBe(false);
-    expect(
-      ellipseArcOutline(ellipseArc(UNIT, { ...partial, closure: "Chord" }))
-        .closed,
-    ).toBe(true);
-    expect(
-      ellipseArcOutline(ellipseArc(UNIT, { ...partial, closure: "Radial" }))
-        .closed,
-    ).toBe(true);
-  });
-
   it("closes a full turn even with the fill suppressed", () => {
-    expect(
-      ellipseArcOutline(ellipseArc(UNIT, { closure: "None" })).closed,
-    ).toBe(true);
+    const points = ellipseArcPoints(ellipseArc(UNIT, { closure: "None" }));
+    expect(points.at(-1)).toEqual(points[0]);
   });
 
-  it("anchors a Radial slice at the center and a Chord only on the arc", () => {
-    const partial = { startAngle: 0, endAngle: 90 };
-    const radial = ellipseArcOutline(
-      ellipseArc(UNIT, { ...partial, closure: "Radial" }),
+  it("scales the sample count with the span", () => {
+    const points = ellipseArcPoints(
+      ellipseArc(UNIT, { ...QUARTER, closure: "None" }),
     );
-    const chord = ellipseArcOutline(
-      ellipseArc(UNIT, { ...partial, closure: "Chord" }),
-    );
-    expect(radial.points[0]).toEqual([0, 0]);
-    expect(radial.points).toHaveLength(chord.points.length + 1);
-    expect(chord.points[0]).toEqual([1, 0]);
+    expect(points).toHaveLength(17);
+    expect(Math.max(...points.map(radialError))).toBeLessThan(1e-12);
   });
 
-  it("keeps a full ring free of the closing duplicate", () => {
-    const { points } = ellipseArcOutline(ellipseArc(UNIT, {}));
-    const first = points[0];
-    const last = points.at(-1);
-    expect(first).toBeDefined();
-    expect(last).toBeDefined();
-    expect(last).not.toEqual(first);
-  });
+  it.each([
+    { closure: "None", length: 17, first: [1, 0], closed: false },
+    { closure: "Chord", length: 18, first: [1, 0], closed: true },
+    { closure: "Radial", length: 19, first: [0, 0], closed: true },
+  ])(
+    "anchors and closes a $closure slice",
+    ({ closure, length, first, closed }) => {
+      const points = ellipseArcPoints(
+        ellipseArc(UNIT, { ...QUARTER, closure }),
+      );
+      expect(points).toHaveLength(length);
+      expect(points[0]).toEqual(first);
+      expect(points.at(-1)?.every((n, i) => n === first[i])).toBe(closed);
+    },
+  );
 
   it("collapses a zero span instead of emitting a doubled point", () => {
-    const { points } = ellipseArcOutline(
-      ellipseArc(UNIT, { startAngle: 45, endAngle: 45, closure: "None" }),
-    );
-    expect(points).toHaveLength(1);
+    const at = (closure: string): Array<[number, number]> =>
+      ellipseArcPoints(
+        ellipseArc(UNIT, { startAngle: 45, endAngle: 45, closure }),
+      );
+    expect(at("None")).toHaveLength(1);
+    expect(at("Radial")).toEqual([[0, 0], at("None")[0]]);
   });
 });

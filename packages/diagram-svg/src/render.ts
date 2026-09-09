@@ -494,21 +494,11 @@ function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
 // ---- ellipse ----
 
 function renderEllipse(s: EllipseShape, ctx: RenderContext): string {
-  const { x, y, width, height } = extentToRect(s.extent);
-  const arc = ellipseArc(
-    {
-      cx: x + width / 2,
-      cy: y + height / 2,
-      rx: width / 2,
-      ry: height / 2,
-    },
-    s,
-  );
+  const arc = ellipseArc(extentToRect(s.extent), s);
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
-  const fill =
-    arc.closure === "None"
-      ? "none"
-      : fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
+  const fill = arc.filled
+    ? fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx)
+    : "none";
   const thickness = scaledThickness(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";

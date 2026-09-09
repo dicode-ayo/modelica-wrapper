@@ -34,6 +34,7 @@ import type { GraphicsLayer } from "./diff-layout.js";
 import {
   BITMAP_DEFAULTS,
   defaultEllipseClosure,
+  ELLIPSE_CLOSURES,
   ELLIPSE_DEFAULTS,
   FILLED_SHAPE_DEFAULTS,
   GRAPHIC_ITEM_DEFAULTS,
@@ -136,7 +137,6 @@ const FILL_PATTERNS = [
 ];
 const SMOOTH_VALUES = ["None", "Bezier"];
 const BORDER_PATTERNS = ["None", "Raised", "Sunken", "Engraved"];
-const ELLIPSE_CLOSURES = ["None", "Chord", "Radial"];
 const TEXT_ALIGNMENTS = ["Left", "Center", "Right"];
 
 // ── Field codecs ──────────────────────────────────────────────────────────────
@@ -494,7 +494,7 @@ const ELLIPSE_FIELDS: ShapeField<EllipseShape>[] = [
     name: "closure",
     label: "Closure",
     group: "Arc",
-    codec: enumCodec("EllipseClosure", ELLIPSE_CLOSURES),
+    codec: enumCodec("EllipseClosure", [...ELLIPSE_CLOSURES]),
     fallbackFrom: defaultEllipseClosure,
   }),
 ];

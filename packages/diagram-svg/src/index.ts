@@ -74,10 +74,8 @@ export {
 } from "./text-template.js";
 export {
   ellipseArc,
-  ellipseArcOutline,
   ellipseArcPathData,
-  type EllipseArc,
-  type EllipseBox,
+  ellipseArcPoints,
 } from "./ellipse-arc.js";
 export {
   isBezierSmooth,

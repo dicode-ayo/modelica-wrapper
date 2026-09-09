@@ -7,27 +7,20 @@
  * pinned in `@dicode/diagram-svg`; these pin the wiring.
  */
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout, Point, Shape } from "@dicode/omc-client";
+import type { DiagramLayout, Point } from "@dicode/omc-client";
 
 import { applyShapeSmoothToggle } from "../src/interaction/layout-ops.js";
 import {
   graphicsWithLabel,
   mountLayout,
 } from "./harness/interaction-fixtures.js";
-import { emptyLayout } from "./harness/layout-fixtures.js";
+import { withOwnShape } from "./harness/layout-fixtures.js";
 import { pathVertices } from "./pixi-dash.helper.js";
 
 const APEX: Point = [0, 50];
 
-function layout(shape: Shape): DiagramLayout {
-  return {
-    ...emptyLayout(),
-    diagramLayers: [{ from: "Demo", shapes: [shape] }],
-  };
-}
-
 function arc(smooth: string | undefined): DiagramLayout {
-  return layout({
+  return withOwnShape({
     kind: "line",
     points: [[-50, 0], APEX, [50, 0]],
     color: [255, 0, 0],
@@ -37,7 +30,7 @@ function arc(smooth: string | undefined): DiagramLayout {
 }
 
 function triangle(smooth: string | undefined): DiagramLayout {
-  return layout({
+  return withOwnShape({
     kind: "polygon",
     points: [[-50, -50], [50, -50], APEX, [-50, -50]],
     lineColor: [255, 0, 0],
@@ -113,7 +106,7 @@ describe("toggling smooth on a live shape", () => {
 describe("two-point Smooth.Bezier line", () => {
   it("stays a straight segment between its endpoints", async () => {
     const el = await mountLayout({
-      layout: layout({
+      layout: withOwnShape({
         kind: "line",
         points: [
           [-50, 0],

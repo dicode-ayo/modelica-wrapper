@@ -1,7 +1,9 @@
 export {
   BITMAP_DEFAULTS,
   defaultEllipseClosure,
+  ELLIPSE_CLOSURES,
   ELLIPSE_DEFAULTS,
+  isEllipseClosure,
   FILLED_SHAPE_DEFAULTS,
   GRAPHIC_ITEM_DEFAULTS,
   LINE_DEFAULTS,
