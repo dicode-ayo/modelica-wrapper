@@ -139,4 +139,36 @@ describe("modelInstanceScope", () => {
     };
     expect(modelInstanceScope(redeclared).lookup(["p"])).toBe(true);
   });
+
+  it("falls back to a literal modifier when OMC ships no value", () => {
+    const modifierOnly: ModelInstance = {
+      name: "Top",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "p",
+          type: "Boolean",
+          modifiers: { $value: "false" },
+        },
+      ],
+    };
+    expect(modelInstanceScope(modifierOnly).lookup(["p"])).toBe(false);
+  });
+
+  it("gives no answer for a modifier that is not a literal", () => {
+    const compound: ModelInstance = {
+      name: "Top",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "p",
+          type: "Boolean",
+          modifiers: { $value: "not q" },
+        },
+      ],
+    };
+    expect(modelInstanceScope(compound).lookup(["p"])).toBeUndefined();
+  });
 });

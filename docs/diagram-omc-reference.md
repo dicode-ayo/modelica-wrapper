@@ -127,8 +127,8 @@ This section is spec-normative and is where "behaves weirdly" bugs usually hide.
   inherited components and connections visible**.
 - **`DynamicSelect`.** Conditional/parameter-driven graphics
   (`DynamicSelect(static, dynamic)`) — *open question*: the research did not pin
-  how OMEdit evaluates these or how they appear in `getModelInstance` JSON.
-  Likely an area we don't handle.
+  how OMEdit evaluates the DYNAMIC (simulation-time) branch or how it appears in
+  `getModelInstance` JSON. Likely an area we don't handle.
 - **Icon rotation edge case (`ModelicaSpecification#2248`, open).** Today tools
   **do** rotate/flip a component's icon graphics with its placement on
   90/180/270° / flip; there's an *open* enhancement to keep *quadratic* icons
@@ -264,10 +264,29 @@ re-investigated:
    [producer.ts](../packages/omc-client/src/api/diagram/producer.ts); an
    `extends` annotation that hides base primitives drops that layer's graphics.
 4. **`DynamicSelect`.** Resolved to its static default in
-   [expression-to-string.ts](../packages/omc-client/src/eval/expression-to-string.ts)
-   — it arrives as a `call` named `DynamicSelect` whose first argument is the
-   static branch. Conditional graphics are rendered statically by design;
-   re-evaluating them per-instance would need a simulation result to bind to.
+   [shapes.ts](../packages/omc-client/src/api/diagram/shapes.ts)'s
+   `peelDynamicSelect` — it arrives as a `call` named `DynamicSelect` whose
+   first argument is the static branch.
+5. **Expression-valued graphic fields.** A static branch that is still an
+   unreduced expression (`visible = not torque.useSupport`) is evaluated
+   against an `EvalScope` built from the top-level `ModelInstance`
+   ([model-instance-scope.ts](../packages/omc-client/src/eval/model-instance-scope.ts)),
+   through the same `evaluateExpression` the parameter form's `Dialog.enable`
+   uses, falling back to the §18.6 default only when no concrete value comes
+   out. OMC roots every cref inside a binding at the top-level instance rather
+   than at the class declaring the field, so one root scope serves every layer
+   and a narrower scope built from a sub-component's own class would leave the
+   cref unresolvable. Port conditions reduce through the same evaluator, so a
+   port and the graphics drawn for it cannot disagree.
+
+   Because a field resolves against the use site, one class can need more than
+   one icon. `DiagramLayout.classes` is therefore keyed by class name plus the
+   content it resolved to — identical content shares an entry, a name that
+   resolves two ways gets a suffixed second key, and `ClassDef.name` stays the
+   real class name. A catalog key is an identifier, not a name to display.
+
+   The DYNAMIC (simulation-time) branch of `DynamicSelect` stays out of scope —
+   re-evaluating it per-instance would need a simulation result to bind to.
 
 ---
 

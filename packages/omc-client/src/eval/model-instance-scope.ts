@@ -12,6 +12,7 @@ import type {
   Expression,
   ModelInstance,
 } from "../_shared/modelInstance.js";
+import { modifierToDisplayString } from "../_shared/unitResolution.js";
 import type { EvalScope, EvalValue } from "./expression-evaluator.js";
 import { evaluateExpression } from "./expression-evaluator.js";
 
@@ -57,18 +58,38 @@ function isLiteral(v: unknown): v is number | boolean | string | null {
  */
 function valueOf(el: ComponentElement, scope: EvalScope): EvalValue {
   const value = el.value;
-  if (typeof value !== "object" || value === null) return undefined;
-  const wrapper = value as { value?: unknown; binding?: unknown };
-  const expr = wrapper.value !== undefined ? wrapper.value : wrapper.binding;
-  if (isLiteral(expr)) return expr;
-  if (expr === undefined) return undefined;
-  return evaluateExpression(expr as Expression, scope);
+  if (typeof value === "object" && value !== null) {
+    const wrapper = value as { value?: unknown; binding?: unknown };
+    const expr = wrapper.value !== undefined ? wrapper.value : wrapper.binding;
+    if (isLiteral(expr)) return expr;
+    if (expr !== undefined) {
+      const reduced = evaluateExpression(expr as Expression, scope);
+      if (reduced !== undefined) return reduced;
+    }
+  }
+  return literalModifier(modifierToDisplayString(el.modifiers));
+}
+
+/**
+ * A modifier is OMC's raw source text, not an `Expression`, so only its
+ * literal forms are readable here — `not useSupport` has no parser and
+ * leaves the caller on its default.
+ */
+function literalModifier(text: string): EvalValue {
+  if (text === "true") return true;
+  if (text === "false") return false;
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    return text.slice(1, -1);
+  }
+  const n = Number(text);
+  return text.length > 0 && Number.isFinite(n) ? n : undefined;
 }
 
 function resolve(
   mi: ModelInstance,
   parts: ReadonlyArray<string>,
   scope: EvalScope,
+  resolving: Set<ComponentElement>,
 ): EvalValue {
   const head = parts[0];
   if (head === undefined) return undefined;
@@ -76,9 +97,15 @@ function resolve(
   if (el === undefined) return undefined;
   if (parts.length > 1) {
     if (typeof el.type !== "object" || el.type === null) return undefined;
-    return resolve(el.type, parts.slice(1), scope);
+    return resolve(el.type, parts.slice(1), scope, resolving);
   }
-  return valueOf(el, scope);
+  if (resolving.has(el)) return undefined;
+  resolving.add(el);
+  try {
+    return valueOf(el, scope);
+  } finally {
+    resolving.delete(el);
+  }
 }
 
 /**
@@ -90,18 +117,11 @@ function resolve(
 export function modelInstanceScope(root: ModelInstance): EvalScope {
   // A binding that resolves through other bindings can be cyclic; the
   // ModelInstance tree is JSON, so nothing upstream has ruled that out.
-  const resolving = new Set<string>();
+  // Keyed by element rather than by path, so two paths onto one declaration
+  // still close the loop.
+  const resolving = new Set<ComponentElement>();
   const scope: EvalScope = {
-    lookup(parts) {
-      const key = parts.join(".");
-      if (resolving.has(key)) return undefined;
-      resolving.add(key);
-      try {
-        return resolve(root, parts, scope);
-      } finally {
-        resolving.delete(key);
-      }
-    },
+    lookup: (parts) => resolve(root, parts, scope, resolving),
   };
   return scope;
 }
