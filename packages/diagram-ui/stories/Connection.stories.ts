@@ -78,5 +78,5 @@ export const ClockedNoJunctions: Story = {
 };
 
 export const SmoothBezier: Story = {
-  args: { showJunctions: true, clocked: false, smooth: true, zoom: 100 },
+  args: { ...WithJunctions.args, smooth: true },
 };

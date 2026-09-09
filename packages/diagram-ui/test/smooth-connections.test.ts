@@ -12,15 +12,8 @@ import {
   graphicsWithLabel,
   mountLayout,
 } from "./harness/interaction-fixtures.js";
-import { withRoute } from "./harness/layout-fixtures.js";
+import { CORNER_ROUTE, withRoute } from "./harness/layout-fixtures.js";
 import { pathVertices } from "./pixi-dash.helper.js";
-
-/** A right-angle route: two straight runs meeting at the corner (50, 0). */
-const CORNER_ROUTE: Point[] = [
-  [0, 0],
-  [50, 0],
-  [50, 30],
-];
 
 describe("connection Smooth.Bezier", () => {
   it("curves the route on a layout swap while its junction stays on the waypoint", async () => {
@@ -41,17 +34,16 @@ describe("connection Smooth.Bezier", () => {
     const [disc] = conn.junctions;
     if (disc === undefined) throw new Error("expected a junction disc");
     expect([disc.position.x, disc.position.y]).toEqual([50, 0]);
-  });
 
-  it("routes a two-waypoint connection straight even under Smooth.Bezier", async () => {
-    // Two points cannot describe a curve; the route must not gain vertices.
+    // Two points cannot describe a curve, so the same annotation must leave
+    // the route alone rather than gaining vertices.
     const direct: Point[] = [
       [0, 0],
       [50, 0],
     ];
-    const el = await mountLayout({
-      layout: withRoute(direct, { smooth: "Bezier" }),
-    });
+    el.layout = withRoute(direct, { smooth: "Bezier" });
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
     expect(pathVertices(graphicsWithLabel(el, "om-edge:0"))).toEqual(direct);
   });
 });

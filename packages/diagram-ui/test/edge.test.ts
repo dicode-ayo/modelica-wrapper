@@ -8,6 +8,7 @@ import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmEdge } from "../src/connection/edge.component.js";
 import { buildHitTube } from "../src/base/hit-tube.js";
 import { buildEdge } from "../src/connection/edge-build.js";
+import { CORNER_ROUTE } from "./harness/layout-fixtures.js";
 import { parseCssColor } from "../src/connection/parse-color.js";
 import { dashCount, pathVertices } from "./pixi-dash.helper.js";
 
@@ -151,13 +152,6 @@ describe("parseCssColor", () => {
   });
 });
 
-/** A right-angle route: two straight runs meeting at the corner (50, 0). */
-const CORNER_ROUTE: Point[] = [
-  [0, 0],
-  [50, 0],
-  [50, 30],
-];
-
 /** The vertex of a `CORNER_ROUTE` curve farthest off both straight runs —
  *  the probe the polyline's pick tube cannot reach. */
 function deepestOffCorner(vertices: Point[]): Point | undefined {
@@ -177,11 +171,7 @@ describe("<om-edge>", () => {
     const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
     edge.nodeId = "e1";
-    edge.path = [
-      [0, 0],
-      [50, 0],
-      [50, 30],
-    ];
+    edge.path = CORNER_ROUTE;
     scene.appendChild(edge);
     await edge.updateComplete;
     expect(edge.edgeMesh).not.toBeNull();
@@ -215,11 +205,7 @@ describe("<om-edge>", () => {
     // survive, not be disposed + recreated.
     const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
-    edge.path = [
-      [0, 0],
-      [50, 0],
-      [50, 30],
-    ];
+    edge.path = CORNER_ROUTE;
     scene.appendChild(edge);
     await edge.updateComplete;
     const original = edge.edgeMesh;
@@ -281,11 +267,7 @@ describe("<om-edge>", () => {
     const originalLine = edge.edgeMesh?.line;
     expect(originalLine).toBeDefined();
 
-    edge.path = [
-      [0, 0],
-      [50, 0],
-      [50, 30],
-    ];
+    edge.path = CORNER_ROUTE;
     await edge.updateComplete;
     expect(edge.edgeMesh?.line).toBe(originalLine);
     expect(originalLine?.destroyed).toBe(false);

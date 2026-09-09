@@ -1,6 +1,6 @@
 import type {
-  ConnectionLayout,
   DiagramLayout,
+  LineStyle,
   Point,
   Shape,
 } from "@dicode/omc-client";
@@ -84,11 +84,18 @@ export function baseLayout(): DiagramLayout {
   };
 }
 
+/** A right-angle route: two straight runs meeting at the corner (50, 0). */
+export const CORNER_ROUTE: Point[] = [
+  [0, 0],
+  [50, 0],
+  [50, 30],
+];
+
 /** `baseLayout()` with the connection's waypoints replaced by `route` and
- *  any further `style` fields (`smooth`, `color`, ...) applied on top. */
+ *  any `Line` style fields (`smooth`, `color`, ...) applied on top. */
 export function withRoute(
   route: Point[],
-  style: Partial<ConnectionLayout> = {},
+  style: LineStyle = {},
 ): DiagramLayout {
   const base = baseLayout();
   return {
