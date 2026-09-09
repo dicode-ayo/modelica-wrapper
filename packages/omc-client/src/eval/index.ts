@@ -8,4 +8,6 @@ export {
 
 export { expressionToString } from "./expression-to-string.js";
 
+export { modelInstanceScope } from "./model-instance-scope.js";
+
 export { chainScopes, prefixStrippingScope, recordScope } from "./scope.js";

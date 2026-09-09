@@ -18,6 +18,9 @@
  */
 
 import type { DiagramLayout, PortDef } from "@dicode/omc-client";
+// Sub-path import: the layout module only — the bare name would drag the
+// OMC transport (zeromq / cmake-ts) into the webview bundle.
+import { classNameOf } from "@dicode/omc-client/layout";
 
 import { parseKey } from "./entity-keys.js";
 
@@ -56,15 +59,16 @@ export function resolvePortInfo(
     return null;
   }
   if (parsed.componentName === null) {
-    // Standalone host connector. Its type IS the connector class —
-    // we don't have a per-instance PortDef so we can only read the
-    // class name + suffix-infer direction. Flow/stream are unknown
-    // without fetching the connector class definition.
+    // Standalone host connector. Its type IS the connector class — we
+    // don't have a per-instance PortDef so we can only read the class name
+    // + suffix-infer direction. Flow/stream are unknown without fetching
+    // the connector class definition.
     const conn = layout.connectors[parsed.portName];
     if (!conn) return null;
+    const typeName = classNameOf(layout, conn.classRef);
     return {
-      typeName: conn.classRef,
-      direction: inferDirectionFromTypeName(conn.classRef),
+      typeName,
+      direction: inferDirectionFromTypeName(typeName),
       flow: false,
       stream: false,
     };

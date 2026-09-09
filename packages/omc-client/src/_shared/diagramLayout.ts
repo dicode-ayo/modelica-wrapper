@@ -276,9 +276,23 @@ export interface ClassDef {
   parameters: Record<string, ParameterDef>;
 }
 
+/**
+ * The class name behind a catalog key. Anything shown to a user or handed
+ * back to OMC needs this rather than the key itself — see
+ * {@link ComponentInstance.classRef}. A key with no entry means the layout
+ * is already malformed, so the key stands in rather than failing the render.
+ */
+export function classNameOf(layout: DiagramLayout, classRef: string): string {
+  return layout.classes[classRef]?.name ?? classRef;
+}
+
 export interface ComponentInstance {
   name: string;
-  /** Key into `DiagramLayout.classes` — the resolved type's qualified name. */
+  /**
+   * Key into `DiagramLayout.classes`. An identifier, not a name: a class
+   * whose graphics resolve differently per use site gets a suffixed second
+   * key, so the class name is `classes[classRef].name`.
+   */
   classRef: string;
   placement: Placement;
   /** Per-instance modifier overrides (param values, redeclares). */
@@ -322,6 +336,7 @@ export interface ComponentInstance {
 
 export interface ConnectorInstance {
   name: string;
+  /** Key into `DiagramLayout.classes`; see {@link ComponentInstance.classRef}. */
   classRef: string;
   /**
    * The transformation for the layout's `kind` view: `transformation` in a

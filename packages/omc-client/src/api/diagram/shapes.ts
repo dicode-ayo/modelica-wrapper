@@ -34,6 +34,8 @@ import type {
   Expression,
   RecordValue,
 } from "../../_shared/modelInstance.js";
+import type { EvalScope, EvalValue } from "../../eval/expression-evaluator.js";
+import { evaluateExpression } from "../../eval/expression-evaluator.js";
 import type { Value } from "../../parse.js";
 import type {
   BitmapShape,
@@ -72,7 +74,7 @@ function enumName(e: EnumLiteral): string {
  * Recursive peel — DynamicSelect can in principle nest; we keep peeling
  * until the head is no longer a DynamicSelect call.
  */
-function peelDynamicSelect(v: Expression | undefined): Expression | undefined {
+function peelDynamicSelect(v: Reducible | undefined): Reducible | undefined {
   let cur = v;
   while (
     cur &&
@@ -81,15 +83,43 @@ function peelDynamicSelect(v: Expression | undefined): Expression | undefined {
     (cur as { $kind?: unknown }).$kind === "call" &&
     (cur as { name?: unknown }).name === "DynamicSelect"
   ) {
-    const args = (cur as { arguments?: Expression[] }).arguments;
+    const args = (cur as { arguments?: Reducible[] }).arguments;
     if (!args || args.length === 0) return undefined;
     cur = args[0];
   }
   return cur;
 }
 
+/**
+ * A slot before or after reduction. `EvalValue` is what the evaluator hands
+ * back and is not an `Expression`: its enum literal carries no index
+ * signature. Every `as*` helper narrows structurally, so they read either.
+ */
+type Reducible = Expression | EvalValue;
+
+/**
+ * Peel any `DynamicSelect` wrapper, then reduce what's left against `scope`.
+ * A field referencing a use-site parameter must arrive as the value OMC
+ * resolved for that instance, not as the §18.6 default.
+ *
+ * An expression the scope can't reduce is returned untouched, which lands
+ * the caller back on that default — the fail-open policy OMEdit's
+ * `DynamicAnnotation::evaluate_helper` follows.
+ */
+function resolve(
+  v: Reducible | undefined,
+  scope: EvalScope | undefined,
+): Reducible | undefined {
+  const w = peelDynamicSelect(v);
+  if (scope === undefined || w === null || typeof w !== "object") return w;
+  // `EvalValue` differs from `Expression` only in lacking the index
+  // signature; the evaluator is total over either.
+  const reduced = evaluateExpression(w as Expression, scope);
+  return reduced === undefined ? w : reduced;
+}
+
 /** True if v is a 2-element tuple of finite numbers. */
-function isPoint(v: Expression | undefined): v is [number, number] {
+function isPoint(v: Reducible | undefined): v is [number, number] {
   return (
     Array.isArray(v) &&
     v.length === 2 &&
@@ -100,8 +130,11 @@ function isPoint(v: Expression | undefined): v is [number, number] {
   );
 }
 
-function asPoints(v: Expression | undefined): Point[] | undefined {
-  const w = peelDynamicSelect(v);
+function asPoints(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): Point[] | undefined {
+  const w = resolve(v, scope);
   if (!Array.isArray(w)) return undefined;
   const out: Point[] = [];
   for (const p of w) {
@@ -111,8 +144,11 @@ function asPoints(v: Expression | undefined): Point[] | undefined {
   return out;
 }
 
-function asExtent(v: Expression | undefined): Extent | undefined {
-  const w = peelDynamicSelect(v);
+function asExtent(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): Extent | undefined {
+  const w = resolve(v, scope);
   if (!Array.isArray(w) || w.length !== 2) return undefined;
   const a = w[0];
   const b = w[1];
@@ -123,8 +159,11 @@ function asExtent(v: Expression | undefined): Extent | undefined {
   ];
 }
 
-function asColor(v: Expression | undefined): Color | undefined {
-  const w = peelDynamicSelect(v);
+function asColor(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): Color | undefined {
+  const w = resolve(v, scope);
   if (
     !Array.isArray(w) ||
     w.length !== 3 ||
@@ -137,18 +176,27 @@ function asColor(v: Expression | undefined): Color | undefined {
   return [w[0], w[1], w[2]];
 }
 
-function asNumber(v: Expression | undefined): number | undefined {
-  const w = peelDynamicSelect(v);
+function asNumber(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): number | undefined {
+  const w = resolve(v, scope);
   return typeof w === "number" && Number.isFinite(w) ? w : undefined;
 }
 
-function asString(v: Expression | undefined): string | undefined {
-  const w = peelDynamicSelect(v);
+function asString(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): string | undefined {
+  const w = resolve(v, scope);
   return typeof w === "string" ? w : undefined;
 }
 
-function asEnumString(v: Expression | undefined): string | undefined {
-  const w = peelDynamicSelect(v);
+function asEnumString(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): string | undefined {
+  const w = resolve(v, scope);
   if (
     w &&
     typeof w === "object" &&
@@ -161,17 +209,23 @@ function asEnumString(v: Expression | undefined): string | undefined {
 }
 
 /** Decode the `Arrow` field on a Line: `[Arrow.None, Arrow.Filled]` etc. */
-function asArrow(v: Expression | undefined): [string, string] | undefined {
-  const w = peelDynamicSelect(v);
+function asArrow(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): [string, string] | undefined {
+  const w = resolve(v, scope);
   if (!Array.isArray(w) || w.length !== 2) return undefined;
-  const a = asEnumString(w[0]);
-  const b = asEnumString(w[1]);
+  const a = asEnumString(w[0], scope);
+  const b = asEnumString(w[1], scope);
   if (a === undefined || b === undefined) return undefined;
   return [a, b];
 }
 
-function asStringArray(v: Expression | undefined): string[] | undefined {
-  const w = peelDynamicSelect(v);
+function asStringArray(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): string[] | undefined {
+  const w = resolve(v, scope);
   if (!Array.isArray(w)) return undefined;
   // Modelica TextStyle is an array of TextStyle enum literals; OMC emits
   // them as enum records. We accept either bare strings or enum literals
@@ -181,7 +235,7 @@ function asStringArray(v: Expression | undefined): string[] | undefined {
     if (typeof item === "string") {
       out.push(item);
     } else {
-      const e = asEnumString(item);
+      const e = asEnumString(item, scope);
       if (e === undefined) return undefined;
       out.push(e);
     }
@@ -210,11 +264,14 @@ interface GraphicItemFields {
  * omitted when {0,0}, rotation omitted when 0) so the common case stays a
  * bare shape and renderers can skip the transform entirely.
  */
-function consumeGraphicItem(els: Expression[]): GraphicItemFields {
+function consumeGraphicItem(
+  els: Expression[],
+  scope: EvalScope | undefined,
+): GraphicItemFields {
   // index 0 = visible (boolean); 1 = origin (Point); 2 = rotation (Real).
-  const visibleRaw = asBool(els[0]);
-  const origin = asPoint(els[1]);
-  const rotation = asNumber(els[2]);
+  const visibleRaw = asBool(els[0], scope);
+  const origin = asPoint(els[1], scope);
+  const rotation = asNumber(els[2], scope);
   const out: GraphicItemFields = { offset: 3 };
   // Drop defaults so an un-transformed shape stays clean.
   if (visibleRaw === false) out.visible = false;
@@ -224,14 +281,20 @@ function consumeGraphicItem(els: Expression[]): GraphicItemFields {
 }
 
 /** Single Point from a `[x, y]` tuple (peels DynamicSelect). */
-function asPoint(v: Expression | undefined): Point | undefined {
-  const w = peelDynamicSelect(v);
+function asPoint(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): Point | undefined {
+  const w = resolve(v, scope);
   return isPoint(w) ? [w[0], w[1]] : undefined;
 }
 
 /** Boolean from a literal (peels DynamicSelect). */
-function asBool(v: Expression | undefined): boolean | undefined {
-  const w = peelDynamicSelect(v);
+function asBool(
+  v: Reducible | undefined,
+  scope?: EvalScope,
+): boolean | undefined {
+  const w = resolve(v, scope);
   return typeof w === "boolean" ? w : undefined;
 }
 
@@ -255,6 +318,7 @@ function graphicItemSpread(g: GraphicItemFields): {
 function consumeFilledShape(
   els: Expression[],
   start: number,
+  scope: EvalScope | undefined,
 ): {
   lineColor?: Color | undefined;
   fillColor?: Color | undefined;
@@ -264,49 +328,55 @@ function consumeFilledShape(
   offset: number;
 } {
   return {
-    lineColor: asColor(els[start + 0]),
-    fillColor: asColor(els[start + 1]),
-    pattern: asEnumString(els[start + 2]),
-    fillPattern: asEnumString(els[start + 3]),
-    lineThickness: asNumber(els[start + 4]),
+    lineColor: asColor(els[start + 0], scope),
+    fillColor: asColor(els[start + 1], scope),
+    pattern: asEnumString(els[start + 2], scope),
+    fillPattern: asEnumString(els[start + 3], scope),
+    lineThickness: asNumber(els[start + 4], scope),
     offset: start + 5,
   };
 }
 
 // ----- per-shape decoders -----
 
-function decodeLine(els: Expression[]): LineShape {
+function decodeLine(
+  els: Expression[],
+  scope: EvalScope | undefined,
+): LineShape {
   // GraphicItem(3) + points + color + pattern + thickness + arrow + arrowSize + smooth.
   // Line is GraphicItem only — NOT FilledShape.
-  const gi = consumeGraphicItem(els);
+  const gi = consumeGraphicItem(els, scope);
   const offset = gi.offset;
-  const points = asPoints(els[offset]);
+  const points = asPoints(els[offset], scope);
   if (!points) {
     throw new Error(
       `decodeLine: expected points array at index ${offset}, got ${JSON.stringify(els[offset])}`,
     );
   }
   const out: LineShape = { kind: "line", points, ...graphicItemSpread(gi) };
-  const color = asColor(els[offset + 1]);
+  const color = asColor(els[offset + 1], scope);
   if (color) out.color = color;
-  const pattern = asEnumString(els[offset + 2]);
+  const pattern = asEnumString(els[offset + 2], scope);
   if (pattern) out.pattern = pattern;
-  const thickness = asNumber(els[offset + 3]);
+  const thickness = asNumber(els[offset + 3], scope);
   if (thickness !== undefined) out.thickness = thickness;
-  const arrow = asArrow(els[offset + 4]);
+  const arrow = asArrow(els[offset + 4], scope);
   if (arrow) out.arrow = arrow;
-  const arrowSize = asNumber(els[offset + 5]);
+  const arrowSize = asNumber(els[offset + 5], scope);
   if (arrowSize !== undefined) out.arrowSize = arrowSize;
-  const smooth = asEnumString(els[offset + 6]);
+  const smooth = asEnumString(els[offset + 6], scope);
   if (smooth) out.smooth = smooth;
   return out;
 }
 
-function decodePolygon(els: Expression[]): PolygonShape {
+function decodePolygon(
+  els: Expression[],
+  scope: EvalScope | undefined,
+): PolygonShape {
   // GraphicItem(3) + FilledShape(5) + points + smooth.
-  const gi = consumeGraphicItem(els);
-  const fs = consumeFilledShape(els, gi.offset);
-  const points = asPoints(els[fs.offset]);
+  const gi = consumeGraphicItem(els, scope);
+  const fs = consumeFilledShape(els, gi.offset, scope);
+  const points = asPoints(els[fs.offset], scope);
   if (!points) {
     throw new Error(
       `decodePolygon: expected points array at index ${fs.offset}, got ${JSON.stringify(els[fs.offset])}`,
@@ -322,23 +392,26 @@ function decodePolygon(els: Expression[]): PolygonShape {
   if (fs.pattern) out.pattern = fs.pattern;
   if (fs.fillPattern) out.fillPattern = fs.fillPattern;
   if (fs.lineThickness !== undefined) out.lineThickness = fs.lineThickness;
-  const smooth = asEnumString(els[fs.offset + 1]);
+  const smooth = asEnumString(els[fs.offset + 1], scope);
   if (smooth) out.smooth = smooth;
   return out;
 }
 
-function decodeRectangle(els: Expression[]): RectangleShape {
+function decodeRectangle(
+  els: Expression[],
+  scope: EvalScope | undefined,
+): RectangleShape {
   // GraphicItem(3) + FilledShape(5) + borderPattern + extent + radius.
-  const gi = consumeGraphicItem(els);
-  const fs = consumeFilledShape(els, gi.offset);
-  const borderPattern = asEnumString(els[fs.offset]);
-  const extent = asExtent(els[fs.offset + 1]);
+  const gi = consumeGraphicItem(els, scope);
+  const fs = consumeFilledShape(els, gi.offset, scope);
+  const borderPattern = asEnumString(els[fs.offset], scope);
+  const extent = asExtent(els[fs.offset + 1], scope);
   if (!extent) {
     throw new Error(
       `decodeRectangle: expected extent at index ${fs.offset + 1}, got ${JSON.stringify(els[fs.offset + 1])}`,
     );
   }
-  const radius = asNumber(els[fs.offset + 2]);
+  const radius = asNumber(els[fs.offset + 2], scope);
   const out: RectangleShape = {
     kind: "rectangle",
     extent,
@@ -354,11 +427,14 @@ function decodeRectangle(els: Expression[]): RectangleShape {
   return out;
 }
 
-function decodeEllipse(els: Expression[]): EllipseShape {
+function decodeEllipse(
+  els: Expression[],
+  scope: EvalScope | undefined,
+): EllipseShape {
   // GraphicItem(3) + FilledShape(5) + extent + startAngle + endAngle + closure.
-  const gi = consumeGraphicItem(els);
-  const fs = consumeFilledShape(els, gi.offset);
-  const extent = asExtent(els[fs.offset]);
+  const gi = consumeGraphicItem(els, scope);
+  const fs = consumeFilledShape(els, gi.offset, scope);
+  const extent = asExtent(els[fs.offset], scope);
   if (!extent) {
     throw new Error(
       `decodeEllipse: expected extent at index ${fs.offset}, got ${JSON.stringify(els[fs.offset])}`,
@@ -374,22 +450,25 @@ function decodeEllipse(els: Expression[]): EllipseShape {
   if (fs.pattern) out.pattern = fs.pattern;
   if (fs.fillPattern) out.fillPattern = fs.fillPattern;
   if (fs.lineThickness !== undefined) out.lineThickness = fs.lineThickness;
-  const startAngle = asNumber(els[fs.offset + 1]);
+  const startAngle = asNumber(els[fs.offset + 1], scope);
   if (startAngle !== undefined) out.startAngle = startAngle;
-  const endAngle = asNumber(els[fs.offset + 2]);
+  const endAngle = asNumber(els[fs.offset + 2], scope);
   if (endAngle !== undefined) out.endAngle = endAngle;
-  const closure = asEnumString(els[fs.offset + 3]);
+  const closure = asEnumString(els[fs.offset + 3], scope);
   if (closure) out.closure = closure;
   return out;
 }
 
-function decodeText(els: Expression[]): TextShape {
+function decodeText(
+  els: Expression[],
+  scope: EvalScope | undefined,
+): TextShape {
   // GraphicItem(3) + FilledShape(5) + extent + textString + fontSize +
   //   textColor + fontName + textStyle + horizontalAlignment.
   // (OMC 1.26.7's emission order — see file header comment.)
-  const gi = consumeGraphicItem(els);
-  const fs = consumeFilledShape(els, gi.offset);
-  const extent = asExtent(els[fs.offset]);
+  const gi = consumeGraphicItem(els, scope);
+  const fs = consumeFilledShape(els, gi.offset, scope);
+  const extent = asExtent(els[fs.offset], scope);
   if (!extent) {
     throw new Error(
       `decodeText: expected extent at index ${fs.offset}, got ${JSON.stringify(els[fs.offset])}`,
@@ -408,34 +487,37 @@ function decodeText(els: Expression[]): TextShape {
   // FilledShape's lineColor often serves as the default for textColor in
   // Modelica; renderers can fall back to it. We don't surface lineColor
   // on TextShape since it's not used by Text otherwise.
-  const fontSize = asNumber(els[fs.offset + 2]);
+  const fontSize = asNumber(els[fs.offset + 2], scope);
   if (fontSize !== undefined) out.fontSize = fontSize;
-  const textColor = asColor(els[fs.offset + 3]);
+  const textColor = asColor(els[fs.offset + 3], scope);
   if (textColor) out.textColor = textColor;
-  const fontName = asString(els[fs.offset + 4]);
+  const fontName = asString(els[fs.offset + 4], scope);
   if (fontName !== undefined && fontName.length > 0) out.fontName = fontName;
-  const textStyle = asStringArray(els[fs.offset + 5]);
+  const textStyle = asStringArray(els[fs.offset + 5], scope);
   if (textStyle) out.textStyle = textStyle;
-  const horizontalAlignment = asEnumString(els[fs.offset + 6]);
+  const horizontalAlignment = asEnumString(els[fs.offset + 6], scope);
   if (horizontalAlignment) out.horizontalAlignment = horizontalAlignment;
   return out;
 }
 
-function decodeBitmap(els: Expression[]): BitmapShape {
+function decodeBitmap(
+  els: Expression[],
+  scope: EvalScope | undefined,
+): BitmapShape {
   // GraphicItem(3) + extent + fileName + imageSource. Bitmap is NOT a
   // FilledShape — it has no line/fill color machinery.
-  const gi = consumeGraphicItem(els);
+  const gi = consumeGraphicItem(els, scope);
   const o1 = gi.offset;
-  const extent = asExtent(els[o1]);
+  const extent = asExtent(els[o1], scope);
   if (!extent) {
     throw new Error(
       `decodeBitmap: expected extent at index ${o1}, got ${JSON.stringify(els[o1])}`,
     );
   }
   const out: BitmapShape = { kind: "bitmap", extent, ...graphicItemSpread(gi) };
-  const fileName = asString(els[o1 + 1]);
+  const fileName = asString(els[o1 + 1], scope);
   if (fileName !== undefined && fileName.length > 0) out.fileName = fileName;
-  const imageSource = asString(els[o1 + 2]);
+  const imageSource = asString(els[o1 + 2], scope);
   if (imageSource !== undefined && imageSource.length > 0)
     out.imageSource = imageSource;
   return out;
@@ -447,21 +529,21 @@ function decodeBitmap(els: Expression[]): BitmapShape {
  * decoder doesn't recognize — easier to surface a new `name` from a
  * future Modelica revision than to silently drop graphics.
  */
-export function decodeShape(record: RecordValue): Shape {
+export function decodeShape(record: RecordValue, scope?: EvalScope): Shape {
   const els = record.elements;
   switch (record.name) {
     case "Line":
-      return decodeLine(els);
+      return decodeLine(els, scope);
     case "Polygon":
-      return decodePolygon(els);
+      return decodePolygon(els, scope);
     case "Rectangle":
-      return decodeRectangle(els);
+      return decodeRectangle(els, scope);
     case "Ellipse":
-      return decodeEllipse(els);
+      return decodeEllipse(els, scope);
     case "Text":
-      return decodeText(els);
+      return decodeText(els, scope);
     case "Bitmap":
-      return decodeBitmap(els);
+      return decodeBitmap(els, scope);
     default:
       throw new Error(
         `decodeShape: unknown shape kind '${record.name}' (expected Line/Polygon/Rectangle/Ellipse/Text/Bitmap)`,
@@ -537,7 +619,7 @@ export function decodeAnnotationShape(record: Value): Shape {
 
 export const _internal = {
   enumName,
-  asPoint: (v: Expression | undefined): Point | undefined =>
+  asPoint: (v: Reducible | undefined): Point | undefined =>
     isPoint(v) ? [v[0], v[1]] : undefined,
   asPoints,
   asExtent,

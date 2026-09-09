@@ -1,4 +1,8 @@
-import { connectorPlacementKeywords, shapeToRecord } from "@dicode/omc-client";
+import {
+  classNameOf,
+  connectorPlacementKeywords,
+  shapeToRecord,
+} from "@dicode/omc-client";
 import type {
   ConnectionEndpoint,
   ConnectorInstance,
@@ -91,7 +95,7 @@ export async function captureClipboardItems(
           client,
           layout.className,
           parsed.nodeId,
-          component.classRef,
+          classNameOf(layout, component.classRef),
           component.placement,
           {
             prefixes: component.prefixes,
@@ -114,7 +118,7 @@ export async function captureClipboardItems(
           client,
           layout.className,
           parsed.nodeId,
-          connector.classRef,
+          classNameOf(layout, connector.classRef),
           views.placement,
           {
             diagramPlacement: views.diagramPlacement,

@@ -1,0 +1,127 @@
+/**
+ * `EvalScope` over a `getModelInstance` tree, resolving the
+ * instance-qualified crefs OMC writes into graphic annotation fields
+ * (`t.useSupport`, `m.leaf.show`). Paths are absolute from the root the
+ * scope was built on — the same rule OMEdit's `Model::getVariableBinding`
+ * follows.
+ */
+
+import { walkExtendsChain } from "../_shared/extendsChain.js";
+import type {
+  ComponentElement,
+  Expression,
+  ModelInstance,
+} from "../_shared/modelInstance.js";
+import { modifierToDisplayString } from "../_shared/unitResolution.js";
+import type { EvalScope, EvalValue } from "./expression-evaluator.js";
+import { evaluateExpression } from "./expression-evaluator.js";
+
+/**
+ * An `extends` clause contributes its base class's components to the
+ * enclosing name space, so walking into one must NOT consume a path
+ * segment. `walkExtendsChain` yields ancestors first, so keeping the last
+ * match gives a redeclaring class precedence over the one it extends.
+ */
+function findComponent(
+  mi: ModelInstance,
+  name: string,
+): ComponentElement | undefined {
+  let found: ComponentElement | undefined;
+  for (const { klass } of walkExtendsChain(mi)) {
+    for (const el of klass.elements ?? []) {
+      if (el.$kind === "component" && el.name === name) found = el;
+    }
+  }
+  return found;
+}
+
+function isLiteral(v: unknown): v is number | boolean | string | null {
+  return (
+    v === null ||
+    typeof v === "number" ||
+    typeof v === "boolean" ||
+    typeof v === "string"
+  );
+}
+
+/**
+ * OMC writes a component's binding two ways: `{ binding }` alone when the
+ * declaration is already a literal, and `{ binding, value }` when it had to
+ * reduce a cref or an expression. `value` is only OMC's best effort — a
+ * parameter with no default of its own (`parameter Boolean noDefault;`)
+ * comes back with the cref echoed rather than folded, so a non-literal
+ * lands back on the evaluator.
+ *
+ * Crefs in both slots are qualified from the opened class, not written as
+ * the source declared them: `parameter Boolean a = b` inside component `m`
+ * arrives as `m.b`. Either slot therefore reduces against the root scope.
+ */
+function valueOf(el: ComponentElement, scope: EvalScope): EvalValue {
+  const value = el.value;
+  if (typeof value === "object" && value !== null) {
+    const wrapper = value as { value?: unknown; binding?: unknown };
+    const expr = wrapper.value !== undefined ? wrapper.value : wrapper.binding;
+    if (isLiteral(expr)) return expr;
+    if (expr !== undefined) {
+      const reduced = evaluateExpression(expr as Expression, scope);
+      if (reduced !== undefined) return reduced;
+    }
+  }
+  return literalModifier(modifierToDisplayString(el.modifiers));
+}
+
+/**
+ * A modifier is OMC's raw source text, not an `Expression`, so only its
+ * literal forms are readable here — `not useSupport` has no parser and
+ * leaves the caller on its default.
+ */
+function literalModifier(text: string): EvalValue {
+  if (text === "true") return true;
+  if (text === "false") return false;
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    return text.slice(1, -1);
+  }
+  const n = Number(text);
+  return text.length > 0 && Number.isFinite(n) ? n : undefined;
+}
+
+function resolve(
+  mi: ModelInstance,
+  parts: ReadonlyArray<string>,
+  scope: EvalScope,
+  resolving: Set<ComponentElement>,
+): EvalValue {
+  const head = parts[0];
+  if (head === undefined) return undefined;
+  const el = findComponent(mi, head);
+  if (el === undefined) return undefined;
+  if (parts.length > 1) {
+    if (typeof el.type !== "object" || el.type === null) return undefined;
+    return resolve(el.type, parts.slice(1), scope, resolving);
+  }
+  if (resolving.has(el)) return undefined;
+  resolving.add(el);
+  try {
+    return valueOf(el, scope);
+  } finally {
+    resolving.delete(el);
+  }
+}
+
+/**
+ * Build a scope resolving paths against `root`. Names are looked up exactly
+ * as OMC writes them into annotations — absolute from `root`, so the scope
+ * for an opened class serves every layer beneath it. An unresolvable path
+ * yields `undefined` and leaves the caller on its own default.
+ */
+export function modelInstanceScope(root: ModelInstance): EvalScope {
+  // A binding that resolves through other bindings can be cyclic; the
+  // ModelInstance tree is JSON, so nothing upstream has ruled that out.
+  // Keyed by element rather than by path, so two paths onto one declaration
+  // still close the loop.
+  const resolving = new Set<ComponentElement>();
+  const scope: EvalScope = {
+    lookup: (parts) => resolve(root, parts, scope, resolving),
+  };
+  return scope;
+}

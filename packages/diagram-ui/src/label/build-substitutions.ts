@@ -19,7 +19,8 @@ import type { TextSubstitutions } from "@dicode/diagram-svg";
  *  3. `instance.modifiers[name]` — per-instance literal overrides
  *     from the model source; merged on top of the host-resolved layer.
  *
- * `%name` resolves to `instance.name`, `%class` to `instance.classRef`.
+ * `%name` resolves to `instance.name`, `%class` to the class name off
+ * the catalog — `classRef` is a key, not a name.
  * For a vector / matrix component, the array dimensions are appended to
  * `%name` Modelica-style — `pins` with `dims: ["3"]` renders as `pins[3]`,
  * `grid` with `dims: ["2", "4"]` as `grid[2, 4]` — matching OMEdit's
@@ -56,7 +57,7 @@ export function buildSubstitutions(
   appendUnits(parameters, cls);
   return {
     name: nameWithDims(instance.name, instance.dims),
-    class: instance.classRef,
+    class: cls?.name ?? instance.classRef,
     parameters,
   };
 }

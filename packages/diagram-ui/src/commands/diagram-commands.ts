@@ -1,4 +1,7 @@
 import type { DiagramLayout } from "@dicode/omc-client";
+// Sub-path import: the layout module only — the bare name would drag the
+// OMC transport (zeromq / cmake-ts) into the webview bundle.
+import { classNameOf } from "@dicode/omc-client/layout";
 
 import type { ContextKeys } from "../interaction/context-keys.js";
 import {
@@ -241,7 +244,10 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
       if (!parsed || parsed.kind !== "component") return;
       const comp = target.layout.components[parsed.nodeId];
       if (comp === undefined) return;
-      target.requestClassChange?.(parsed.nodeId, comp.classRef);
+      target.requestClassChange?.(
+        parsed.nodeId,
+        classNameOf(target.layout, comp.classRef),
+      );
     },
   },
   {
