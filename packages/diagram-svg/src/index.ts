@@ -73,6 +73,11 @@ export {
   type TextSubstitutions,
 } from "./text-template.js";
 export {
+  ellipseArc,
+  ellipseArcPathData,
+  ellipseArcPoints,
+} from "./ellipse-arc.js";
+export {
   isBezierSmooth,
   smoothLinePathData,
   smoothLinePoints,

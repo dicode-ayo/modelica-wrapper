@@ -107,6 +107,17 @@ export const LINE_1: Shape = {
 };
 
 /**
+ * `emptyLayout()` carrying one host-own diagram shape and nothing else, so a
+ * primitive under test keeps `zOrder` 0 and the labels that follow from it.
+ */
+export function withOwnShape(shape: Shape): DiagramLayout {
+  return {
+    ...emptyLayout(),
+    diagramLayers: [{ from: "Demo", shapes: [shape] }],
+  };
+}
+
+/**
  * `baseLayout()` carrying host-own (`from === "Demo"`) diagram shapes, plus
  * an inherited (`from === "Base"`) layer that shape ops must never touch.
  */

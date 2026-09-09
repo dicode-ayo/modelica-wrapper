@@ -100,6 +100,19 @@ export const BITMAP_DEFAULTS: { fileName: string; imageSource: string } = {
   imageSource: "",
 };
 
+/** §18.6.5.5 `EllipseClosure`, in declaration order. */
+export const ELLIPSE_CLOSURES = ["None", "Chord", "Radial"] as const;
+
+export type EllipseClosure = (typeof ELLIPSE_CLOSURES)[number];
+
+/** Narrows an annotated `closure` — decoded from OMC, or free text the
+ *  properties panel wrote — to a value the renderers understand. */
+export function isEllipseClosure(
+  value: string | undefined,
+): value is EllipseClosure {
+  return ELLIPSE_CLOSURES.some((closure) => closure === value);
+}
+
 /**
  * §18.6.5.5: `Chord` for a full ellipse, `Radial` for an arc. The one default
  * the spec derives rather than states, so it cannot live in the table above.
@@ -107,7 +120,7 @@ export const BITMAP_DEFAULTS: { fileName: string; imageSource: string } = {
 export function defaultEllipseClosure(shape: {
   startAngle?: number | undefined;
   endAngle?: number | undefined;
-}): string {
+}): EllipseClosure {
   const { startAngle, endAngle } = ELLIPSE_DEFAULTS;
   return (shape.startAngle ?? startAngle) === startAngle &&
     (shape.endAngle ?? endAngle) === endAngle

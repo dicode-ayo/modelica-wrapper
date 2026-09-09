@@ -568,6 +568,17 @@ describe("applyShapeProperties", () => {
       ),
     ).not.toBe(RECT);
     expect(applyShapeProperties(RECT, {}, new Set())).not.toBe(RECT);
+
+    // A non-finite literal parses without being NaN; letting it through puts
+    // coordinates in the shape that no renderer can draw.
+    for (const raw of ["Infinity", "-Infinity", "1e999"]) {
+      const updated = applyShapeProperties(
+        RECT,
+        { radius: raw },
+        new Set(["radius"]),
+      );
+      expect((updated as RectangleShape).radius, raw).toBe(RECT.radius);
+    }
   });
 
   it("throws on an unknown shape kind rather than returning undefined", () => {

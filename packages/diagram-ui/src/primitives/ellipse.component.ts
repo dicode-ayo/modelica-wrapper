@@ -1,7 +1,7 @@
 import { customElement, property } from "lit/decorators.js";
 import type { Container } from "pixi.js";
 import type { EllipseShape } from "@dicode/omc-client";
-import { fillSpec } from "@dicode/diagram-svg";
+import { ellipseArc, ellipseArcPoints, fillSpec } from "@dicode/diagram-svg";
 
 import {
   OmShapePrimitive,
@@ -11,19 +11,17 @@ import {
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
-  buildFilledEllipse,
+  buildFilledPolygon,
   buildStroke,
   extentToRect,
   filledShapeStroke,
+  stripClosingDuplicate,
 } from "./shape-utils.js";
 
-const ELLIPSE_SEGMENTS = 64;
-
 /**
- * `<om-ellipse>` — one Modelica `EllipseShape`. Approximates the
- * ellipse as a 64-segment fan for the fill and a closed polyline for
- * the stroke. `startAngle` / `endAngle` / `closure` are not yet
- * honoured — we always emit the full ellipse to match diagram-svg v1.
+ * `<om-ellipse>` — one Modelica `EllipseShape`. Fills and strokes the outline
+ * `ellipseArcPoints` samples, spanning `startAngle` to `endAngle` and closed
+ * according to `closure`.
  */
 @customElement("om-ellipse")
 export class OmEllipse extends OmShapePrimitive {
@@ -61,20 +59,12 @@ export class OmEllipse extends OmShapePrimitive {
     if (!s) {
       return;
     }
-    const { x, y, width, height } = extentToRect(s.extent);
-    if (width <= 0 || height <= 0) {
+    const rect = extentToRect(s.extent);
+    if (rect.width <= 0 || rect.height <= 0) {
       return;
     }
-    const cx = x + width / 2;
-    const cy = y + height / 2;
-    const rx = width / 2;
-    const ry = height / 2;
-
-    const ring: Array<[number, number]> = [];
-    for (let i = 0; i < ELLIPSE_SEGMENTS; i++) {
-      const t = (i / ELLIPSE_SEGMENTS) * Math.PI * 2;
-      ring.push([cx + Math.cos(t) * rx, cy + Math.sin(t) * ry]);
-    }
+    const arc = ellipseArc(rect, s);
+    const points = ellipseArcPoints(arc);
 
     const renderer = this.renderer();
     const baseName = `om-ellipse.${this.zOrder}`;
@@ -90,29 +80,23 @@ export class OmEllipse extends OmShapePrimitive {
       lineColor: s.lineColor,
       pattern: s.fillPattern,
     });
-    if (fill.kind !== "none") {
-      this.resources.push(
-        buildFilledEllipse(
-          renderer,
-          root,
-          cx,
-          cy,
-          rx,
-          ry,
-          { x, y, width, height },
-          fill,
-          z,
-          `${baseName}.fill`,
-        ),
+    if (arc.filled && fill.kind !== "none") {
+      const filled = buildFilledPolygon(
+        renderer,
+        root,
+        stripClosingDuplicate(points),
+        fill,
+        z,
+        `${baseName}.fill`,
       );
+      if (filled) {
+        this.resources.push(filled);
+      }
     }
 
-    const firstRingPoint = ring[0];
-    const strokePoints =
-      firstRingPoint === undefined ? ring : [...ring, firstRingPoint];
     const stroke = buildStroke(
       root,
-      strokePoints,
+      points,
       s.lineColor ?? DEFAULT_LINE_COLOR,
       s.pattern,
       z + STROKE_Z_DELTA,

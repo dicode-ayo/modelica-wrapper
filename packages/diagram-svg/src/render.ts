@@ -20,8 +20,6 @@
  *  - placement transforms / sub-component composition (that's the next
  *    layer up — diagram-mode rendering takes `ComponentInstance` placements
  *    into account, and lives elsewhere)
- *  - arc rendering for ellipse `startAngle`/`endAngle` (TODO; v1 emits the
- *    bounding ellipse)
  *  - line arrow markers (TODO; v1 ignores `arrow` / `arrowSize`)
  *  - hatch fill patterns (Horizontal/Vertical/Cross/Forward/Backward/CrossDiag —
  *    they need `<pattern>` tile defs; out of scope for v1). Cylinder and
@@ -32,6 +30,7 @@ import { colorToCss } from "./color.js";
 // Sub-path import: the evaluator subtree only, so the browser bundles
 // this renderer lands in don't drag the OMC transport along.
 import { expressionToString } from "@dicode/omc-client/eval";
+import { ellipseArc, ellipseArcPathData } from "./ellipse-arc.js";
 import { linePatternToDashArray, resolveFill } from "./pattern.js";
 import {
   formatCoord,
@@ -495,20 +494,19 @@ function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
 // ---- ellipse ----
 
 function renderEllipse(s: EllipseShape, ctx: RenderContext): string {
-  const { x, y, width, height } = extentToRect(s.extent);
-  const cx = x + width / 2;
-  const cy = y + height / 2;
-  const rx = width / 2;
-  const ry = height / 2;
+  const arc = ellipseArc(extentToRect(s.extent), s);
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
-  const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
+  const fill = arc.filled
+    ? fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx)
+    : "none";
   const thickness = scaledThickness(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
-  // TODO: honor startAngle / endAngle / closure ("None" | "Chord" | "Radial").
-  // For now we always emit the full bounding ellipse — same visual as
-  // `EllipseClosure.None` without rotation.
-  return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
+  const paint = `fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}`;
+  if (arc.full) {
+    return `<ellipse cx="${arc.cx}" cy="${arc.cy}" rx="${arc.rx}" ry="${arc.ry}" ${paint}/>`;
+  }
+  return `<path d="${ellipseArcPathData(arc)}" ${paint}/>`;
 }
 
 // ---- text ----

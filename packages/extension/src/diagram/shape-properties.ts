@@ -34,6 +34,7 @@ import type { GraphicsLayer } from "./diff-layout.js";
 import {
   BITMAP_DEFAULTS,
   defaultEllipseClosure,
+  ELLIPSE_CLOSURES,
   ELLIPSE_DEFAULTS,
   FILLED_SHAPE_DEFAULTS,
   GRAPHIC_ITEM_DEFAULTS,
@@ -136,7 +137,6 @@ const FILL_PATTERNS = [
 ];
 const SMOOTH_VALUES = ["None", "Bezier"];
 const BORDER_PATTERNS = ["None", "Raised", "Sunken", "Engraved"];
-const ELLIPSE_CLOSURES = ["None", "Chord", "Radial"];
 const TEXT_ALIGNMENTS = ["Left", "Center", "Right"];
 
 // ── Field codecs ──────────────────────────────────────────────────────────────
@@ -163,10 +163,13 @@ const numberCodec: Codec<number> = {
   kind: "number",
   encode: (value) => value,
   decode: (raw) => {
-    if (typeof raw === "number" && !Number.isNaN(raw)) return raw;
+    // `Infinity` and an overflowing literal like `1e999` parse without being
+    // `NaN`, and reach the geometry as coordinates nothing downstream can
+    // draw. The OMC decoder's `asNumber` rejects them the same way.
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
     if (typeof raw === "string" && raw.trim() !== "") {
       const parsed = Number(raw);
-      return Number.isNaN(parsed) ? undefined : parsed;
+      return Number.isFinite(parsed) ? parsed : undefined;
     }
     return undefined;
   },
@@ -494,7 +497,7 @@ const ELLIPSE_FIELDS: ShapeField<EllipseShape>[] = [
     name: "closure",
     label: "Closure",
     group: "Arc",
-    codec: enumCodec("EllipseClosure", ELLIPSE_CLOSURES),
+    codec: enumCodec("EllipseClosure", [...ELLIPSE_CLOSURES]),
     fallbackFrom: defaultEllipseClosure,
   }),
 ];

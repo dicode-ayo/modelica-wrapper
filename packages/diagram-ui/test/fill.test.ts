@@ -18,7 +18,6 @@ import { Container, Graphics } from "pixi.js";
 import { fillSpec } from "@dicode/diagram-svg";
 
 import {
-  buildFilledEllipse,
   buildFilledPolygon,
   buildFilledRect,
   packColor,
@@ -102,28 +101,6 @@ describe("buildFilledRect", () => {
   });
 });
 
-describe("buildFilledEllipse", () => {
-  it("falls back to the gradient's fill colour", () => {
-    const parent = new Container();
-    const res = buildFilledEllipse(
-      null,
-      parent,
-      0,
-      0,
-      10,
-      5,
-      BOX,
-      cylinder,
-      0,
-      "fan",
-    );
-    const g = parent.getChildByLabel("fan", true);
-    if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
-    expect(fillColor(g)).toBe(packColor(FILL));
-    res.dispose();
-  });
-});
-
 describe("buildFilledPolygon", () => {
   it("builds a flat fallback fill from the point list (null for < 3 points)", () => {
     const parent = new Container();
@@ -138,6 +115,20 @@ describe("buildFilledPolygon", () => {
     if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
     expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
+
+    const gradient = buildFilledPolygon(
+      null,
+      parent,
+      points,
+      cylinder,
+      0,
+      "gradient",
+    );
+    if (!gradient) throw new Error("gradient fill should build");
+    const gg = parent.getChildByLabel("gradient", true);
+    if (!(gg instanceof Graphics)) throw new Error("expected the fill graphic");
+    expect(fillColor(gg)).toBe(packColor(FILL));
+    gradient.dispose();
 
     expect(
       buildFilledPolygon(null, parent, [[0, 0]], hatch, 0, "degenerate"),

@@ -14,7 +14,12 @@
 import { describe, expect, it } from "vitest";
 
 import { renderClassIconToSvg, renderIconLayersToSvg } from "./render.js";
-import type { ClassDef, IconLayer, RectangleShape } from "./index.js";
+import type {
+  ClassDef,
+  EllipseShape,
+  IconLayer,
+  RectangleShape,
+} from "./index.js";
 
 const RED: [number, number, number] = [255, 0, 0];
 
@@ -211,6 +216,34 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).toContain('cy="0"');
     expect(svg).toContain('rx="30"');
     expect(svg).toContain('ry="10"');
+  });
+
+  it("sweeps a partial ellipse as a path and suppresses an open arc's fill", () => {
+    const arc = (fields: Partial<EllipseShape>): string =>
+      renderIconLayersToSvg([
+        makeLayer("Test.Arc", [
+          {
+            kind: "ellipse",
+            extent: [
+              [-10, -10],
+              [10, 10],
+            ],
+            fillColor: [0, 0, 255],
+            fillPattern: "Solid",
+            startAngle: 0,
+            endAngle: 90,
+            ...fields,
+          },
+        ]),
+      ]);
+    expect(arc({})).toContain('<path d="M 0 0 L 10 0 A 10 10 0 0 1 0 10 Z"');
+    expect(arc({ closure: "Chord" })).toContain(
+      '<path d="M 10 0 A 10 10 0 0 1 0 10 Z"',
+    );
+    expect(arc({ closure: "None" })).toContain(
+      '<path d="M 10 0 A 10 10 0 0 1 0 10" fill="none"',
+    );
+    expect(arc({ startAngle: 0, endAngle: 360 })).toContain("<ellipse");
   });
 
   it("renders a polygon and preserves point order verbatim", () => {
