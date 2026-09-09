@@ -4,16 +4,12 @@
  * `paramName → displayValue` map carried on `DiagramLayout` for
  * label `%`-substitutions.
  *
- * This module stays narrowly scoped to the label-substitution map. The
- * producer's component/port gating (`producer.ts:isConditionTrue`) and its
- * graphic-annotation field decoding (`shapes.ts`) evaluate against an
- * `EvalScope` built directly from the `ModelInstance` tree
- * (`eval-scope.ts:scopeForInstance`) rather than this parsed map — OMC
- * pre-reduces `if`-conditions to a literal in the cases checked, but not
- * graphic fields like `visible`/`rotation`/`fillColor`, and `isConditionTrue`
- * evaluates rather than assumes pre-reduction either. The form-side
- * Dialog.enable evaluator is a separate `EvalScope` again (it evaluates
- * against the user's in-progress working values, which OMC doesn't see).
+ * Scoped to the label-substitution map only. The producer's gating and its
+ * graphic-field decoding evaluate against an `EvalScope` built from the
+ * `ModelInstance` tree (`eval-scope.ts:scopeForInstance`), not this map.
+ * The form-side `Dialog.enable` evaluator is a third scope again — it
+ * evaluates against the user's in-progress working values, which OMC
+ * doesn't see.
  *
  * OMC emits each row as `<name> = <value>`. The `name` is a dotted
  * path (top-level params usually have no dot); the `value` is whatever

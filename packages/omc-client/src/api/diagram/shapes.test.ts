@@ -104,7 +104,7 @@ describe("decodeShape: GraphicItem visible/origin/rotation (issue #76, item 15)"
   });
 });
 
-describe("decodeShape: evaluates parameter-driven graphic fields against a scope (issue #605)", () => {
+describe("decodeShape: evaluates parameter-driven graphic fields against a scope", () => {
   /** Rectangle whose `visible`/`rotation` slots are Expression ASTs, not literals. */
   function exprRect(visible: Expression, rotation: Expression): RecordValue {
     return {
@@ -174,7 +174,7 @@ describe("decodeShape: evaluates parameter-driven graphic fields against a scope
     expect("rotation" in s).toBe(false);
   });
 
-  it("leaves an already-literal field unaffected when no scope is passed (back-compat)", () => {
+  it("leaves an already-literal field unaffected when no scope is passed", () => {
     const s = decodeShape(exprRect(false, 30));
     expect(s.visible).toBe(false);
     expect(s.rotation).toBe(30);

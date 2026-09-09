@@ -14,6 +14,7 @@ import type {
   Expression,
   ModelInstance,
 } from "../../_shared/modelInstance.js";
+import { ownComponents } from "./walker.js";
 import {
   evaluateExpression,
   type EnumLiteralValue,
@@ -34,8 +35,8 @@ function findComponent(
 ): ComponentElement | undefined {
   let found: ComponentElement | undefined;
   for (const { klass } of walkExtendsChain(mi)) {
-    for (const e of klass.elements ?? []) {
-      if (e.$kind === "component" && e.name === name) found = e;
+    for (const e of ownComponents(klass)) {
+      if (e.name === name) found = e;
     }
   }
   return found;
@@ -66,10 +67,11 @@ function bindingAsEvalValue(binding: unknown): EvalValue | undefined {
 
 /**
  * Resolve one component's value. Prefers `value.binding` when it's already
- * a primitive/enum literal; otherwise recurses into whichever of
- * `value.binding` or `value` itself looks like an unreduced expression, so
- * a parameter bound to another parameter's expression resolves in one
- * step. `inProgress` guards a cyclic or self-referential binding graph —
+ * a primitive/enum literal; otherwise recurses when `value.binding` itself
+ * looks like an unreduced expression, so a parameter bound to another
+ * parameter's expression resolves fully — `buildScope` hands the evaluator
+ * a fully recursive scope, so a chained binding is walked to whatever depth
+ * it goes. `inProgress` guards a cyclic or self-referential binding graph —
  * without it a malformed chain could recurse forever.
  */
 function resolveComponentValue(
@@ -88,19 +90,14 @@ function resolveComponentValue(
   if (value === null || value === undefined || typeof value !== "object") {
     return undefined;
   }
-  const hasBinding = "binding" in value;
-  const binding = hasBinding
-    ? (value as { binding?: unknown }).binding
-    : undefined;
-  if (hasBinding) {
-    const primitive = bindingAsEvalValue(binding);
-    if (primitive !== undefined) return primitive;
-  }
-  const candidate: unknown = hasBinding ? binding : value;
+  if (!("binding" in value)) return undefined;
+  const binding = (value as { binding?: unknown }).binding;
+  const primitive = bindingAsEvalValue(binding);
+  if (primitive !== undefined) return primitive;
   if (
-    candidate === null ||
-    candidate === undefined ||
-    typeof candidate !== "object"
+    binding === null ||
+    binding === undefined ||
+    typeof binding !== "object"
   ) {
     return undefined;
   }
@@ -108,7 +105,7 @@ function resolveComponentValue(
   inProgress.add(el);
   try {
     return evaluateExpression(
-      candidate as Expression,
+      binding as Expression,
       buildScope(mi, inProgress),
       {},
     );

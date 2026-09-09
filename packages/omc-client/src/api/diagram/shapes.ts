@@ -156,12 +156,11 @@ function coerceEvalValueToExpression(v: EvalValue): Expression | undefined {
 
 /**
  * Peel `DynamicSelect`, then — when `scope` is given and the peeled value
- * isn't already a literal — evaluate it against that scope (issue #605).
- * OMC leaves many §18.6 fields as unreduced expression ASTs when they're
- * parameter-driven (`visible = not useSupport`); without this every such
- * field silently fell back to its default. An unresolvable expression
- * still falls through to the peeled AST, which the caller's literal check
- * rejects the same as before — fails open, matching OMEdit.
+ * isn't already a literal — evaluate it against that scope. OMC leaves
+ * §18.6 fields as unreduced expression ASTs when they're parameter-driven
+ * (`visible = not useSupport`). An unresolvable expression falls through to
+ * the peeled AST, which the caller's literal check rejects, so the field
+ * lands on its §18.6 default — fails open, matching OMEdit.
  */
 function resolveExpr(
   v: Expression | undefined,
@@ -587,10 +586,7 @@ function decodeBitmap(
  * decoder doesn't recognize — easier to surface a new `name` from a
  * future Modelica revision than to silently drop graphics.
  */
-export function decodeShape(
-  record: RecordValue,
-  scope: EvalScope | undefined = undefined,
-): Shape {
+export function decodeShape(record: RecordValue, scope?: EvalScope): Shape {
   const els = record.elements;
   switch (record.name) {
     case "Line":
@@ -665,6 +661,8 @@ function annotationValueToExpression(v: Value): Expression {
  * round-trips existing graphics through this so they re-serialize via the
  * same named-arg path new shapes take.
  */
+// No `scope` param: copy/paste round-tripping has no live parameter context
+// to evaluate against.
 export function decodeAnnotationShape(record: Value): Shape {
   if (record.kind !== "call") {
     throw new Error(

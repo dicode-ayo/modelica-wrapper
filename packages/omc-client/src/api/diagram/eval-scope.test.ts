@@ -1,12 +1,12 @@
 /**
- * Unit tests for `scopeForInstance` (issue #605) — the `EvalScope` built
- * directly from a `ModelInstance` tree, backing both graphic-annotation
- * field decoding (`shapes.ts`) and `producer.ts`'s `isConditionTrue`.
+ * Unit tests for `scopeForInstance` — the `EvalScope` built directly from a
+ * `ModelInstance` tree, backing both graphic-annotation field decoding
+ * (`shapes.ts`) and `producer.ts`'s `isConditionTrue`.
  */
 
 import { describe, expect, it } from "vitest";
 
-import type { ModelInstance } from "../../_shared/modelInstance.js";
+import { ModelInstanceSchema } from "../../_shared/modelInstance.js";
 import { scopeForInstance } from "./eval-scope.js";
 
 function component(overrides: Record<string, unknown>): unknown {
@@ -15,16 +15,16 @@ function component(overrides: Record<string, unknown>): unknown {
 
 describe("scopeForInstance", () => {
   it("resolves a single-segment cref to a component's own boolean binding", () => {
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [component({ name: "useSupport", value: { binding: false } })],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["useSupport"])).toBe(false);
   });
 
   it("resolves a tagged enum binding to an EnumLiteralValue", () => {
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [
@@ -39,7 +39,7 @@ describe("scopeForInstance", () => {
           },
         }),
       ],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["controllerType"])).toEqual({
       $kind: "enum",
       name: "Types.SimpleController.PI",
@@ -48,11 +48,11 @@ describe("scopeForInstance", () => {
   });
 
   it("returns undefined for a name with no matching component", () => {
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["missing"])).toBeUndefined();
   });
 
@@ -62,14 +62,14 @@ describe("scopeForInstance", () => {
       restriction: "model",
       elements: [component({ name: "k", value: { binding: 1 } })],
     };
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [
         { $kind: "extends", baseClass: ancestor },
         component({ name: "k", value: { binding: 2 } }),
       ],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["k"])).toBe(2);
   });
 
@@ -79,11 +79,11 @@ describe("scopeForInstance", () => {
       restriction: "model",
       elements: [component({ name: "k", value: { binding: 1 } })],
     };
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [{ $kind: "extends", baseClass: ancestor }],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["k"])).toBe(1);
   });
 
@@ -93,25 +93,25 @@ describe("scopeForInstance", () => {
       restriction: "model",
       elements: [component({ name: "useSupport", value: { binding: false } })],
     };
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [component({ name: "t", type: portType })],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["t", "useSupport"])).toBe(false);
   });
 
   it("returns undefined for a multi-segment cref through a primitively-typed component", () => {
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [component({ name: "t", type: "Real" })],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["t", "useSupport"])).toBeUndefined();
   });
 
   it("recurses one level when a binding is itself a cref to another parameter", () => {
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [
@@ -121,12 +121,12 @@ describe("scopeForInstance", () => {
         }),
         component({ name: "b", value: { binding: 42 } }),
       ],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["a"])).toBe(42);
   });
 
   it("evaluates a binding that's a richer expression (not just a bare cref)", () => {
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [
@@ -142,12 +142,12 @@ describe("scopeForInstance", () => {
         }),
         component({ name: "useSupport", value: { binding: false } }),
       ],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["hidden"])).toBe(true);
   });
 
   it("returns undefined rather than hanging on a cyclic binding chain", () => {
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [
@@ -160,16 +160,16 @@ describe("scopeForInstance", () => {
           value: { binding: { $kind: "cref", parts: [{ name: "a" }] } },
         }),
       ],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["a"])).toBeUndefined();
   });
 
   it("returns undefined for a component with no value at all", () => {
-    const mi = {
+    const mi = ModelInstanceSchema.parse({
       name: "Pkg.Host",
       restriction: "model",
       elements: [component({ name: "unbound" })],
-    } as unknown as ModelInstance;
+    });
     expect(scopeForInstance(mi).lookup(["unbound"])).toBeUndefined();
   });
 });

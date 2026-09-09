@@ -73,22 +73,20 @@ import {
 // ---------- condition gating ----------
 
 /**
- * Decide whether a component or port should appear in the layout given
- * its `condition` field, evaluated against the class `scope` it's declared
- * in. OMC's `getModelInstance` pre-reduces conditional predicates against
- * the host's parameter modifiers before serialization in the cases
- * checked, so the interactive RPC mostly emits one of two shapes:
+ * Decide whether a component or port should appear in the layout given its
+ * `condition` field, evaluated against the class `scope` it's declared in.
+ *
+ * OMC's `getModelInstance` usually pre-reduces the predicate against the
+ * host's parameter modifiers, emitting one of two shapes:
  *
  *   `condition: false`              — bare boolean literal
  *   `condition: { binding: false }` — boolean inside OMC's Value wrapper
  *
- * Nothing guarantees pre-reduction always happens, so an object shaped
- * like an unreduced `Expression` AST (has `$kind`, not the `{ binding }`
- * wrapper) is evaluated instead of assumed away — same "consolidate on one
- * evaluator" reasoning as the graphic-field decoding in `shapes.ts`.
- * `undefined`/`null` and anything the evaluator can't resolve to a boolean
- * default to "visible", matching the form-side Dialog.enable fallback
- * policy.
+ * Pre-reduction is not guaranteed, so an unreduced `Expression` AST (has
+ * `$kind`, not the `{ binding }` wrapper) is evaluated against `scope`.
+ * `undefined`/`null`, and anything that doesn't resolve to a boolean,
+ * default to "visible" — the same fallback policy the form-side
+ * `Dialog.enable` evaluator uses.
  */
 function isConditionTrue(condition: unknown, scope: EvalScope): boolean {
   if (condition === undefined || condition === null) return true;
@@ -105,9 +103,7 @@ function isConditionTrue(condition: unknown, scope: EvalScope): boolean {
     condition !== null &&
     "$kind" in condition
   ) {
-    const evaluated = evaluateExpression(condition as Expression, scope, {
-      fallback: true,
-    });
+    const evaluated = evaluateExpression(condition as Expression, scope);
     return typeof evaluated === "boolean" ? evaluated : true;
   }
   return true;
@@ -212,17 +208,23 @@ function coordinateSystemForKind(
  * no information. The non-empty `from` is preserved when either is
  * present, so a "carries the parent's coord system but no visuals" layer
  * still appears.
+ *
+ * `scope` is the caller's to choose, not this function's: pass one only
+ * when `mi` is the single instance actually being diagrammed (never
+ * deduplicated), and `undefined` when building the shared class catalog,
+ * where the same `ClassDef` is reused across every instance of that class
+ * name and can't carry any one instance's evaluated bindings.
  */
 function collectLayers(
   mi: ModelInstance,
   kind: "icon" | "diagram",
+  scope: EvalScope | undefined,
 ): IconLayer[] {
   const out: IconLayer[] = [];
   for (const { klass, primitivesVisible } of walkLayerEntries(mi, kind)) {
     const graphics = primitivesVisible ? graphicsForKind(klass, kind) : [];
     const cs = coordinateSystemForKind(klass, kind);
     if (graphics.length === 0 && !cs) continue;
-    const scope = scopeForInstance(klass);
     const shapes: Shape[] = [];
     for (const g of graphics) {
       try {
@@ -305,9 +307,9 @@ function iconContextLayers(mi: ModelInstance): {
   layers: IconLayer[];
   from: "icon" | "diagram";
 } {
-  const icon = collectLayers(mi, "icon");
+  const icon = collectLayers(mi, "icon", undefined);
   if (hasDrawnShapes(icon)) return { layers: icon, from: "icon" };
-  const diagram = collectLayers(mi, "diagram");
+  const diagram = collectLayers(mi, "diagram", undefined);
   if (hasDrawnShapes(diagram)) return { layers: diagram, from: "diagram" };
   return { layers: icon, from: "icon" };
 }
@@ -325,7 +327,7 @@ function buildClassDef(
   registry: Map<string, ClassDef>,
 ): ClassDef {
   const icon = iconContextLayers(typeMi);
-  const diagramLayers = collectLayers(typeMi, "diagram");
+  const diagramLayers = collectLayers(typeMi, "diagram", undefined);
   // Each layer set is scaled against the annotation it came from, so an icon
   // sourced from the `Diagram` fallback isn't measured in the icon's system.
   const cs = coordinateSystemForKind(typeMi, icon.from);
@@ -741,12 +743,16 @@ export function produceDiagramLayout(
 ): DiagramLayout {
   const registry = new Map<string, ClassDef>();
 
-  const iconLayers = collectLayers(mi, "icon");
-  const diagramLayers = kind === "diagram" ? collectLayers(mi, "diagram") : [];
+  // `mi` is the one instance actually being diagrammed here, never
+  // deduplicated/shared, so its own icon/diagram graphics are safe to
+  // evaluate against its own resolved parameter bindings.
+  const hostScope = scopeForInstance(mi);
+  const iconLayers = collectLayers(mi, "icon", hostScope);
+  const diagramLayers =
+    kind === "diagram" ? collectLayers(mi, "diagram", hostScope) : [];
   const labels = kind === "diagram" ? collectLabels(mi) : [];
 
   // Standalone connectors on the host class (and ancestors), inheritance-aware.
-  const hostScope = scopeForInstance(mi);
   const connectors: Record<string, ConnectorInstance> = {};
   for (const { element } of walkConnectors(mi)) {
     // Gate first — `if use_x` connectors are elided when OMC's

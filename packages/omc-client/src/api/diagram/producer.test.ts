@@ -1486,56 +1486,101 @@ describe("produceDiagramLayout: conditional gating", () => {
   });
 });
 
-describe("produceDiagramLayout: evaluated graphic-annotation fields (issue #605)", () => {
-  it("evaluates an unreduced `visible` expression on a sub-component's own icon against its own parameter", () => {
-    // The class's icon carries `visible = <cref to its own parameter>`
-    // instead of a literal — the shape OMC leaves when a graphic field is
-    // parameter-driven rather than pre-reduced.
-    const withBracketClass: unknown = {
-      name: "Pkg.WithBracket",
-      restriction: "block",
-      elements: [
-        {
-          $kind: "component",
-          name: "showBracket",
-          type: "Boolean",
-          prefixes: { variability: "parameter" },
-          value: { binding: false },
-        },
-      ],
-      annotation: {
-        Icon: {
-          coordinateSystem: {
-            extent: [
-              [-100, -100],
-              [100, 100],
-            ],
-          },
-          graphics: [
-            {
-              $kind: "record",
-              name: "Rectangle",
-              elements: [
-                { $kind: "cref", parts: [{ name: "showBracket" }] },
-                [0, 0],
-                0,
-                [0, 0, 0],
-                [255, 255, 255],
-                SOLID_LINE,
-                SOLID_FILL,
-                1,
-                NO_BORDER,
-                [
-                  [-10, -10],
-                  [10, 10],
-                ],
-                0,
-              ],
-            },
+/** Icon carrying `visible = not <paramName>` instead of a literal. */
+function withCrefVisibleClass(
+  className: string,
+  paramName: string,
+  paramValue: boolean,
+): unknown {
+  return {
+    name: className,
+    restriction: "block",
+    elements: [
+      {
+        $kind: "component",
+        name: paramName,
+        type: "Boolean",
+        prefixes: { variability: "parameter" },
+        value: { binding: paramValue },
+      },
+    ],
+    annotation: {
+      Icon: {
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
           ],
         },
+        graphics: [
+          {
+            $kind: "record",
+            name: "Rectangle",
+            elements: [
+              {
+                $kind: "unary_op",
+                op: "not",
+                exp: { $kind: "cref", parts: [{ name: paramName }] },
+              },
+              [0, 0],
+              0,
+              [0, 0, 0],
+              [255, 255, 255],
+              SOLID_LINE,
+              SOLID_FILL,
+              1,
+              NO_BORDER,
+              [
+                [-10, -10],
+                [10, 10],
+              ],
+              0,
+            ],
+          },
+        ],
       },
+    },
+  };
+}
+
+describe("produceDiagramLayout: evaluated graphic-annotation fields", () => {
+  it("evaluates an unreduced `visible` expression on the diagrammed class's OWN icon against its own parameter", () => {
+    // `mi` here is the single instance actually being diagrammed — never
+    // deduplicated through the class catalog — so its own icon is safe to
+    // evaluate against its own resolved parameter binding.
+    const hostLiteral: unknown = {
+      $kind: "model",
+      ...(withCrefVisibleClass(
+        "Pkg.WithBracket",
+        "showBracket",
+        true,
+      ) as object),
     };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "icon",
+    );
+    const shape = layout.iconLayers[0]?.shapes[0];
+    expect(shape?.kind).toBe("rectangle");
+    expect(shape?.visible).toBe(false);
+  });
+
+  it("does NOT evaluate a sub-component's own icon field against that instance's bindings — the class catalog is shared", () => {
+    // `Pkg.WithBracket` is a sub-component's *type*, reached only through
+    // `registerClass`/`buildClassDef`. Baking one instance's resolved
+    // `showBracket` into the shared `ClassDef` would leak into every other
+    // instance of the same class name (see the two-instance regression
+    // test below), so the catalog path evaluates with no scope at all and
+    // the shape stays at its unevaluated §18.6 default.
+    // `showBracket=true` would evaluate to `visible: false` if the catalog
+    // path evaluated at all (see the top-level test above) — using the same
+    // value here means an accidental regression can't hide behind an
+    // evaluated result coinciding with the §18.6 default.
+    const withBracketClass = withCrefVisibleClass(
+      "Pkg.WithBracket",
+      "showBracket",
+      true,
+    );
     const hostLiteral: unknown = {
       $kind: "model",
       name: "Pkg.Host",
@@ -1572,11 +1617,80 @@ describe("produceDiagramLayout: evaluated graphic-annotation fields (issue #605)
     expect(classDef).toBeDefined();
     const shape = classDef?.iconLayers[0]?.shapes[0];
     expect(shape?.kind).toBe("rectangle");
-    // `showBracket`'s resolved binding is `false`, so the cref evaluates to
-    // `false` and the shape is hidden — not left at the §18.6 default
-    // (visible=true, field omitted) the way an unresolved expression falls
-    // back to.
-    expect(shape?.visible).toBe(false);
+    expect("visible" in (shape ?? {})).toBe(false);
+  });
+
+  it("two sub-components of the same class with DIFFERENT resolved bindings share one catalog entry that reflects neither", () => {
+    // `b1.showBracket = true` and `b2.showBracket = false` are two
+    // distinct `ModelInstance` trees (OMC folds each use-site's own
+    // modifiers into `el.type`), but `registerClass` dedupes the catalog
+    // by class name — first occurrence wins. If `collectLayers` evaluated
+    // per-instance here, whichever instance the walk reached first would
+    // bake its own `visible` into the one shared `ClassDef`, and the other
+    // instance would silently inherit a value that isn't its own.
+    const withBracketClassTrue = withCrefVisibleClass(
+      "Pkg.WithBracket",
+      "showBracket",
+      true,
+    );
+    const withBracketClassFalse = withCrefVisibleClass(
+      "Pkg.WithBracket",
+      "showBracket",
+      false,
+    );
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "b1",
+          type: withBracketClassTrue,
+          annotation: placementAnno([
+            [-20, -20],
+            [20, 20],
+          ]),
+        },
+        {
+          $kind: "component",
+          name: "b2",
+          type: withBracketClassFalse,
+          annotation: placementAnno([
+            [30, -20],
+            [70, 20],
+          ]),
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    expect(layout.components.b1).toBeDefined();
+    expect(layout.components.b2).toBeDefined();
+    // Same class name → same catalog entry for both instances.
+    expect(layout.components.b1?.classRef).toBe("Pkg.WithBracket");
+    expect(layout.components.b2?.classRef).toBe("Pkg.WithBracket");
+    const classDef = layout.classes["Pkg.WithBracket"];
+    const shape = classDef?.iconLayers[0]?.shapes[0];
+    expect(shape?.kind).toBe("rectangle");
+    // Neither instance's binding is baked in — the catalog entry stays at
+    // the unevaluated §18.6 default regardless of which instance (if
+    // either) OMC's registry walk reached first.
+    expect("visible" in (shape ?? {})).toBe(false);
   });
 
   it("falls back to the §18.6 default (shown) when the graphic expression can't be resolved", () => {
