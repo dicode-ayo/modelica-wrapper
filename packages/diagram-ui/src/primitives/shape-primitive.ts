@@ -34,6 +34,8 @@ export interface EntityBounds {
   origin?: Point | undefined;
   rotation?: number | undefined;
   points?: Point[] | undefined;
+  /** The painted path, when it differs from `points` (a smoothed curve). */
+  drawnPath?: Point[] | undefined;
 }
 
 /** Entity frame for an extent-based shape (rectangle / ellipse / text /
@@ -246,7 +248,7 @@ export abstract class OmShapePrimitive extends LitElement {
           b.rotation ?? 0,
           -this.paintZIndex(),
         );
-        node.setPolyPoints(b.points ?? null);
+        node.setPolyPoints(b.points ?? null, b.drawnPath);
         const poly = b.points !== undefined;
         // A poly is edited per-vertex — no bounding-box resize/rotate. A
         // read-only entity offers none of the three; it stays pickable and

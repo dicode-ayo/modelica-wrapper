@@ -260,6 +260,67 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).toContain('stroke-width="2"');
   });
 
+  it("draws a Smooth.Bezier line as a cubic <path> keeping its endpoints", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Arc", [
+        {
+          kind: "line",
+          points: [
+            [0, 0],
+            [10, 10],
+            [20, 0],
+          ],
+          color: RED,
+          smooth: "Bezier",
+        },
+      ]),
+    ]);
+    expect(svg).not.toContain("<polyline");
+    expect(svg).toContain('<path d="M 0 0 L 5 5 C 5 5 10 10 15 5 L 20 0"');
+    expect(svg).toContain('stroke="rgb(255,0,0)"');
+    expect(svg).toContain('fill="none"');
+  });
+
+  it("keeps a two-point Smooth.Bezier line straight", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Stub", [
+        {
+          kind: "line",
+          points: [
+            [0, 0],
+            [10, 10],
+          ],
+          smooth: "Bezier",
+        },
+      ]),
+    ]);
+    expect(svg).toContain('<path d="M 0 0 L 10 10"');
+  });
+
+  it("closes a Smooth.Bezier polygon with a wrap-around cubic", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Blob", [
+        {
+          kind: "polygon",
+          points: [
+            [0, 0],
+            [10, 0],
+            [10, 10],
+            [0, 10],
+            [0, 0],
+          ],
+          fillColor: [0, 128, 255],
+          smooth: "Bezier",
+        },
+      ]),
+    ]);
+    expect(svg).not.toContain("<polygon");
+    expect(svg).toContain(
+      '<path d="M 5 0 C 5 0 10 0 10 5 C 10 5 10 10 5 10 C 5 10 0 10 0 5 C 0 5 0 0 5 0 Z"',
+    );
+    expect(svg).toContain('fill="rgb(0,128,255)"');
+  });
+
   it("uses the bumped spec-default (1.25 × 10 = 12.5) when thickness is omitted", () => {
     // SPEC_DEFAULT_THICKNESS = 0.25 × 5 (lifted from the literal
     // Modelica default so unspecified strokes stay legible at typical

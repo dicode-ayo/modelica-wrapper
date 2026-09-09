@@ -1,6 +1,7 @@
 import { customElement, property } from "lit/decorators.js";
 import type { Container } from "pixi.js";
-import type { LineShape } from "@dicode/omc-client";
+import type { LineShape, Point } from "@dicode/omc-client";
+import { isBezierSmooth, smoothLinePoints } from "@dicode/diagram-svg";
 
 import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {
@@ -49,16 +50,24 @@ export class OmLine extends OmShapePrimitive {
     return { thickness: s.thickness };
   }
 
+  /** The polyline actually stroked: the vertices, or the flattened curve
+   *  under `Smooth.Bezier`. */
+  private drawnPath(s: LineShape): Point[] {
+    return isBezierSmooth(s.smooth) ? smoothLinePoints(s.points) : s.points;
+  }
+
   protected override entityBounds(): EntityBounds | null {
     const s = this.shape;
     if (!s || s.points.length < 2) {
       return null;
     }
+    // The control polygon still bounds the curve, which lies inside its hull.
     return {
       extent: pointsExtent(s.points),
       origin: s.origin,
       rotation: s.rotation,
       points: s.points,
+      drawnPath: this.drawnPath(s),
     };
   }
 
@@ -81,7 +90,7 @@ export class OmLine extends OmShapePrimitive {
     const color = s.color ?? DEFAULT_LINE_COLOR;
     const stroke = buildStroke(
       root,
-      s.points,
+      this.drawnPath(s),
       color,
       s.pattern,
       z,
