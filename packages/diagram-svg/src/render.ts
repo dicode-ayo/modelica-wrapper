@@ -11,8 +11,8 @@
  *    in input order. The producer emits ancestor-first / host-last, so
  *    later layers paint on top — that's how we want the host class's icon
  *    to override anything inherited.
- *  - Shape mappers emit minimal, static SVG. No marker defs, no pattern
- *    defs (yet); see TODOs at each shape.
+ *  - Shape mappers emit minimal, static SVG; gradient and hatch fills
+ *    register their `<defs>` entries through the render context.
  *  - Colors / patterns / expressions go through the helper modules so the
  *    behaviour is uniform across shape kinds.
  *
@@ -20,12 +20,13 @@
  *  - placement transforms / sub-component composition (that's the next
  *    layer up — diagram-mode rendering takes `ComponentInstance` placements
  *    into account, and lives elsewhere)
- *  - line arrow markers (TODO; v1 ignores `arrow` / `arrowSize`)
- *  - hatch fill patterns (Horizontal/Vertical/Cross/Forward/Backward/CrossDiag —
- *    they need `<pattern>` tile defs; out of scope for v1). Cylinder and
- *    Sphere ARE handled via gradient defs (see pattern.ts).
  */
 
+import {
+  arrowheadPathData,
+  lineArrowheads,
+  type Arrowhead,
+} from "./arrowhead.js";
 import { colorToCss } from "./color.js";
 // Sub-path import: the evaluator subtree only, so the browser bundles
 // this renderer lands in don't drag the OMC transport along.
@@ -451,11 +452,30 @@ function renderLine(s: LineShape, ctx: RenderContext): string {
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   const paint = `fill="none" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}`;
-  // TODO: arrow / arrowSize -> marker-start / marker-end via <defs>.
-  if (isBezierSmooth(s.smooth)) {
-    return `<path d="${smoothLinePathData(s.points)}" ${paint}/>`;
-  }
-  return `<polyline points="${pointsToAttr(s.points)}" ${paint}/>`;
+  const shaft = isBezierSmooth(s.smooth)
+    ? `<path d="${smoothLinePathData(s.points)}" ${paint}/>`
+    : `<polyline points="${pointsToAttr(s.points)}" ${paint}/>`;
+  const heads = lineArrowheads(s)
+    .map((head) => renderArrowhead(head, stroke, thickness))
+    .join("");
+  return `${shaft}${heads}`;
+}
+
+/**
+ * One arrowhead, painted in the line's own color: `Filled` as a solid
+ * triangle, `Open` and `Half` as an outline at the line's stroke width. A
+ * head is a path of its own, so a dashed line still caps with a solid one.
+ */
+function renderArrowhead(
+  head: Arrowhead,
+  stroke: string,
+  thickness: number,
+): string {
+  const paint =
+    head.kind === "Filled"
+      ? `fill="${stroke}"`
+      : `fill="none" stroke="${stroke}" stroke-width="${thickness}" stroke-linejoin="miter"`;
+  return `<path d="${arrowheadPathData(head)}" ${paint}/>`;
 }
 
 // ---- polygon ----

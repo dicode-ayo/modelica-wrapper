@@ -1,7 +1,11 @@
 import { customElement, property } from "lit/decorators.js";
 import type { Container } from "pixi.js";
 import type { LineShape, Point } from "@dicode/omc-client";
-import { isBezierSmooth, smoothLinePoints } from "@dicode/diagram-svg";
+import {
+  isBezierSmooth,
+  lineArrowheads,
+  smoothLinePoints,
+} from "@dicode/diagram-svg";
 
 import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {
@@ -10,7 +14,7 @@ import {
   pointsExtent,
   resolveStrokeWidth,
 } from "./shape-utils.js";
-import { DEFAULT_ARROW_SIZE, buildArrowhead } from "./arrow-utils.js";
+import { buildArrowhead } from "./arrow-utils.js";
 
 /**
  * `<om-line>` — one Modelica `LineShape`. Polyline with optional arrowheads
@@ -43,8 +47,7 @@ export class OmLine extends OmShapePrimitive {
     }
     // Arrowhead outlines ride the stroke width even when the line pattern
     // is `"None"`, so only a line with neither stroke nor arrows opts out.
-    const [start, end] = s.arrow ?? ["None", "None"];
-    if (s.pattern === "None" && start === "None" && end === "None") {
+    if (s.pattern === "None" && lineArrowheads(s).length === 0) {
       return null;
     }
     return { thickness: s.thickness };
@@ -104,8 +107,6 @@ export class OmLine extends OmShapePrimitive {
       this.resources.push(stroke);
     }
 
-    const [startKind, endKind] = s.arrow ?? ["None", "None"];
-    const arrowSize = s.arrowSize ?? DEFAULT_ARROW_SIZE;
     const strokeWidth = resolveStrokeWidth(
       root,
       s.thickness,
@@ -113,31 +114,18 @@ export class OmLine extends OmShapePrimitive {
       this.sceneCtx?.worldPerPixel(),
     );
 
-    const addArrow = (
-      tip: readonly [number, number] | undefined,
-      back: readonly [number, number] | undefined,
-      kind: string,
-      suffix: string,
-    ): void => {
-      if (!tip || !back || kind === "None") return;
-      const a = buildArrowhead(
-        root,
-        tip,
-        tip[0] - back[0],
-        tip[1] - back[1],
-        arrowSize,
-        kind,
-        color,
-        z,
-        `om-line.${this.zOrder}.${suffix}`,
-        strokeWidth,
+    for (const head of lineArrowheads(s)) {
+      this.resources.push(
+        buildArrowhead(
+          root,
+          head,
+          color,
+          z,
+          `om-line.${this.zOrder}.arrow-${head.end}`,
+          strokeWidth,
+        ),
       );
-      if (a) this.resources.push(a);
-    };
-
-    addArrow(s.points[0], s.points[1], startKind, "arrow-start");
-    const lastIdx = s.points.length - 1;
-    addArrow(s.points[lastIdx], s.points[lastIdx - 1], endKind, "arrow-end");
+    }
   }
 }
 

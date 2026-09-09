@@ -73,6 +73,14 @@ export {
   type TextSubstitutions,
 } from "./text-template.js";
 export {
+  arrowheadPathData,
+  arrowheadVertices,
+  lineArrowheads,
+  type Arrowhead,
+  type ArrowheadVertices,
+  type ArrowKind,
+} from "./arrowhead.js";
+export {
   ellipseArc,
   ellipseArcPathData,
   ellipseArcPoints,
