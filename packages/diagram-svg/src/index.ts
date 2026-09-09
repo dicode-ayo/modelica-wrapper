@@ -72,3 +72,10 @@ export {
   interpolateTemplate,
   type TextSubstitutions,
 } from "./text-template.js";
+export {
+  isBezierSmooth,
+  smoothLinePathData,
+  smoothLinePoints,
+  smoothPolygonPathData,
+  smoothPolygonPoints,
+} from "./smooth-path.js";

@@ -1,5 +1,5 @@
 import { afterEach, vi } from "vitest";
-import { Container } from "pixi.js";
+import { Container, Graphics } from "pixi.js";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../../src/graphical-layout/graphical-layout.component.js";
@@ -86,6 +86,29 @@ export async function mountLayout(
   await el.updateComplete;
   await new Promise((r) => setTimeout(r, 0));
   return el;
+}
+
+/**
+ * One Pixi `Graphics` in the mounted scene's diagram subtree, by exact label.
+ */
+export function graphicsWithLabel(
+  el: OmGraphicalLayout,
+  label: string,
+): Graphics {
+  const scene = el.shadowRoot?.querySelector("om-scene") as OmScene | null;
+  const root = scene?.sceneContextValue?.diagramRoot;
+  if (!root) throw new Error("expected a diagram root");
+  const found: Container[] = [];
+  const walk = (c: Container): void => {
+    for (const child of c.children) {
+      found.push(child);
+      walk(child);
+    }
+  };
+  walk(root);
+  const g = found.find((c) => c.label === label && c instanceof Graphics);
+  if (!(g instanceof Graphics)) throw new Error(`expected ${label}`);
+  return g;
 }
 
 /**

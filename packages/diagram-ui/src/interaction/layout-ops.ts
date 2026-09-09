@@ -9,6 +9,8 @@ import type {
   Shape,
 } from "@dicode/omc-client";
 
+import { isBezierSmooth } from "@dicode/diagram-svg";
+
 import { placementCentre } from "../base/placement-math.js";
 import { formatShapeKey, parseKey, type EntityKey } from "./entity-keys.js";
 import {
@@ -829,7 +831,7 @@ export function applyShapeSmoothToggle(
 ): DiagramLayout {
   return updatePolyShape(layout, key, (s) => ({
     ...s,
-    smooth: s.smooth === "Bezier" ? "None" : "Bezier",
+    smooth: isBezierSmooth(s.smooth) ? "None" : "Bezier",
   }));
 }
 

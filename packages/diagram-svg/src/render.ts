@@ -33,6 +33,12 @@ import { colorToCss } from "./color.js";
 // this renderer lands in don't drag the OMC transport along.
 import { expressionToString } from "@dicode/omc-client/eval";
 import { linePatternToDashArray, resolveFill } from "./pattern.js";
+import {
+  formatCoord,
+  isBezierSmooth,
+  smoothLinePathData,
+  smoothPolygonPathData,
+} from "./smooth-path.js";
 import type {
   BitmapShape,
   ClassDef,
@@ -441,27 +447,31 @@ function fillFor(
 // ---- line ----
 
 function renderLine(s: LineShape, ctx: RenderContext): string {
-  const points = pointsToAttr(s.points);
   const stroke = colorToCss(s.color, "rgb(0,0,0)");
   const thickness = scaledThickness(s.thickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
-  // TODO: arrow / arrowSize -> marker-start / marker-end via <defs>; v1
-  // skips arrows entirely so straight lines render correctly without the
-  // overhead of marker management.
-  return `<polyline points="${points}" fill="none" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
+  const paint = `fill="none" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}`;
+  // TODO: arrow / arrowSize -> marker-start / marker-end via <defs>.
+  if (isBezierSmooth(s.smooth)) {
+    return `<path d="${smoothLinePathData(s.points)}" ${paint}/>`;
+  }
+  return `<polyline points="${pointsToAttr(s.points)}" ${paint}/>`;
 }
 
 // ---- polygon ----
 
 function renderPolygon(s: PolygonShape, ctx: RenderContext): string {
-  const points = pointsToAttr(s.points);
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
   const thickness = scaledThickness(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
-  return `<polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
+  const paint = `fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}`;
+  if (isBezierSmooth(s.smooth)) {
+    return `<path d="${smoothPolygonPathData(s.points)}" ${paint}/>`;
+  }
+  return `<polygon points="${pointsToAttr(s.points)}" ${paint}/>`;
 }
 
 // ---- rectangle ----
@@ -592,7 +602,9 @@ function resolveBitmapHref(s: BitmapShape): string | undefined {
 function pointsToAttr(
   points: ReadonlyArray<readonly [number, number]>,
 ): string {
-  return points.map(([x, y]) => `${x},${y}`).join(" ");
+  return points
+    .map(([x, y]) => `${formatCoord(x)},${formatCoord(y)}`)
+    .join(" ");
 }
 
 interface RectBox {

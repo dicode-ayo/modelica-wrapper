@@ -30,10 +30,15 @@ import {
  * (which drive the hit tube + vertex handles).
  */
 export interface EntityBounds {
+  /** Bounds the painted geometry. For a smoothed poly this is the control
+   *  polygon's extent, which contains the curve: loose, never too small. */
   extent: Extent;
   origin?: Point | undefined;
   rotation?: number | undefined;
   points?: Point[] | undefined;
+  /** The painted path the hit tube traces. `points` itself by identity when
+   *  nothing reshapes it, so the short-circuit in `setPolyPoints` holds. */
+  drawnPath?: Point[] | undefined;
 }
 
 /** Entity frame for an extent-based shape (rectangle / ellipse / text /
@@ -246,7 +251,7 @@ export abstract class OmShapePrimitive extends LitElement {
           b.rotation ?? 0,
           -this.paintZIndex(),
         );
-        node.setPolyPoints(b.points ?? null);
+        node.setPolyPoints(b.points ?? null, b.drawnPath);
         const poly = b.points !== undefined;
         // A poly is edited per-vertex — no bounding-box resize/rotate. A
         // read-only entity offers none of the three; it stays pickable and

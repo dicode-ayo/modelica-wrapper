@@ -8,6 +8,7 @@ import {
   SelectionOutline,
   VertexHandles,
 } from "./selection-overlay.js";
+import { pointsEqual } from "../interaction/connection-route.js";
 import type { EntityKind } from "../interaction/entity-keys.js";
 import { clearEntityTag, tagEntity } from "../interaction/node-keys.js";
 import type { SceneContext } from "../scene/scene-context.js";
@@ -93,6 +94,7 @@ export class OmShapeNode {
   private rotateHandle: RotateHandle | null = null;
   private outline: SelectionOutline | null = null;
   private vertices: Point[] | null = null;
+  private drawnPath: Point[] | null = null;
   private vertexHandles: VertexHandles | null = null;
   private hitTube: Graphics | null = null;
   private hovered = false;
@@ -270,30 +272,37 @@ export class OmShapeNode {
   }
 
   /**
-   * Sets (or clears with `null`) a poly shape's points. They drive both the
-   * per-vertex drag handles and a follow-the-line hit tube that replaces the
-   * bounding-box hit plane — so a polyline is picked along its segments, not
-   * across the whole bbox. Rebuilt live so a vertex edit reflects at once.
+   * Sets (or clears with `null`) a poly shape's points. `points` are the
+   * editable vertices behind the per-vertex drag handles; `drawnPath` is the
+   * geometry actually painted, which the follow-the-line hit tube traces so
+   * a shape is picked where it is visible. The two diverge under
+   * `Smooth.Bezier`, where the curve bows away from its control polygon by
+   * far more than the tube's radius. Rebuilt live so a vertex edit reflects
+   * at once.
    */
-  setPolyPoints(points: Point[] | null): void {
-    // Layout points are referentially stable across rebuilds; an identity
-    // match means no edit, so skip rebuilding the handles + tube.
-    if (points === this.vertices) {
+  setPolyPoints(points: Point[] | null, drawnPath?: Point[]): void {
+    const path = drawnPath ?? points;
+    // Layout points are referentially stable across rebuilds, so an identity
+    // match means the vertices are unedited — but a `smooth` toggle keeps
+    // that same array and rewrites only the painted path, so the tube has to
+    // be compared by value or it would keep tracing the old geometry.
+    if (points === this.vertices && pointsEqual(path, this.drawnPath)) {
       return;
     }
     this.vertices = points;
+    this.drawnPath = path;
     this.vertexHandles?.dispose();
     this.vertexHandles = null;
     this.hitTube?.destroy();
     this.hitTube = null;
 
-    if (points && points.length >= 2) {
+    if (path && path.length >= 2) {
       // The bbox hit plane gives way to a tube tracing the segments; the
       // identity poly frame means a point is already a local coordinate.
       this.mesh.eventMode = "none";
       this.hitTube = buildHitTube(
         `hit.${this.transform.label}`,
-        points,
+        path,
         POLY_HIT_RADIUS,
         HIGHLIGHT_COLOR,
       );

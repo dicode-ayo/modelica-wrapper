@@ -1,7 +1,11 @@
 import { customElement, property } from "lit/decorators.js";
 import type { Container } from "pixi.js";
-import type { PolygonShape } from "@dicode/omc-client";
-import { fillSpec } from "@dicode/diagram-svg";
+import type { Point, PolygonShape } from "@dicode/omc-client";
+import {
+  fillSpec,
+  isBezierSmooth,
+  smoothPolygonPoints,
+} from "@dicode/diagram-svg";
 
 import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {
@@ -42,6 +46,12 @@ export class OmPolygon extends OmShapePrimitive {
     return filledShapeStroke(this.shape);
   }
 
+  /** The ring actually painted: the vertices, or the flattened curve under
+   *  `Smooth.Bezier`. */
+  private drawnPath(s: PolygonShape): Point[] {
+    return isBezierSmooth(s.smooth) ? smoothPolygonPoints(s.points) : s.points;
+  }
+
   protected override entityBounds(): EntityBounds | null {
     const s = this.shape;
     if (!s || s.points.length < 3) {
@@ -52,6 +62,7 @@ export class OmPolygon extends OmShapePrimitive {
       origin: s.origin,
       rotation: s.rotation,
       points: s.points,
+      drawnPath: this.drawnPath(s),
     };
   }
 
@@ -64,7 +75,7 @@ export class OmPolygon extends OmShapePrimitive {
     if (!s) {
       return;
     }
-    const points = stripClosingDuplicate(s.points);
+    const points = stripClosingDuplicate(this.drawnPath(s));
     const first = points[0];
     if (points.length < 3 || first === undefined) {
       return;
