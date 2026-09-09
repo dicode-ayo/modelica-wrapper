@@ -566,6 +566,7 @@ export class OmGraphicalLayout extends LitElement {
             html`<om-connection
               .nodeId=${String(idx)}
               .path=${resolveConnectionWaypoints(active, conn)}
+              .smooth=${conn.smooth}
               .stroke=${conn.color ? colorToCss(conn.color) : undefined}
               .selectedKeys=${this.selectedKeys}
             ></om-connection>`,

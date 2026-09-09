@@ -3,6 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { Container } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
+import { isBezierSmooth, smoothLinePoints } from "@dicode/diagram-svg";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
@@ -29,6 +30,7 @@ const SELECTED_EDGE_COLOR = 0x3d82f5; // blue-500
  *
  * Properties:
  *   - `path`     — diagram-coord waypoints (>=2 points)
+ *   - `smooth`   — Modelica `Smooth`; `"Bezier"` curves the route
  *   - `stroke`   — CSS colour (`#rrggbb` or `rgb(r,g,b)`), optional
  *   - `clocked`  — dashed pattern for synchronous-clock connections
  *   - `selected` — switches the visible line to the selection colour
@@ -44,6 +46,7 @@ export class OmEdge extends LitElement {
 
   @property() nodeId = "";
   @property({ attribute: false }) path: Point[] = [];
+  @property() smooth: string | undefined = undefined;
   @property() stroke: string | undefined = undefined;
   @property({ type: Boolean }) clocked = false;
   @property({ type: Boolean }) selected = false;
@@ -97,7 +100,7 @@ export class OmEdge extends LitElement {
   private restrokeLine(meshes: EdgeMeshes, wpp: number | undefined): void {
     updateEdgePoints(
       meshes.line,
-      this.path,
+      this.drawnPath(),
       this.effectiveColor(),
       this.clocked,
       wpp,
@@ -114,7 +117,10 @@ export class OmEdge extends LitElement {
     // in place so a component drag doesn't churn the scene graph. Selection
     // is a colour re-stroke on the existing line, never a rebuild.
     const visualChanged =
-      changed.has("stroke") || changed.has("clocked") || changed.has("nodeId");
+      changed.has("stroke") ||
+      changed.has("clocked") ||
+      changed.has("nodeId") ||
+      changed.has("smooth");
     const pathChanged =
       changed.has("path") && !pointsEqual(this.path, this.builtPath);
     if (!this.meshes || visualChanged) {
@@ -147,6 +153,16 @@ export class OmEdge extends LitElement {
     return this.selected ? SELECTED_EDGE_COLOR : this.baseColor;
   }
 
+  /** The polyline actually stroked and picked: the waypoints, or the
+   *  flattened curve under `Smooth.Bezier`. The waypoints stay the editable
+   *  route — a curve is pulled toward each one without passing through it,
+   *  so the drawn path is not the route. */
+  private drawnPath(): Point[] {
+    return isBezierSmooth(this.smooth)
+      ? smoothLinePoints(this.path)
+      : this.path;
+  }
+
   private rebuild(): void {
     if (!this.parentTransform) {
       return;
@@ -160,7 +176,7 @@ export class OmEdge extends LitElement {
     const name = this.edgeName();
     const wpp = this.sceneCtx?.worldPerPixel();
     this.meshes = buildEdge(this.parentTransform, name, {
-      points: this.path,
+      points: this.drawnPath(),
       clocked: this.clocked,
       color: this.effectiveColor(),
       ...(wpp !== undefined ? { worldPerPixel: wpp } : {}),
@@ -190,7 +206,7 @@ export class OmEdge extends LitElement {
     const hit = rebuildHitTube(
       this.parentTransform,
       `${this.edgeName()}.hit`,
-      this.path,
+      this.drawnPath(),
     );
     tagEntity(hit, "edge", this.nodeId);
     this.meshes.hitArea = hit;

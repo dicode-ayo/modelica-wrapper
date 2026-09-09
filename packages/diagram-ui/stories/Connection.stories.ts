@@ -14,6 +14,7 @@ import "../src/connection/connection.component.js";
 interface StoryArgs {
   showJunctions: boolean;
   clocked: boolean;
+  smooth: boolean;
   zoom: number;
 }
 
@@ -28,12 +29,19 @@ const PATH: Point[] = [
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/Connection",
-  render: ({ showJunctions, clocked, zoom }: StoryArgs): TemplateResult => html`
+  render: ({
+    showJunctions,
+    clocked,
+    smooth,
+    zoom,
+  }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>&lt;om-connection&gt;</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Composes one <code>&lt;om-edge&gt;</code> + optional junction markers at
-        internal corners. Toggle showJunctions to compare.
+        internal corners. Toggle showJunctions to compare. Under
+        <code>smooth</code> the stroke rounds each corner away from the
+        junction marking it — the waypoints stay the editable route.
       </p>
       <div class="om-story-canvas-host">
         <om-scene .zoom=${zoom}>
@@ -41,6 +49,7 @@ const meta: Meta<StoryArgs> = {
           <om-connection
             nodeId="demo"
             .path=${PATH}
+            .smooth=${smooth ? "Bezier" : undefined}
             ?clocked=${clocked}
             ?show-junctions=${showJunctions}
           ></om-connection>
@@ -51,6 +60,7 @@ const meta: Meta<StoryArgs> = {
   argTypes: {
     showJunctions: { control: { type: "boolean" } },
     clocked: { control: { type: "boolean" } },
+    smooth: { control: { type: "boolean" } },
     zoom: { control: { type: "range", min: 20, max: 300, step: 5 } },
   },
 };
@@ -60,9 +70,13 @@ export default meta;
 type Story = StoryObj<StoryArgs>;
 
 export const WithJunctions: Story = {
-  args: { showJunctions: true, clocked: false, zoom: 100 },
+  args: { showJunctions: true, clocked: false, smooth: false, zoom: 100 },
 };
 
 export const ClockedNoJunctions: Story = {
-  args: { showJunctions: false, clocked: true, zoom: 100 },
+  args: { showJunctions: false, clocked: true, smooth: false, zoom: 100 },
+};
+
+export const SmoothBezier: Story = {
+  args: { showJunctions: true, clocked: false, smooth: true, zoom: 100 },
 };

@@ -8,7 +8,7 @@ import type { OmEdge } from "../src/connection/edge.component.js";
 import { buildHitTube } from "../src/base/hit-tube.js";
 import { buildEdge } from "../src/connection/edge-build.js";
 import { parseCssColor } from "../src/connection/parse-color.js";
-import { dashCount } from "./pixi-dash.helper.js";
+import { dashCount, pathVertices } from "./pixi-dash.helper.js";
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
@@ -149,6 +149,20 @@ describe("parseCssColor", () => {
     expect(parseCssColor("#fff")).toBeUndefined();
   });
 });
+
+/** A right-angle route: two straight runs meeting at the corner (50, 0). */
+const CORNER_ROUTE: Array<[number, number]> = [
+  [0, 0],
+  [50, 0],
+  [50, 30],
+];
+
+/**
+ * Where the Bezier over `CORNER_ROUTE` sits at the midpoint of its cubic.
+ * It clears the corner by more than the pick radius in both directions, so
+ * the same point separates the curve from the polyline either way round.
+ */
+const CORNER_APEX: [number, number] = [37.5, 1.875];
 
 describe("<om-edge>", () => {
   it("registers as a custom element", () => {
@@ -337,5 +351,70 @@ describe("<om-edge>", () => {
     expect((line.context.instructions as ReadonlyArray<unknown>).length).toBe(
       before.length,
     );
+  });
+
+  it("rounds a Smooth.Bezier corner away from the waypoint, in paint and in pick", async () => {
+    const scene = await mountScene();
+    const curved = document.createElement("om-edge") as OmEdge;
+    curved.path = CORNER_ROUTE;
+    curved.smooth = "Bezier";
+    const straight = document.createElement("om-edge") as OmEdge;
+    straight.path = CORNER_ROUTE;
+    scene.append(curved, straight);
+    await curved.updateComplete;
+    await straight.updateComplete;
+
+    const line = curved.edgeMesh?.line;
+    if (!line) throw new Error("expected a curved edge mesh");
+    const drawn = pathVertices(line);
+    expect(drawn.length).toBeGreaterThan(CORNER_ROUTE.length);
+    expect(drawn).not.toContainEqual([50, 0]);
+    expect(drawn).toContainEqual(CORNER_APEX);
+
+    const curvedArea = curved.edgeMesh?.hitArea.hitArea;
+    const straightArea = straight.edgeMesh?.hitArea.hitArea;
+    if (!curvedArea || !straightArea) throw new Error("expected hit areas");
+    // The two swap which point lands: the curve reaches the apex and
+    // misses the corner, the polyline does the reverse.
+    expect(curvedArea.contains(...CORNER_APEX)).toBe(true);
+    expect(curvedArea.contains(50, 0)).toBe(false);
+    expect(straightArea.contains(...CORNER_APEX)).toBe(false);
+    expect(straightArea.contains(50, 0)).toBe(true);
+  });
+
+  it("leaves a two-waypoint Smooth.Bezier route straight", async () => {
+    const scene = await mountScene();
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.path = [
+      [0, 0],
+      [50, 0],
+    ];
+    edge.smooth = "Bezier";
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    const line = edge.edgeMesh?.line;
+    if (!line) throw new Error("expected an edge mesh");
+
+    expect(pathVertices(line)).toEqual([
+      [0, 0],
+      [50, 0],
+    ]);
+  });
+
+  it("re-strokes when smooth is set on an already-drawn route", async () => {
+    const scene = await mountScene();
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.path = CORNER_ROUTE;
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    const before = edge.edgeMesh?.line;
+    if (!before) throw new Error("expected an edge mesh");
+    expect(pathVertices(before)).toContainEqual([50, 0]);
+
+    edge.smooth = "Bezier";
+    await edge.updateComplete;
+    const after = edge.edgeMesh?.line;
+    if (!after) throw new Error("expected a rebuilt edge mesh");
+    expect(pathVertices(after)).not.toContainEqual([50, 0]);
   });
 });

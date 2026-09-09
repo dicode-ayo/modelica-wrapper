@@ -43,6 +43,9 @@ const JUNCTION_Z_INDEX = 0.01;
  *
  * Properties:
  *   - `path`             — `Point[]` of waypoints
+ *   - `smooth`           — Modelica `Smooth`, forwarded; `"Bezier"` curves
+ *                          the edge while the junctions stay on the
+ *                          waypoints they mark
  *   - `stroke`           — CSS colour (`#rrggbb` or `rgb(r,g,b)`), forwarded
  *                          to <om-edge>
  *   - `clocked`          — dashed pattern, forwarded
@@ -69,6 +72,7 @@ export class OmConnection extends LitElement {
 
   @property() nodeId = "";
   @property({ attribute: false }) path: Point[] = [];
+  @property() smooth: string | undefined = undefined;
   @property() stroke: string | undefined = undefined;
   @property({ type: Boolean }) clocked = false;
   @property({ type: Boolean, attribute: "show-junctions" })
@@ -173,6 +177,7 @@ export class OmConnection extends LitElement {
     return html`<om-edge
       nodeId=${this.nodeId}
       .path=${this.path}
+      .smooth=${this.smooth}
       .stroke=${this.stroke}
       ?clocked=${this.clocked}
       ?selected=${this.selectedKeys.has(`edge:${this.nodeId}`)}
