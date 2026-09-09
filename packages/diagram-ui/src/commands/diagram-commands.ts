@@ -1,5 +1,7 @@
 import type { DiagramLayout } from "@dicode/omc-client";
-import { classNameOf } from "@dicode/omc-client";
+// Sub-path import: the layout module only — the bare name would drag the
+// OMC transport (zeromq / cmake-ts) into the webview bundle.
+import { classNameOf } from "@dicode/omc-client/layout";
 
 import type { ContextKeys } from "../interaction/context-keys.js";
 import {

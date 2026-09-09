@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./api/*": "./src/api/*",
     "./eval": "./src/eval/index.ts",
+    "./layout": "./src/_shared/diagramLayout.ts",
     "./shapes": "./src/shapes/index.ts"
   },
   "files": [
