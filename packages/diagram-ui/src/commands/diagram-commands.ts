@@ -1,4 +1,5 @@
 import type { DiagramLayout } from "@dicode/omc-client";
+import { classNameOf } from "@dicode/omc-client";
 
 import type { ContextKeys } from "../interaction/context-keys.js";
 import {
@@ -241,8 +242,10 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
       if (!parsed || parsed.kind !== "component") return;
       const comp = target.layout.components[parsed.nodeId];
       if (comp === undefined) return;
-      const cls = target.layout.classes[comp.classRef];
-      target.requestClassChange?.(parsed.nodeId, cls?.name ?? comp.classRef);
+      target.requestClassChange?.(
+        parsed.nodeId,
+        classNameOf(target.layout, comp.classRef),
+      );
     },
   },
   {

@@ -18,6 +18,7 @@
  */
 
 import type { DiagramLayout, PortDef } from "@dicode/omc-client";
+import { classNameOf } from "@dicode/omc-client";
 
 import { parseKey } from "./entity-keys.js";
 
@@ -59,12 +60,10 @@ export function resolvePortInfo(
     // Standalone host connector. Its type IS the connector class — we
     // don't have a per-instance PortDef so we can only read the class name
     // + suffix-infer direction. Flow/stream are unknown without fetching
-    // the connector class definition. `classRef` is a catalog key, which
-    // carries a suffix when two instances of a class resolved to different
-    // graphics, so the name has to come off the def.
+    // the connector class definition.
     const conn = layout.connectors[parsed.portName];
     if (!conn) return null;
-    const typeName = layout.classes[conn.classRef]?.name ?? conn.classRef;
+    const typeName = classNameOf(layout, conn.classRef);
     return {
       typeName,
       direction: inferDirectionFromTypeName(typeName),

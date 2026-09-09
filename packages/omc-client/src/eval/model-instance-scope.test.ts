@@ -115,7 +115,7 @@ describe("modelInstanceScope", () => {
         { $kind: "component", name: "a", value: { binding: cref("b") } },
         { $kind: "component", name: "b", value: { binding: cref("a") } },
       ],
-    } as unknown as ModelInstance;
+    };
     expect(modelInstanceScope(cyclic).lookup(["a"])).toBeUndefined();
   });
 });

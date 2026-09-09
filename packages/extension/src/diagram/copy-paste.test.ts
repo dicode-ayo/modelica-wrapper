@@ -165,6 +165,26 @@ describe("captureClipboardItems", () => {
     ]);
   });
 
+  it("captures the class name, not the catalog key that stands in for it", async () => {
+    // A class whose graphics resolve differently per use site gets a suffixed
+    // catalog key; pasting that key would write `Gain#2 gain1` into the model.
+    const l = layout();
+    const gain = l.components["gain1"];
+    if (gain === undefined) throw new Error("fixture lost gain1");
+    gain.classRef = "Modelica.Blocks.Math.Gain#2";
+    l.classes["Modelica.Blocks.Math.Gain#2"] = {
+      name: "Modelica.Blocks.Math.Gain",
+      restriction: "block",
+      iconLayers: [],
+      connectors: {},
+      parameters: {},
+    };
+    const items = await captureClipboardItems(copyClient(), l, ["c:gain1"]);
+    expect(items[0]).toMatchObject({
+      className: "Modelica.Blocks.Math.Gain",
+    });
+  });
+
   it("drops a modifier OMC reports with no bound expression", async () => {
     // An empty expr means "clear" to setElementModifierValue, so replaying it
     // would remove a binding the paste never set.

@@ -50,6 +50,10 @@ function isLiteral(v: unknown): v is number | boolean | string | null {
  * parameter with no default of its own (`parameter Boolean noDefault;`)
  * comes back with the cref echoed rather than folded, so a non-literal
  * lands back on the evaluator.
+ *
+ * Crefs in both slots are qualified from the opened class, not written as
+ * the source declared them: `parameter Boolean a = b` inside component `m`
+ * arrives as `m.b`. Either slot therefore reduces against the root scope.
  */
 function valueOf(el: ComponentElement, scope: EvalScope): EvalValue {
   const value = el.value;

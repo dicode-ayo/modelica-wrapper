@@ -34,7 +34,7 @@ import type {
   Expression,
   RecordValue,
 } from "../../_shared/modelInstance.js";
-import type { EvalScope } from "../../eval/expression-evaluator.js";
+import type { EvalScope, EvalValue } from "../../eval/expression-evaluator.js";
 import { evaluateExpression } from "../../eval/expression-evaluator.js";
 import type { Value } from "../../parse.js";
 import type {
@@ -74,7 +74,7 @@ function enumName(e: EnumLiteral): string {
  * Recursive peel — DynamicSelect can in principle nest; we keep peeling
  * until the head is no longer a DynamicSelect call.
  */
-function peelDynamicSelect(v: Expression | undefined): Expression | undefined {
+function peelDynamicSelect(v: Reducible | undefined): Reducible | undefined {
   let cur = v;
   while (
     cur &&
@@ -83,7 +83,7 @@ function peelDynamicSelect(v: Expression | undefined): Expression | undefined {
     (cur as { $kind?: unknown }).$kind === "call" &&
     (cur as { name?: unknown }).name === "DynamicSelect"
   ) {
-    const args = (cur as { arguments?: Expression[] }).arguments;
+    const args = (cur as { arguments?: Reducible[] }).arguments;
     if (!args || args.length === 0) return undefined;
     cur = args[0];
   }
@@ -91,27 +91,35 @@ function peelDynamicSelect(v: Expression | undefined): Expression | undefined {
 }
 
 /**
- * Peel any `DynamicSelect` wrapper, then reduce what's left against
- * `scope`. OMC leaves a graphic field referencing a parameter as an
- * unevaluated expression, so without this every such field reads as
- * "not a literal" and the caller applies the §18.6 default.
+ * A slot before or after reduction. `EvalValue` is what the evaluator hands
+ * back and is not an `Expression`: its enum literal carries no index
+ * signature. Every `as*` helper narrows structurally, so they read either.
+ */
+type Reducible = Expression | EvalValue;
+
+/**
+ * Peel any `DynamicSelect` wrapper, then reduce what's left against `scope`.
+ * A field referencing a use-site parameter must arrive as the value OMC
+ * resolved for that instance, not as the §18.6 default.
  *
- * An expression the scope can't reduce is returned untouched, which
- * lands the caller back on that default — the fail-open policy OMEdit's
+ * An expression the scope can't reduce is returned untouched, which lands
+ * the caller back on that default — the fail-open policy OMEdit's
  * `DynamicAnnotation::evaluate_helper` follows.
  */
 function resolve(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope: EvalScope | undefined,
-): Expression | undefined {
+): Reducible | undefined {
   const w = peelDynamicSelect(v);
   if (scope === undefined || w === null || typeof w !== "object") return w;
-  const reduced = evaluateExpression(w, scope);
-  return reduced === undefined ? w : (reduced as Expression);
+  // `EvalValue` differs from `Expression` only in lacking the index
+  // signature; the evaluator is total over either.
+  const reduced = evaluateExpression(w as Expression, scope);
+  return reduced === undefined ? w : reduced;
 }
 
 /** True if v is a 2-element tuple of finite numbers. */
-function isPoint(v: Expression | undefined): v is [number, number] {
+function isPoint(v: Reducible | undefined): v is [number, number] {
   return (
     Array.isArray(v) &&
     v.length === 2 &&
@@ -123,7 +131,7 @@ function isPoint(v: Expression | undefined): v is [number, number] {
 }
 
 function asPoints(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): Point[] | undefined {
   const w = resolve(v, scope);
@@ -137,7 +145,7 @@ function asPoints(
 }
 
 function asExtent(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): Extent | undefined {
   const w = resolve(v, scope);
@@ -152,7 +160,7 @@ function asExtent(
 }
 
 function asColor(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): Color | undefined {
   const w = resolve(v, scope);
@@ -169,7 +177,7 @@ function asColor(
 }
 
 function asNumber(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): number | undefined {
   const w = resolve(v, scope);
@@ -177,7 +185,7 @@ function asNumber(
 }
 
 function asString(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): string | undefined {
   const w = resolve(v, scope);
@@ -185,7 +193,7 @@ function asString(
 }
 
 function asEnumString(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): string | undefined {
   const w = resolve(v, scope);
@@ -202,7 +210,7 @@ function asEnumString(
 
 /** Decode the `Arrow` field on a Line: `[Arrow.None, Arrow.Filled]` etc. */
 function asArrow(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): [string, string] | undefined {
   const w = resolve(v, scope);
@@ -214,7 +222,7 @@ function asArrow(
 }
 
 function asStringArray(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): string[] | undefined {
   const w = resolve(v, scope);
@@ -274,7 +282,7 @@ function consumeGraphicItem(
 
 /** Single Point from a `[x, y]` tuple (peels DynamicSelect). */
 function asPoint(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): Point | undefined {
   const w = resolve(v, scope);
@@ -283,7 +291,7 @@ function asPoint(
 
 /** Boolean from a literal (peels DynamicSelect). */
 function asBool(
-  v: Expression | undefined,
+  v: Reducible | undefined,
   scope?: EvalScope,
 ): boolean | undefined {
   const w = resolve(v, scope);
@@ -611,7 +619,7 @@ export function decodeAnnotationShape(record: Value): Shape {
 
 export const _internal = {
   enumName,
-  asPoint: (v: Expression | undefined): Point | undefined =>
+  asPoint: (v: Reducible | undefined): Point | undefined =>
     isPoint(v) ? [v[0], v[1]] : undefined,
   asPoints,
   asExtent,

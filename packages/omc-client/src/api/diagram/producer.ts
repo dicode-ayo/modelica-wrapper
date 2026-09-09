@@ -301,9 +301,10 @@ function iconContextLayers(
 // ---------- class registry ----------
 
 /**
- * The per-layout class catalog. `keyByFingerprint` makes adoption O(1) for
- * the common case of many instances of one class; `building` breaks cycles
- * without parking an incomplete def in `defs`.
+ * The per-layout class catalog. Every instance builds its own def, since the
+ * content depends on the use site; `keyByFingerprint` folds identical builds
+ * onto one key. `building` breaks cycles without parking an incomplete def
+ * in `defs`.
  */
 interface ClassRegistry {
   defs: Map<string, ClassDef>;
@@ -375,7 +376,7 @@ export function produceComponentClass(mi: ModelInstance): ClassDef {
  * Identical content shares one entry, which is every ordinary class.
  */
 function adopt(registry: ClassRegistry, name: string, built: ClassDef): string {
-  const fingerprint = `${name}\u0000${JSON.stringify(built)}`;
+  const fingerprint = JSON.stringify(built);
   const seen = registry.keyByFingerprint.get(fingerprint);
   if (seen !== undefined) return seen;
   let key = name;
@@ -391,7 +392,8 @@ function adopt(registry: ClassRegistry, name: string, built: ClassDef): string {
  * A class reached again while its own def is still being built (ports →
  * connector class → …) resolves to the bare name rather than recursing.
  * Modelica forbids declarative cycles, but the ModelInstance shape is just
- * JSON, so nothing upstream guarantees it.
+ * JSON, so nothing upstream guarantees it. That reference is dangling by
+ * design: the def may settle under a suffixed key, or not yet exist.
  */
 function registerClass(
   typeMi: ModelInstance,

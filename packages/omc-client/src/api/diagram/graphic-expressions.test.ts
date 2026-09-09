@@ -3,8 +3,9 @@
  *
  * `getModelInstance` reduces a component's parameters against the use-site
  * modifiers but leaves the `visible` / color / geometry slots of a graphic as
- * an expression referencing them. Decoding those as "not a literal, use the
- * §18.6 default" leaves every such shape drawn.
+ * an expression referencing them. A field referencing a use-site parameter
+ * must arrive as the value OMC resolved for that instance, not as the §18.6
+ * default.
  *
  * `PartialElementaryOneFlangeAndSupport2` carries five `Line(visible = not
  * useSupport, …)` — the ground symbol shown when the component is implicitly
@@ -15,15 +16,27 @@
 import { describe, expect, it } from "vitest";
 
 import type { Shape } from "../../_shared/diagramLayout.js";
-import type { ModelInstance } from "../../_shared/modelInstance.js";
+import type {
+  ElementNode,
+  Expression,
+  ModelInstance,
+  RecordValue,
+} from "../../_shared/modelInstance.js";
 import { produceDiagramLayout } from "./producer.js";
 
-const SOLID_LINE = { $kind: "enum", name: "LinePattern.Solid", index: 1 };
-const NO_ARROW = { $kind: "enum", name: "Arrow.None", index: 1 };
-const NO_SMOOTH = { $kind: "enum", name: "Smooth.None", index: 1 };
+const SOLID_LINE: Expression = {
+  $kind: "enum",
+  name: "LinePattern.Solid",
+  index: 1,
+};
+const NO_ARROW: Expression = { $kind: "enum", name: "Arrow.None", index: 1 };
+const NO_SMOOTH: Expression = { $kind: "enum", name: "Smooth.None", index: 1 };
 
 /** `Line(visible = <expr>, color = <expr>, …)` with every slot filled. */
-function lineShape(visible: unknown, color: unknown = [0, 0, 0]): unknown {
+function lineShape(
+  visible: Expression,
+  color: Expression = [0, 0, 0],
+): RecordValue {
   return {
     $kind: "record",
     name: "Line",
@@ -46,7 +59,7 @@ function lineShape(visible: unknown, color: unknown = [0, 0, 0]): unknown {
 }
 
 /** OMC qualifies the cref by the instance path from the opened class. */
-function notUseSupport(instance: string): unknown {
+function notUseSupport(instance: string): Expression {
   return {
     $kind: "unary_op",
     op: "not",
@@ -55,7 +68,7 @@ function notUseSupport(instance: string): unknown {
 }
 
 /** `if <instance>.useSupport then {255, 0, 0} else {0, 0, 255}`. */
-function colorByUseSupport(instance: string): unknown {
+function colorByUseSupport(instance: string): Expression {
   return {
     $kind: "if",
     condition: {
@@ -68,7 +81,7 @@ function colorByUseSupport(instance: string): unknown {
 }
 
 /** One `Torque <name>(useSupport = …)`, carrying OMC's reduced value. */
-function torque(name: string, useSupport: boolean): unknown {
+function torque(name: string, useSupport: boolean): ElementNode {
   return {
     $kind: "component",
     name,
@@ -144,12 +157,8 @@ function torque(name: string, useSupport: boolean): unknown {
   };
 }
 
-function host(...components: unknown[]): ModelInstance {
-  return {
-    name: "Cond2",
-    restriction: "model",
-    elements: components,
-  } as unknown as ModelInstance;
+function host(...components: ElementNode[]): ModelInstance {
+  return { name: "Cond2", restriction: "model", elements: components };
 }
 
 function shapesForInstance(mi: ModelInstance, instance: string): Shape[] {
@@ -199,5 +208,30 @@ describe("expression-valued graphic fields", () => {
     );
     expect(layout.components["on"]?.hiddenPorts).toBeUndefined();
     expect(layout.components["off"]?.hiddenPorts).toEqual(["support"]);
+  });
+
+  it("shares one catalog entry between copies that resolve alike", () => {
+    const layout = produceDiagramLayout(
+      host(torque("a", true), torque("b", true)),
+      "diagram",
+    );
+    expect(layout.components["a"]?.classRef).toBe(
+      layout.components["b"]?.classRef,
+    );
+    expect(
+      Object.values(layout.classes).filter((c) => c.name === "Torque"),
+    ).toHaveLength(1);
+  });
+
+  it("keeps the real class name on a suffixed catalog entry", () => {
+    const layout = produceDiagramLayout(
+      host(torque("on", true), torque("off", false)),
+      "diagram",
+    );
+    const on = layout.components["on"]?.classRef;
+    const off = layout.components["off"]?.classRef;
+    expect(on).not.toBe(off);
+    expect(layout.classes[on ?? ""]?.name).toBe("Torque");
+    expect(layout.classes[off ?? ""]?.name).toBe("Torque");
   });
 });
