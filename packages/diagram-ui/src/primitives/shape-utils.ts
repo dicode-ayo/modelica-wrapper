@@ -293,33 +293,6 @@ export function buildFilledRect(
   return { dispose: () => g.destroy() };
 }
 
-export function buildFilledEllipse(
-  renderer: Renderer | null,
-  parent: Container,
-  cx: number,
-  cy: number,
-  rx: number,
-  ry: number,
-  box: RectBox,
-  spec: FillSpec,
-  z: number,
-  baseName: string,
-): OwnedResource {
-  const g = new Graphics({ label: baseName });
-  g.eventMode = "none";
-  g.zIndex = z;
-  g.ellipse(cx, cy, rx, ry);
-  applyFill(
-    renderer,
-    g,
-    spec,
-    box,
-    box.height > 0 ? box.width / box.height : 1,
-  );
-  parent.addChild(g);
-  return { dispose: () => g.destroy() };
-}
-
 export function buildFilledPolygon(
   renderer: Renderer | null,
   parent: Container,

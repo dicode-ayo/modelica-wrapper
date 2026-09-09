@@ -11,7 +11,6 @@ import {
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
-  buildFilledEllipse,
   buildFilledPolygon,
   buildStroke,
   extentToRect,
@@ -20,10 +19,9 @@ import {
 } from "./shape-utils.js";
 
 /**
- * `<om-ellipse>` — one Modelica `EllipseShape`. Strokes the outline
+ * `<om-ellipse>` — one Modelica `EllipseShape`. Fills and strokes the outline
  * `ellipseArcPoints` samples, spanning `startAngle` to `endAngle` and closed
- * according to `closure`. A full sweep fills through Pixi's own ellipse
- * rather than that polyline, leaving every existing icon's fill untouched.
+ * according to `closure`.
  */
 @customElement("om-ellipse")
 export class OmEllipse extends OmShapePrimitive {
@@ -83,27 +81,14 @@ export class OmEllipse extends OmShapePrimitive {
       pattern: s.fillPattern,
     });
     if (arc.filled && fill.kind !== "none") {
-      const filled = arc.full
-        ? buildFilledEllipse(
-            renderer,
-            root,
-            arc.cx,
-            arc.cy,
-            arc.rx,
-            arc.ry,
-            rect,
-            fill,
-            z,
-            `${baseName}.fill`,
-          )
-        : buildFilledPolygon(
-            renderer,
-            root,
-            stripClosingDuplicate(points),
-            fill,
-            z,
-            `${baseName}.fill`,
-          );
+      const filled = buildFilledPolygon(
+        renderer,
+        root,
+        stripClosingDuplicate(points),
+        fill,
+        z,
+        `${baseName}.fill`,
+      );
       if (filled) {
         this.resources.push(filled);
       }

@@ -35,11 +35,11 @@ function mount(fields: Partial<EllipseShape>): ReturnType<typeof mountLayout> {
 }
 
 describe("om-ellipse arc sweeps", () => {
-  it("keeps Pixi's own ellipse fill for a full sweep", async () => {
+  it("fills a full sweep from the same sampled ring it strokes", async () => {
     const el = await mount({});
     expect(
       pathInstructions(graphicsWithLabel(el, FILL)).map((i) => i.action),
-    ).toContain("ellipse");
+    ).toContain("poly");
   });
 
   it.each([
