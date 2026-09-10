@@ -29,3 +29,22 @@ export function pathVertices(g: Graphics): Array<[number, number]> {
       return [x, y] as [number, number];
     });
 }
+
+/** Total path length actually drawn by a dashed `Graphics`, in the same
+ *  units its coordinates carry: each `moveTo`+`lineTo` pair is one drawn
+ *  run, so this sums their lengths — a solid line draws its whole extent,
+ *  a dashed one only a fraction. */
+export function dashLength(g: Graphics): number {
+  let total = 0;
+  let from: [number, number] | undefined;
+  for (const i of pathInstructions(g)) {
+    if (i.action === "moveTo") {
+      from = i.data as [number, number];
+    } else if (i.action === "lineTo" && from) {
+      const [x, y] = i.data as [number, number];
+      total += Math.hypot(x - from[0], y - from[1]);
+      from = [x, y];
+    }
+  }
+  return total;
+}

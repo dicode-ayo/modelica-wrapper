@@ -5,6 +5,7 @@ import { buildHitTube } from "../base/hit-tube.js";
 import {
   DEFAULT_DASH_GAP,
   DEFAULT_DASH_SIZE,
+  strokeDashedPath,
 } from "../primitives/shape-utils.js";
 
 /**
@@ -201,9 +202,11 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
 }
 
 /**
- * Hand-rolled dash segmentation (Pixi has no dashed stroke), phase restarting
- * at each vertex so dashes break at corners. A flattened curve, whose vertices
- * are samples rather than corners, therefore draws solid.
+ * Hand-rolled dash segmentation (Pixi has no dashed stroke). The phase
+ * carries across vertices, so a path whose vertices are curve samples rather
+ * than corners dashes by arc length. A corner route therefore has no dash
+ * break at its corners, and a stub shorter than the run it lands in draws
+ * nothing.
  *
  * With a `worldPerPixel`, one dash+gap period is `(DEFAULT_DASH_SIZE +
  * DEFAULT_DASH_GAP) * worldPerPixel` — a fixed on-screen size, so the dash
@@ -247,29 +250,5 @@ function appendDashedPath(
   );
   const run =
     (DEFAULT_DASH_SIZE * period) / (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP);
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    if (a === undefined || b === undefined) {
-      continue;
-    }
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    const len = Math.hypot(dx, dy);
-    if (len === 0) {
-      continue;
-    }
-    const nx = dx / len;
-    const ny = dy / len;
-    // Draw at least one dash so a segment shorter than one period still
-    // renders; clamp each dash to the segment end so the forced dash on a
-    // short span doesn't overshoot point `b`.
-    const count = Math.max(1, Math.floor(len / period));
-    for (let j = 0; j < count; j++) {
-      const start = period * j;
-      const end = Math.min(start + run, len);
-      g.moveTo(a[0] + start * nx, a[1] + start * ny);
-      g.lineTo(a[0] + end * nx, a[1] + end * ny);
-    }
-  }
+  strokeDashedPath(g, points, [run, period - run]);
 }
