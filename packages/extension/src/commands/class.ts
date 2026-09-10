@@ -252,6 +252,12 @@ export interface RootPackageClient extends FileParseClient {
  * invocation right after opening the workspace, or right after a `:reset`,
  * could otherwise resolve a parent OMC hasn't loaded, and the `within`
  * merge that follows would fail against it.
+ *
+ * The load check only confirms a class named `name` is loaded, not that it's
+ * specifically the one `rootPkg` declares — a same-named class loaded from
+ * elsewhere would pass it too. `ctx.writeVerdicts.forClass`'s downstream
+ * system-library check catches a MODELICAPATH collision; a same-named class
+ * from another workspace file is a narrower case this doesn't distinguish.
  */
 export async function resolveRootPackageParent(
   client: RootPackageClient,
@@ -291,7 +297,7 @@ export async function resolveRootPackageParent(
     if (info.restriction === "") {
       return {
         ok: false,
-        reason: `${name} isn't loaded into OMC yet — wait for the workspace to finish loading and try again`,
+        reason: `no class named ${name} is loaded into OMC yet — wait for the workspace to finish loading and try again`,
       };
     }
   } catch (err) {

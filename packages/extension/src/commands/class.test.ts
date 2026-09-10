@@ -299,7 +299,7 @@ describe("resolveRootPackageParent", () => {
     expect(result).toEqual({
       ok: false,
       reason:
-        "RootPkg isn't loaded into OMC yet — wait for the workspace to finish loading and try again",
+        "no class named RootPkg is loaded into OMC yet — wait for the workspace to finish loading and try again",
     });
   });
 
