@@ -29,6 +29,7 @@ import {
   linkPersistedClass,
   persistClassUnderWorkspace,
 } from "../source-provider.js";
+import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
 
 import {
   parentFromNode,
@@ -82,12 +83,14 @@ export function registerClassCommands(
             // rules in workspace-scan.ts, its package.mo is the ONLY entry
             // point. A within-less write here lands inside that package's own
             // directory, and OMC refuses to load the whole package on
-            // reload, not just the new file (issue #626). There is exactly
-            // one valid destination: nest under the root package.
+            // reload, not just the new file. There is exactly one valid
+            // destination: nest under the root package.
+            const rootLog = createReplLog("createClass resolve root package");
             try {
               const c = await ctx.ensureClient();
               const resolved = await resolveRootPackageParent(c, rootPkg);
               if (!resolved.ok) {
+                rootLog.error(resolved.reason);
                 await vscode.window.showErrorMessage(
                   `Modelica: cannot create a top-level class here — ${resolved.reason}.`,
                 );
@@ -95,6 +98,7 @@ export function registerClassCommands(
               }
               parent = resolved.parent;
             } catch (err) {
+              rootLog.error((err as Error).message);
               await vscode.window.showErrorMessage(
                 `Modelica: cannot create a top-level class here — ${(err as Error).message}.`,
               );
@@ -228,8 +232,8 @@ export function registerClassCommands(
 }
 
 /** OMC surface {@link resolveRootPackageParent} needs. `OmcClient` satisfies it. */
-export interface RootPackageClient {
-  parseFile(input: { fileName: string }): Promise<{ classNames: string[] }>;
+export interface RootPackageClient extends FileParseClient {
+  getClassInformation(input: { typeName: string }): Promise<unknown>;
 }
 
 /**
@@ -237,7 +241,12 @@ export interface RootPackageClient {
  * declares — the one destination a `view/title` invocation with no tree node
  * can mean once the workspace root is itself a package (issue #626).
  * Refuses rather than guessing when the file doesn't parse to exactly one
- * top-level class.
+ * top-level class, or when that class isn't actually loaded into OMC yet:
+ * `parseFile` only reads the file off disk, and workspace autoload
+ * (`workspace-autoload.ts`) loads entry files asynchronously — a title-bar
+ * invocation right after opening the workspace, or right after a `:reset`,
+ * could otherwise resolve a parent OMC hasn't loaded, and the `within`
+ * merge that follows would fail against it.
  */
 export async function resolveRootPackageParent(
   client: RootPackageClient,
@@ -252,13 +261,11 @@ export async function resolveRootPackageParent(
       reason: `could not read ${rootPkg}'s class name (${(err as Error).message})`,
     };
   }
-  if (classNames.length !== 1) {
+  const multiple = moreThanOne(classNames);
+  if (multiple !== undefined) {
     return {
       ok: false,
-      reason:
-        classNames.length === 0
-          ? `${rootPkg} declares no class OMC could parse`
-          : `${rootPkg} declares more than one top-level class (${classNames.join(", ")})`,
+      reason: `${rootPkg} declares more than one top-level class (${multiple.join(", ")})`,
     };
   }
   const [name] = classNames;
@@ -266,6 +273,14 @@ export async function resolveRootPackageParent(
     return {
       ok: false,
       reason: `${rootPkg} declares no class OMC could parse`,
+    };
+  }
+  try {
+    await client.getClassInformation({ typeName: name });
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `${name} isn't loaded into OMC yet (${(err as Error).message}) — wait for the workspace to finish loading and try again`,
     };
   }
   return { ok: true, parent: name };

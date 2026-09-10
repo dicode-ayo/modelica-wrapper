@@ -175,11 +175,10 @@ describe("modelica.createClass", () => {
       });
     });
 
-    it("still runs the first-time-content prompt for a plain nested subdirectory package, not the root guard", async () => {
-      // Sanity check that the new root-package.mo branch doesn't swallow the
-      // sibling case: a workspace with content but no root package.mo (e.g.
-      // only a subdirectory package) still falls through to the pre-existing
-      // hasModelicaContent branch rather than the new refusal/resolve path.
+    it("proceeds with an unguarded top-level write when the workspace has content but no root package.mo", async () => {
+      // A workspace with content but no root package.mo (e.g. only a
+      // subdirectory package) has no single valid parent to resolve against,
+      // so it takes the hasModelicaContent branch rather than being refused.
       await fsp.rm(path.join(tmp, "package.mo"));
       await fsp.mkdir(path.join(tmp, "Sub"));
       await fsp.writeFile(
@@ -195,8 +194,7 @@ describe("modelica.createClass", () => {
       await runCommand("modelica.createClass");
 
       // No root package.mo to resolve against, so parseFile is never
-      // consulted and the plain top-level write proceeds unguarded, exactly
-      // as it did before this issue's fix.
+      // consulted and the plain top-level write proceeds unguarded.
       expect(parseFile).not.toHaveBeenCalled();
       expect(loadString).toHaveBeenCalledWith(
         expect.objectContaining({ data: "model MyModel\nend MyModel;\n" }),
@@ -208,20 +206,43 @@ describe("modelica.createClass", () => {
 describe("resolveRootPackageParent", () => {
   const ROOT_PKG = "/ws/package.mo";
 
-  it("resolves the single class a root package.mo declares", async () => {
-    const client = {
-      parseFile: vi.fn(() => Promise.resolve({ classNames: ["RootPkg"] })),
+  function makeClient(
+    overrides: {
+      parseFile?: ReturnType<typeof vi.fn>;
+      getClassInformation?: ReturnType<typeof vi.fn>;
+    } = {},
+  ): {
+    client: Parameters<typeof resolveRootPackageParent>[0];
+    parseFile: ReturnType<typeof vi.fn>;
+    getClassInformation: ReturnType<typeof vi.fn>;
+  } {
+    const parseFile =
+      overrides.parseFile ??
+      vi.fn(() => Promise.resolve({ classNames: ["RootPkg"] }));
+    const getClassInformation =
+      overrides.getClassInformation ?? vi.fn(() => Promise.resolve({}));
+    return {
+      client: { parseFile, getClassInformation } as unknown as Parameters<
+        typeof resolveRootPackageParent
+      >[0],
+      parseFile,
+      getClassInformation,
     };
+  }
+
+  it("resolves the single class a root package.mo declares, once OMC confirms it's loaded", async () => {
+    const { client, getClassInformation } = makeClient();
 
     const result = await resolveRootPackageParent(client, ROOT_PKG);
 
     expect(result).toEqual({ ok: true, parent: "RootPkg" });
+    expect(getClassInformation).toHaveBeenCalledWith({ typeName: "RootPkg" });
   });
 
   it("refuses when the file declares no parseable class", async () => {
-    const client = {
+    const { client } = makeClient({
       parseFile: vi.fn(() => Promise.resolve({ classNames: [] })),
-    };
+    });
 
     const result = await resolveRootPackageParent(client, ROOT_PKG);
 
@@ -232,9 +253,9 @@ describe("resolveRootPackageParent", () => {
   });
 
   it("refuses when the file declares more than one top-level class, naming them", async () => {
-    const client = {
+    const { client } = makeClient({
       parseFile: vi.fn(() => Promise.resolve({ classNames: ["A", "B"] })),
-    };
+    });
 
     const result = await resolveRootPackageParent(client, ROOT_PKG);
 
@@ -245,15 +266,35 @@ describe("resolveRootPackageParent", () => {
   });
 
   it("refuses rather than throwing when parseFile itself fails", async () => {
-    const client = {
+    const { client } = makeClient({
       parseFile: vi.fn(() => Promise.reject(new Error("omc gone"))),
-    };
+    });
 
     const result = await resolveRootPackageParent(client, ROOT_PKG);
 
     expect(result).toEqual({
       ok: false,
       reason: `could not read ${ROOT_PKG}'s class name (omc gone)`,
+    });
+  });
+
+  it("refuses rather than guessing when the resolved class isn't loaded into OMC yet", async () => {
+    // parseFile reads straight off disk and never touches OMC's symbol
+    // table — workspace autoload (workspace-autoload.ts) loads entry files
+    // asynchronously, so the file can parse cleanly before OMC has actually
+    // loaded the class it declares.
+    const { client } = makeClient({
+      getClassInformation: vi.fn(() =>
+        Promise.reject(new Error("unknown class")),
+      ),
+    });
+
+    const result = await resolveRootPackageParent(client, ROOT_PKG);
+
+    expect(result).toEqual({
+      ok: false,
+      reason:
+        "RootPkg isn't loaded into OMC yet (unknown class) — wait for the workspace to finish loading and try again",
     });
   });
 });
