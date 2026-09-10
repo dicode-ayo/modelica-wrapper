@@ -953,11 +953,12 @@ export const executedCommands: Array<{ command: string; args: unknown[] }> = [];
 /** Commands `registerCommand` captured, so tests can invoke one directly. */
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 
-/** Drop captured commands and queued prompt answers between tests. */
+/** Drop captured commands and per-test workspace state between tests. */
 export function resetCommands(): void {
   registeredCommands.clear();
   promptAnswers.length = 0;
   currentWorkspaceFolders = undefined;
+  foundFiles = [];
 }
 
 /** Run a registered command, or throw when nothing registered that id. */

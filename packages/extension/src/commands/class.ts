@@ -98,9 +98,12 @@ export function registerClassCommands(
               }
               parent = resolved.parent;
             } catch (err) {
+              // Only ctx.ensureClient() can throw here — resolveRootPackageParent
+              // catches its own failures and returns `{ ok: false }` — so this
+              // is an OMC startup problem, not a workspace-layout one.
               rootLog.error((err as Error).message);
               await vscode.window.showErrorMessage(
-                `Modelica: cannot create a top-level class here — ${(err as Error).message}.`,
+                `Modelica: failed to resolve the workspace root package: ${(err as Error).message}`,
               );
               return;
             }
@@ -241,8 +244,8 @@ export interface RootPackageClient extends FileParseClient {
 /**
  * The class `rootPkg` (an already-confirmed `<workspaceRoot>/package.mo`)
  * declares — the one destination a `view/title` invocation with no tree node
- * can mean once the workspace root is itself a package (issue #626).
- * Refuses rather than guessing when the file doesn't parse to exactly one
+ * can mean once the workspace root is itself a package. Refuses rather than
+ * guessing when the file doesn't parse to exactly one
  * top-level class, or when that class isn't actually loaded into OMC yet:
  * `parseFile` only reads the file off disk, and workspace autoload
  * (`workspace-autoload.ts`) loads entry files asynchronously — a title-bar
