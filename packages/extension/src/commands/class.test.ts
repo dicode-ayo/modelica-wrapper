@@ -52,7 +52,11 @@ function makeContext(sourceFile: string): {
       Promise.resolve({ modelicaPath: MODELICA_PATH }),
     ),
     getClassInformation: vi.fn(() =>
-      Promise.resolve({ fileReadOnly: false, fileName: sourceFile }),
+      Promise.resolve({
+        fileReadOnly: false,
+        fileName: sourceFile,
+        restriction: "package",
+      }),
     ),
     getClassNames: vi.fn(() => Promise.resolve({ classNames: [] })),
     setSourceFile: vi.fn(() => Promise.resolve({})),
@@ -220,7 +224,8 @@ describe("resolveRootPackageParent", () => {
       overrides.parseFile ??
       vi.fn(() => Promise.resolve({ classNames: ["RootPkg"] }));
     const getClassInformation =
-      overrides.getClassInformation ?? vi.fn(() => Promise.resolve({}));
+      overrides.getClassInformation ??
+      vi.fn(() => Promise.resolve({ restriction: "package" }));
     return {
       client: { parseFile, getClassInformation } as unknown as Parameters<
         typeof resolveRootPackageParent
@@ -282,11 +287,11 @@ describe("resolveRootPackageParent", () => {
     // parseFile reads straight off disk and never touches OMC's symbol
     // table — workspace autoload (workspace-autoload.ts) loads entry files
     // asynchronously, so the file can parse cleanly before OMC has actually
-    // loaded the class it declares.
+    // loaded the class it declares. OMC 1.27.0 doesn't reject for an unknown
+    // class — it answers with every field defaulted, empty `restriction`
+    // among them — so that's the signal, not a thrown rejection.
     const { client } = makeClient({
-      getClassInformation: vi.fn(() =>
-        Promise.reject(new Error("unknown class")),
-      ),
+      getClassInformation: vi.fn(() => Promise.resolve({ restriction: "" })),
     });
 
     const result = await resolveRootPackageParent(client, ROOT_PKG);
@@ -294,7 +299,20 @@ describe("resolveRootPackageParent", () => {
     expect(result).toEqual({
       ok: false,
       reason:
-        "RootPkg isn't loaded into OMC yet (unknown class) — wait for the workspace to finish loading and try again",
+        "RootPkg isn't loaded into OMC yet — wait for the workspace to finish loading and try again",
+    });
+  });
+
+  it("refuses rather than throwing when the load-confirmation call itself fails", async () => {
+    const { client } = makeClient({
+      getClassInformation: vi.fn(() => Promise.reject(new Error("omc gone"))),
+    });
+
+    const result = await resolveRootPackageParent(client, ROOT_PKG);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "could not confirm RootPkg is loaded into OMC (omc gone)",
     });
   });
 });

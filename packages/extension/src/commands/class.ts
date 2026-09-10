@@ -233,7 +233,9 @@ export function registerClassCommands(
 
 /** OMC surface {@link resolveRootPackageParent} needs. `OmcClient` satisfies it. */
 export interface RootPackageClient extends FileParseClient {
-  getClassInformation(input: { typeName: string }): Promise<unknown>;
+  getClassInformation(input: {
+    typeName: string;
+  }): Promise<{ restriction: string }>;
 }
 
 /**
@@ -276,11 +278,23 @@ export async function resolveRootPackageParent(
     };
   }
   try {
-    await client.getClassInformation({ typeName: name });
+    const info = await client.getClassInformation({ typeName: name });
+    // A not-yet-loaded class doesn't reject — OMC 1.27.0 answers with every
+    // field defaulted (empty `restriction` among them) rather than an error
+    // (see packages/omc-client/src/api/browsing/getClassInformation.test.ts's
+    // `NOT_FOUND_18` fixture). Every real class restriction (model, package,
+    // block, …) is non-empty, so that's the signal to key off instead of a
+    // thrown rejection.
+    if (info.restriction === "") {
+      return {
+        ok: false,
+        reason: `${name} isn't loaded into OMC yet — wait for the workspace to finish loading and try again`,
+      };
+    }
   } catch (err) {
     return {
       ok: false,
-      reason: `${name} isn't loaded into OMC yet (${(err as Error).message}) — wait for the workspace to finish loading and try again`,
+      reason: `could not confirm ${name} is loaded into OMC (${(err as Error).message})`,
     };
   }
   return { ok: true, parent: name };
