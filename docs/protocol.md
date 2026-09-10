@@ -53,6 +53,7 @@ reaches the host as the `change` the mutation commits.
 | `om-add-component-request` | `<om-graphical-layout>` | `addComponent` |
 | `om-change-class-request` | `<om-graphical-layout>` | `changeClassRequest` |
 | `om-clipboard-request` | `<om-graphical-layout>` | `copySelection` or `paste` |
+| `om-go-to-source` | `<om-graphical-layout>` | `goToSource` |
 | `om-tool-change` | `<om-graphical-layout>` | bridge state — mirrors the armed tool into the action panel |
 | `om-action-check` | `<om-action-panel>` | `actionCheck` |
 | `om-action-simulate` | `<om-action-panel>` | `actionSimulate` |
@@ -110,6 +111,7 @@ answer all four.
 | `addComponent` | `{ className, position }` | Instantiate a class onto the canvas at `position`. Restriction-gated host-side, which is what lets the icon editor honor it — only a connector gets through. |
 | `changeClassRequest` | `{ componentName, currentClass }` | Swap a sub-component's type. |
 | `copySelection` | `{ keys }` | Copy — the host owns the window-wide clipboard and resolves the keys itself. |
+| `goToSource` | `{ source, fallbackClassName }` | Open an entity's source in a text editor. `source` is the OMC-reported `SourceLocation` the webview already holds on the layout entity (the type's class for go-to-definition, the declaration for go-to-declaration); `fallbackClassName` names the class whose `modelica-source:` view opens when `source.filename` is not a real file on disk. |
 | `paste` | — | Paste the host clipboard into this diagram. |
 
 Each gesture's ordering and icon-mode answers live on its entry in

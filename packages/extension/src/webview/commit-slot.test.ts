@@ -197,6 +197,7 @@ describe("CommitSlot ordering", () => {
     ready: "uiOnly",
     selectionChange: "uiOnly",
     inputFocus: "uiOnly",
+    goToSource: "uiOnly",
     change: "afterCommit",
     connectionCreate: "afterCommit",
     actionCheck: "afterCommit",

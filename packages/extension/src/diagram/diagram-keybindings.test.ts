@@ -34,6 +34,7 @@ const KEYBOUND_KEYS: Record<string, readonly string[]> = {
   "modelica.diagram.sendBackward": ["ctrl+["],
   "modelica.diagram.bringToFront": ["ctrl+shift+]"],
   "modelica.diagram.sendToBack": ["ctrl+shift+["],
+  "modelica.diagram.goToDefinition": ["f12"],
   "modelica.diagram.showKeymapHelp": ["shift+/"],
 };
 

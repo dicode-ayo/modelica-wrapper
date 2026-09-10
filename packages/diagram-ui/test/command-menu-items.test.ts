@@ -35,6 +35,26 @@ describe("commandsToMenuItems", () => {
     expect(items.every((i) => i.disabled === undefined)).toBe(true);
   });
 
+  it("orders the menu groups clipboard → edit → navigate → order", () => {
+    // The registry sorts groups by their token name, so the menu sequence is
+    // an alphabetical consequence of the tokens — this pin makes renaming or
+    // adding a group a deliberate reshuffle instead of a silent one.
+    const items = commandsToMenuItems(
+      registry.commandsFor(
+        "contextMenu",
+        ctx({
+          selectionKind: "shape",
+          hasClipboard: true,
+          hasDefinitionSource: true,
+        }),
+      ),
+    );
+    const groupSequence = items
+      .map((i) => i.group)
+      .filter((g, i, gs) => i === 0 || g !== gs[i - 1]);
+    expect(groupSequence).toEqual(["clipboard", "edit", "navigate", "order"]);
+  });
+
   it("yields no items when nothing is selected", () => {
     expect(
       commandsToMenuItems(

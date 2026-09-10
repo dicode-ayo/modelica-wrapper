@@ -176,6 +176,10 @@
         "title": "Modelica: Send Diagram Shape to Back"
       },
       {
+        "command": "modelica.diagram.goToDefinition",
+        "title": "Modelica: Go to Definition from Diagram"
+      },
+      {
         "command": "modelica.loadLibrary",
         "title": "Modelica: Load Library...",
         "icon": "$(cloud-download)"
@@ -455,6 +459,11 @@
         "command": "modelica.diagram.sendToBack",
         "key": "ctrl+shift+[",
         "mac": "cmd+shift+[",
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
+      },
+      {
+        "command": "modelica.diagram.goToDefinition",
+        "key": "f12",
         "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       },
       {

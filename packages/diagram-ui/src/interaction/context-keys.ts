@@ -21,6 +21,12 @@ export interface ContextEnv {
   vertexTarget: boolean;
   /** The selection is a single line / polygon host shape (enables smooth). */
   polySelection: boolean;
+  /** The selection (or bare canvas) resolves a definition source (enables
+   *  go-to-definition). */
+  hasDefinitionSource: boolean;
+  /** The selected instance carries its own declaration's source (enables
+   *  go-to-declaration). */
+  hasDeclarationSource: boolean;
 }
 
 export interface ContextKeys {
@@ -33,6 +39,8 @@ export interface ContextKeys {
   hasClipboard: boolean;
   vertexTarget: boolean;
   polySelection: boolean;
+  hasDefinitionSource: boolean;
+  hasDeclarationSource: boolean;
 }
 
 export function deriveContextKeys(
@@ -50,6 +58,8 @@ export function deriveContextKeys(
     hasClipboard: env.hasClipboard,
     vertexTarget: env.vertexTarget,
     polySelection: env.polySelection,
+    hasDefinitionSource: env.hasDefinitionSource,
+    hasDeclarationSource: env.hasDeclarationSource,
   };
 }
 

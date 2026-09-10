@@ -18,6 +18,7 @@
 
 import type { DiagramLayout } from "@dicode/omc-client";
 
+import type { GoToSourceRequest } from "../commands/command.js";
 import type { InteractionEvents } from "../interaction/interaction-manager.js";
 import type { DiagramPoint } from "../scene/view-math.js";
 import type { ToolId } from "../interaction/tools.js";
@@ -73,6 +74,12 @@ export type ClipboardRequestDetail =
   { action: "copy"; keys: string[] } | { action: "paste" };
 
 /**
+ * User asked to open an entity's source. Editors live host-side, so the
+ * layout reports the already-resolved location rather than opening anything.
+ */
+export type GoToSourceRequestDetail = GoToSourceRequest;
+
+/**
  * Event-name → detail-type map. Source of truth shared by:
  *   - `emit<K extends LayoutEventName>(name, detail)` inside the component,
  *   - external listeners typed `CustomEvent<LayoutEvents["om-foo"]>`.
@@ -87,6 +94,7 @@ export interface LayoutEvents {
   "om-tool-change": ToolChangeDetail;
   "om-change-class-request": ChangeClassRequestDetail;
   "om-clipboard-request": ClipboardRequestDetail;
+  "om-go-to-source": GoToSourceRequestDetail;
 }
 
 export type LayoutEventName = keyof LayoutEvents;
