@@ -5,6 +5,7 @@ import { buildHitTube } from "../base/hit-tube.js";
 import {
   DEFAULT_DASH_GAP,
   DEFAULT_DASH_SIZE,
+  strokeDashedPath,
 } from "../primitives/shape-utils.js";
 
 /**
@@ -201,10 +202,11 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
 }
 
 /**
- * Hand-rolled dash segmentation (Pixi has no dashed stroke). The dash phase
- * carries continuously across vertices (`covered`, below) rather than
- * restarting at each one, so a flattened curve — whose vertices are samples,
- * not corners — dashes correctly instead of drawing solid (issue #621).
+ * Hand-rolled dash segmentation (Pixi has no dashed stroke). The phase
+ * carries across vertices, so a path whose vertices are curve samples rather
+ * than corners dashes by arc length. A corner route therefore has no dash
+ * break at its corners, and a stub shorter than the run it lands in draws
+ * nothing.
  *
  * With a `worldPerPixel`, one dash+gap period is `(DEFAULT_DASH_SIZE +
  * DEFAULT_DASH_GAP) * worldPerPixel` — a fixed on-screen size, so the dash
@@ -218,11 +220,6 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
  * always the diagram root (`<om-connection>` renders directly under
  * `<om-scene>`, never nested under a component's scaled icon container), so
  * that scale is always 1 and the divide-out would be a no-op.
- *
- * Mirrors `shape-utils.ts`'s `strokeDashedPath` (which already gets this
- * right for filled-shape strokes) rather than merging into it — the two
- * derive their period/run lengths differently and stay deliberately
- * separate; only the continuous-phase walk is shared in shape.
  */
 function appendDashedPath(
   g: Graphics,
@@ -253,41 +250,5 @@ function appendDashedPath(
   );
   const run =
     (DEFAULT_DASH_SIZE * period) / (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP);
-  const runs = [run, period - run];
-
-  let runIdx = 0;
-  let runLen = runs[0] ?? run;
-  let covered = 0;
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    if (a === undefined || b === undefined) {
-      continue;
-    }
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    const len = Math.hypot(dx, dy);
-    if (len === 0) {
-      continue;
-    }
-    const nx = dx / len;
-    const ny = dy / len;
-    let pos = 0;
-    while (pos < len - 1e-9) {
-      const step = Math.min(len - pos, runLen - covered);
-      if (runIdx % 2 === 0) {
-        g.moveTo(a[0] + pos * nx, a[1] + pos * ny).lineTo(
-          a[0] + (pos + step) * nx,
-          a[1] + (pos + step) * ny,
-        );
-      }
-      pos += step;
-      covered += step;
-      if (covered >= runLen - 1e-9) {
-        covered = 0;
-        runIdx = (runIdx + 1) % runs.length;
-        runLen = runs[runIdx] ?? run;
-      }
-    }
-  }
+  strokeDashedPath(g, points, [run, period - run]);
 }

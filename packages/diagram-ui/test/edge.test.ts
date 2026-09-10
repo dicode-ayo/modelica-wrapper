@@ -10,6 +10,12 @@ import { buildHitTube } from "../src/base/hit-tube.js";
 import { buildEdge } from "../src/connection/edge-build.js";
 import { CORNER_ROUTE } from "./harness/layout-fixtures.js";
 import { parseCssColor } from "../src/connection/parse-color.js";
+import { smoothLinePoints } from "@dicode/diagram-svg";
+
+import {
+  DEFAULT_DASH_GAP,
+  DEFAULT_DASH_SIZE,
+} from "../src/primitives/shape-utils.js";
 import { dashCount, dashLength, pathVertices } from "./pixi-dash.helper.js";
 
 const teardowns: Array<() => void> = [];
@@ -108,13 +114,11 @@ describe("buildEdge", () => {
     expect(dashCount(result.line)).toBeGreaterThan(1);
   });
 
-  it("keeps a continuous dash phase across densely-sampled vertices instead of drawing solid (issue #621)", () => {
-    // Mimics a flattened Smooth.Bezier curve: every segment is far shorter
-    // than one dash period. Restarting the phase at each vertex (the bug)
-    // forces at least one dash per segment, each nearly filling its short
-    // span, so the whole path draws solid; carrying the phase across
-    // vertices instead reproduces the same dash rhythm a single long
-    // segment would get.
+  it("dashes a densely-sampled path by arc length, not per segment", () => {
+    // Every segment here is far shorter than one dash period, as a
+    // flattened Smooth.Bezier curve's are. Phase carried across vertices
+    // gives the same rhythm one long segment would get: 4-unit runs every
+    // 7 units, so 14 whole dashes plus a 2-unit tail = 58.
     const total = 100;
     const samples: Point[] = [];
     for (let i = 0; i <= 200; i++) {
@@ -126,12 +130,27 @@ describe("buildEdge", () => {
       worldPerPixel: 1, // period = (4 + 3) * 1 = 7, run = 4
     });
     if (result === null) throw new Error("expected a clocked edge");
+    expect(dashLength(result.line)).toBeCloseTo(58, 6);
+  });
 
-    // A dash pattern covers run/period (~57%) of the path; the pre-fix
-    // per-segment restart covers effectively all of it.
-    const drawn = dashLength(result.line);
-    expect(drawn).toBeGreaterThan(total * 0.3);
-    expect(drawn).toBeLessThan(total * 0.7);
+  it("drops a corner stub that falls inside the run it lands in", () => {
+    // The cost of carrying phase across vertices: a corner is no longer a
+    // dash break, so a stub shorter than the remaining gap draws nothing.
+    // Here the first leg ends 1 unit into a 3-unit gap and the 2-unit stub
+    // fits entirely inside the rest of it.
+    const result = buildEdge(new Container(), "clocked-stub", {
+      points: [
+        [0, 0],
+        [5, 0],
+        [5, 2],
+      ],
+      clocked: true,
+      worldPerPixel: 1,
+    });
+    if (result === null) throw new Error("expected a clocked edge");
+    expect(dashLength(result.line)).toBeCloseTo(4, 6);
+    // Nothing at all is drawn on the vertical stub.
+    expect(pathVertices(result.line).every(([, y]) => y === 0)).toBe(true);
   });
 });
 
@@ -201,6 +220,35 @@ describe("<om-edge>", () => {
     scene.appendChild(edge);
     await edge.updateComplete;
     expect(edge.edgeMesh).not.toBeNull();
+  });
+
+  it("dashes a Smooth.Bezier route rather than drawing it solid", async () => {
+    // The end #621 is actually about: <om-edge> flattens the curve to 16
+    // samples per cubic, so the dashed stroke walks sample joints, not
+    // corners. A dash cycle draws DEFAULT_DASH_SIZE of every
+    // DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP, whatever the period works out
+    // to, and the tail is at most one run short of that share.
+    const scene = await mountScene();
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.nodeId = "curve";
+    edge.path = CORNER_ROUTE;
+    edge.smooth = "Bezier";
+    edge.clocked = true;
+    scene.appendChild(edge);
+    await edge.updateComplete;
+
+    const line = edge.edgeMesh?.line;
+    if (!line) throw new Error("expected an edge line");
+    const curve = smoothLinePoints(CORNER_ROUTE);
+    let curveLength = 0;
+    for (let i = 1; i < curve.length; i++) {
+      const a = curve[i - 1];
+      const b = curve[i];
+      if (a === undefined || b === undefined) continue;
+      curveLength += Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }
+    const duty = DEFAULT_DASH_SIZE / (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP);
+    expect(dashLength(line) / curveLength).toBeCloseTo(duty, 1);
   });
 
   it("reveals the hit tube while hovered and hides it otherwise", async () => {

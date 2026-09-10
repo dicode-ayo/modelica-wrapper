@@ -30,9 +30,10 @@ export function pathVertices(g: Graphics): Array<[number, number]> {
     });
 }
 
-/** Total on-screen length actually drawn by a dashed `Graphics`: each
- *  `moveTo`+`lineTo` pair is one drawn run, so this sums their lengths —
- *  a solid line draws its whole extent, a dashed one only a fraction. */
+/** Total path length actually drawn by a dashed `Graphics`, in the same
+ *  units its coordinates carry: each `moveTo`+`lineTo` pair is one drawn
+ *  run, so this sums their lengths — a solid line draws its whole extent,
+ *  a dashed one only a fraction. */
 export function dashLength(g: Graphics): number {
   let total = 0;
   let from: [number, number] | undefined;

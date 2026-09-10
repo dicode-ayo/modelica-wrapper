@@ -567,7 +567,16 @@ function strokePath(
 /** Emit the dash / gap runs in `runs` (even indices draw, odd skip) along the
  *  polyline by accumulated arc length, cycling the pattern so its phase is
  *  continuous across segment joints. Returns `false` when nothing was drawn. */
-function strokeDashedPath(
+/**
+ * Stroke `points` as dashes cycling `runs` (even indices draw, odd skip),
+ * with the phase carried across segment joints rather than restarting at
+ * each one — a path whose vertices are curve samples must dash by arc
+ * length, not per segment. Returns whether anything was drawn.
+ *
+ * `runs` is the caller's: `buildStroke` keys it off `LinePattern`, and
+ * `edge-build.ts` derives a single dash/gap pair from `worldPerPixel`.
+ */
+export function strokeDashedPath(
   g: Graphics,
   points: ReadonlyArray<readonly [number, number]>,
   runs: readonly number[],
