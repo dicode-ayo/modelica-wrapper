@@ -39,6 +39,11 @@
       "automergeType": "branch"
     },
     {
+      "description": "Hold vscode and @types/vscode at the version the e2e harness can actually run. code-server trails VSCode by at least one release, and a code-server whose bundled VSCode does not satisfy engines.vscode gates the extension out of the scan, so the whole e2e suite fails. Bump these by hand together with the code-server pin in ci.yml and packages/extension/e2e/README.md.",
+      "matchPackageNames": ["vscode", "@types/vscode"],
+      "enabled": false
+    },
+    {
       "description": "Label micromamba tag bumps and say plainly that the digests need refreshing, since Renovate cannot compute them.",
       "matchPackageNames": ["mamba-org/micromamba-releases"],
       "groupName": "micromamba",

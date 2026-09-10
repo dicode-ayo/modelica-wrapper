@@ -118,8 +118,11 @@ Shared helpers (`helpers.ts`) provide `waitForWorkbench`, `workbenchUrl`,
 
 ## Prerequisites
 
-- `code-server` on `$PATH` (verified against `4.108.0` / VSCode `1.108.0`,
-  compatible with the extension's `engines.vscode: ^1.95.0`).
+- `code-server` on `$PATH` (verified against `4.136.2` / VSCode `1.136.2`).
+  code-server's bundled VSCode must satisfy the extension's `engines.vscode`,
+  or code-server gates the extension out of the scan and every spec here fails
+  with the extension simply absent. code-server trails VSCode by a release or
+  more, so `engines.vscode` cannot track the newest VSCode minor.
 - Playwright Chromium cached at `~/.cache/ms-playwright/chromium-*` (no browser
   download is performed by this harness).
 - The extension must be built first — `out/extension.js` must exist. Run
