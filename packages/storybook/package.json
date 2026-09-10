@@ -21,11 +21,11 @@
     "@dicode/ui-common": "workspace:*"
   },
   "devDependencies": {
-    "@storybook/html": "^10.5.10",
-    "@storybook/web-components": "^10.5.10",
-    "@storybook/web-components-vite": "^10.5.10",
-    "@types/node": "^24.13.3",
-    "storybook": "^10.5.10",
+    "@storybook/html": "^10.6.0",
+    "@storybook/web-components": "^10.6.0",
+    "@storybook/web-components-vite": "^10.6.0",
+    "@types/node": "^24.13.4",
+    "storybook": "^10.6.0",
     "typescript": "^5.9.3",
     "vite": "^8.2.2"
   }

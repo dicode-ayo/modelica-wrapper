@@ -37,7 +37,7 @@
     "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "^24.13.4",
     "@vitest/coverage-istanbul": "^4.1.11",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
