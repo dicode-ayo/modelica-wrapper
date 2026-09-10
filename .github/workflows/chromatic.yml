@@ -26,6 +26,10 @@ jobs:
   publish:
     name: Publish combined Storybook
     runs-on: ubuntu-latest
+    # Chromatic bills per snapshot and a dependency bump almost never moves a
+    # pixel. Skip the PR build; the post-merge main build still snapshots, so a
+    # bump that does change the render surfaces there instead of going unseen.
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'renovate[bot]'
 
     steps:
       - uses: actions/checkout@v7
