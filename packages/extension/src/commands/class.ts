@@ -8,12 +8,15 @@
  * is repointed at the new disk path via `setSourceFile`.
  *
  * Works from:
- *   - title bar (no parent → top-level class)
+ *   - title bar (no node → nests under the workspace root package when the
+ *     root is one, otherwise top-level)
  *   - context menu on a library or package node (any depth → nested class)
  *
  * Refuses when `parent` is a system-library class (loaded from MODELICAPATH) —
  * persisting would extract a new file directly into an installed library's
- * directory.
+ * directory. Also refuses a title-bar invocation whose workspace root is a
+ * package OMC can't resolve to exactly one class — see
+ * {@link resolveRootPackageParent}.
  */
 
 import * as fsp from "node:fs/promises";
@@ -72,57 +75,84 @@ export function registerClassCommands(
 
         const ws = vscode.workspace.workspaceFolders?.[0];
 
-        // First-time-only prompt: offer to make the workspace root a package
-        // when there is no Modelica content yet and this would be top-level.
-        if (!parent && ws && !(await hasModelicaContent(ws.uri.fsPath))) {
-          const folderDefault = sanitizeIdentifier(
-            path.basename(ws.uri.fsPath),
-          );
-          const answer = await vscode.window.showInformationMessage(
-            `The workspace folder has no Modelica content yet. ` +
-              `Initialize "${folderDefault}" as a root package and nest "${name}" inside it?`,
-            { modal: true },
-            "Yes",
-            "No",
-          );
-          if (answer === "Yes") {
-            const pkgName = await vscode.window.showInputBox({
-              prompt: "Root package name",
-              value: folderDefault,
-              validateInput: validateIdentifier,
-            });
-            if (!pkgName) return;
-            const pkgLog = createReplLog(`createClass package ${pkgName}`);
+        if (!parent && ws) {
+          const rootPkg = path.join(ws.uri.fsPath, "package.mo");
+          if (await pathExists(rootPkg)) {
+            // The workspace root is itself a package — per the discovery
+            // rules in workspace-scan.ts, its package.mo is the ONLY entry
+            // point. A within-less write here lands inside that package's own
+            // directory, and OMC refuses to load the whole package on
+            // reload, not just the new file (issue #626). There is exactly
+            // one valid destination: nest under the root package.
             try {
               const c = await ctx.ensureClient();
-              const init = await loadRootPackage(
-                c,
-                ws.uri,
-                pkgName,
-                ctx.selfWriteGuard,
-              );
-              if (!init.success) {
-                pkgLog.error(init.errorString);
+              const resolved = await resolveRootPackageParent(c, rootPkg);
+              if (!resolved.ok) {
                 await vscode.window.showErrorMessage(
-                  `Modelica: failed to initialize workspace package: ${init.errorString}`,
+                  `Modelica: cannot create a top-level class here — ${resolved.reason}.`,
                 );
                 return;
               }
-              pkgLog.success(`initialized workspace as package ${pkgName}`);
-              parent = pkgName;
-              // The root listing changed the moment the package loaded;
-              // firing now keeps the package visible even if creating the
-              // class inside it fails below.
-              ctx.libraryTree.childrenChanged(null);
+              parent = resolved.parent;
             } catch (err) {
-              pkgLog.error((err as Error).message);
               await vscode.window.showErrorMessage(
-                `Modelica: failed to initialize workspace package: ${(err as Error).message}`,
+                `Modelica: cannot create a top-level class here — ${(err as Error).message}.`,
               );
               return;
             }
+          } else if (!(await hasModelicaContent(ws.uri.fsPath))) {
+            // First-time-only prompt: offer to make the workspace root a
+            // package when there is no Modelica content yet and this would
+            // be top-level.
+            const folderDefault = sanitizeIdentifier(
+              path.basename(ws.uri.fsPath),
+            );
+            const answer = await vscode.window.showInformationMessage(
+              `The workspace folder has no Modelica content yet. ` +
+                `Initialize "${folderDefault}" as a root package and nest "${name}" inside it?`,
+              { modal: true },
+              "Yes",
+              "No",
+            );
+            if (answer === "Yes") {
+              const pkgName = await vscode.window.showInputBox({
+                prompt: "Root package name",
+                value: folderDefault,
+                validateInput: validateIdentifier,
+              });
+              if (!pkgName) return;
+              const pkgLog = createReplLog(`createClass package ${pkgName}`);
+              try {
+                const c = await ctx.ensureClient();
+                const init = await loadRootPackage(
+                  c,
+                  ws.uri,
+                  pkgName,
+                  ctx.selfWriteGuard,
+                );
+                if (!init.success) {
+                  pkgLog.error(init.errorString);
+                  await vscode.window.showErrorMessage(
+                    `Modelica: failed to initialize workspace package: ${init.errorString}`,
+                  );
+                  return;
+                }
+                pkgLog.success(`initialized workspace as package ${pkgName}`);
+                parent = pkgName;
+                // The root listing changed the moment the package loaded;
+                // firing now keeps the package visible even if creating the
+                // class inside it fails below.
+                ctx.libraryTree.childrenChanged(null);
+              } catch (err) {
+                pkgLog.error((err as Error).message);
+                await vscode.window.showErrorMessage(
+                  `Modelica: failed to initialize workspace package: ${(err as Error).message}`,
+                );
+                return;
+              }
+            }
+            // "No" or dismiss: proceed as top-level (parent stays undefined).
           }
-          // "No" or dismiss: proceed as top-level (parent stays undefined).
         }
 
         const qualified = parent ? `${parent}.${name}` : name;
@@ -195,6 +225,50 @@ export function registerClassCommands(
       },
     ),
   ];
+}
+
+/** OMC surface {@link resolveRootPackageParent} needs. `OmcClient` satisfies it. */
+export interface RootPackageClient {
+  parseFile(input: { fileName: string }): Promise<{ classNames: string[] }>;
+}
+
+/**
+ * The class `rootPkg` (an already-confirmed `<workspaceRoot>/package.mo`)
+ * declares — the one destination a `view/title` invocation with no tree node
+ * can mean once the workspace root is itself a package (issue #626).
+ * Refuses rather than guessing when the file doesn't parse to exactly one
+ * top-level class.
+ */
+export async function resolveRootPackageParent(
+  client: RootPackageClient,
+  rootPkg: string,
+): Promise<{ ok: true; parent: string } | { ok: false; reason: string }> {
+  let classNames: string[];
+  try {
+    ({ classNames } = await client.parseFile({ fileName: rootPkg }));
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `could not read ${rootPkg}'s class name (${(err as Error).message})`,
+    };
+  }
+  if (classNames.length !== 1) {
+    return {
+      ok: false,
+      reason:
+        classNames.length === 0
+          ? `${rootPkg} declares no class OMC could parse`
+          : `${rootPkg} declares more than one top-level class (${classNames.join(", ")})`,
+    };
+  }
+  const [name] = classNames;
+  if (name === undefined) {
+    return {
+      ok: false,
+      reason: `${rootPkg} declares no class OMC could parse`,
+    };
+  }
+  return { ok: true, parent: name };
 }
 
 function defaultPlaceholder(kind: ClassKind): string {

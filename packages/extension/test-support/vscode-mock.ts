@@ -328,6 +328,14 @@ export function setFindFilesResult(paths: string[]): void {
   foundFiles = paths;
 }
 
+/** Folders `workspace.workspaceFolders` reports; `undefined` (no workspace open) by default. */
+let currentWorkspaceFolders: Array<{ uri: UriImpl }> | undefined;
+
+/** Set the mock's `workspace.workspaceFolders` to one folder per fs path. */
+export function setWorkspaceFolders(paths: string[]): void {
+  currentWorkspaceFolders = paths.map((p) => ({ uri: UriImpl.file(p) }));
+}
+
 /**
  * Minimal `window` namespace. The message helpers record their args on a
  * module-level log so unit tests can assert which toast a code path
@@ -525,6 +533,9 @@ export function emitFileDelete(fsPath: string): void {
 }
 
 export const workspace = {
+  get workspaceFolders(): Array<{ uri: UriImpl }> | undefined {
+    return currentWorkspaceFolders;
+  },
   onDidSaveTextDocument(listener: (document: unknown) => void): Disposable {
     return register(workspaceListeners.save, listener);
   },
@@ -946,6 +957,7 @@ const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 export function resetCommands(): void {
   registeredCommands.clear();
   promptAnswers.length = 0;
+  currentWorkspaceFolders = undefined;
 }
 
 /** Run a registered command, or throw when nothing registered that id. */
