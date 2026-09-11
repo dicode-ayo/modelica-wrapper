@@ -22,6 +22,7 @@
 
 import type { OmcFunction } from "./commands.js";
 import { asString, parseLeading } from "./parse.js";
+import type { OmcFnName } from "./registry.js";
 
 /** What a mutation touched, as far as the command string can tell. */
 export type MutationScope =
@@ -296,6 +297,35 @@ export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
   deltaSimulationResults: "readOnly",
   diffSimulationResults: "readOnly",
 };
+
+/**
+ * Registry entries that compose several OMC calls and so have no `OmcFunction`
+ * name to classify. They never reach {@link mutationFor} — the calls they make
+ * announce themselves — but a caller asking whether a *registry* function
+ * mutates still needs an answer for them.
+ *
+ * Typed as exhaustive over the difference between the two name sets, so a new
+ * composite wrapper fails the build until it is classified here.
+ */
+const COMPOSITES: Record<
+  Exclude<OmcFnName, OmcFunction>,
+  "readOnly" | "mutates"
+> = {
+  writeClassGraphics: "mutates",
+  setFullDocumentationAnnotation: "mutates",
+};
+
+/**
+ * Whether `name` changes nothing any cache derives from a class. Total over the
+ * registry, unlike {@link MUTATIONS}, which is keyed by the raw OMC command
+ * names. Drives the `readOnlyHint` published to MCP clients, so the hint and
+ * the invalidation it describes read the same table.
+ */
+export function isReadOnlyFunction(name: OmcFnName): boolean {
+  return isOmcFunction(name)
+    ? MUTATIONS[name] === "readOnly"
+    : COMPOSITES[name] === "readOnly";
+}
 
 /** Narrows a parsed command name to a function the table classifies. */
 function isOmcFunction(name: string): name is OmcFunction {

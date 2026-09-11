@@ -40,6 +40,22 @@ import { addClassAnnotation } from "./addClassAnnotation.js";
 
 const NonNegativeIndex = z.number().int().nonnegative();
 
+/**
+ * The `coordinateSystem` fields a caller may set. Every field is optional and
+ * an omitted one keeps its current value: `addClassAnnotation` replaces the
+ * whole layer annotation, so treating omission as "clear" would silently drop
+ * a field the caller never mentioned.
+ */
+const CoordinateSystemInput = z.object({
+  extent: z
+    .tuple([z.number(), z.number(), z.number(), z.number()])
+    .optional()
+    .describe("Layer extent as [x1, y1, x2, y2]."),
+  preserveAspectRatio: z.boolean().optional(),
+  initialScale: z.number().optional(),
+  grid: z.tuple([z.number(), z.number()]).optional(),
+});
+
 export const WriteClassGraphicsInputSchema = z.object({
   typeName: z.string().describe("Class whose graphics layer is edited."),
   layer: z
@@ -59,8 +75,14 @@ export const WriteClassGraphicsInputSchema = z.object({
         from: NonNegativeIndex,
         to: NonNegativeIndex,
       }),
+      z.object({
+        kind: z.literal("setCoordinateSystem"),
+        coordinateSystem: CoordinateSystemInput,
+      }),
     ])
-    .describe("Edit to apply to the layer's positional graphics list."),
+    .describe(
+      "Edit to apply to the layer's graphics list or coordinate system.",
+    ),
 });
 export type WriteClassGraphicsInput = z.infer<
   typeof WriteClassGraphicsInputSchema
@@ -72,7 +94,7 @@ export type WriteClassGraphicsOutput = z.infer<
 >;
 
 export const WriteClassGraphicsDescription =
-  "Add, modify, or delete one graphic primitive in a class's Icon or Diagram annotation, preserving the other shapes and the coordinate system.";
+  "Add, modify, delete, or reorder one graphic primitive in a class's Icon or Diagram annotation, or set that layer's coordinate system, preserving whatever the edit does not name.";
 
 /**
  * Reconstruct the `coordinateSystem(...)` clause, carrying through every
@@ -95,6 +117,20 @@ function coordinateSystemClause(cs: CoordinateSystemFields): string | null {
   if (cs.grid) parts.push(`grid={${cs.grid[0]}, ${cs.grid[1]}}`);
 
   return parts.length > 0 ? `coordinateSystem(${parts.join(", ")})` : null;
+}
+
+/** Overlay the fields the caller named onto the layer's current ones. */
+function mergeCoordinateSystem(
+  current: CoordinateSystemFields,
+  update: z.infer<typeof CoordinateSystemInput>,
+): CoordinateSystemFields {
+  return {
+    extent: update.extent ?? current.extent,
+    preserveAspectRatio:
+      update.preserveAspectRatio ?? current.preserveAspectRatio,
+    initialScale: update.initialScale ?? current.initialScale,
+    grid: update.grid ?? current.grid,
+  };
 }
 
 export async function writeClassGraphics(
@@ -121,15 +157,18 @@ export async function writeClassGraphics(
       throw outOfRange(op.from >= shapes.length ? op.from : op.to);
     }
     shapes.splice(0, shapes.length, ...moved);
-  } else {
+  } else if (op.kind === "modify" || op.kind === "delete") {
     if (op.index >= shapes.length) throw outOfRange(op.index);
     if (op.kind === "modify") shapes[op.index] = op.shape;
     else shapes.splice(op.index, 1);
   }
 
+  const current = annotationCoordinateSystem(annotation);
   const head = layer === "icon" ? "Icon" : "Diagram";
   const coordSys = coordinateSystemClause(
-    annotationCoordinateSystem(annotation),
+    op.kind === "setCoordinateSystem"
+      ? mergeCoordinateSystem(current, op.coordinateSystem)
+      : current,
   );
   const parts = coordSys ? [coordSys] : [];
   // An empty `graphics={}` array trips the same empty-array typing rule OMC

@@ -28,6 +28,7 @@ export {
 
 // --- Mutation announcements (see client.onMutation) ---
 export {
+  isReadOnlyFunction,
   mutationFor,
   type MutationScope,
   type OmcMutation,
