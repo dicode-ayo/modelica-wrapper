@@ -10,10 +10,9 @@
  * extra fields can `.extend(...)` these (e.g. `TypeNameAndModifierInput.extend({
  * expr: z.string() })`).
  *
- * These are strict, as every registry input schema is. `invoke()` is the
- * validated boundary, and an OMC alias that reached it unnormalized would
- * otherwise be dropped rather than refused — leaving a function with an
- * argument-less overload to answer a question nobody asked.
+ * `invoke()` is the validated boundary, and an OMC alias that reached it
+ * unnormalized would otherwise be dropped rather than refused — leaving a
+ * function with an argument-less overload to answer a question nobody asked.
  *
  * Every field carries a generic `.describe(...)` for the MCP-generation
  * pipeline. Per-function files only override these when the OMC docs say

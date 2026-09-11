@@ -138,9 +138,8 @@ describe("registry", () => {
       const result = REGISTRY[name].inputSchema.safeParse({
         __notAnArgument__: "x",
       });
-      const codes = result.success
-        ? []
-        : result.error.issues.map((issue) => issue.code);
+      expect(result.success, name).toBe(false);
+      const codes = result.error?.issues.map((issue) => issue.code) ?? [];
       expect(codes, name).toContain("unrecognized_keys");
     }
   });

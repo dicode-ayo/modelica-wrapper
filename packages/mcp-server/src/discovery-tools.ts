@@ -83,10 +83,8 @@ function inputKeys(fn: OmcFnName): ReadonlySet<string> {
 /**
  * Argument names `fn` does not have.
  *
- * The input schema rejects these on its own, naming only the offending key.
- * Answering with the arguments the function does take is what turns a caller
- * working from OMC's own spellings — `cl` for `typeName` — into a corrected
- * retry rather than a second guess.
+ * The input schema rejects these on its own, naming only the offending key;
+ * this names the arguments the function does take.
  */
 function unknownArguments(
   fn: OmcFnName,
