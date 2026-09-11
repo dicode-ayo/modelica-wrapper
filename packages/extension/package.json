@@ -108,8 +108,8 @@
         "title": "Modelica: Set Up OpenModelica"
       },
       {
-        "command": "modelica.mcp.copyClientConfig",
-        "title": "Modelica: Copy MCP Server Configuration"
+        "command": "modelica.mcp.writeClientConfig",
+        "title": "Modelica: Write MCP Server Configuration for Other Clients"
       },
       {
         "command": "modelica.installOmc",

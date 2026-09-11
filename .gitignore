@@ -35,6 +35,11 @@ packages/extension/grammar/*.wasm*
 # OpenModelica workspace build cache (created by the extension in any opened folder)
 .modelica/
 
+# MCP client config written by "Modelica: Write MCP Server Configuration for
+# Other Clients". It carries the session's bearer token, and the port it names
+# dies with the window that wrote it.
+.mcp.json
+
 # Coverage reports (`pnpm test:coverage`), and the CRAP report derived from them.
 coverage/
 crap-report/

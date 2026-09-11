@@ -25,7 +25,7 @@ import * as vscode from "vscode";
 import { createMcpHttpHost, type McpToolDeps } from "@dicode/modelica-mcp";
 
 import { log } from "../logger.js";
-import { registerCopyClientConfig } from "./client-config.js";
+import { registerWriteClientConfig } from "./client-config.js";
 
 /** Matches `contributes.mcpServerDefinitionProviders[0].id` in package.json. */
 export const MCP_PROVIDER_ID = "modelica.omc";
@@ -79,10 +79,10 @@ export function registerMcpServerProvider(
     MCP_PROVIDER_ID,
     definitions,
   );
-  const copyConfig = registerCopyClientConfig(() => host.start());
+  const writeConfig = registerWriteClientConfig(() => host.start());
 
   return new vscode.Disposable(() => {
-    copyConfig.dispose();
+    writeConfig.dispose();
     provider.dispose();
     void host.dispose();
   });
