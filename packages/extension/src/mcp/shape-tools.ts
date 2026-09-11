@@ -17,7 +17,12 @@
  * `getIconAnnotation` / `getDiagramAnnotation` return.
  */
 
-import type { Extent, Shape } from "@dicode/omc-client";
+import {
+  WriteCoordinateSystemSchema,
+  type Extent,
+  type FilledShape,
+  type Shape,
+} from "@dicode/omc-client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -63,8 +68,6 @@ const filled = {
     .optional()
     .describe("Interior fill pattern, e.g. None, Solid, HorizontalCylinder."),
 };
-
-type Filled = z.infer<z.ZodObject<typeof filled>>;
 
 /** `[x1, y1, x2, y2]` as the nested pair Modelica and `ShapeSchema` use. */
 function extentOf(flat: [number, number, number, number]): Extent {
@@ -125,13 +128,12 @@ const RemoveShapeSchema = z.object({
     ),
 });
 
-const CoordinateSystemSchema = z.object({
-  ...placed,
-  extent: FlatExtent.optional(),
-  preserveAspectRatio: z.boolean().optional(),
-  initialScale: z.number().optional(),
-  grid: z.tuple([z.number(), z.number()]).optional(),
-});
+/**
+ * Extends the wrapper's own schema rather than restating it: nothing else would
+ * fail when a field is added there and silently dropped by the rest spread this
+ * tool forwards.
+ */
+const CoordinateSystemSchema = WriteCoordinateSystemSchema.extend(placed);
 
 export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
   /**
@@ -260,12 +262,7 @@ export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
   );
 }
 
-function style(
-  input: Filled,
-): Pick<
-  Extract<Shape, { kind: "rectangle" }>,
-  "lineColor" | "fillColor" | "lineThickness" | "pattern" | "fillPattern"
-> {
+function style(input: FilledShape): FilledShape {
   return {
     lineColor: input.lineColor,
     fillColor: input.fillColor,

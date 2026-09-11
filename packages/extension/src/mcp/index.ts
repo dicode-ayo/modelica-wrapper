@@ -29,8 +29,8 @@ export const MCP_PROVIDER_ID = "modelica.omc";
 const LABEL = "Modelica (OpenModelica)";
 
 /**
- * A URI is required to construct the definition and only known once the server
- * is listening, which `resolveMcpServerDefinition` is what does.
+ * The definition class requires a URI, and the real one is not known until
+ * `resolveMcpServerDefinition` has started the listener.
  */
 const UNRESOLVED = vscode.Uri.parse("http://127.0.0.1/mcp");
 

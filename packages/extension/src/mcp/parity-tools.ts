@@ -1,26 +1,18 @@
 /**
- * The curated tool set, tracking OMEdit's 39 built-in MCP tools.
+ * The curated tool set: one tool per wrapper an OMEdit MCP tool maps onto.
  *
- * Publishing all 202 registry functions is mechanically trivial and wrong:
- * measured as `{name, description, inputSchema}`, the whole registry is ~31.6k
- * tokens of static schema riding along with every request before the model has
- * read a line of Modelica. The curated set is ~4.8k, and it is the only option
- * with an external reference to check completeness against.
+ * The whole registry is ~31.6k tokens of static schema, which rides along with
+ * every request before the model has read a line of Modelica; this set is
+ * ~4.8k. Absent from it are OMEdit's six GUI-level tools (`activeModel`,
+ * `classDiagram`, `iconDiagram`, `showPlot`, `plot`, `resetEnvironment`), which
+ * are not OMC calls, and `getTotalModel` / `resimulate`, which have no wrapper.
  *
- * Each name below is the wrapper OMEdit's own tool maps onto, taken from the
- * mapping table in #576. Six of OMEdit's tools drive its GUI rather than OMC
- * (`activeModel`, `classDiagram`, `iconDiagram`, `showPlot`, `plot`,
- * `resetEnvironment`) and two want wrappers this package does not ship yet
- * (`getTotalModel`, `resimulate`); none of them is here.
+ * `writeClassGraphics` is absent too: it costs 42% of the set on its own, since
+ * every caller pays for every shape's fields. `shape-tools.ts` publishes it as
+ * the seven tools OMEdit spends on the same job.
  *
- * `writeClassGraphics` is absent deliberately. It covers seven OMEdit tools on
- * its own and costs 42% of the whole set — more than the other 29 together —
- * because every caller pays for every shape's fields. `shape-tools.ts` splits
- * it the way OMEdit already had it split.
- *
- * The `readOnlyHint` each tool publishes is derived from the same table
- * invalidation reads, so the hint cannot claim a call is read-only that the
- * refresh treats as a mutation.
+ * `readOnlyHint` reads the same table invalidation reads, so the hint cannot
+ * claim a call is read-only that the refresh treats as a mutation.
  */
 
 import {
@@ -30,7 +22,7 @@ import {
 } from "@dicode/omc-client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import { dispatch, type McpToolDeps } from "./dispatch.js";
+import { dispatchByName, type McpToolDeps } from "./dispatch.js";
 
 export const PARITY_TOOLS: readonly OmcFnName[] = [
   // Browsing and source
@@ -92,7 +84,7 @@ export function registerParityTools(
         inputSchema: entry.inputSchema,
         annotations: { readOnlyHint: isReadOnlyFunction(fn) },
       },
-      async (input: unknown) => dispatch(deps, fn, input),
+      async (input: unknown) => dispatchByName(deps, fn, input),
     );
   }
 }

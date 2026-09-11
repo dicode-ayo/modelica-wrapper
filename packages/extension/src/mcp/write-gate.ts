@@ -11,7 +11,9 @@
  * `MUTATIONS` in `@dicode/omc-client` answers the same question for the *command
  * string*, by argument position. That table cannot be reused here: the gate runs
  * before the call, when only the input object exists, and the wrapper's field
- * order is not its command's argument order.
+ * order is not its command's argument order. The two also disagree on purpose —
+ * `copyClass`, `newModel` and `deleteClass` announce coarsely because no single
+ * command argument names what they touched, while their input objects do.
  *
  * The table is exhaustive over `MutatingFnName` and each field name is checked
  * against that function's own input type, so a new mutating wrapper — or a
@@ -120,18 +122,19 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
   writeClassGraphics: edits("typeName"),
 };
 
-/** The per-function field name widens to a plain string at this boundary. */
+/**
+ * The same table read by a name only known at runtime, which erases the
+ * per-function field-name literals the declaration above is checked against.
+ */
 interface ResolvedClassArgument {
   readonly field: string;
   readonly as: "class" | "element";
   readonly action: WriteAction;
 }
 
-function classArgumentFor(fn: OmcFnName): ResolvedClassArgument | null {
-  return Object.hasOwn(CLASS_ARGUMENTS, fn)
-    ? CLASS_ARGUMENTS[fn as MutatingFnName]
-    : null;
-}
+const BY_NAME: Readonly<
+  Record<string, ResolvedClassArgument | null | undefined>
+> = CLASS_ARGUMENTS;
 
 /**
  * The refusal `fn` earns for `input`, or `undefined` when the call may proceed.
@@ -145,8 +148,8 @@ export async function refusalFor(
   fn: OmcFnName,
   input: unknown,
 ): Promise<string | undefined> {
-  const argument = classArgumentFor(fn);
-  if (argument === null) return undefined;
+  const argument = BY_NAME[fn];
+  if (argument === undefined || argument === null) return undefined;
 
   const raw = (input as Record<string, unknown>)[argument.field];
   if (typeof raw !== "string" || raw === "") return undefined;

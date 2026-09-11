@@ -1551,6 +1551,14 @@ export type OmcOutput<K extends OmcFnName> = Awaited<
 >;
 
 /** Sorted list of every OMC function name. Useful for CLIs and discovery. */
+/**
+ * Narrows an untrusted string to a name {@link REGISTRY} holds — the check any
+ * caller taking a function name from outside the process owes `invoke()`.
+ */
+export function isOmcFnName(name: string): name is OmcFnName {
+  return Object.hasOwn(REGISTRY, name);
+}
+
 export const omcFunctionNames: readonly OmcFnName[] = (
   Object.keys(REGISTRY) as OmcFnName[]
 ).sort();

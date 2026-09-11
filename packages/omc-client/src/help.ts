@@ -121,6 +121,24 @@ export function describeFunctionAsJsonSchema(
 }
 
 /**
+ * The input half of {@link describeFunctionAsJsonSchema}, for a caller that
+ * only needs to know how to make the call. Output schemas are the expensive
+ * ones — `getModelInstance`'s is the largest in the registry — so projecting
+ * both and discarding one is most of the work wasted.
+ */
+export function describeFunctionInputAsJsonSchema(
+  name: OmcFnName,
+): Omit<FunctionJsonSchema, "output"> {
+  const entry = REGISTRY[name];
+  return {
+    name,
+    category: entry.category,
+    description: entry.description,
+    input: toJsonSchema(entry.inputSchema, "input"),
+  };
+}
+
+/**
  * Plain-text help block for a single function. See file-level docstring
  * for the rendered layout.
  */

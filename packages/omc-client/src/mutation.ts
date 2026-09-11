@@ -300,33 +300,24 @@ export const MUTATIONS = {
 
 /**
  * Registry entries that compose several OMC calls and so have no `OmcFunction`
- * name to classify. They never reach {@link mutationFor} — the calls they make
- * announce themselves — but a caller asking whether a *registry* function
- * mutates still needs an answer for them.
- *
- * Typed as exhaustive over the difference between the two name sets, so a new
- * composite wrapper fails the build until it is classified here.
+ * name of their own. They never reach {@link mutationFor} — the calls they make
+ * announce themselves individually — but a caller asking whether a *registry*
+ * function mutates still needs an answer, and for these it is yes: a wrapper
+ * that only read would have nothing to compose.
  */
-const COMPOSITE_READ_ONLY = {
-  writeClassGraphics: false,
-  setFullDocumentationAnnotation: false,
-} as const satisfies Record<Exclude<OmcFnName, OmcFunction>, boolean>;
+type CompositeFnName = Exclude<OmcFnName, OmcFunction>;
 
 /**
- * The registry functions that mutate. Derived from {@link MUTATIONS} and
- * {@link COMPOSITE_READ_ONLY} rather than restated, so a caller keying a table
- * by this type — the MCP server's write gate does — fails the build when a
- * function changes classification or a new one arrives.
+ * The registry functions that mutate. Derived from {@link MUTATIONS} rather
+ * than restated, so a caller keying a table by this type — the MCP server's
+ * write gate does — fails the build when a function changes classification or
+ * a new one arrives.
  */
 export type MutatingFnName =
   | {
       [K in OmcFunction]: (typeof MUTATIONS)[K] extends "readOnly" ? never : K;
     }[OmcFunction]
-  | {
-      [
-        K in keyof typeof COMPOSITE_READ_ONLY
-      ]: (typeof COMPOSITE_READ_ONLY)[K] extends true ? never : K;
-    }[keyof typeof COMPOSITE_READ_ONLY];
+  | CompositeFnName;
 
 /**
  * Whether `name` changes nothing any cache derives from a class. Total over the
@@ -335,9 +326,7 @@ export type MutatingFnName =
  * the invalidation it describes read the same table.
  */
 export function isReadOnlyFunction(name: OmcFnName): boolean {
-  return isOmcFunction(name)
-    ? MUTATIONS[name] === "readOnly"
-    : COMPOSITE_READ_ONLY[name];
+  return isOmcFunction(name) && MUTATIONS[name] === "readOnly";
 }
 
 /** Narrows a parsed command name to a function the table classifies. */

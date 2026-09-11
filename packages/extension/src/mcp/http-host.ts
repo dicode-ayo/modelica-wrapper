@@ -10,7 +10,7 @@
  * VSCode's own MCP HTTP client runs in this same extension host, so loopback
  * reaches it with no CORS and no IPC.
  *
- * The port is ephemeral. OMEdit hardcodes 3000; two windows would collide.
+ * The port is ephemeral, so two windows cannot collide on it.
  *
  * Two things guard the port, which any local process can reach:
  *
@@ -31,6 +31,7 @@ import { isIPv4 } from "node:net";
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
@@ -51,35 +52,40 @@ export interface McpHttpHost {
   dispose: () => Promise<void>;
 }
 
-interface Session {
-  readonly transport: StreamableHTTPServerTransport;
-  readonly close: () => Promise<void>;
+interface Opened {
+  readonly server: Server;
+  readonly endpoint: McpEndpoint;
 }
 
 export function createMcpHttpHost(
   deps: McpToolDeps,
   version: string,
 ): McpHttpHost {
-  const sessions = new Map<string, Session>();
-  let started: Promise<McpEndpoint> | undefined;
-  let listening: Server | undefined;
+  const sessions = new Map<string, StreamableHTTPServerTransport>();
+  let started: Promise<Opened> | undefined;
 
+  /**
+   * One `McpServer` per session: the SDK binds a server to exactly one
+   * transport. A transport that never reports a session id was rejected before
+   * it adopted anything, so its server is closed here rather than left
+   * reachable — and with it the tool closures and `deps` — for the life of the
+   * extension host.
+   */
   const openSession = async (
     req: IncomingMessage,
     res: ServerResponse,
     body: unknown,
   ): Promise<void> => {
     const mcp = buildMcpServer(deps, version);
+    let adopted = false;
     const transport: StreamableHTTPServerTransport =
       new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         // Passed as an option rather than assigned afterwards: the transport
         // reads it once at construction and never consults the property.
         onsessioninitialized: (id: string) => {
-          sessions.set(id, {
-            transport,
-            close: () => mcp.close(),
-          });
+          adopted = true;
+          sessions.set(id, transport);
         },
         onsessionclosed: (id: string) => {
           sessions.delete(id);
@@ -89,7 +95,11 @@ export function createMcpHttpHost(
     // `Transport` declares `onclose?: () => void` while the transport exposes
     // `(() => void) | undefined`, which `exactOptionalPropertyTypes` separates.
     await mcp.connect(transport as unknown as Transport);
-    await transport.handleRequest(req, res, body);
+    try {
+      await transport.handleRequest(req, res, body);
+    } finally {
+      if (!adopted) await mcp.close();
+    }
   };
 
   const handle = async (
@@ -104,10 +114,11 @@ export function createMcpHttpHost(
       res.writeHead(403).end();
       return;
     }
-    // Only a POST carries one, and the transport re-reads the stream itself
-    // for the methods that do not.
-    const body = req.method === "POST" ? await readJsonBody(req) : undefined;
-    if (body instanceof SyntaxError) {
+    // Only a POST carries one, and the transport reads the stream itself for
+    // the methods that do not.
+    const body =
+      req.method === "POST" ? await readJsonBody(req) : { value: undefined };
+    if (body === undefined) {
       res.writeHead(400).end();
       return;
     }
@@ -115,29 +126,38 @@ export function createMcpHttpHost(
     const sessionId = header(req, "mcp-session-id");
     const session =
       sessionId === undefined ? undefined : sessions.get(sessionId);
-    await (session === undefined
-      ? openSession(req, res, body)
-      : session.transport.handleRequest(req, res, body));
+    if (session !== undefined) {
+      await session.handleRequest(req, res, body.value);
+      return;
+    }
+    // An SSE reconnect, a DELETE, or a POST whose session has already been
+    // dropped would each be refused by a transport built to serve it — after a
+    // whole tool set had been registered on the way.
+    if (!isInitializeRequest(body.value)) {
+      res.writeHead(404).end();
+      return;
+    }
+    await openSession(req, res, body.value);
   };
 
   return {
-    start: () => {
-      started ??= listen(handle).then((opened) => {
-        listening = opened.server;
-        return opened.endpoint;
-      });
-      return started;
+    start: async () => {
+      started ??= listen(handle);
+      return (await started).endpoint;
     },
     dispose: async () => {
+      const opening = started;
       started = undefined;
       const open = [...sessions.values()];
       sessions.clear();
-      await Promise.all(open.map((s) => s.close()));
-      const server = listening;
-      listening = undefined;
-      if (server === undefined) return;
+      await Promise.all(open.map((transport) => transport.close()));
+      if (opening === undefined) return;
+      // Awaited rather than read back from a second slot, so a dispose landing
+      // before the listen resolves still closes the socket it opened.
+      const opened = await opening.catch(() => undefined);
+      if (opened === undefined) return;
       await new Promise<void>((resolve) => {
-        server.close(() => {
+        opened.server.close(() => {
           resolve();
         });
       });
@@ -151,9 +171,7 @@ type RequestHandler = (
   token: string,
 ) => Promise<void>;
 
-function listen(
-  handle: RequestHandler,
-): Promise<{ server: Server; endpoint: McpEndpoint }> {
+function listen(handle: RequestHandler): Promise<Opened> {
   const token = randomUUID();
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -196,15 +214,17 @@ function isLoopback(req: IncomingMessage): boolean {
   return isIPv4(address) ? address.startsWith("127.") : address === "::1";
 }
 
-/** The parsed body, or the `SyntaxError` that reading it produced. */
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+/** The body as JSON, or `undefined` when it was not JSON at all. */
+async function readJsonBody(
+  req: IncomingMessage,
+): Promise<{ value: unknown } | undefined> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const raw = Buffer.concat(chunks).toString("utf8");
-  if (raw === "") return undefined;
+  if (raw === "") return { value: undefined };
   try {
-    return JSON.parse(raw);
-  } catch (err) {
-    return err instanceof SyntaxError ? err : new SyntaxError(errorDetail(err));
+    return { value: JSON.parse(raw) };
+  } catch {
+    return undefined;
   }
 }

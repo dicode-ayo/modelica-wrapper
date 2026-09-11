@@ -46,7 +46,7 @@ const NonNegativeIndex = z.number().int().nonnegative();
  * whole layer annotation, so treating omission as "clear" would silently drop
  * a field the caller never mentioned.
  */
-const CoordinateSystemInput = z.object({
+export const WriteCoordinateSystemSchema = z.object({
   extent: z
     .tuple([z.number(), z.number(), z.number(), z.number()])
     .optional()
@@ -55,6 +55,10 @@ const CoordinateSystemInput = z.object({
   initialScale: z.number().optional(),
   grid: z.tuple([z.number(), z.number()]).optional(),
 });
+
+export type WriteCoordinateSystemInput = z.infer<
+  typeof WriteCoordinateSystemSchema
+>;
 
 export const WriteClassGraphicsInputSchema = z.object({
   typeName: z.string().describe("Class whose graphics layer is edited."),
@@ -77,7 +81,7 @@ export const WriteClassGraphicsInputSchema = z.object({
       }),
       z.object({
         kind: z.literal("setCoordinateSystem"),
-        coordinateSystem: CoordinateSystemInput,
+        coordinateSystem: WriteCoordinateSystemSchema,
       }),
     ])
     .describe(
@@ -122,7 +126,7 @@ function coordinateSystemClause(cs: CoordinateSystemFields): string | null {
 /** Overlay the fields the caller named onto the layer's current ones. */
 function mergeCoordinateSystem(
   current: CoordinateSystemFields,
-  update: z.infer<typeof CoordinateSystemInput>,
+  update: WriteCoordinateSystemInput,
 ): CoordinateSystemFields {
   return {
     extent: update.extent ?? current.extent,

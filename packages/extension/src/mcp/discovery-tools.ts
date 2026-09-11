@@ -2,36 +2,33 @@
  * The escape hatch: the ~170 registry functions the curated set leaves out,
  * reachable on demand rather than published.
  *
- * This is deliberately something OMEdit declined to ship, and what makes it
- * defensible here is that it is not arbitrary scripting. `invoke()` validates
- * against the per-function zod schema, the `MutationEntry` table still
- * classifies the call and drives invalidation, and a mutating call still
- * derives a `WriteVerdict`. `repl.execute` — a raw command string with none of
- * that — is what this is not.
+ * `omc_invoke` is not arbitrary scripting the way a raw command string is.
+ * `invoke()` validates against the per-function zod schema, the `MutationEntry`
+ * table still classifies the call and drives invalidation, and a mutating call
+ * still derives a `WriteVerdict`.
  *
- * Listings are category-scoped because a flat one is not viable inline: the
- * 202 names alone run ~1,000 tokens, and with one-line descriptions ~5,800.
- * A category ranges from ~200 tokens (`solver`) to ~1,800 (`contents`).
+ * Listings are category-scoped because a flat one is not viable inline: the 202
+ * names alone run ~1,000 tokens, and with one-line descriptions ~5,800. A
+ * category ranges from ~200 (`solver`) to ~1,800 (`contents`).
  *
- * `omc_invoke` is annotated as mutating. It is read-only or mutating depending
- * on `fn`, MCP annotations are per-tool rather than per-call, and the honest
- * static answer for a tool that can mutate is that it mutates. The per-call
- * truth stays where it lives for every other tool — the `MutationEntry` table.
+ * `omc_invoke` is annotated as mutating because it can mutate: whether it does
+ * depends on `fn`, and MCP annotations are per-tool rather than per-call. The
+ * per-call answer comes from the `MutationEntry` table, as everywhere else.
  */
 
 import {
-  describeFunctionAsJsonSchema,
+  describeFunctionInputAsJsonSchema,
   functionsByCategory,
+  isOmcFnName,
   omcFunctionNames,
   renderCategoryHelp,
   renderOverview,
-  type OmcFnName,
 } from "@dicode/omc-client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import {
-  dispatch,
+  dispatchByName,
   errorResult,
   textResult,
   type McpToolDeps,
@@ -63,14 +60,13 @@ const InvokeSchema = z.object({
     ),
 });
 
-function isOmcFnName(name: string): name is OmcFnName {
-  return (omcFunctionNames as readonly string[]).includes(name);
-}
+const CATEGORIES = Object.keys(functionsByCategory()).sort().join(", ");
 
 /** The refusal for a name the registry does not hold, naming its neighbours. */
 function unknownFunction(name: string): string {
+  const needle = name.toLowerCase();
   const close = omcFunctionNames
-    .filter((n) => n.toLowerCase().includes(name.toLowerCase()))
+    .filter((n) => n.toLowerCase().includes(needle))
     .slice(0, 10);
   const hint =
     close.length > 0
@@ -94,9 +90,9 @@ export function registerDiscoveryTools(
     async ({ category }: z.infer<typeof ListFunctionsSchema>) => {
       if (category === undefined) return textResult(renderOverview());
       const help = renderCategoryHelp(category);
-      if (help !== undefined) return textResult(help);
-      const known = Object.keys(functionsByCategory()).sort().join(", ");
-      return errorResult(`No category named ${category}. Known: ${known}.`);
+      return help === undefined
+        ? errorResult(`No category named ${category}. Known: ${CATEGORIES}.`)
+        : textResult(help);
     },
   );
 
@@ -110,13 +106,8 @@ export function registerDiscoveryTools(
     },
     async ({ name }: z.infer<typeof DescribeFunctionSchema>) => {
       if (!isOmcFnName(name)) return errorResult(unknownFunction(name));
-      // Input only: the output side of `getModelInstance` and
-      // `getModelInstanceAnnotation` carries a `.transform()` with no JSON
-      // Schema equivalent, and it is not what a caller needs to make the call.
-      const { category, description, input } =
-        describeFunctionAsJsonSchema(name);
       return textResult(
-        JSON.stringify({ name, category, description, input }, null, 2),
+        JSON.stringify(describeFunctionInputAsJsonSchema(name)),
       );
     },
   );
@@ -131,7 +122,7 @@ export function registerDiscoveryTools(
     },
     async ({ fn, input }: z.infer<typeof InvokeSchema>) =>
       isOmcFnName(fn)
-        ? dispatch(deps, fn, input)
+        ? dispatchByName(deps, fn, input)
         : errorResult(unknownFunction(fn)),
   );
 }

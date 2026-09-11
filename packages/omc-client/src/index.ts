@@ -44,6 +44,7 @@ export {
 // --- Generic dispatcher with runtime input + output validation ---
 export {
   REGISTRY,
+  isOmcFnName,
   omcFunctionNames,
   functionsByCategory,
   type OmcFnName,
@@ -55,6 +56,7 @@ export {
 export {
   describeFunction,
   describeFunctionAsJsonSchema,
+  describeFunctionInputAsJsonSchema,
   renderFunctionHelp,
   renderCategoryHelp,
   renderOverview,
@@ -150,6 +152,7 @@ export {
   type Extent,
   type Color,
   type LineStyle,
+  type FilledShape,
   type LineShape,
   type PolygonShape,
   type RectangleShape,
@@ -240,6 +243,11 @@ export {
 } from "./api/diagram/annotation-layout.js";
 
 export { shapeToRecord } from "./api/diagram/shape-serialize.js";
+
+export {
+  WriteCoordinateSystemSchema,
+  type WriteCoordinateSystemInput,
+} from "./api/editing/writeClassGraphics.js";
 
 // --- Functional API (re-export by category) ---
 export * as browsing from "./api/browsing/index.js";

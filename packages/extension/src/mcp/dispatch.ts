@@ -43,11 +43,29 @@ export function errorResult(message: string): CallToolResult {
  * Run `fn` with `input`, refusing first if the class it would write is not the
  * user's to change.
  *
+ * `input` is checked against the function's own type, which is what makes the
+ * compiler the drift check for every tool that composes a call at authoring
+ * time — the seven shape tools build a `writeClassGraphics` op by hand, and a
+ * renamed field in that op would otherwise reach a model before it reached a
+ * test. {@link dispatchByName} is the way in for a name only known at runtime.
+ */
+export async function dispatch<K extends OmcFnName>(
+  deps: McpToolDeps,
+  fn: K,
+  input: OmcInput<K>,
+): Promise<CallToolResult> {
+  return dispatchByName(deps, fn, input);
+}
+
+/**
+ * {@link dispatch} for a function named by the caller rather than by the code:
+ * the parity tools, which loop over their own list, and `omc_invoke`.
+ *
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
  * fault.
  */
-export async function dispatch(
+export async function dispatchByName(
   deps: McpToolDeps,
   fn: OmcFnName,
   input: unknown,
@@ -62,7 +80,7 @@ export async function dispatch(
     // the way `OmcClient.invoke` widens its own dispatch.
     type AnyInvoke = (fn: OmcFnName, input: unknown) => Promise<unknown>;
     const output = await (client.invoke as AnyInvoke)(fn, input);
-    return textResult(JSON.stringify(output, null, 2));
+    return textResult(JSON.stringify(output));
   } catch (err) {
     return errorResult(errorDetail(err));
   }

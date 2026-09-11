@@ -224,6 +224,53 @@ describe("the shape tools", () => {
     ]);
   });
 
+  it("address a shape by its position in the layer's graphics list", async () => {
+    const mcp = await connect();
+
+    await mcp.callTool({
+      name: "removeShape",
+      arguments: { typeName: "Demo.Circuit", layer: "icon", index: 2 },
+    });
+
+    expect(calls).toEqual([
+      {
+        fn: "writeClassGraphics",
+        input: {
+          typeName: "Demo.Circuit",
+          layer: "icon",
+          op: { kind: "delete", index: 2 },
+        },
+      },
+    ]);
+  });
+
+  it("forward only the coordinate-system fields the caller named", async () => {
+    const mcp = await connect();
+
+    await mcp.callTool({
+      name: "setCoordinateSystem",
+      arguments: {
+        typeName: "Demo.Circuit",
+        layer: "diagram",
+        extent: [-50, -50, 50, 50],
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        fn: "writeClassGraphics",
+        input: {
+          typeName: "Demo.Circuit",
+          layer: "diagram",
+          op: {
+            kind: "setCoordinateSystem",
+            coordinateSystem: { extent: [-50, -50, 50, 50] },
+          },
+        },
+      },
+    ]);
+  });
+
   it("each advertise only the fields their own shape has", async () => {
     const mcp = await connect();
 

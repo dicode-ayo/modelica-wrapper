@@ -98,6 +98,7 @@ export {
   type Extent,
   type Color,
   type LineStyle,
+  type FilledShape,
   type LineShape,
   type PolygonShape,
   type RectangleShape,
