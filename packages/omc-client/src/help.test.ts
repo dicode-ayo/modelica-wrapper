@@ -8,8 +8,11 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
+  UNREPRESENTABLE,
+  describeFieldsFromSchema,
   describeFunction,
   describeFunctionAsJsonSchema,
   renderCategoryHelp,
@@ -55,6 +58,38 @@ describe("describeFunction", () => {
     // Either rendered as raw value (no fields) or a single-field object —
     // both are fine, this just guards against an introspection crash.
     expect(Array.isArray(d.returns)).toBe(true);
+  });
+
+  // A recursive schema is extracted to `$defs` and referenced rather than
+  // inlined, putting the label one hop away from the property itself.
+  it.each(["getModelInstance", "getModelInstanceAnnotation"] as const)(
+    "labels %s's `$defs`-backed return by its target",
+    (name) => {
+      const d = describeFunction(name);
+      expect(d.parameters.map((f) => f.name)).toContain("typeName");
+      expect(d.returns.map((f) => [f.name, f.typeLabel])).toEqual([
+        ["instance", "object"],
+      ]);
+    },
+  );
+
+  it("labels a `$defs` target for a schema with nothing unrepresentable", () => {
+    // `simulate` projects with no degradation anywhere, so it holds the `$ref`
+    // label on its own rather than riding on the transform case.
+    const sim = describeFunction("simulate").returns.find(
+      (f) => f.name === "simulationResult",
+    );
+    expect(sim?.typeLabel).toBe("union");
+  });
+
+  it("stops labeling a `$defs` pointer that recurses through its own items", () => {
+    // `z.lazy(() => z.array(Self))` projects to a def whose `items` point back
+    // at that def; resolving it a second time would not terminate.
+    const Tree: z.ZodType = z.lazy(() => z.array(Tree));
+    const fields = describeFieldsFromSchema(z.object({ tree: Tree }), "output");
+    expect(fields.map((f) => [f.name, f.typeLabel])).toEqual([
+      ["tree", "unknown[]"],
+    ]);
   });
 });
 
@@ -118,6 +153,54 @@ describe("describeFunctionAsJsonSchema", () => {
   it("input-mode for getClassInformation lists typeName as the only required field", () => {
     const j = describeFunctionAsJsonSchema("getClassInformation");
     expect(j.input.required).toEqual(["typeName"]);
+  });
+});
+
+describe("schemas zod cannot fully project", () => {
+  /** Paths of every node carrying the unrepresentable marker. */
+  function markedPaths(node: unknown, path = ""): string[] {
+    if (node === null || typeof node !== "object") return [];
+    const here = !Array.isArray(node) && UNREPRESENTABLE in node ? [path] : [];
+    return Object.entries(node).reduce<string[]>(
+      (acc, [k, v]) => [...acc, ...markedPaths(v, `${path}.${k}`)],
+      here,
+    );
+  }
+
+  // Both outputs recurse into `DegradingModifierSchema`, whose transform has no
+  // JSON Schema equivalent — zod throws on one unless told to degrade instead.
+  it("keeps the projection around the unrepresentable node intact", () => {
+    const j = describeFunctionAsJsonSchema("getModelInstance");
+    expect(j.input.required).toEqual(["typeName"]);
+    expect(j.output.type).toBe("object");
+    expect(j.output.required).toEqual(["instance"]);
+  });
+
+  it("describes every function in the registry without throwing", () => {
+    for (const name of omcFunctionNames) {
+      expect(() => describeFunction(name), name).not.toThrow();
+      expect(() => describeFunctionAsJsonSchema(name), name).not.toThrow();
+      expect(() => renderFunctionHelp(name), name).not.toThrow();
+    }
+  });
+
+  it("marks every degraded node and degrades nothing else", () => {
+    // The marker is the only evidence a projection has a hole in it, so a
+    // schema that starts degrading silently has to fail here.
+    const marked = omcFunctionNames.flatMap((name) => {
+      const j = describeFunctionAsJsonSchema(name);
+      return [
+        ...markedPaths(j.input).map(() => `${name}/input`),
+        ...markedPaths(j.output).map(() => `${name}/output`),
+      ];
+    });
+    expect([...new Set(marked)].sort()).toEqual([
+      "getModelInstance/output",
+      "getModelInstanceAnnotation/output",
+    ]);
+    expect(
+      markedPaths(describeFunctionAsJsonSchema("getModelInstance").output),
+    ).toHaveLength(2);
   });
 });
 
