@@ -524,6 +524,7 @@
     "@dicode/documentation-ui": "workspace:*",
     "@dicode/modelica-completion": "workspace:*",
     "@dicode/modelica-lang-core": "workspace:*",
+    "@dicode/modelica-mcp": "workspace:*",
     "@dicode/omc-bootstrap": "workspace:*",
     "@dicode/omc-client": "workspace:*",
     "@dicode/result-ui": "workspace:*",

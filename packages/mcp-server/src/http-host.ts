@@ -33,8 +33,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
-import { errorDetail } from "../error-detail.js";
-import { log } from "../logger.js";
+import { errorDetail } from "./error-detail.js";
+import { logOr, type McpLog } from "./log.js";
 import { buildMcpServer } from "./mcp-server.js";
 import type { McpToolDeps } from "./dispatch.js";
 
@@ -60,8 +60,10 @@ interface Opened {
 export function createMcpHttpHost(
   deps: McpToolDeps,
   version: string,
+  log?: McpLog,
 ): McpHttpHost {
   const sessions = new Map<string, StreamableHTTPServerTransport>();
+  const logger = logOr(log);
   let started: Promise<Opened> | undefined;
 
   /**
@@ -141,7 +143,7 @@ export function createMcpHttpHost(
 
   return {
     start: async () => {
-      started ??= listen(handle);
+      started ??= listen(handle, logger);
       return (await started).endpoint;
     },
     dispose: async () => {
@@ -170,12 +172,12 @@ type RequestHandler = (
   token: string,
 ) => Promise<void>;
 
-function listen(handle: RequestHandler): Promise<Opened> {
+function listen(handle: RequestHandler, log: McpLog): Promise<Opened> {
   const token = randomUUID();
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
       void handle(req, res, token).catch((err: unknown) => {
-        log.warn("mcp", `request failed: ${errorDetail(err)}`);
+        log.warn(`request failed: ${errorDetail(err)}`);
         if (!res.headersSent) res.writeHead(500);
         res.end();
       });

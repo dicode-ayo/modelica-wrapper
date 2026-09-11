@@ -45,6 +45,11 @@
       "package-name": "@dicode/omc-bootstrap",
       "changelog-path": "CHANGELOG.md"
     },
+    "packages/mcp-server": {
+      "component": "@dicode/modelica-mcp",
+      "package-name": "@dicode/modelica-mcp",
+      "changelog-path": "CHANGELOG.md"
+    },
     "packages/lang-core": {
       "component": "@dicode/modelica-lang-core",
       "package-name": "@dicode/modelica-lang-core",

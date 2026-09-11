@@ -4,6 +4,7 @@
   "packages/diagram-ui": "0.0.4",
   "packages/omc-client": "0.0.4",
   "packages/omc-bootstrap": "0.0.2",
+  "packages/mcp-server": "0.0.0",
   "packages/lang-core": "0.0.4",
   "packages/completion": "0.0.3",
   "packages/result-ui": "0.0.3",

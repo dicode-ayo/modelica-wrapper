@@ -27,7 +27,7 @@ import type {
   WriteAction,
   WriteVerdict,
   WriteVerdictClient,
-} from "../write-verdict.js";
+} from "./write-verdict.js";
 
 /** The subset of `WriteVerdicts` the gate uses. */
 export interface WriteVerdictSource {

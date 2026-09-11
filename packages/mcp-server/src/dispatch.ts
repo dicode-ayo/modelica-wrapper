@@ -14,8 +14,8 @@
 import type { OmcFnName, OmcInput } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-import { errorDetail } from "../error-detail.js";
-import type { WriteVerdictClient } from "../write-verdict.js";
+import { errorDetail } from "./error-detail.js";
+import type { WriteVerdictClient } from "./write-verdict.js";
 import { refusalFor, type WriteVerdictSource } from "./write-gate.js";
 
 /** The subset of `OmcClient` the MCP tools call. */

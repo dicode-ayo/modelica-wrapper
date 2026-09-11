@@ -9,7 +9,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type { WriteVerdictClient } from "../write-verdict.js";
+import type { WriteVerdictClient } from "./write-verdict.js";
 import type { McpToolClient } from "./dispatch.js";
 import { buildMcpServer } from "./mcp-server.js";
 import { PARITY_TOOLS } from "./parity-tools.js";
