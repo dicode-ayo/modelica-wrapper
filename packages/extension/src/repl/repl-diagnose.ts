@@ -27,7 +27,7 @@
  * the user really did mistype.
  */
 
-import { REGISTRY, type OmcFnName } from "@dicode/omc-client";
+import { isOmcFnName } from "@dicode/omc-client";
 
 const LOOKUP_FAILURE_RE =
   /Class\s+([A-Za-z_]\w*)\s+not found in scope\s+<[^>]+>\s+\(looking for a function or record\)/;
@@ -41,8 +41,8 @@ export function diagnoseOmcError(
 ): string | undefined {
   const m = LOOKUP_FAILURE_RE.exec(errorString);
   if (!m) return undefined;
-  const fnName = m[1]!;
-  if (!Object.prototype.hasOwnProperty.call(REGISTRY, fnName)) {
+  const [, fnName] = m;
+  if (fnName === undefined || !isOmcFnName(fnName)) {
     // Some genuinely missing class — leave OMC's error alone.
     return undefined;
   }
@@ -66,9 +66,4 @@ export function diagnoseOmcError(
     );
   }
   return lines.join("\n");
-}
-
-/** Exported only for tests — exposes the typed name guard. */
-export function isRegisteredFunction(name: string): name is OmcFnName {
-  return Object.prototype.hasOwnProperty.call(REGISTRY, name);
 }

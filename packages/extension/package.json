@@ -108,6 +108,10 @@
         "title": "Modelica: Set Up OpenModelica"
       },
       {
+        "command": "modelica.mcp.writeClientConfig",
+        "title": "Modelica: Write MCP Server Configuration for Other Clients"
+      },
+      {
         "command": "modelica.installOmc",
         "title": "Modelica: Install OpenModelica"
       },
@@ -472,6 +476,12 @@
         "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       }
     ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "modelica.omc",
+        "label": "Modelica (OpenModelica)"
+      }
+    ],
     "configuration": {
       "title": "Modelica",
       "properties": {
@@ -518,13 +528,16 @@
     "@dicode/documentation-ui": "workspace:*",
     "@dicode/modelica-completion": "workspace:*",
     "@dicode/modelica-lang-core": "workspace:*",
+    "@dicode/modelica-mcp": "workspace:*",
     "@dicode/omc-bootstrap": "workspace:*",
     "@dicode/omc-client": "workspace:*",
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "lit": "^3.3.3",
     "web-tree-sitter": "^0.27.0",
-    "zeromq": "^6.7.0"
+    "zeromq": "^6.7.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",

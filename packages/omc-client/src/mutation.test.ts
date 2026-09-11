@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mutationFor } from "./mutation.js";
+import { isReadOnlyFunction, mutationFor } from "./mutation.js";
 import { omcFunctionNames } from "./registry.js";
 
 describe("mutationFor", () => {
@@ -145,5 +145,25 @@ describe("mutationFor", () => {
       "setFullDocumentationAnnotation",
       "writeClassGraphics",
     ]);
+  });
+});
+
+describe("isReadOnlyFunction", () => {
+  it("answers for the two composites, which have no OMC function name", () => {
+    expect(isReadOnlyFunction("writeClassGraphics")).toBe(false);
+    expect(isReadOnlyFunction("setFullDocumentationAnnotation")).toBe(false);
+  });
+
+  it("agrees with the announcement a call would make", () => {
+    // A function announcing nothing is read-only and vice versa; a hint that
+    // disagreed would promise a client a refresh the invalidation never sends.
+    const disagreeing = [...omcFunctionNames].sort().filter((name) => {
+      if (name === "writeClassGraphics") return false;
+      if (name === "setFullDocumentationAnnotation") return false;
+      const announces = mutationFor(`${name}()`) !== undefined;
+      return announces === isReadOnlyFunction(name);
+    });
+
+    expect(disagreeing).toEqual([]);
   });
 });

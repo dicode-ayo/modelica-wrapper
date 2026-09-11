@@ -35,6 +35,7 @@ import {
 } from "./documentation/documentation-html-provider.js";
 import { registerLanguageFeatures } from "./language/index.js";
 import { log } from "./logger.js";
+import { registerMcpServerProvider } from "./mcp/index.js";
 import { recoverRestoredCustomEditors } from "./restore-recovery.js";
 import { ResultViewEditorProvider } from "./results/result-view-provider.js";
 import { evalLine } from "./repl/repl-eval.js";
@@ -62,6 +63,7 @@ import {
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 import { createMoFileScanner } from "./workspace-mo-scan.js";
+import { hasModelicaContent } from "./modelica-window.js";
 
 // Only `deactivate()` outlives `activate()`'s scope.
 let closeOmcClientCache: (() => Promise<void>) | undefined;
@@ -273,6 +275,10 @@ export async function activate(
       DOCUMENTATION_VIEW_TYPE,
     ),
     registerLanguageFeatures(context, ensureClient, invalidation),
+    registerMcpServerProvider(
+      { ensureClient, verdicts: writeVerdicts },
+      extensionVersion(context),
+    ),
     wireDocHtmlRefresh(docHtmlProvider),
     ...registerCommands({
       extensionContext: context,
@@ -291,8 +297,21 @@ export async function activate(
   void recoverRestoredCustomEditors();
 
   // Neither blocks: OMC startup is slow, and the missing-OpenModelica
-  // notification waits on the user.
-  void omcSetup.start();
+  // notification waits on the user. A window with no Modelica in it skips the
+  // setup flow entirely — see `hasModelicaContent`; it reaches OMC through
+  // `omcPath()` instead, which renders the status item on the way to reporting
+  // the same missing dependency.
+  void (async () => {
+    const wanted = await hasModelicaContent({
+      openDocuments: () =>
+        vscode.workspace.textDocuments.map((d) => ({
+          languageId: d.languageId,
+          scheme: d.uri.scheme,
+        })),
+      scanMoFiles: () => moFileScanner.scan(),
+    });
+    if (wanted) await omcSetup.start();
+  })();
   autoload.run();
 
   // Exported API surface. Tested separately via the `repl-eval` integration
@@ -314,6 +333,16 @@ export async function activate(
 export async function deactivate(): Promise<void> {
   await closeOmcClientCache?.();
   log.dispose();
+}
+
+/**
+ * The version VSCode compares to decide whether an MCP client should be
+ * prompted to refresh its tool list. Falls back to a constant rather than
+ * throwing: a missing manifest version must not take activation down.
+ */
+function extensionVersion(context: vscode.ExtensionContext): string {
+  const version: unknown = context.extension.packageJSON.version;
+  return typeof version === "string" ? version : "0.0.0";
 }
 
 /**

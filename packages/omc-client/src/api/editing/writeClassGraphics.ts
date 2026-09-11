@@ -38,7 +38,27 @@ import { shapeToRecord } from "../diagram/shape-serialize.js";
 import { decodeAnnotationShape } from "../diagram/shapes.js";
 import { addClassAnnotation } from "./addClassAnnotation.js";
 
-const NonNegativeIndex = z.number().int().nonnegative();
+export const ShapeIndexSchema = z.number().int().nonnegative();
+
+/**
+ * The `coordinateSystem` fields a caller may set. Every field is optional and
+ * an omitted one keeps its current value: `addClassAnnotation` replaces the
+ * whole layer annotation, so treating omission as "clear" would silently drop
+ * a field the caller never mentioned.
+ */
+export const WriteCoordinateSystemSchema = z.object({
+  extent: z
+    .tuple([z.number(), z.number(), z.number(), z.number()])
+    .optional()
+    .describe("Layer extent as [x1, y1, x2, y2]."),
+  preserveAspectRatio: z.boolean().optional(),
+  initialScale: z.number().optional(),
+  grid: z.tuple([z.number(), z.number()]).optional(),
+});
+
+export type WriteCoordinateSystemInput = z.infer<
+  typeof WriteCoordinateSystemSchema
+>;
 
 export const WriteClassGraphicsInputSchema = z.object({
   typeName: z.string().describe("Class whose graphics layer is edited."),
@@ -50,17 +70,23 @@ export const WriteClassGraphicsInputSchema = z.object({
       z.object({ kind: z.literal("add"), shape: ShapeSchema }),
       z.object({
         kind: z.literal("modify"),
-        index: NonNegativeIndex,
+        index: ShapeIndexSchema,
         shape: ShapeSchema,
       }),
-      z.object({ kind: z.literal("delete"), index: NonNegativeIndex }),
+      z.object({ kind: z.literal("delete"), index: ShapeIndexSchema }),
       z.object({
         kind: z.literal("reorder"),
-        from: NonNegativeIndex,
-        to: NonNegativeIndex,
+        from: ShapeIndexSchema,
+        to: ShapeIndexSchema,
+      }),
+      z.object({
+        kind: z.literal("setCoordinateSystem"),
+        coordinateSystem: WriteCoordinateSystemSchema,
       }),
     ])
-    .describe("Edit to apply to the layer's positional graphics list."),
+    .describe(
+      "Edit to apply to the layer's graphics list or coordinate system.",
+    ),
 });
 export type WriteClassGraphicsInput = z.infer<
   typeof WriteClassGraphicsInputSchema
@@ -72,7 +98,7 @@ export type WriteClassGraphicsOutput = z.infer<
 >;
 
 export const WriteClassGraphicsDescription =
-  "Add, modify, or delete one graphic primitive in a class's Icon or Diagram annotation, preserving the other shapes and the coordinate system.";
+  "Add, modify, delete, or reorder one graphic primitive in a class's Icon or Diagram annotation, or set that layer's coordinate system, preserving whatever the edit does not name.";
 
 /**
  * Reconstruct the `coordinateSystem(...)` clause, carrying through every
@@ -97,6 +123,20 @@ function coordinateSystemClause(cs: CoordinateSystemFields): string | null {
   return parts.length > 0 ? `coordinateSystem(${parts.join(", ")})` : null;
 }
 
+/** Overlay the fields the caller named onto the layer's current ones. */
+function mergeCoordinateSystem(
+  current: CoordinateSystemFields,
+  update: WriteCoordinateSystemInput,
+): CoordinateSystemFields {
+  return {
+    extent: update.extent ?? current.extent,
+    preserveAspectRatio:
+      update.preserveAspectRatio ?? current.preserveAspectRatio,
+    initialScale: update.initialScale ?? current.initialScale,
+    grid: update.grid ?? current.grid,
+  };
+}
+
 export async function writeClassGraphics(
   ctx: CallContext,
   input: WriteClassGraphicsInput,
@@ -113,24 +153,39 @@ export async function writeClassGraphics(
       `writeClassGraphics: index ${i} out of range (${shapes.length} ${layer} shapes)`,
     );
 
-  if (op.kind === "add") {
-    shapes.push(op.shape);
-  } else if (op.kind === "reorder") {
-    const moved = moveWithin(shapes, op.from, op.to);
-    if (moved === null) {
-      throw outOfRange(op.from >= shapes.length ? op.from : op.to);
+  let coordinateSystem = annotationCoordinateSystem(annotation);
+  switch (op.kind) {
+    case "add":
+      shapes.push(op.shape);
+      break;
+    case "reorder": {
+      const moved = moveWithin(shapes, op.from, op.to);
+      if (moved === null) {
+        throw outOfRange(op.from >= shapes.length ? op.from : op.to);
+      }
+      shapes.splice(0, shapes.length, ...moved);
+      break;
     }
-    shapes.splice(0, shapes.length, ...moved);
-  } else {
-    if (op.index >= shapes.length) throw outOfRange(op.index);
-    if (op.kind === "modify") shapes[op.index] = op.shape;
-    else shapes.splice(op.index, 1);
+    case "modify":
+      if (op.index >= shapes.length) throw outOfRange(op.index);
+      shapes[op.index] = op.shape;
+      break;
+    case "delete":
+      if (op.index >= shapes.length) throw outOfRange(op.index);
+      shapes.splice(op.index, 1);
+      break;
+    case "setCoordinateSystem":
+      coordinateSystem = mergeCoordinateSystem(
+        coordinateSystem,
+        op.coordinateSystem,
+      );
+      break;
+    default:
+      op satisfies never;
   }
 
   const head = layer === "icon" ? "Icon" : "Diagram";
-  const coordSys = coordinateSystemClause(
-    annotationCoordinateSystem(annotation),
-  );
+  const coordSys = coordinateSystemClause(coordinateSystem);
   const parts = coordSys ? [coordSys] : [];
   // An empty `graphics={}` array trips the same empty-array typing rule OMC
   // rejects, so omit the clause entirely when the last shape was deleted.

@@ -22,6 +22,7 @@
 
 import type { OmcFunction } from "./commands.js";
 import { asString, parseLeading } from "./parse.js";
+import type { OmcFnName } from "./registry.js";
 
 /** What a mutation touched, as far as the command string can tell. */
 export type MutationScope =
@@ -72,7 +73,7 @@ export type MutationEntry =
  * `loadString`. Coarse there would refresh every open Modelica editor on every
  * save.
  */
-export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
+export const MUTATIONS = {
   // --- Lifecycle / transport ---
   quit: "readOnly",
   getErrorString: "readOnly",
@@ -295,7 +296,38 @@ export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
   filterSimulationResults: "readOnly",
   deltaSimulationResults: "readOnly",
   diffSimulationResults: "readOnly",
-};
+} as const satisfies Record<OmcFunction, MutationEntry>;
+
+/**
+ * Registry entries that compose several OMC calls and so have no `OmcFunction`
+ * name of their own. They never reach {@link mutationFor} — the calls they make
+ * announce themselves individually — but a caller asking whether a *registry*
+ * function mutates still needs an answer, and for these it is yes: a wrapper
+ * that only read would have nothing to compose.
+ */
+type CompositeFnName = Exclude<OmcFnName, OmcFunction>;
+
+/**
+ * The registry functions that mutate. Derived from {@link MUTATIONS} rather
+ * than restated, so a caller keying a table by this type — the MCP server's
+ * write gate does — fails the build when a function changes classification or
+ * a new one arrives.
+ */
+export type MutatingFnName =
+  | {
+      [K in OmcFunction]: (typeof MUTATIONS)[K] extends "readOnly" ? never : K;
+    }[OmcFunction]
+  | CompositeFnName;
+
+/**
+ * Whether `name` changes nothing any cache derives from a class. Total over the
+ * registry, unlike {@link MUTATIONS}, which is keyed by the raw OMC command
+ * names. Drives the `readOnlyHint` published to MCP clients, so the hint and
+ * the invalidation it describes read the same table.
+ */
+export function isReadOnlyFunction(name: OmcFnName): boolean {
+  return isOmcFunction(name) && MUTATIONS[name] === "readOnly";
+}
 
 /** Narrows a parsed command name to a function the table classifies. */
 function isOmcFunction(name: string): name is OmcFunction {
