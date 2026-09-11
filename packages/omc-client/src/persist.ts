@@ -12,12 +12,20 @@
  * write so its own file watcher does not mistake it for an external edit.
  */
 
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
+
+import { pathExists } from "./fs-util.js";
 
 /** Where the bytes go. */
 export interface SourceWriter {
   write(fsPath: string, text: string): Promise<void>;
+}
+
+/** The source tree a class is written into: a root, and a way to write. */
+export interface SourceTree {
+  readonly root: string;
+  readonly writer: SourceWriter;
 }
 
 /** The OMC surface persistence is derived from. `OmcClient` satisfies it. */
@@ -59,9 +67,9 @@ export interface PersistResult {
   /** Path of the leaf class file we wrote. */
   leafPath: string;
   /**
-   * Parents that ended up rooted under `root` because OMC didn't already know
-   * an on-disk location for them. Caller should `setSourceFile` each so OMC's
-   * symbol table tracks the new path.
+   * Parents that ended up rooted under the tree's root because OMC didn't
+   * already know an on-disk location for them. Caller should `setSourceFile`
+   * each so OMC's symbol table tracks the new path.
    */
   newParents: Array<{ typeName: string; pkgFile: string }>;
 }
@@ -82,8 +90,8 @@ interface OnDiskParent {
  * its dotted qualified name. Parents already on disk (per OMC's `fileName`)
  * are reused — the leaf is placed inside the deepest existing parent's
  * directory. Parents that exist in OMC memory only get fresh
- * `<dir>/package.mo` files under `root`. Existing `package.mo` files on disk
- * are never overwritten.
+ * `<dir>/package.mo` files under the tree's root. Existing `package.mo` files on
+ * disk are never overwritten.
  *
  * The enclosing package's `package.order` gains the new member, so a fresh
  * OMC `loadFile` finds it. A `package.order` written from scratch alongside a
@@ -96,14 +104,14 @@ interface OnDiskParent {
  * `<baseDir>/<leafName>/package.mo` so its own directory becomes the parent
  * for subsequent children.
  */
-export async function persistClassUnderRoot(
+export async function persistClass(
   client: PersistClient,
-  root: string,
+  tree: SourceTree,
   qualifiedName: string,
   classText: string,
-  writer: SourceWriter,
   leafKind?: "package",
 ): Promise<PersistResult> {
+  const { root, writer } = tree;
   const parts = qualifiedName.split(".");
   const newParents: PersistResult["newParents"] = [];
   let baseDir = root;
@@ -121,13 +129,13 @@ export async function persistClassUnderRoot(
     baseDir = path.join(baseDir, part);
     await mkdir(baseDir, { recursive: true });
     const pkgFile = path.join(baseDir, "package.mo");
-    if (!(await exists(pkgFile))) {
+    if (!(await pathExists(pkgFile))) {
       const within = parts.slice(0, i).join(".");
       const header = within ? `within ${within};\n` : "";
       await writer.write(pkgFile, `${header}package ${part}\nend ${part};\n`);
     }
     const orderFile = path.join(baseDir, "package.order");
-    if (!(await exists(orderFile))) {
+    if (!(await pathExists(orderFile))) {
       const nextSegment = parts[i + 1];
       const base = await safeGetClassNames(client, parentName);
       const children =
@@ -149,10 +157,9 @@ export async function persistClassUnderRoot(
     await mkdir(leafDir, { recursive: true });
     leafPath = path.join(leafDir, "package.mo");
     const orderFile = path.join(leafDir, "package.order");
-    if (!(await exists(orderFile))) {
-      // Written even when the package has no members yet: it is what the
-      // next class created inside gets appended to, and OMEdit writes an
-      // empty one here too.
+    if (!(await pathExists(orderFile))) {
+      // Written even when the package has no members yet: it is what the next
+      // class created inside gets appended to.
       const children = await safeGetClassNames(client, qualifiedName);
       await writer.write(
         orderFile,
@@ -190,10 +197,9 @@ export async function linkPersistedClass(
  * Add `member` to the `package.order` in `dir`, keeping the order already
  * there and writing nothing when the file is absent or already lists it.
  *
- * Only the member just written is added. Regenerating the file from
- * `getClassNames` — what OMEdit does — would also list siblings that live in
- * OMC's symbol table and not on disk, and a name no file backs is dropped
- * with a warning on every load of the package.
+ * Only the member just written is added. `getClassNames` reports siblings that
+ * live in OMC's symbol table and not on disk, and a name no file backs is
+ * dropped with a warning on every load of the package.
  */
 async function addToPackageOrder(
   writer: SourceWriter,
@@ -244,14 +250,5 @@ async function safeGetClassNames(
     return classNames.filter((n) => MODELICA_IDENT.test(n));
   } catch {
     return [];
-  }
-}
-
-async function exists(fsPath: string): Promise<boolean> {
-  try {
-    await stat(fsPath);
-    return true;
-  } catch {
-    return false;
   }
 }

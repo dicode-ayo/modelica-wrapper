@@ -24,7 +24,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { linkPersistedClass, persistClassUnderRoot } from "@dicode/omc-client";
+import { linkPersistedClass, persistClass } from "@dicode/omc-client";
 
 import { pathExists } from "../fs-util.js";
 import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
@@ -199,12 +199,11 @@ export function registerClassCommands(
           if (ws) {
             // Persist to disk and rewrite OMC's fileName so subsequent
             // saves write through to the same path.
-            const result = await persistClassUnderRoot(
+            const result = await persistClass(
               c,
-              ws.uri.fsPath,
+              { root: ws.uri.fsPath, writer: ctx.selfWriteGuard },
               qualified,
               data,
-              ctx.selfWriteGuard,
               kind === "package" ? "package" : undefined,
             );
             await linkPersistedClass(c, qualified, result);

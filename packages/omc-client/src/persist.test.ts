@@ -17,8 +17,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   isLikelyDiskPath,
   linkPersistedClass,
-  persistClassUnderRoot,
+  persistClass,
   type PersistClient,
+  type SourceTree,
   type SourceWriter,
 } from "./persist.js";
 
@@ -133,12 +134,14 @@ function baseClassInfo(fileName: string) {
   };
 }
 
-describe("persistClassUnderRoot", () => {
+describe("persistClass", () => {
   let tmp: string;
   let writer: RecordingWriter;
+  let tree: SourceTree;
   beforeEach(async () => {
     tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "persist-test-"));
     writer = recordingWriter();
+    tree = { root: tmp, writer };
   });
   afterEach(async () => {
     await fsp.rm(tmp, { recursive: true, force: true });
@@ -146,12 +149,11 @@ describe("persistClassUnderRoot", () => {
 
   it("flat class: writes <root>/<Name>.mo with no parents", async () => {
     const { client } = makeClientStub();
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      tmp,
+      tree,
       "TempModel",
       "model TempModel\nend TempModel;\n",
-      writer,
     );
     expect(result.leafPath).toBe(path.join(tmp, "TempModel.mo"));
     expect(result.newParents).toEqual([]);
@@ -163,12 +165,11 @@ describe("persistClassUnderRoot", () => {
     const { client } = makeClientStub();
     // None of the parents are known to OMC, so all three levels get fresh
     // <dir>/package.mo files under the workspace root.
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Sub.Model",
       "block Model\nend Model;\n",
-      writer,
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyLib", "Sub", "Model.mo"));
     expect(result.newParents).toEqual([
@@ -198,12 +199,11 @@ describe("persistClassUnderRoot", () => {
     const original = "// hand-edited package\npackage MyLib\nend MyLib;\n";
     await fsp.writeFile(path.join(myLibDir, "package.mo"), original, "utf8");
 
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     // Still still our hand-edited content — persist must not clobber.
     expect(await fsp.readFile(path.join(myLibDir, "package.mo"), "utf8")).toBe(
@@ -219,12 +219,11 @@ describe("persistClassUnderRoot", () => {
     await fsp.writeFile(externalPkg, "package MyLib\nend MyLib;\n", "utf8");
     seedClass("MyLib", externalPkg);
 
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     // Leaf lands inside MyLib's existing directory, NOT under tmp.
     expect(result.leafPath).toBe(path.join(externalDir, "Model.mo"));
@@ -243,12 +242,11 @@ describe("persistClassUnderRoot", () => {
     // disk path and try to dirname() it — instead, create MyLib under root.
     const { client, seedClass } = makeClientStub();
     seedClass("MyLib", "<runtime:MyLib>");
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyLib", "Model.mo"));
     expect(result.newParents).toEqual([
@@ -260,12 +258,11 @@ describe("persistClassUnderRoot", () => {
     const { client, seedChildren } = makeClientStub();
     seedChildren("MyLib", ["Sub"]);
     seedChildren("MyLib.Sub", ["Model"]);
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Sub.Model",
       "block Model\nend Model;\n",
-      writer,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -284,12 +281,11 @@ describe("persistClassUnderRoot", () => {
     // reaches it as an external change.
     const { client, seedChildren } = makeClientStub();
     seedChildren("MyLib", ["Model"]);
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     expect(writer.paths).toEqual([
       path.join(tmp, "MyLib", "package.mo"),
@@ -301,12 +297,11 @@ describe("persistClassUnderRoot", () => {
   it("still writes package.order with just the leaf segment when getClassNames returns empty", async () => {
     const { client, seedChildren } = makeClientStub();
     seedChildren("MyLib", []);
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -320,12 +315,11 @@ describe("persistClassUnderRoot", () => {
     await fsp.mkdir(myLibDir, { recursive: true });
     const original = "Other\nModel\n";
     await fsp.writeFile(path.join(myLibDir, "package.order"), original, "utf8");
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     expect(
       await fsp.readFile(path.join(myLibDir, "package.order"), "utf8"),
@@ -348,12 +342,11 @@ describe("persistClassUnderRoot", () => {
     // drops with a warning on every load of the package.
     seedChildren("MyLib", ["Other", "Unsaved"]);
 
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
 
     expect(await fsp.readFile(path.join(libDir, "package.order"), "utf8")).toBe(
@@ -372,12 +365,11 @@ describe("persistClassUnderRoot", () => {
       "utf8",
     );
 
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
 
     await expect(fsp.access(path.join(tmp, "package.order"))).rejects.toThrow();
@@ -387,12 +379,11 @@ describe("persistClassUnderRoot", () => {
     const { client } = makeClientStub();
     // No seedChildren call → getClassNames will throw for MyLib, but
     // the leaf segment is always included unconditionally.
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -403,12 +394,11 @@ describe("persistClassUnderRoot", () => {
     const { client, seedChildren } = makeClientStub();
     // OMC doesn't list Model yet (e.g. createClass hasn't called setSourceFile).
     seedChildren("MyLib", []);
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -419,12 +409,11 @@ describe("persistClassUnderRoot", () => {
     const { client, seedChildren } = makeClientStub();
     // A class name with an embedded newline would corrupt the file format.
     seedChildren("MyLib", ["Valid", "bad\nname", "", "Also_Valid"]);
-    await persistClassUnderRoot(
+    await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
-      writer,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -433,12 +422,11 @@ describe("persistClassUnderRoot", () => {
 
   it("package leaf: writes <Name>/package.mo, not <Name>.mo", async () => {
     const { client } = makeClientStub();
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      tmp,
+      tree,
       "MyPkg",
       "package MyPkg\nend MyPkg;\n",
-      writer,
       "package",
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "package.mo"));
@@ -452,12 +440,11 @@ describe("persistClassUnderRoot", () => {
 
   it("package leaf nested: writes <parent>/<Name>/package.mo", async () => {
     const { client } = makeClientStub();
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      tmp,
+      tree,
       "MyLib.SubPkg",
       "within MyLib;\npackage SubPkg\nend SubPkg;\n",
-      writer,
       "package",
     );
     expect(result.leafPath).toBe(
@@ -474,12 +461,11 @@ describe("persistClassUnderRoot", () => {
 
   it("package leaf: setSourceFile gets package.mo path, enabling child nesting", async () => {
     const { client, setCalls } = makeClientStub();
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      tmp,
+      tree,
       "MyPkg",
       "package MyPkg\nend MyPkg;\n",
-      writer,
       "package",
     );
     await linkPersistedClass(client, "MyPkg", result);
@@ -500,12 +486,11 @@ describe("persistClassUnderRoot", () => {
       "utf8",
     );
 
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      tmp,
+      tree,
       "MyPkg.Child",
       "within MyPkg;\nmodel Child\nend Child;\n",
-      writer,
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "Child.mo"));
     expect(result.newParents).toEqual([]);

@@ -8,18 +8,16 @@
  * writes to whatever path the symbol table already holds and never touches
  * `package.order`.
  *
- * So the composition is the same one OMEdit performs: a `loadString` that
- * declares the class under a `within` clause, then the source tree written out
- * around it and OMC told where it went. `loadString` is what OMEdit's
- * `createClass`/`createSubClass` send too; `newModel` is not involved, and
- * only `loadString` can declare a restriction other than `model` or a
+ * The composition is a `loadString` that declares the class under a `within`
+ * clause, then the source tree written out around it and OMC told where it
+ * went. Only `loadString` can declare a restriction other than `model`, or a
  * top-level class at all.
  *
  * The gate is on `withinPath`, the package this writes into. A top-level class
  * names no package, and an empty name has no verdict to derive.
  */
 
-import { linkPersistedClass, persistClassUnderRoot } from "@dicode/omc-client";
+import { linkPersistedClass, persistClass } from "@dicode/omc-client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -139,16 +137,42 @@ async function create(
       }),
     );
   }
-  const result = await persistClassUnderRoot(
-    client,
-    workspace.root,
-    className,
-    source,
-    workspace.writer,
-    leafKind,
-  );
-  await linkPersistedClass(client, className, result);
-  return textResult(JSON.stringify({ className, fileName: result.leafPath }));
+  try {
+    const result = await persistClass(
+      client,
+      workspace,
+      className,
+      source,
+      leafKind,
+    );
+    await linkPersistedClass(client, className, result);
+    return textResult(JSON.stringify({ className, fileName: result.leafPath }));
+  } catch (err) {
+    return errorResult(await unloadAfterFailedWrite(client, className, err));
+  }
+}
+
+/**
+ * Take the declared class back out of OMC after its files could not be
+ * written, and say what happened.
+ *
+ * Left in place it would be exactly what this tool exists to prevent — a class
+ * in the symbol table and nowhere else — and the next attempt would be refused
+ * for already existing. `deleteClass` unloads it without touching disk, so any
+ * file that did land stays for the retry to overwrite.
+ */
+async function unloadAfterFailedWrite(
+  client: McpToolClient,
+  className: string,
+  err: unknown,
+): Promise<string> {
+  const reason = `${className} could not be written to disk: ${errorDetail(err)}`;
+  try {
+    await client.deleteClass({ typeName: className });
+  } catch (unloadErr) {
+    return `${reason}. It is still loaded in OMC and unloading it failed too (${errorDetail(unloadErr)}), so creating it again will be refused until it is removed.`;
+  }
+  return `${reason}. It has been unloaded from OMC, so nothing was left half-created.`;
 }
 
 function classSource(

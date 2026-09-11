@@ -8,13 +8,14 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import type { SourceTree } from "@dicode/omc-client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { WriteVerdictClient } from "./write-verdict.js";
-import type { McpToolClient, McpWorkspace } from "./dispatch.js";
+import type { McpToolClient } from "./dispatch.js";
 import { buildMcpServer } from "./mcp-server.js";
 import { PARITY_TOOLS } from "./parity-tools.js";
 import type { WriteVerdictSource } from "./write-verdict.js";
@@ -33,7 +34,7 @@ let failWith: string | undefined;
 let sourceFile = "/w/Demo.mo";
 let loaded: Set<string>;
 let loadFails: string | undefined;
-let workspace: McpWorkspace | undefined;
+let workspace: SourceTree | undefined;
 
 /**
  * The wrappers `createClass` composes are recorded alongside `invoke` so every
@@ -44,6 +45,10 @@ const client: McpToolClient = {
     calls.push({ fn, input });
     if (failWith !== undefined) throw new Error(failWith);
     return { ok: true };
+  },
+  deleteClass: async (input) => {
+    calls.push({ fn: "deleteClass", input });
+    return { success: true };
   },
   existClass: async ({ typeName }) => ({ exists: loaded.has(typeName) }),
   getClassInformation: async () => ({ fileReadOnly: false, fileName: "" }),
@@ -457,10 +462,10 @@ describe("createClass", () => {
     expect(calls).toEqual([]);
   });
 
-  it("declares the class under a within clause, bound to no file yet", async () => {
+  it("declares the class under a within clause, and says so when there is nowhere to write it", async () => {
     const mcp = await connect();
 
-    await mcp.callTool({
+    const result = (await mcp.callTool({
       name: "createClass",
       arguments: {
         name: "Circuit",
@@ -468,7 +473,7 @@ describe("createClass", () => {
         withinPath: "Demo",
         extendsFrom: "Modelica.Icons.Example",
       },
-    });
+    })) as CallToolResult;
 
     expect(calls).toEqual([
       {
@@ -482,21 +487,10 @@ describe("createClass", () => {
         },
       },
     ]);
-  });
-
-  it("says so rather than lying when the host has nowhere to write", async () => {
-    const mcp = await connect();
-
-    const result = (await mcp.callTool({
-      name: "createClass",
-      arguments: { name: "Loose", kind: "model" },
-    })) as CallToolResult;
-
     expect(JSON.parse(text(result))).toMatchObject({
-      className: "Loose",
+      className: "Demo.Circuit",
       fileName: null,
     });
-    expect(calls.map((c) => c.fn)).toEqual(["loadString"]);
   });
 
   it("reports OMC's own reason when the class will not parse", async () => {
@@ -510,6 +504,31 @@ describe("createClass", () => {
 
     expect(result.isError).toBe(true);
     expect(text(result)).toBe("Parse error near 'end'");
+  });
+
+  it("unloads the class again when its files cannot be written", async () => {
+    workspace = {
+      root: "/nowhere",
+      writer: {
+        write: () => Promise.reject(new Error("EACCES: permission denied")),
+      },
+    };
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Loose", kind: "model" },
+    })) as CallToolResult;
+
+    // Left loaded it would be the very thing this tool exists to prevent, and
+    // the retry would be refused for already existing.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("EACCES");
+    expect(text(result)).toContain("unloaded");
+    expect(calls).toContainEqual({
+      fn: "deleteClass",
+      input: { typeName: "Loose" },
+    });
   });
 
   it("writes the file and points OMC at it", async () => {

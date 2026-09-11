@@ -67,12 +67,14 @@ export {
 } from "./help.js";
 
 // --- Writing an in-memory class out to a source tree ---
+export { pathExists } from "./fs-util.js";
 export {
   isLikelyDiskPath,
   linkPersistedClass,
-  persistClassUnderRoot,
+  persistClass,
   type PersistClient,
   type PersistResult,
+  type SourceTree,
   type SourceWriter,
 } from "./persist.js";
 

@@ -1,13 +1,9 @@
-/** Filesystem helpers shared across the extension. No `vscode` import. */
+/**
+ * Filesystem helpers shared across the extension. No `vscode` import.
+ *
+ * `pathExists` lives in `@dicode/omc-client` so the class-persistence helpers
+ * there share this one implementation; it is re-exported here because this is
+ * where the extension's callers look for it.
+ */
 
-import * as fsp from "node:fs/promises";
-
-/** `true` iff `p` is accessible. Any `fsp.access` rejection collapses to `false`. */
-export async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fsp.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { pathExists } from "@dicode/omc-client";

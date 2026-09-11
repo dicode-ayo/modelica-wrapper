@@ -2,7 +2,7 @@
  * Integration test: end-to-end OMC ↔ disk persistence.
  *
  * Validates that:
- *  1. `persistClassUnderRoot` + `linkPersistedClass` actually update
+ *  1. `persistClass` + `linkPersistedClass` actually update
  *     OMC's symbol-table `fileName` to a real path.
  *  2. The on-disk artifacts we produce are self-sufficient: a *fresh* OMC
  *     instance can `loadFile` them and see the class come back. This is the
@@ -22,8 +22,8 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   OmcClient,
   linkPersistedClass,
-  persistClassUnderRoot,
-  type SourceWriter,
+  persistClass,
+  type SourceTree,
 } from "../src/index.js";
 
 import { describeIf } from "./fixtures.js";
@@ -54,13 +54,15 @@ async function loadStepwise(
 describeIf("persist + OMC roundtrip", () => {
   let client: OmcClient;
   let ws: string;
-  const writer: SourceWriter = {
-    write: (fsPath, text) => fsp.writeFile(fsPath, text, "utf8"),
-  };
+  let tree: SourceTree;
 
   beforeEach(async () => {
     client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
     ws = await fsp.mkdtemp(path.join(os.tmpdir(), "persist-int-"));
+    tree = {
+      root: ws,
+      writer: { write: (fsPath, text) => fsp.writeFile(fsPath, text, "utf8") },
+    };
   });
 
   afterEach(async () => {
@@ -85,13 +87,7 @@ describeIf("persist + OMC roundtrip", () => {
     });
     expect(before.fileName).toBe("<runtime:RoundtripFlat>");
 
-    const result = await persistClassUnderRoot(
-      client,
-      ws,
-      "RoundtripFlat",
-      src,
-      writer,
-    );
+    const result = await persistClass(client, tree, "RoundtripFlat", src);
     await linkPersistedClass(client, "RoundtripFlat", result);
 
     // Disk artifact exists at the expected location.
@@ -118,12 +114,11 @@ describeIf("persist + OMC roundtrip", () => {
       ],
     ]);
     const src = "within RoundtripPkg.Sub;\nblock Model\nend Model;\n";
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      ws,
+      tree,
       "RoundtripPkg.Sub.Model",
       src,
-      writer,
     );
     await linkPersistedClass(client, "RoundtripPkg.Sub.Model", result);
 
@@ -173,12 +168,11 @@ describeIf("persist + OMC roundtrip", () => {
       ],
     ]);
     const src = "within Roundtrip2.Sub;\nmodel Reloaded\nend Reloaded;\n";
-    const result = await persistClassUnderRoot(
+    const result = await persistClass(
       client,
-      ws,
+      tree,
       "Roundtrip2.Sub.Reloaded",
       src,
-      writer,
     );
     await linkPersistedClass(client, "Roundtrip2.Sub.Reloaded", result);
     await client.close();
@@ -211,12 +205,11 @@ describeIf("persist + OMC roundtrip", () => {
     // package.order that was written without it.
     const root = "Roundtrip3";
     await loadStepwise(client, [[root, `package ${root}\nend ${root};\n`]]);
-    const pkg = await persistClassUnderRoot(
+    const pkg = await persistClass(
       client,
-      ws,
+      tree,
       root,
       `package ${root}\nend ${root};\n`,
-      writer,
       "package",
     );
     await linkPersistedClass(client, root, pkg);
@@ -224,13 +217,7 @@ describeIf("persist + OMC roundtrip", () => {
     for (const name of ["First", "Second"]) {
       const src = `within ${root};\nmodel ${name}\nend ${name};\n`;
       await loadStepwise(client, [[`${root}.${name}`, src]]);
-      const member = await persistClassUnderRoot(
-        client,
-        ws,
-        `${root}.${name}`,
-        src,
-        writer,
-      );
+      const member = await persistClass(client, tree, `${root}.${name}`, src);
       await linkPersistedClass(client, `${root}.${name}`, member);
     }
 

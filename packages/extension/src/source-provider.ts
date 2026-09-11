@@ -39,7 +39,7 @@ import * as vscode from "vscode";
 import {
   isLikelyDiskPath,
   linkPersistedClass,
-  persistClassUnderRoot,
+  persistClass,
   type OmcClient,
 } from "@dicode/omc-client";
 
@@ -253,12 +253,11 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
         );
       } else {
         const { restriction } = await client.getClassInformation({ typeName });
-        const result = await persistClassUnderRoot(
+        const result = await persistClass(
           client,
-          ws.uri.fsPath,
+          { root: ws.uri.fsPath, writer: this.guard },
           typeName,
           text,
-          this.guard,
           restriction === "package" ? "package" : undefined,
         );
         await linkPersistedClass(client, typeName, result);

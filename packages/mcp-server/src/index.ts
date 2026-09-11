@@ -13,7 +13,8 @@
  * assistant an AST nothing else can see.
  */
 
-export type { McpToolClient, McpToolDeps, McpWorkspace } from "./dispatch.js";
+export type { McpToolClient, McpToolDeps } from "./dispatch.js";
+export type { SourceTree, SourceWriter } from "@dicode/omc-client";
 
 export {
   createMcpHttpHost,
