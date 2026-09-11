@@ -10,8 +10,7 @@
  */
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
-
-import { isLikelyDiskPath } from "./persist.js";
+import { isLikelyDiskPath } from "@dicode/omc-client";
 
 export interface FileOwnerClient {
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;

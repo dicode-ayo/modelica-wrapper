@@ -20,6 +20,11 @@
  * class, so the write gate would have nothing to judge. `source-tools.ts`
  * publishes it as OMEdit's `setSourceCode`, which does name one.
  *
+ * `newModel` is absent for a third: it registers a class in OMC's symbol table
+ * and writes nothing, so a caller who stops there loses the class at the next
+ * restart. `class-tools.ts` publishes the composition as OMEdit's
+ * `createClass`.
+ *
  * `readOnlyHint` reads the same table invalidation reads, so the hint cannot
  * claim a call is read-only that the refresh treats as a mutation.
  */
@@ -41,7 +46,6 @@ export const PARITY_TOOLS: readonly OmcFnName[] = [
   // Lifecycle
   "loadFile",
   "loadModel",
-  "newModel",
   // Simulation and results
   "simulate",
   "buildModel",

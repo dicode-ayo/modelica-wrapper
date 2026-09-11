@@ -277,6 +277,7 @@ export async function activate(
     registerLanguageFeatures(context, ensureClient, invalidation),
     registerMcpServerProvider(
       { ensureClient, verdicts: writeVerdicts },
+      selfWriteGuard,
       extensionVersion(context),
     ),
     wireDocHtmlRefresh(docHtmlProvider),

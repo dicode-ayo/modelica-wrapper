@@ -9,6 +9,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { registerClassTools } from "./class-tools.js";
 import { registerDiscoveryTools } from "./discovery-tools.js";
 import { SERVER_INSTRUCTIONS } from "./instructions.js";
 import type { McpToolDeps } from "./dispatch.js";
@@ -24,6 +25,7 @@ export function buildMcpServer(deps: McpToolDeps, version: string): McpServer {
     { instructions: SERVER_INSTRUCTIONS },
   );
   registerParityTools(server, deps);
+  registerClassTools(server, deps);
   registerSourceTools(server, deps);
   registerShapeTools(server, deps);
   registerDiscoveryTools(server, deps);

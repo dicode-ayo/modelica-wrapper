@@ -13,7 +13,7 @@
 
 import * as path from "node:path";
 
-import { isLikelyDiskPath } from "./persist.js";
+import { isLikelyDiskPath } from "@dicode/omc-client";
 
 export interface SystemLibraryClient {
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;

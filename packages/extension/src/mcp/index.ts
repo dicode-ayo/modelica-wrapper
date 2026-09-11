@@ -16,6 +16,11 @@
  * OMC is not spawned here at all. The first tool call is the earliest that may
  * happen.
  *
+ * The workspace folder and the extension's self-write guard are handed down
+ * because `createClass` writes files: OMC's `save` only writes to the path
+ * already in its symbol table, and the guard is what keeps the `.mo` watcher
+ * from reading our own write as a user's edit.
+ *
  * A client VSCode does not configure reaches the same server through
  * `client-config.ts`, which hands its address over by hand.
  */
@@ -23,6 +28,7 @@
 import * as vscode from "vscode";
 
 import { createMcpHttpHost, type McpToolDeps } from "@dicode/modelica-mcp";
+import type { SourceWriter } from "@dicode/omc-client";
 
 import { log } from "../logger.js";
 import { registerWriteClientConfig } from "./client-config.js";
@@ -40,11 +46,20 @@ export const MCP_PROVIDER_LABEL = "Modelica (OpenModelica)";
 const UNRESOLVED = vscode.Uri.parse("http://127.0.0.1/mcp");
 
 export function registerMcpServerProvider(
-  deps: McpToolDeps,
+  deps: Omit<McpToolDeps, "workspace">,
+  writer: SourceWriter,
   version: string,
 ): vscode.Disposable {
   const host = createMcpHttpHost({
-    deps,
+    deps: {
+      ...deps,
+      // Read per call: adding or removing a folder does not restart the
+      // extension host, so a value captured here would go stale.
+      get workspace() {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        return root === undefined ? undefined : { root, writer };
+      },
+    },
     version,
     log: {
       warn: (message) => {

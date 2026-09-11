@@ -66,6 +66,16 @@ export {
   type JsonSchema,
 } from "./help.js";
 
+// --- Writing an in-memory class out to a source tree ---
+export {
+  isLikelyDiskPath,
+  linkPersistedClass,
+  persistClassUnderRoot,
+  type PersistClient,
+  type PersistResult,
+  type SourceWriter,
+} from "./persist.js";
+
 // --- Supported OMC version pin (see docs/audit.md) ---
 export {
   SUPPORTED_OMC,

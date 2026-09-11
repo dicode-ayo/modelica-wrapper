@@ -11,7 +11,7 @@
  * making the call.
  */
 
-import type { OmcFnName, OmcInput } from "@dicode/omc-client";
+import type { OmcFnName, OmcInput, SourceWriter } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { errorDetail } from "./error-detail.js";
@@ -22,15 +22,52 @@ import type {
 } from "./write-verdict.js";
 import { refusalFor, refusalForClass } from "./write-gate.js";
 
-/** The subset of `OmcClient` the MCP tools call. */
+/**
+ * The subset of `OmcClient` the MCP tools call.
+ *
+ * `invoke` carries every published wrapper. The typed methods beside it are
+ * the ones `createClass` composes by hand, and they are declared for the same
+ * reason {@link dispatch} is: a renamed argument fails the build rather than
+ * reaching a model.
+ */
 export interface McpToolClient extends WriteVerdictClient {
   invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
+  existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
+  getClassInformation(input: {
+    typeName: string;
+  }): Promise<{ fileReadOnly: boolean; fileName: string }>;
+  getClassNames(input: { typeName: string }): Promise<{ classNames: string[] }>;
+  getErrorString(): Promise<{ errorString: string }>;
+  loadString(input: {
+    data: string;
+    filename: string;
+    merge: boolean;
+  }): Promise<{ success: boolean }>;
+  setSourceFile(input: {
+    typeName: string;
+    fileName: string;
+  }): Promise<{ success: boolean }>;
+}
+
+/**
+ * The source tree a created class is written into.
+ *
+ * The one thing a tool cannot derive from OMC: OMC's `save` writes only to the
+ * path already in its symbol table, so somebody has to choose the path. The
+ * writer is the host's, because the VSCode extension's file watcher has to be
+ * able to tell this write apart from a user's own edit.
+ */
+export interface McpWorkspace {
+  readonly root: string;
+  readonly writer: SourceWriter;
 }
 
 export interface McpToolDeps {
   /** Spawns OMC on first use; a tool call is the earliest this may happen. */
   ensureClient: () => Promise<McpToolClient>;
   verdicts: WriteVerdictSource;
+  /** Absent when the host has nowhere to write; `createClass` says so. */
+  workspace?: McpWorkspace | undefined;
 }
 
 /** The class a tool writes, when its wrapper's arguments do not name one. */

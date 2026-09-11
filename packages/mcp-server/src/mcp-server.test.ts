@@ -4,13 +4,17 @@
  * `invoke` was called with.
  */
 
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { WriteVerdictClient } from "./write-verdict.js";
-import type { McpToolClient } from "./dispatch.js";
+import type { McpToolClient, McpWorkspace } from "./dispatch.js";
 import { buildMcpServer } from "./mcp-server.js";
 import { PARITY_TOOLS } from "./parity-tools.js";
 import type { WriteVerdictSource } from "./write-verdict.js";
@@ -27,14 +31,32 @@ const calls: Call[] = [];
 let failWith: string | undefined;
 
 let sourceFile = "/w/Demo.mo";
+let loaded: Set<string>;
+let loadFails: string | undefined;
+let workspace: McpWorkspace | undefined;
 
+/**
+ * The wrappers `createClass` composes are recorded alongside `invoke` so every
+ * assertion reads the same way, whichever path reached OMC.
+ */
 const client: McpToolClient = {
   invoke: async (fn, input) => {
     calls.push({ fn, input });
     if (failWith !== undefined) throw new Error(failWith);
     return { ok: true };
   },
-  getClassInformation: async () => ({ fileReadOnly: false }),
+  existClass: async ({ typeName }) => ({ exists: loaded.has(typeName) }),
+  getClassInformation: async () => ({ fileReadOnly: false, fileName: "" }),
+  getClassNames: async () => ({ classNames: [] }),
+  getErrorString: async () => ({ errorString: loadFails ?? "" }),
+  loadString: async (input) => {
+    calls.push({ fn: "loadString", input });
+    return { success: loadFails === undefined };
+  },
+  setSourceFile: async (input) => {
+    calls.push({ fn: "setSourceFile", input });
+    return { success: true };
+  },
   getSourceFile: async () => ({ fileName: sourceFile }),
   getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
 };
@@ -48,7 +70,7 @@ const verdicts: WriteVerdictSource = {
 
 async function connect(): Promise<Client> {
   const server = buildMcpServer(
-    { ensureClient: async () => client, verdicts },
+    { ensureClient: async () => client, verdicts, workspace },
     "1.2.3",
   );
   const mcp = new Client({ name: "test", version: "0" });
@@ -68,6 +90,9 @@ beforeEach(() => {
   calls.length = 0;
   failWith = undefined;
   sourceFile = "/w/Demo.mo";
+  loaded = new Set();
+  loadFails = undefined;
+  workspace = undefined;
 });
 
 describe("the published tool set", () => {
@@ -77,7 +102,7 @@ describe("the published tool set", () => {
     const { tools } = await mcp.listTools();
     const names = tools.map((t) => t.name);
 
-    expect(names).toHaveLength(PARITY_TOOLS.length + 1 + 7 + 3);
+    expect(names).toHaveLength(PARITY_TOOLS.length + 2 + 7 + 3);
     expect(names).toContain("readSimulationResult");
     expect(names).toEqual(expect.arrayContaining([...PARITY_TOOLS]));
     expect(names).toEqual(
@@ -93,6 +118,7 @@ describe("the published tool set", () => {
         "omc_describe_function",
         "omc_invoke",
         "setSourceCode",
+        "createClass",
       ]),
     );
     // `writeClassGraphics` is what the seven shape tools replace, and
@@ -100,6 +126,9 @@ describe("the published tool set", () => {
     // undo the reason its replacement exists.
     expect(names).not.toContain("writeClassGraphics");
     expect(names).not.toContain("loadString");
+    // `newModel` is what `createClass` replaces: it registers a class and
+    // writes nothing, so a caller who stops there loses it at the next restart.
+    expect(names).not.toContain("newModel");
   });
 
   it("hints read-only exactly where the mutation table says nothing changes", async () => {
@@ -151,7 +180,7 @@ describe("the server's instructions", () => {
 
     // A tool description reaches a model once it is already reading that tool;
     // this reaches it while it is still deciding what to do.
-    expect(instructions).toContain("newModel only registers it");
+    expect(instructions).toContain("createClass declares it");
     expect(instructions).toContain("readSimulationResult returns whole series");
     expect(instructions).toContain("typeName rather than cl");
   });
@@ -396,6 +425,131 @@ describe("the escape hatch", () => {
     expect(calls).toEqual([
       { fn: "deleteClass", input: { typeName: "Demo.Circuit" } },
     ]);
+  });
+});
+
+describe("createClass", () => {
+  it("refuses a package that is not the user's to write into", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Mine", kind: "model", withinPath: SYSTEM_LIBRARY },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to load over a class that already exists", async () => {
+    const mcp = await connect();
+    loaded.add("Demo.Circuit");
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Circuit", kind: "model", withinPath: "Demo" },
+    })) as CallToolResult;
+
+    // `loadString` with merge would replace the class, discarding its body.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("already exists");
+    expect(calls).toEqual([]);
+  });
+
+  it("declares the class under a within clause, bound to no file yet", async () => {
+    const mcp = await connect();
+
+    await mcp.callTool({
+      name: "createClass",
+      arguments: {
+        name: "Circuit",
+        kind: "block",
+        withinPath: "Demo",
+        extendsFrom: "Modelica.Icons.Example",
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        fn: "loadString",
+        input: {
+          data:
+            "within Demo;\nblock Circuit\n" +
+            "  extends Modelica.Icons.Example;\nend Circuit;\n",
+          filename: "<runtime:Demo.Circuit>",
+          merge: true,
+        },
+      },
+    ]);
+  });
+
+  it("says so rather than lying when the host has nowhere to write", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Loose", kind: "model" },
+    })) as CallToolResult;
+
+    expect(JSON.parse(text(result))).toMatchObject({
+      className: "Loose",
+      fileName: null,
+    });
+    expect(calls.map((c) => c.fn)).toEqual(["loadString"]);
+  });
+
+  it("reports OMC's own reason when the class will not parse", async () => {
+    const mcp = await connect();
+    loadFails = "Parse error near 'end'";
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Broken", kind: "model" },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe("Parse error near 'end'");
+  });
+
+  it("writes the file and points OMC at it", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-create-"));
+    const written: string[] = [];
+    workspace = {
+      root,
+      writer: {
+        write: async (fsPath, textContent) => {
+          written.push(fsPath);
+          await fsp.writeFile(fsPath, textContent, "utf8");
+        },
+      },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Loose", kind: "model" },
+      })) as CallToolResult;
+
+      const leaf = path.join(root, "Loose.mo");
+      expect(JSON.parse(text(result))).toEqual({
+        className: "Loose",
+        fileName: leaf,
+      });
+      expect(written).toEqual([leaf]);
+      expect(await fsp.readFile(leaf, "utf8")).toBe(
+        "model Loose\nend Loose;\n",
+      );
+      // Without this OMC keeps the `<runtime:…>` placeholder, and the next
+      // save writes to a path that is not a path.
+      expect(calls).toContainEqual({
+        fn: "setSourceFile",
+        input: { typeName: "Loose", fileName: leaf },
+      });
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   });
 });
 
