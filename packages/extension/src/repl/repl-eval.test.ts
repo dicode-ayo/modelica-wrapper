@@ -199,7 +199,7 @@ describe("evalLine — meta commands", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it(":help <fnName> survives an output schema that has no JSON Schema projection", async () => {
+  it(":help <fnName> survives an output schema zod cannot fully project", async () => {
     // `handleMeta` returns ahead of the `try` that covers plain OMC
     // commands, so anything thrown while rendering help escapes `evalLine`.
     const fake = makeClient();

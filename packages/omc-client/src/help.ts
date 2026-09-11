@@ -73,9 +73,15 @@ export interface FunctionJsonSchema {
   name: OmcFnName;
   category: string;
   description: string;
-  /** JSON Schema (draft 2020-12) of the input — `io: "input"` semantics. */
+  /**
+   * JSON Schema (draft 2020-12) of the input — `io: "input"` semantics.
+   * A node zod cannot represent carries {@link UNREPRESENTABLE}.
+   */
   input: JsonSchema;
-  /** JSON Schema (draft 2020-12) of the output — `io: "output"` semantics. */
+  /**
+   * JSON Schema (draft 2020-12) of the output — `io: "output"` semantics.
+   * A node zod cannot represent carries {@link UNREPRESENTABLE}.
+   */
   output: JsonSchema;
 }
 
@@ -197,26 +203,33 @@ export function renderOverview(): string {
  */
 type Node = z.core.JSONSchema.BaseSchema;
 
-/** The root schema's `$defs`, carried down so a `$ref` field can be labelled. */
-type Defs = Record<string, z.core.JSONSchema.JSONSchema> | undefined;
-
 /** Skip boolean-form schemas (`true` / `false`); return the object form or undefined. */
 function asNode(s: unknown): Node | undefined {
   return s && typeof s === "object" ? (s as Node) : undefined;
 }
 
 /**
+ * Key marking a node zod could not represent. An untagged `{}` is
+ * indistinguishable from the ~140 the registry emits for genuine `unknown`
+ * values, so a consumer cannot otherwise tell a gap in the projection from a
+ * deliberately unconstrained field.
+ */
+export const UNREPRESENTABLE = "x-unrepresentable";
+
+/**
  * `.transform()` has no JSON Schema equivalent, and zod's default is to throw
  * on one anywhere in the tree — which `DegradingModifierSchema`, reached from
- * every `ModelInstance` output, carries. `unrepresentable: "any"` confines the
- * gap to the node that has it (`{}`, labelled `unknown`) and leaves the rest of
- * the projection intact.
+ * every `ModelInstance` output, carries. Tagging confines the gap to the node
+ * that has it and leaves the rest of the projection intact.
  */
 function toJsonSchema(schema: z.ZodType, io: "input" | "output"): JsonSchema {
-  return z.toJSONSchema(schema, { io, unrepresentable: "any" });
+  return z.toJSONSchema(schema, {
+    io,
+    unrepresentable: ({ message }) => ({ [UNREPRESENTABLE]: message }),
+  });
 }
 
-function describeFieldsFromSchema(
+export function describeFieldsFromSchema(
   schema: z.ZodType,
   io: "input" | "output",
 ): FieldInfo[] {
@@ -245,25 +258,36 @@ const DEFS_POINTER = "#/$defs/";
 /**
  * Follow a `#/$defs/...` pointer to the node it names. A recursive schema
  * (`ModelInstanceSchema`) is extracted to `$defs` and referenced rather than
- * inlined, so the label of such a field lives one hop away. Returns
- * `undefined` for a pointer that leaves `$defs`, names a missing def, or
- * chains back on itself.
+ * inlined, so the label of such a field lives one hop away.
+ *
+ * `seen` holds every def already entered while labeling one field, across the
+ * `items` descent as well as the pointer chain: `z.lazy(() => z.array(Self))`
+ * projects to a def whose `items` point back at that same def, so resolving it
+ * a second time would not terminate. Returns `undefined` there, and for a
+ * pointer that leaves `$defs` or names a def that is absent.
  */
-function deref(node: Node, defs: Defs): Node | undefined {
-  const seen = new Set<string>();
+function deref(
+  node: Node,
+  defs: Node["$defs"],
+  seen: Set<string>,
+): Node | undefined {
   let current: Node | undefined = node;
   while (current?.$ref !== undefined) {
     if (!current.$ref.startsWith(DEFS_POINTER)) return undefined;
     const name = current.$ref.slice(DEFS_POINTER.length);
     if (seen.has(name)) return undefined;
     seen.add(name);
-    current = asNode(defs?.[name]);
+    current = defs?.[name];
   }
   return current;
 }
 
-function typeLabel(raw: Node, defs: Defs): string {
-  const node = deref(raw, defs) ?? raw;
+function typeLabel(
+  raw: Node,
+  defs: Node["$defs"],
+  seen = new Set<string>(),
+): string {
+  const node = deref(raw, defs, seen) ?? raw;
   // `const` and `enum` are more specific than `type`; render them first
   // so a `z.literal("Foo")` (rendered by zod as `{type: "string", const: "Foo"}`)
   // surfaces as `"Foo"` rather than just `string`.
@@ -276,7 +300,7 @@ function typeLabel(raw: Node, defs: Defs): string {
     // boolean. OMC schemas only use the single-schema form; the others
     // fall through to "array" rather than mis-labeling.
     const items = !Array.isArray(node.items) ? asNode(node.items) : undefined;
-    return items ? `${typeLabel(items, defs)}[]` : "array";
+    return items ? `${typeLabel(items, defs, seen)}[]` : "array";
   }
   if (node.type === "string") return "string";
   if (node.type === "number" || node.type === "integer") return "number";
