@@ -197,6 +197,9 @@ export function renderOverview(): string {
  */
 type Node = z.core.JSONSchema.BaseSchema;
 
+/** The root schema's `$defs`, carried down so a `$ref` field can be labelled. */
+type Defs = Record<string, z.core.JSONSchema.JSONSchema> | undefined;
+
 /** Skip boolean-form schemas (`true` / `false`); return the object form or undefined. */
 function asNode(s: unknown): Node | undefined {
   return s && typeof s === "object" ? (s as Node) : undefined;
@@ -228,7 +231,7 @@ function describeFieldsFromSchema(
     const optional = !requiredSet.has(name) || hasDefault;
     out.push({
       name,
-      typeLabel: typeLabel(field),
+      typeLabel: typeLabel(field, node.$defs),
       optional,
       defaultValue: hasDefault ? field.default : undefined,
       description: field.description,
@@ -237,7 +240,30 @@ function describeFieldsFromSchema(
   return out;
 }
 
-function typeLabel(node: Node): string {
+const DEFS_POINTER = "#/$defs/";
+
+/**
+ * Follow a `#/$defs/...` pointer to the node it names. A recursive schema
+ * (`ModelInstanceSchema`) is extracted to `$defs` and referenced rather than
+ * inlined, so the label of such a field lives one hop away. Returns
+ * `undefined` for a pointer that leaves `$defs`, names a missing def, or
+ * chains back on itself.
+ */
+function deref(node: Node, defs: Defs): Node | undefined {
+  const seen = new Set<string>();
+  let current: Node | undefined = node;
+  while (current?.$ref !== undefined) {
+    if (!current.$ref.startsWith(DEFS_POINTER)) return undefined;
+    const name = current.$ref.slice(DEFS_POINTER.length);
+    if (seen.has(name)) return undefined;
+    seen.add(name);
+    current = asNode(defs?.[name]);
+  }
+  return current;
+}
+
+function typeLabel(raw: Node, defs: Defs): string {
+  const node = deref(raw, defs) ?? raw;
   // `const` and `enum` are more specific than `type`; render them first
   // so a `z.literal("Foo")` (rendered by zod as `{type: "string", const: "Foo"}`)
   // surfaces as `"Foo"` rather than just `string`.
@@ -250,7 +276,7 @@ function typeLabel(node: Node): string {
     // boolean. OMC schemas only use the single-schema form; the others
     // fall through to "array" rather than mis-labeling.
     const items = !Array.isArray(node.items) ? asNode(node.items) : undefined;
-    return items ? `${typeLabel(items)}[]` : "array";
+    return items ? `${typeLabel(items, defs)}[]` : "array";
   }
   if (node.type === "string") return "string";
   if (node.type === "number" || node.type === "integer") return "number";

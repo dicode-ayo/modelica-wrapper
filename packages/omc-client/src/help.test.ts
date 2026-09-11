@@ -56,6 +56,21 @@ describe("describeFunction", () => {
     // both are fine, this just guards against an introspection crash.
     expect(Array.isArray(d.returns)).toBe(true);
   });
+
+  it("labels a field whose schema lives in `$defs` by its target", () => {
+    // A recursive schema is extracted to `$defs` and referenced rather than
+    // inlined, putting the label one hop away from the property itself.
+    const returns = describeFunction("getModelInstance").returns;
+    expect(returns.map((f) => [f.name, f.typeLabel])).toEqual([
+      ["instance", "object"],
+    ]);
+    // `simulate` has no unrepresentable node anywhere in its output, so it
+    // pins the `$ref` label independently of the transform degradation.
+    const sim = describeFunction("simulate").returns.find(
+      (f) => f.name === "simulationResult",
+    );
+    expect(sim?.typeLabel).toBe("union");
+  });
 });
 
 describe("renderFunctionHelp", () => {
