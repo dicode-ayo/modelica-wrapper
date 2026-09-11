@@ -12,6 +12,10 @@
  * tools combined, since every caller pays for every shape's fields.
  * `shape-tools.ts` publishes it as the seven tools OMEdit spends on that job.
  *
+ * `readSimulationResult` is here although OMEdit has no tool for it: OMEdit
+ * reads a result through its own plot widget, and without it a caller samples
+ * one variable at one time per `val` call.
+ *
  * `loadString` is absent for a different reason: its arguments never name a
  * class, so the write gate would have nothing to judge. `source-tools.ts`
  * publishes it as OMEdit's `setSourceCode`, which does name one.
@@ -42,6 +46,7 @@ export const PARITY_TOOLS: readonly OmcFnName[] = [
   "simulate",
   "buildModel",
   "readSimulationResultVars",
+  "readSimulationResult",
   "val",
   // Components
   "addComponent",

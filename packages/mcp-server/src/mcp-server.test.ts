@@ -78,6 +78,7 @@ describe("the published tool set", () => {
     const names = tools.map((t) => t.name);
 
     expect(names).toHaveLength(PARITY_TOOLS.length + 1 + 7 + 3);
+    expect(names).toContain("readSimulationResult");
     expect(names).toEqual(expect.arrayContaining([...PARITY_TOOLS]));
     expect(names).toEqual(
       expect.arrayContaining([
@@ -139,6 +140,20 @@ describe("the published tool set", () => {
     const { tools } = await mcp.listTools();
 
     expect(tools.filter((t) => t.outputSchema !== undefined)).toEqual([]);
+  });
+});
+
+describe("the server's instructions", () => {
+  it("reach the client alongside the tool list", async () => {
+    const mcp = await connect();
+
+    const instructions = mcp.getInstructions();
+
+    // A tool description reaches a model once it is already reading that tool;
+    // this reaches it while it is still deciding what to do.
+    expect(instructions).toContain("newModel only registers it");
+    expect(instructions).toContain("readSimulationResult returns whole series");
+    expect(instructions).toContain("typeName rather than cl");
   });
 });
 
