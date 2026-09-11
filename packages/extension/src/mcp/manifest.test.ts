@@ -15,12 +15,7 @@ import { MCP_PROVIDER_ID } from "./index.js";
 
 interface Manifest {
   contributes: {
-    mcpServerDefinitionProviders?: {
-      id: string;
-      label: string;
-      when?: string;
-    }[];
-    configuration: { properties: Record<string, { default?: unknown }> };
+    mcpServerDefinitionProviders?: { id: string; label: string }[];
   };
 }
 
@@ -38,18 +33,5 @@ describe("the MCP contribution", () => {
     );
 
     expect(ids).toContain(MCP_PROVIDER_ID);
-  });
-
-  it("gates the collection on a setting that is off by default", () => {
-    // An ungated collection activates the extension in every window, and
-    // activation calls `omcSetup.start()` — which prompts when OMC is missing.
-    // The `when` clause is re-evaluated live, so flipping the setting
-    // registers or disposes the collection without a window reload.
-    const [entry] = manifest.contributes.mcpServerDefinitionProviders ?? [];
-    const setting =
-      manifest.contributes.configuration.properties["modelica.mcp.enabled"];
-
-    expect(entry?.when).toBe("config.modelica.mcp.enabled");
-    expect(setting?.default).toBe(false);
   });
 });

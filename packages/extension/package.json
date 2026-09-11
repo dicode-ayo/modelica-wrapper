@@ -475,8 +475,7 @@
     "mcpServerDefinitionProviders": [
       {
         "id": "modelica.omc",
-        "label": "Modelica (OpenModelica)",
-        "when": "config.modelica.mcp.enabled"
+        "label": "Modelica (OpenModelica)"
       }
     ],
     "configuration": {
@@ -498,12 +497,6 @@
           "default": 750,
           "minimum": 250,
           "description": "Debounce window (ms) between the last edit and the auto-check pipeline. Minimum 250 ms."
-        },
-        "modelica.mcp.enabled": {
-          "type": "boolean",
-          "default": false,
-          "scope": "machine-overridable",
-          "description": "Offer OpenModelica's scripting API to AI assistants as an MCP server, over a loopback connection inside this window. Off by default: an assistant can then edit your models, and turning it on activates the extension in every window."
         }
       }
     }
