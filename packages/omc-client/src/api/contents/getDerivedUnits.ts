@@ -30,7 +30,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { quote } from "../../_shared/format.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const GetDerivedUnitsInputSchema = z.object({
+export const GetDerivedUnitsInputSchema = z.strictObject({
   baseUnit: z
     .string()
     .describe('Base unit string whose derived units to enumerate (e.g. "K").'),

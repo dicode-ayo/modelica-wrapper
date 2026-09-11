@@ -12,7 +12,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const ParseFileInputSchema = z.object({
+export const ParseFileInputSchema = z.strictObject({
   fileName: z.string().describe("Path to the `.mo` Modelica file to parse."),
   encoding: z
     .string()

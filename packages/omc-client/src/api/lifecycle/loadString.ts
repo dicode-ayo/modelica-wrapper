@@ -34,7 +34,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const LoadStringInputSchema = z.object({
+export const LoadStringInputSchema = z.strictObject({
   data: z.string().describe("Modelica source code to parse and load."),
   filename: z
     .string()

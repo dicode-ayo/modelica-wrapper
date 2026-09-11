@@ -20,7 +20,7 @@ import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const IsProtectedClassInputSchema = z.object({
+export const IsProtectedClassInputSchema = z.strictObject({
   typeName: z.string(),
   c2: z
     .string()

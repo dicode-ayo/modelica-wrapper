@@ -13,7 +13,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetSourceFileInputSchema = z.object({
+export const SetSourceFileInputSchema = z.strictObject({
   typeName: z.string().describe("Class whose source filename is being set."),
   fileName: z
     .string()

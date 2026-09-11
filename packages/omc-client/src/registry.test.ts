@@ -122,6 +122,28 @@ describe("registry", () => {
     ).toThrow();
   });
 
+  /**
+   * An unknown argument name must reject, not vanish. Where a function has an
+   * argument-less OMC overload the dropped key makes the call succeed meaning
+   * something else — `getVersion({cl})` answers with the compiler's version
+   * instead of the library's.
+   *
+   * The probe supplies no required fields on purpose: zod reports
+   * `unrecognized_keys` alongside any missing-field issue, so asserting on
+   * that code rather than on the parse throwing measures strictness rather
+   * than completeness.
+   */
+  it("input schemas reject an argument name the function does not have", () => {
+    for (const name of omcFunctionNames) {
+      const result = REGISTRY[name].inputSchema.safeParse({
+        __notAnArgument__: "x",
+      });
+      expect(result.success, name).toBe(false);
+      const codes = result.error?.issues.map((issue) => issue.code) ?? [];
+      expect(codes, name).toContain("unrecognized_keys");
+    }
+  });
+
   it("input schemas accept well-formed inputs", () => {
     expect(() =>
       REGISTRY.getClassInformation.inputSchema.parse({

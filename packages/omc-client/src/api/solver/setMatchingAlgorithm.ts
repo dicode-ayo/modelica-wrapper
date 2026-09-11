@@ -12,7 +12,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetMatchingAlgorithmInputSchema = z.object({
+export const SetMatchingAlgorithmInputSchema = z.strictObject({
   algorithm: z
     .string()
     .describe('Matching algorithm name, e.g. "PFPlus", "PFPlusExt", "BFSB".'),

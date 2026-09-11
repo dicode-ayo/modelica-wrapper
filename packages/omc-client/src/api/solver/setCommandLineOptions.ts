@@ -24,7 +24,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetCommandLineOptionsInputSchema = z.object({
+export const SetCommandLineOptionsInputSchema = z.strictObject({
   options: z
     .string()
     .describe(

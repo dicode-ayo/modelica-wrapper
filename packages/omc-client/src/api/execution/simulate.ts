@@ -39,7 +39,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
-export const SimulateInputSchema = z.object({
+export const SimulateInputSchema = z.strictObject({
   typeName: z.string().describe("Class to simulate."),
   startTime: z
     .number()

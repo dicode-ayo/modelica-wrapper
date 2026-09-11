@@ -33,7 +33,7 @@ import {
   parse,
 } from "../../parse.js";
 
-export const GetParameterValueInputSchema = z.object({
+export const GetParameterValueInputSchema = z.strictObject({
   typeName: z.string().describe("Class containing the parameter."),
   name: z
     .string()

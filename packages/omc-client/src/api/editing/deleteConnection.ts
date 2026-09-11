@@ -14,7 +14,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const DeleteConnectionInputSchema = z.object({
+export const DeleteConnectionInputSchema = z.strictObject({
   from: z
     .string()
     .describe(

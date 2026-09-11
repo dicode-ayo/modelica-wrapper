@@ -13,7 +13,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const DeleteComponentInputSchema = z.object({
+export const DeleteComponentInputSchema = z.strictObject({
   componentName: z
     .string()
     .describe("Local instance name of the component to delete."),

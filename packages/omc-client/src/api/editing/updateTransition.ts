@@ -43,7 +43,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const UpdateTransitionInputSchema = z.object({
+export const UpdateTransitionInputSchema = z.strictObject({
   typeName: z.string().describe("Class containing the state machine."),
   from: z
     .string()

@@ -16,7 +16,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const GetAvailableLibrariesInputSchema = z.object({});
+export const GetAvailableLibrariesInputSchema = z.strictObject({});
 export type GetAvailableLibrariesInput = z.input<
   typeof GetAvailableLibrariesInputSchema
 >;

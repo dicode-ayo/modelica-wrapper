@@ -26,7 +26,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const UpdateInitialStateInputSchema = z.object({
+export const UpdateInitialStateInputSchema = z.strictObject({
   typeName: z.string().describe("Class containing the state machine."),
   state: z.string().describe("Name of the existing initial state to update."),
   annotation: z

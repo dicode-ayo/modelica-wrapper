@@ -21,7 +21,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
-export const GetDerivedClassModifierValueInputSchema = z.object({
+export const GetDerivedClassModifierValueInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

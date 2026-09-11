@@ -11,7 +11,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectInt, parse } from "../../parse.js";
 
-export const ReadSimulationResultSizeInputSchema = z.object({
+export const ReadSimulationResultSizeInputSchema = z.strictObject({
   fileName: z
     .string()
     .describe("Path to the simulation result file to inspect."),

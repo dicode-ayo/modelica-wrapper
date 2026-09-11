@@ -11,7 +11,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const CloseSimulationResultFileInputSchema = z.object({});
+export const CloseSimulationResultFileInputSchema = z.strictObject({});
 export type CloseSimulationResultFileInput = z.input<
   typeof CloseSimulationResultFileInputSchema
 >;

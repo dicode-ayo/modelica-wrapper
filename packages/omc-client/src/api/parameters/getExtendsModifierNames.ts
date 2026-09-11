@@ -12,7 +12,7 @@ import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const GetExtendsModifierNamesInputSchema = z.object({
+export const GetExtendsModifierNamesInputSchema = z.strictObject({
   typeName: typeNameOfExtends,
   extendsBase,
   useQuotes: z

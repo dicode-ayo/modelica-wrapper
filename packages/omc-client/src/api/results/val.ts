@@ -24,7 +24,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectFloat, parse } from "../../parse.js";
 
-export const ValInputSchema = z.object({
+export const ValInputSchema = z.strictObject({
   var: z
     .string()
     .describe(

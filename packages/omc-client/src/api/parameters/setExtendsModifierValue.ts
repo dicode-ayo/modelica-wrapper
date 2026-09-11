@@ -13,7 +13,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetExtendsModifierValueInputSchema = z.object({
+export const SetExtendsModifierValueInputSchema = z.strictObject({
   typeName: typeNameOfExtends,
   extendsBase: extendsBase.describe(
     "TypeName of the base class on the `extends` clause to mutate.",

@@ -30,7 +30,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const FilterSimulationResultsInputSchema = z.object({
+export const FilterSimulationResultsInputSchema = z.strictObject({
   inFile: z.string().describe("Source simulation result file."),
   outFile: z
     .string()

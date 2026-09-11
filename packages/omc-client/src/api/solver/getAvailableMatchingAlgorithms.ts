@@ -23,7 +23,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
 
-export const GetAvailableMatchingAlgorithmsInputSchema = z.object({});
+export const GetAvailableMatchingAlgorithmsInputSchema = z.strictObject({});
 export type GetAvailableMatchingAlgorithmsInput = z.input<
   typeof GetAvailableMatchingAlgorithmsInputSchema
 >;

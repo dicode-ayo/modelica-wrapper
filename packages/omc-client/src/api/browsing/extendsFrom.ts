@@ -25,7 +25,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const ExtendsFromInputSchema = z.object({
+export const ExtendsFromInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

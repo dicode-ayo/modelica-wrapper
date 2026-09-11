@@ -29,7 +29,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const LoadFilesInputSchema = z.object({
+export const LoadFilesInputSchema = z.strictObject({
   fileNames: z.array(z.string()).describe("Paths of Modelica files to load."),
   encoding: z
     .string()

@@ -29,7 +29,7 @@ import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
 
-export const GetReplaceableChoicesInputSchema = z.object({
+export const GetReplaceableChoicesInputSchema = z.strictObject({
   baseClass: z
     .string()
     .describe(

@@ -20,7 +20,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
-export const GetMatchingAlgorithmInputSchema = z.object({});
+export const GetMatchingAlgorithmInputSchema = z.strictObject({});
 export type GetMatchingAlgorithmInput = z.input<
   typeof GetMatchingAlgorithmInputSchema
 >;

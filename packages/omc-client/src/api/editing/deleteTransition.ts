@@ -17,7 +17,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const DeleteTransitionInputSchema = z.object({
+export const DeleteTransitionInputSchema = z.strictObject({
   typeName: z.string().describe("Class containing the state machine."),
   from: z.string().describe("Source state of the transition to remove."),
   to: z.string().describe("Target state of the transition to remove."),

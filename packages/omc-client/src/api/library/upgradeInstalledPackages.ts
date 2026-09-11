@@ -18,7 +18,7 @@ import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const UpgradeInstalledPackagesInputSchema = z.object({
+export const UpgradeInstalledPackagesInputSchema = z.strictObject({
   installNewestVersions: z
     .boolean()
     .optional()

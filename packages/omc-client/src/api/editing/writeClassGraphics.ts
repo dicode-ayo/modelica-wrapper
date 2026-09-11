@@ -60,7 +60,7 @@ export type WriteCoordinateSystemInput = z.infer<
   typeof WriteCoordinateSystemSchema
 >;
 
-export const WriteClassGraphicsInputSchema = z.object({
+export const WriteClassGraphicsInputSchema = z.strictObject({
   typeName: z.string().describe("Class whose graphics layer is edited."),
   layer: z
     .union([z.literal("icon"), z.literal("diagram")])

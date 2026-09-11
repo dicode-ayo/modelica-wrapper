@@ -12,7 +12,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetIndexReductionMethodInputSchema = z.object({
+export const SetIndexReductionMethodInputSchema = z.strictObject({
   method: z
     .string()
     .describe('Index-reduction method name, e.g. "dynamicStateSelection".'),

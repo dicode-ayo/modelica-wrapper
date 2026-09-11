@@ -24,7 +24,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const GetNthImportInputSchema = z.object({
+export const GetNthImportInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

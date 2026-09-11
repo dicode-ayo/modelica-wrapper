@@ -33,7 +33,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { quote } from "../../_shared/format.js";
 import { expectString, parse } from "../../parse.js";
 
-export const UriToFilenameInputSchema = z.object({
+export const UriToFilenameInputSchema = z.strictObject({
   uri: z
     .string()
     .describe(

@@ -21,7 +21,7 @@ import { mlBool, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
-export const ModifierToJSONInputSchema = z.object({
+export const ModifierToJSONInputSchema = z.strictObject({
   modifier: z.string().describe("Raw Modelica modifier expression to convert."),
   prettyPrint,
 });

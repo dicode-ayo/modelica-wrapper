@@ -27,7 +27,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const LoadModelInputSchema = z.object({
+export const LoadModelInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

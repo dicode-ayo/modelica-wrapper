@@ -21,7 +21,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
-export const GetElementsInputSchema = z.object({
+export const GetElementsInputSchema = z.strictObject({
   typeName: z.string().describe("Class whose elements should be enumerated."),
   useQuotes: z
     .boolean()

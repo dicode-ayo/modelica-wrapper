@@ -27,7 +27,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 import type { OmcCommand } from "../../commands.js";
 
-export const GetClassNamesInputSchema = z.object({
+export const GetClassNamesInputSchema = z.strictObject({
   typeName: z
     .string()
     .optional()

@@ -28,7 +28,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, asInt, expectList, parse, type Value } from "../../parse.js";
 
-export const GetSimulationOptionsInputSchema = z.object({
+export const GetSimulationOptionsInputSchema = z.strictObject({
   typeName: z.string().describe("Class whose experiment annotation is read."),
   defaultStartTime: z
     .number()

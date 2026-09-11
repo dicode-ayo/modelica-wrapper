@@ -22,7 +22,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const SetDocumentationAnnotationInputSchema = z.object({
+export const SetDocumentationAnnotationInputSchema = z.strictObject({
   typeName: z.string().describe("Class to annotate."),
   info: z
     .string()

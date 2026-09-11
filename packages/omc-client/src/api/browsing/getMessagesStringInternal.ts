@@ -62,7 +62,7 @@ import {
   type Value,
 } from "../../parse.js";
 
-export const GetMessagesStringInternalInputSchema = z.object({
+export const GetMessagesStringInternalInputSchema = z.strictObject({
   unique: z
     .boolean()
     .optional()

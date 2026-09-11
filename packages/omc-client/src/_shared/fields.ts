@@ -13,7 +13,7 @@
  * ```ts
  * import { prettyPrint, typeNameOfConnection } from "../../_shared/fields.js";
  *
- * export const FooInputSchema = z.object({
+ * export const FooInputSchema = z.strictObject({
  *   typeName: typeNameOfConnection,
  *   prettyPrint,
  * });

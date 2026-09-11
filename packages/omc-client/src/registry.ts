@@ -81,9 +81,7 @@ const NoInputSchema = z.strictObject({});
  * Registration for OMC functions declared with no arguments, whose wrapper is
  * therefore `(ctx) => …` and ships no input schema of its own.
  *
- * `invoke()` is an untrusted boundary, so the entry carries a strict
- * empty-object schema: anything but `{}` is a caller bug and is rejected as
- * one. Typing the input as `Record<string, never>` keeps that contract
+ * Typing the input as `Record<string, never>` keeps the empty contract
  * visible to `OmcInput`, and the schema gives `help.ts` and the MCP pipeline
  * the "(none)" parameter list they expect for every entry.
  */
