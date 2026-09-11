@@ -2,11 +2,11 @@
  * The seven tools OMEdit spends on graphic primitives, over the one wrapper
  * this package spends on them.
  *
- * `writeClassGraphics` takes a discriminated union of every shape, which
- * projects to 14,176 characters of JSON Schema — 42% of the whole curated set,
- * more than its other 29 tools combined. Split, a model drawing a line never
- * pays for the polygon and text branches. This is the one place where matching
- * OMEdit's tool count is also the cheaper option.
+ * `writeClassGraphics` takes a discriminated union of every shape, whose JSON
+ * Schema costs more than the rest of the curated set combined — every caller
+ * pays for every shape's fields. Split, a model drawing a line never pays for
+ * the polygon and text branches, so matching OMEdit's tool count is also the
+ * cheaper option here.
  *
  * The schemas here are the tools' own rather than slices of `ShapeSchema`:
  * flattening `extent` to four numbers and dropping the fields a caller drawing
@@ -67,7 +67,7 @@ const filled = {
     .string()
     .optional()
     .describe("Interior fill pattern, e.g. None, Solid, HorizontalCylinder."),
-};
+} satisfies { [K in keyof Required<FilledShape>]: z.ZodType };
 
 /** `[x1, y1, x2, y2]` as the nested pair Modelica and `ShapeSchema` use. */
 function extentOf(flat: [number, number, number, number]): Extent {

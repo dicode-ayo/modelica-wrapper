@@ -11,7 +11,7 @@
  * making the call.
  */
 
-import type { OmcFnName, OmcInput, OmcOutput } from "@dicode/omc-client";
+import type { OmcFnName, OmcInput } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { errorDetail } from "../error-detail.js";
@@ -20,7 +20,7 @@ import { refusalFor, type WriteVerdictSource } from "./write-gate.js";
 
 /** The subset of `OmcClient` the MCP tools call. */
 export interface McpToolClient extends WriteVerdictClient {
-  invoke<K extends OmcFnName>(fn: K, input: OmcInput<K>): Promise<OmcOutput<K>>;
+  invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
 }
 
 export interface McpToolDeps {
@@ -75,11 +75,7 @@ export async function dispatchByName(
     const refusal = await refusalFor(deps.verdicts, client, fn, input);
     if (refusal !== undefined) return errorResult(refusal);
 
-    // The registry pairs each name with its own input type by construction;
-    // a name only known at runtime erases that, so the call shape is widened
-    // the way `OmcClient.invoke` widens its own dispatch.
-    type AnyInvoke = (fn: OmcFnName, input: unknown) => Promise<unknown>;
-    const output = await (client.invoke as AnyInvoke)(fn, input);
+    const output = await client.invoke(fn, input);
     return textResult(JSON.stringify(output));
   } catch (err) {
     return errorResult(errorDetail(err));

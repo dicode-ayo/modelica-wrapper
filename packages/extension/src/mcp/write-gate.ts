@@ -64,6 +64,10 @@ const createsInside = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
 ): ClassArgument<K> => ({ field, as: "class", action: "createInside" });
 
+const editsElement = <K extends OmcFnName>(
+  field: Extract<keyof OmcInput<K>, string>,
+): ClassArgument<K> => ({ field, as: "element", action: "edit" });
+
 /**
  * `copyClass`'s `within` and `newModel`'s `withinPath` are empty for a
  * top-level class. An empty name has no verdict to derive, so the gate lets it
@@ -105,7 +109,7 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
   setComponentModifierValue: edits("typeName"),
   setComponentProperties: edits("typeName"),
   setDocumentationAnnotation: edits("typeName"),
-  setElementAnnotation: { field: "typeName", as: "element", action: "edit" },
+  setElementAnnotation: editsElement("typeName"),
   setElementModifierValue: edits("typeName"),
   setElementType: edits("typeName"),
   setExtendsModifier: edits("typeName"),
@@ -150,8 +154,9 @@ export async function refusalFor(
 ): Promise<string | undefined> {
   const argument = BY_NAME[fn];
   if (argument === undefined || argument === null) return undefined;
+  if (typeof input !== "object" || input === null) return undefined;
 
-  const raw = (input as Record<string, unknown>)[argument.field];
+  const raw: unknown = (input as Record<string, unknown>)[argument.field];
   if (typeof raw !== "string" || raw === "") return undefined;
   const className = argument.as === "element" ? enclosingScope(raw) : raw;
   if (className === "") return undefined;

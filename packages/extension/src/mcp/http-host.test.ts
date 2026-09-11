@@ -14,9 +14,12 @@ import {
   type McpHttpHost,
 } from "./http-host.js";
 
-const client = {
+const client: McpToolClient = {
   invoke: async () => ({ classNames: ["Demo"] }),
-} as unknown as McpToolClient;
+  getClassInformation: async () => ({ fileReadOnly: false }),
+  getSourceFile: async () => ({ fileName: "/w/Demo.mo" }),
+  getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
+};
 
 const deps = {
   ensureClient: async () => client,

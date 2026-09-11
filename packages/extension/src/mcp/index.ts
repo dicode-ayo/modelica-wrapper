@@ -1,7 +1,7 @@
 /**
  * Registration of the MCP server definition provider.
  *
- * The division of labour between the two provider methods is load-bearing.
+ * The division of labor between the two provider methods is load-bearing.
  * `provideMcpServerDefinitions` is called eagerly and must not take actions
  * needing user interaction or expensive setup — so it returns a definition
  * with a placeholder URI and no headers, and starts nothing.
@@ -26,7 +26,8 @@ import type { McpToolDeps } from "./dispatch.js";
 /** Matches `contributes.mcpServerDefinitionProviders[0].id` in package.json. */
 export const MCP_PROVIDER_ID = "modelica.omc";
 
-const LABEL = "Modelica (OpenModelica)";
+/** Matches `contributes.mcpServerDefinitionProviders[0].label`. */
+export const MCP_PROVIDER_LABEL = "Modelica (OpenModelica)";
 
 /**
  * The definition class requires a URI, and the real one is not known until
@@ -43,7 +44,12 @@ export function registerMcpServerProvider(
   const definitions: vscode.McpServerDefinitionProvider<vscode.McpHttpServerDefinition> =
     {
       provideMcpServerDefinitions: () => [
-        new vscode.McpHttpServerDefinition(LABEL, UNRESOLVED, {}, version),
+        new vscode.McpHttpServerDefinition(
+          MCP_PROVIDER_LABEL,
+          UNRESOLVED,
+          {},
+          version,
+        ),
       ],
       resolveMcpServerDefinition: async (server) => {
         const { url, token } = await host.start();

@@ -41,8 +41,8 @@ export function diagnoseOmcError(
 ): string | undefined {
   const m = LOOKUP_FAILURE_RE.exec(errorString);
   if (!m) return undefined;
-  const fnName = m[1]!;
-  if (!isOmcFnName(fnName)) {
+  const [, fnName] = m;
+  if (fnName === undefined || !isOmcFnName(fnName)) {
     // Some genuinely missing class — leave OMC's error alone.
     return undefined;
   }

@@ -27,12 +27,15 @@ const calls: Call[] = [];
 let failWith: string | undefined;
 
 const client: McpToolClient = {
-  invoke: async (fn: string, input: unknown) => {
+  invoke: async (fn, input) => {
     calls.push({ fn, input });
     if (failWith !== undefined) throw new Error(failWith);
-    return { ok: true } as never;
+    return { ok: true };
   },
-} as unknown as McpToolClient;
+  getClassInformation: async () => ({ fileReadOnly: false }),
+  getSourceFile: async () => ({ fileName: "/w/Demo.mo" }),
+  getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
+};
 
 const verdicts: WriteVerdictSource = {
   forClass: async (_c: WriteVerdictClient, className: string) =>
@@ -108,13 +111,18 @@ describe("the published tool set", () => {
   });
 
   it("leaves room for the prefix VSCode puts in front of every name", async () => {
-    // VSCode presents an MCP tool as `mcp_<server>_<tool>` and caps the result.
-    // The longest published name is `getInstantiatedParametersAndValues` at 34;
-    // the budget keeps the prefix from pushing any name past the ceiling.
+    // `McpToolName` in VSCode's `contrib/mcp/common/mcpTypes.ts`: a tool is
+    // presented as `mcp_<server>_<tool>`, the prefix is capped at
+    // MaxPrefixLen and the whole name at MaxLength. A name over the budget is
+    // truncated, and two that collide after truncation are indistinguishable.
+    const maxPrefixLength = 18;
+    const maxLength = 64;
     const mcp = await connect();
 
     const { tools } = await mcp.listTools();
-    const tooLong = tools.map((t) => t.name).filter((n) => n.length > 40);
+    const tooLong = tools
+      .map((t) => t.name)
+      .filter((n) => n.length > maxLength - maxPrefixLength);
 
     expect(tooLong).toEqual([]);
   });

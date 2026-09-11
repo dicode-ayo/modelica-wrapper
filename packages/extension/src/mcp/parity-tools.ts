@@ -1,15 +1,16 @@
 /**
  * The curated tool set: one tool per wrapper an OMEdit MCP tool maps onto.
  *
- * The whole registry is ~31.6k tokens of static schema, which rides along with
- * every request before the model has read a line of Modelica; this set is
- * ~4.8k. Absent from it are OMEdit's six GUI-level tools (`activeModel`,
- * `classDiagram`, `iconDiagram`, `showPlot`, `plot`, `resetEnvironment`), which
- * are not OMC calls, and `getTotalModel` / `resimulate`, which have no wrapper.
+ * Publishing the whole registry would put an order of magnitude more static
+ * schema in front of the model than this set does, on every request and before
+ * it has read a line of Modelica. Absent from it are OMEdit's six GUI-level
+ * tools (`activeModel`, `classDiagram`, `iconDiagram`, `showPlot`, `plot`,
+ * `resetEnvironment`), which are not OMC calls at all, and `getTotalModel` /
+ * `resimulate`, which have no wrapper here yet.
  *
- * `writeClassGraphics` is absent too: it costs 42% of the set on its own, since
- * every caller pays for every shape's fields. `shape-tools.ts` publishes it as
- * the seven tools OMEdit spends on the same job.
+ * `writeClassGraphics` is absent too: on its own it costs more than the other
+ * tools combined, since every caller pays for every shape's fields.
+ * `shape-tools.ts` publishes it as the seven tools OMEdit spends on that job.
  *
  * `readOnlyHint` reads the same table invalidation reads, so the hint cannot
  * claim a call is read-only that the refresh treats as a mutation.

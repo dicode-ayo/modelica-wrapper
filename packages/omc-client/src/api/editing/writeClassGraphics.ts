@@ -165,6 +165,10 @@ export async function writeClassGraphics(
     if (op.index >= shapes.length) throw outOfRange(op.index);
     if (op.kind === "modify") shapes[op.index] = op.shape;
     else shapes.splice(op.index, 1);
+  } else if (op.kind !== "setCoordinateSystem") {
+    // A new op kind reaching here would re-emit the layer unchanged and report
+    // success, which is the one failure this chain cannot show the caller.
+    op satisfies never;
   }
 
   const current = annotationCoordinateSystem(annotation);

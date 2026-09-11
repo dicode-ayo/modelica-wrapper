@@ -7,9 +7,9 @@
  * table still classifies the call and drives invalidation, and a mutating call
  * still derives a `WriteVerdict`.
  *
- * Listings are category-scoped because a flat one is not viable inline: the 202
- * names alone run ~1,000 tokens, and with one-line descriptions ~5,800. A
- * category ranges from ~200 (`solver`) to ~1,800 (`contents`).
+ * Listings are category-scoped because a flat one is not viable inline: the
+ * names alone are an order of magnitude more than the largest category, and
+ * with one-line descriptions several times that again.
  *
  * `omc_invoke` is annotated as mutating because it can mutate: whether it does
  * depends on `fn`, and MCP annotations are per-tool rather than per-call. The

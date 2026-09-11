@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { MCP_PROVIDER_ID } from "./index.js";
+import { MCP_PROVIDER_ID, MCP_PROVIDER_LABEL } from "./index.js";
 
 interface Manifest {
   contributes: {
@@ -27,11 +27,9 @@ const manifest = JSON.parse(
 ) as Manifest;
 
 describe("the MCP contribution", () => {
-  it("declares the id the provider registers under", () => {
-    const ids = (manifest.contributes.mcpServerDefinitionProviders ?? []).map(
-      (entry) => entry.id,
-    );
-
-    expect(ids).toContain(MCP_PROVIDER_ID);
+  it("declares the id and label the provider registers under", () => {
+    expect(manifest.contributes.mcpServerDefinitionProviders).toEqual([
+      { id: MCP_PROVIDER_ID, label: MCP_PROVIDER_LABEL },
+    ]);
   });
 });
