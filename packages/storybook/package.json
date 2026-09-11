@@ -26,7 +26,7 @@
     "@storybook/web-components-vite": "^10.6.0",
     "@types/node": "^24.13.4",
     "storybook": "^10.6.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vite": "^8.2.2"
   }
 }
