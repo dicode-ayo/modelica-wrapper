@@ -345,6 +345,23 @@ describe("the escape hatch", () => {
     expect(calls).toEqual([]);
   });
 
+  it("refuses an argument the function does not have, rather than dropping it", async () => {
+    const mcp = await connect();
+
+    // `getVersion` takes an optional class and has an argument-less OMC
+    // overload, so a dropped argument answers a different question: the
+    // compiler's version instead of the library's.
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "getVersion", input: { cl: "Modelica" } },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("no argument named cl");
+    expect(text(result)).toContain("typeName");
+    expect(calls).toEqual([]);
+  });
+
   it("reaches a function the curated set leaves out, through the same gate", async () => {
     const mcp = await connect();
 

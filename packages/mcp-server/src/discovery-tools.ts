@@ -23,6 +23,7 @@ import {
   omcFunctionNames,
   renderCategoryHelp,
   renderOverview,
+  type OmcFnName,
 } from "@dicode/omc-client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -63,6 +64,38 @@ const InvokeSchema = z.object({
 const CATEGORIES = Object.keys(functionsByCategory()).sort().join(", ");
 const OVERVIEW = renderOverview();
 const CATEGORY_HELP = new Map<string, string | undefined>();
+const INPUT_KEYS = new Map<OmcFnName, ReadonlySet<string>>();
+
+/**
+ * The argument names `fn` accepts. Memoized: the registry is frozen, so the
+ * projection is a constant.
+ */
+function inputKeys(fn: OmcFnName): ReadonlySet<string> {
+  let known = INPUT_KEYS.get(fn);
+  if (known === undefined) {
+    const { input } = describeFunctionInputAsJsonSchema(fn);
+    known = new Set(Object.keys(input.properties ?? {}));
+    INPUT_KEYS.set(fn, known);
+  }
+  return known;
+}
+
+/**
+ * Argument names `fn` does not have.
+ *
+ * Sixteen of the registry's input schemas accept an unknown key and drop it,
+ * and for a function with an argument-less OMC overload that silently answers a
+ * different question than the one asked — `getVersion` with a misspelled class
+ * argument reports the compiler's version rather than the library's. A name
+ * this boundary cannot place is a mistake, not an extra.
+ */
+function unknownArguments(
+  fn: OmcFnName,
+  input: Record<string, unknown>,
+): string[] {
+  const known = inputKeys(fn);
+  return Object.keys(input).filter((name) => !known.has(name));
+}
 
 /** The refusal for a name the registry does not hold, naming its neighbors. */
 function unknownFunction(name: string): string {
@@ -121,13 +154,20 @@ export function registerDiscoveryTools(
     "omc_invoke",
     {
       description:
-        "Call any OMC scripting function by name with named arguments, validated against its schema. Use omc_describe_function first for the argument shape.",
+        "Call any OMC scripting function by name with named arguments, validated against its schema. Argument names are this API's, which differ from the OMC scripting docs in places (`typeName`, not `cl`) — use omc_describe_function first for the exact shape.",
       inputSchema: InvokeSchema,
       annotations: { readOnlyHint: false },
     },
-    async ({ fn, input }) =>
-      isOmcFnName(fn)
-        ? dispatchByName(deps, fn, input)
-        : errorResult(unknownFunction(fn)),
+    async ({ fn, input }) => {
+      if (!isOmcFnName(fn)) return errorResult(unknownFunction(fn));
+      const unknown = unknownArguments(fn, input);
+      if (unknown.length > 0) {
+        return errorResult(
+          `${fn} has no argument named ${unknown.join(", ")}. ` +
+            `It takes: ${[...inputKeys(fn)].join(", ") || "(none)"}.`,
+        );
+      }
+      return dispatchByName(deps, fn, input);
+    },
   );
 }

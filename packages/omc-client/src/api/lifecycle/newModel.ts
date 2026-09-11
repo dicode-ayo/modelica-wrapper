@@ -58,7 +58,7 @@ export const NewModelOutputSchema = SuccessOutput;
 export type NewModelOutput = z.infer<typeof NewModelOutputSchema>;
 
 export const NewModelDescription =
-  "Create a new empty model inside the given package. The replacement on OMC 1.26.x for the absent class-create scripting calls; the target package must already exist (there is no top-level form — use loadString for that).";
+  "Create a new empty model inside the given package. The replacement on OMC 1.26.x for the absent class-create scripting calls; the target package must already exist (there is no top-level form — use loadString for that). The class lives in OMC's symbol table only: it has no file until setSourceFile names one and save writes it, and nothing adds it to the package's package.order.";
 
 export async function newModel(
   ctx: CallContext,
