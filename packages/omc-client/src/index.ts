@@ -30,6 +30,7 @@ export {
 export {
   isReadOnlyFunction,
   mutationFor,
+  type MutatingFnName,
   type MutationScope,
   type OmcMutation,
 } from "./mutation.js";

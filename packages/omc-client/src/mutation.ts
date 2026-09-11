@@ -73,7 +73,7 @@ export type MutationEntry =
  * `loadString`. Coarse there would refresh every open Modelica editor on every
  * save.
  */
-export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
+export const MUTATIONS = {
   // --- Lifecycle / transport ---
   quit: "readOnly",
   getErrorString: "readOnly",
@@ -296,7 +296,7 @@ export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
   filterSimulationResults: "readOnly",
   deltaSimulationResults: "readOnly",
   diffSimulationResults: "readOnly",
-};
+} as const satisfies Record<OmcFunction, MutationEntry>;
 
 /**
  * Registry entries that compose several OMC calls and so have no `OmcFunction`
@@ -307,13 +307,26 @@ export const MUTATIONS: Record<OmcFunction, MutationEntry> = {
  * Typed as exhaustive over the difference between the two name sets, so a new
  * composite wrapper fails the build until it is classified here.
  */
-const COMPOSITES: Record<
-  Exclude<OmcFnName, OmcFunction>,
-  "readOnly" | "mutates"
-> = {
-  writeClassGraphics: "mutates",
-  setFullDocumentationAnnotation: "mutates",
-};
+const COMPOSITE_READ_ONLY = {
+  writeClassGraphics: false,
+  setFullDocumentationAnnotation: false,
+} as const satisfies Record<Exclude<OmcFnName, OmcFunction>, boolean>;
+
+/**
+ * The registry functions that mutate. Derived from {@link MUTATIONS} and
+ * {@link COMPOSITE_READ_ONLY} rather than restated, so a caller keying a table
+ * by this type — the MCP server's write gate does — fails the build when a
+ * function changes classification or a new one arrives.
+ */
+export type MutatingFnName =
+  | {
+      [K in OmcFunction]: (typeof MUTATIONS)[K] extends "readOnly" ? never : K;
+    }[OmcFunction]
+  | {
+      [
+        K in keyof typeof COMPOSITE_READ_ONLY
+      ]: (typeof COMPOSITE_READ_ONLY)[K] extends true ? never : K;
+    }[keyof typeof COMPOSITE_READ_ONLY];
 
 /**
  * Whether `name` changes nothing any cache derives from a class. Total over the
@@ -324,7 +337,7 @@ const COMPOSITES: Record<
 export function isReadOnlyFunction(name: OmcFnName): boolean {
   return isOmcFunction(name)
     ? MUTATIONS[name] === "readOnly"
-    : COMPOSITES[name] === "readOnly";
+    : COMPOSITE_READ_ONLY[name];
 }
 
 /** Narrows a parsed command name to a function the table classifies. */

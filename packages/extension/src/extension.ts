@@ -35,6 +35,7 @@ import {
 } from "./documentation/documentation-html-provider.js";
 import { registerLanguageFeatures } from "./language/index.js";
 import { log } from "./logger.js";
+import { registerMcpServerProvider } from "./mcp/index.js";
 import { recoverRestoredCustomEditors } from "./restore-recovery.js";
 import { ResultViewEditorProvider } from "./results/result-view-provider.js";
 import { evalLine } from "./repl/repl-eval.js";
@@ -273,6 +274,10 @@ export async function activate(
       DOCUMENTATION_VIEW_TYPE,
     ),
     registerLanguageFeatures(context, ensureClient, invalidation),
+    registerMcpServerProvider(
+      { ensureClient, verdicts: writeVerdicts },
+      extensionVersion(context),
+    ),
     wireDocHtmlRefresh(docHtmlProvider),
     ...registerCommands({
       extensionContext: context,
@@ -314,6 +319,16 @@ export async function activate(
 export async function deactivate(): Promise<void> {
   await closeOmcClientCache?.();
   log.dispose();
+}
+
+/**
+ * The version VSCode compares to decide whether an MCP client should be
+ * prompted to refresh its tool list. Falls back to a constant rather than
+ * throwing: a missing manifest version must not take activation down.
+ */
+function extensionVersion(context: vscode.ExtensionContext): string {
+  const version: unknown = context.extension.packageJSON.version;
+  return typeof version === "string" ? version : "0.0.0";
 }
 
 /**
