@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.4](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-svg-v0.0.3...@dicode/diagram-svg-v0.0.4) (2026-09-11)
+
+
+### Features
+
+* **diagram:** draw ellipse arcs for startAngle, endAngle and closure ([0a01c16](https://github.com/dicode-ayo/modelica-wrapper/commit/0a01c169258d3293a574b56ef8d5a3944a2c4aaf)), closes [#614](https://github.com/dicode-ayo/modelica-wrapper/issues/614)
+* **diagram:** draw Smooth.Bezier lines and polygons as curves ([c68fa7f](https://github.com/dicode-ayo/modelica-wrapper/commit/c68fa7f6b30170535184dc48a22979a4c69bb76d)), closes [#613](https://github.com/dicode-ayo/modelica-wrapper/issues/613)
+
+
+### Bug Fixes
+
+* **diagram:** draw Line.arrow heads in the SVG renderer ([#623](https://github.com/dicode-ayo/modelica-wrapper/issues/623)) ([74ed197](https://github.com/dicode-ayo/modelica-wrapper/commit/74ed19733c5da37af5992df97ea542212a182907)), closes [#622](https://github.com/dicode-ayo/modelica-wrapper/issues/622)
+
 ## [0.0.3](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-svg-v0.0.2...@dicode/diagram-svg-v0.0.3) (2026-09-08)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.5](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.0.4...@dicode/omc-client-v0.0.5) (2026-09-11)
+
+
+### Features
+
+* **diagram:** draw ellipse arcs for startAngle, endAngle and closure ([0a01c16](https://github.com/dicode-ayo/modelica-wrapper/commit/0a01c169258d3293a574b56ef8d5a3944a2c4aaf)), closes [#614](https://github.com/dicode-ayo/modelica-wrapper/issues/614)
+* **diagram:** go to definition and declaration from the canvas ([#561](https://github.com/dicode-ayo/modelica-wrapper/issues/561)) ([f1c7323](https://github.com/dicode-ayo/modelica-wrapper/commit/f1c7323f09663cc9fd5b8d14e300ebb2c15957ec)), closes [#514](https://github.com/dicode-ayo/modelica-wrapper/issues/514)
+
+
+### Bug Fixes
+
+* **diagram:** evaluate expression-valued graphic annotation fields ([8e3ab69](https://github.com/dicode-ayo/modelica-wrapper/commit/8e3ab6956839c36d44049e637873ebb704a90b87)), closes [#605](https://github.com/dicode-ayo/modelica-wrapper/issues/605)
+* **omc-client:** degrade help introspection on unprojectable schemas ([#639](https://github.com/dicode-ayo/modelica-wrapper/issues/639)) ([29f5183](https://github.com/dicode-ayo/modelica-wrapper/commit/29f51832307683e685d0cb627dc0000d6ab28261))
+
 ## [0.0.4](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.0.3...@dicode/omc-client-v0.0.4) (2026-09-08)
 
 
