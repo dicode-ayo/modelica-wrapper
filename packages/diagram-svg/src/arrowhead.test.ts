@@ -91,14 +91,15 @@ describe("lineArrowheads", () => {
 
 describe("arrowheadVertices", () => {
   it("keeps the tip on the endpoint and the base corners symmetric about the shaft", () => {
-    const v = arrowheadVertices({ ...RIGHTWARD, tip: [10, 20] });
-    const halfWidth = 4 * Math.sin(HALF_ANGLE_RAD);
-    const baseOffset = 4 * Math.cos(HALF_ANGLE_RAD);
-    expect(v.tip).toEqual([10, 20]);
-    expect(v.left[0]).toBeCloseTo(10 - baseOffset);
-    expect(v.left[1]).toBeCloseTo(20 + halfWidth);
-    expect(v.right[0]).toBeCloseTo(10 - baseOffset);
-    expect(v.right[1]).toBeCloseTo(20 - halfWidth);
+    const tip: readonly [number, number] = [10, 20];
+    const v = arrowheadVertices({ ...RIGHTWARD, tip });
+    const halfWidth = RIGHTWARD.size * Math.sin(HALF_ANGLE_RAD);
+    const baseOffset = RIGHTWARD.size * Math.cos(HALF_ANGLE_RAD);
+    expect(v.tip).toEqual(tip);
+    expect(v.left[0]).toBeCloseTo(tip[0] - baseOffset);
+    expect(v.left[1]).toBeCloseTo(tip[1] + halfWidth);
+    expect(v.right[0]).toBeCloseTo(tip[0] - baseOffset);
+    expect(v.right[1]).toBeCloseTo(tip[1] - halfWidth);
   });
 
   it("makes each wing exactly `size` long, tip to base corner", () => {

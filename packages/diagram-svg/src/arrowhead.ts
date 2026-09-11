@@ -13,9 +13,8 @@
  * neighbor coincides with all resolve to no head at all, so a renderer draws
  * what it is handed without re-deciding any of that.
  *
- * Each wing is `size` long at 30° off the shaft centerline, matching
- * `LineAnnotation::drawArrow`: the base sits `size·cos(30°)` back along the
- * shaft, with the corners `size·sin(30°)` off it.
+ * The wing construction matches OMEdit's `LineAnnotation::drawArrow` (see
+ * `arrowheadVertices` for the formula).
  */
 
 import { LINE_DEFAULTS } from "@dicode/omc-client/shapes";
@@ -35,7 +34,7 @@ export interface Arrowhead {
   readonly tip: readonly [number, number];
   /** Unit vector from the shaft toward the tip. */
   readonly direction: readonly [number, number];
-  /** Length along the shaft, in the line's own coordinate space. */
+  /** Each wing's length, tip to base corner, in the line's own coordinate space. */
   readonly size: number;
 }
 
