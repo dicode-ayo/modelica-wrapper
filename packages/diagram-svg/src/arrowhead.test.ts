@@ -8,7 +8,7 @@ import {
 } from "./arrowhead.js";
 import { smoothLinePoints } from "./smooth-path.js";
 
-const HALF_ANGLE_RAD = 15 * (Math.PI / 180);
+const HALF_ANGLE_RAD = 30 * (Math.PI / 180);
 
 /** A rightward head at the origin, the shape every geometry case starts from. */
 const RIGHTWARD: Arrowhead = {
@@ -92,12 +92,23 @@ describe("lineArrowheads", () => {
 describe("arrowheadVertices", () => {
   it("keeps the tip on the endpoint and the base corners symmetric about the shaft", () => {
     const v = arrowheadVertices({ ...RIGHTWARD, tip: [10, 20] });
-    const halfWidth = 4 * Math.tan(HALF_ANGLE_RAD);
+    const halfWidth = 4 * Math.sin(HALF_ANGLE_RAD);
+    const baseOffset = 4 * Math.cos(HALF_ANGLE_RAD);
     expect(v.tip).toEqual([10, 20]);
-    expect(v.left[0]).toBeCloseTo(6);
+    expect(v.left[0]).toBeCloseTo(10 - baseOffset);
     expect(v.left[1]).toBeCloseTo(20 + halfWidth);
-    expect(v.right[0]).toBeCloseTo(6);
+    expect(v.right[0]).toBeCloseTo(10 - baseOffset);
     expect(v.right[1]).toBeCloseTo(20 - halfWidth);
+  });
+
+  it("makes each wing exactly `size` long, tip to base corner", () => {
+    const v = arrowheadVertices(RIGHTWARD);
+    expect(Math.hypot(v.left[0] - v.tip[0], v.left[1] - v.tip[1])).toBeCloseTo(
+      RIGHTWARD.size,
+    );
+    expect(
+      Math.hypot(v.right[0] - v.tip[0], v.right[1] - v.tip[1]),
+    ).toBeCloseTo(RIGHTWARD.size);
   });
 
   it("puts `left` on the counter-clockwise side", () => {
@@ -105,7 +116,7 @@ describe("arrowheadVertices", () => {
     expect(v.left[0]).toBeLessThan(v.right[0]);
   });
 
-  it("opens each corner 15° off the shaft, whatever the direction", () => {
+  it("opens each corner 30° off the shaft, whatever the direction", () => {
     const diagonal = Math.SQRT1_2;
     for (const head of [
       RIGHTWARD,
@@ -125,15 +136,15 @@ describe("arrowheadVertices", () => {
 describe("arrowheadPathData", () => {
   it("closes a Filled head and leaves an Open one open at the base", () => {
     const filled = arrowheadPathData(RIGHTWARD);
-    expect(filled).toBe("M 0 0 L -4 1.0718 L -4 -1.0718 Z");
+    expect(filled).toBe("M 0 0 L -3.4641 2 L -3.4641 -2 Z");
     expect(arrowheadPathData({ ...RIGHTWARD, kind: "Open" })).toBe(
-      "M -4 1.0718 L 0 0 L -4 -1.0718",
+      "M -3.4641 2 L 0 0 L -3.4641 -2",
     );
   });
 
   it("draws a Half head as the counter-clockwise wing alone", () => {
     expect(arrowheadPathData({ ...RIGHTWARD, kind: "Half" })).toBe(
-      "M 0 0 L -4 1.0718",
+      "M 0 0 L -3.4641 2",
     );
   });
 });

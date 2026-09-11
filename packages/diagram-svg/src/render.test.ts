@@ -311,10 +311,10 @@ describe("renderIconLayersToSvg", () => {
       ]),
     ]);
     expect(svg).toContain(
-      '<path d="M 4 -1.0718 L 0 0 L 4 1.0718" fill="none" stroke="rgb(255,0,0)" stroke-width="2"/>',
+      '<path d="M 3.4641 -2 L 0 0 L 3.4641 2" fill="none" stroke="rgb(255,0,0)" stroke-width="2"/>',
     );
     expect(svg).toContain(
-      '<path d="M 10 0 L 6 1.0718 L 6 -1.0718 Z" fill="rgb(255,0,0)"/>',
+      '<path d="M 10 0 L 6.5359 2 L 6.5359 -2 Z" fill="rgb(255,0,0)"/>',
     );
     // Only the shaft is dashed; a head is a path of its own.
     expect(svg.match(/stroke-dasharray/g)).toHaveLength(1);
@@ -334,8 +334,8 @@ describe("renderIconLayersToSvg", () => {
         },
       ]),
     ]);
-    // The default arrowSize, 3, puts the base 3 back from the tip.
-    expect(svg).toContain('<path d="M 10 0 L 7 0.8038 L 7 -0.8038 Z"');
+    // The default arrowSize, 3, puts the base 3·cos(30°) back from the tip.
+    expect(svg).toContain('<path d="M 10 0 L 7.4019 1.5 L 7.4019 -1.5 Z"');
     expect(svg).toContain('stroke-dasharray="0 1"');
   });
 
