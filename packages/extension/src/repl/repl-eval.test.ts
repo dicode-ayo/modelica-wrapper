@@ -207,7 +207,9 @@ describe("evalLine — meta commands", () => {
     const result = await evalLine(":help getModelInstance", deps);
     expect(result.isError).toBe(false);
     expect(result.output).toContain("getModelInstance");
+    expect(result.output).toContain("Parameters:");
     expect(result.output).toContain("typeName");
+    expect(result.output).toContain("Returns:");
     expect(fake.calls).toHaveLength(0);
   });
 
