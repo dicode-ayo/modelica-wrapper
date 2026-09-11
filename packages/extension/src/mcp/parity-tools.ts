@@ -6,7 +6,7 @@
  * it has read a line of Modelica. Absent from it are OMEdit's six GUI-level
  * tools (`activeModel`, `classDiagram`, `iconDiagram`, `showPlot`, `plot`,
  * `resetEnvironment`), which are not OMC calls at all, and `getTotalModel` /
- * `resimulate`, which have no wrapper here yet.
+ * `resimulate`, which have no wrapper here.
  *
  * `writeClassGraphics` is absent too: on its own it costs more than the other
  * tools combined, since every caller pays for every shape's fields.

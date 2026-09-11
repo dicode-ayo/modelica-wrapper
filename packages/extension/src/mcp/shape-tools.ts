@@ -18,6 +18,8 @@
  */
 
 import {
+  ShapeIndexSchema,
+  WriteClassGraphicsInputSchema,
   WriteCoordinateSystemSchema,
   type Extent,
   type FilledShape,
@@ -42,17 +44,12 @@ const Points = z
   .describe("Vertices as [x, y] pairs in diagram coordinates.");
 
 /** What every one of these tools reads to find the layer it edits. */
-interface Placed {
-  readonly typeName: string;
-  readonly layer: "icon" | "diagram";
-}
+const placed = WriteClassGraphicsInputSchema.pick({
+  typeName: true,
+  layer: true,
+}).shape;
 
-const placed = {
-  typeName: z.string().describe("Class whose annotation is edited."),
-  layer: z
-    .union([z.literal("icon"), z.literal("diagram")])
-    .describe("Which annotation layer to draw in."),
-};
+type Placed = z.infer<z.ZodObject<typeof placed>>;
 
 /** The `FilledShape` style fields (Modelica spec §18.6). */
 const filled = {
@@ -119,13 +116,9 @@ const TextSchema = z.object({
 
 const RemoveShapeSchema = z.object({
   ...placed,
-  index: z
-    .number()
-    .int()
-    .nonnegative()
-    .describe(
-      "Position in the layer's graphics list, in the order getIconAnnotation / getDiagramAnnotation return.",
-    ),
+  index: ShapeIndexSchema.describe(
+    "Position in the layer's graphics list, in the order getIconAnnotation / getDiagramAnnotation return.",
+  ),
 });
 
 /**

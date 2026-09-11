@@ -61,8 +61,10 @@ const InvokeSchema = z.object({
 });
 
 const CATEGORIES = Object.keys(functionsByCategory()).sort().join(", ");
+const OVERVIEW = renderOverview();
+const CATEGORY_HELP = new Map<string, string | undefined>();
 
-/** The refusal for a name the registry does not hold, naming its neighbours. */
+/** The refusal for a name the registry does not hold, naming its neighbors. */
 function unknownFunction(name: string): string {
   const needle = name.toLowerCase();
   const close = omcFunctionNames
@@ -87,9 +89,12 @@ export function registerDiscoveryTools(
       inputSchema: ListFunctionsSchema,
       annotations: { readOnlyHint: true },
     },
-    async ({ category }: z.infer<typeof ListFunctionsSchema>) => {
-      if (category === undefined) return textResult(renderOverview());
-      const help = renderCategoryHelp(category);
+    async ({ category }) => {
+      if (category === undefined) return textResult(OVERVIEW);
+      if (!CATEGORY_HELP.has(category)) {
+        CATEGORY_HELP.set(category, renderCategoryHelp(category));
+      }
+      const help = CATEGORY_HELP.get(category);
       return help === undefined
         ? errorResult(`No category named ${category}. Known: ${CATEGORIES}.`)
         : textResult(help);
@@ -104,7 +109,7 @@ export function registerDiscoveryTools(
       inputSchema: DescribeFunctionSchema,
       annotations: { readOnlyHint: true },
     },
-    async ({ name }: z.infer<typeof DescribeFunctionSchema>) => {
+    async ({ name }) => {
       if (!isOmcFnName(name)) return errorResult(unknownFunction(name));
       return textResult(
         JSON.stringify(describeFunctionInputAsJsonSchema(name)),
@@ -120,7 +125,7 @@ export function registerDiscoveryTools(
       inputSchema: InvokeSchema,
       annotations: { readOnlyHint: false },
     },
-    async ({ fn, input }: z.infer<typeof InvokeSchema>) =>
+    async ({ fn, input }) =>
       isOmcFnName(fn)
         ? dispatchByName(deps, fn, input)
         : errorResult(unknownFunction(fn)),

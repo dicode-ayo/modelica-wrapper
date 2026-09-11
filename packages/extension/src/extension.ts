@@ -297,18 +297,11 @@ export async function activate(
   void recoverRestoredCustomEditors();
 
   // Neither blocks: OMC startup is slow, and the missing-OpenModelica
-  // notification waits on the user.
-  //
-  // The MCP contribution has VSCode activate this extension in every window to
-  // collect server definitions, so the setup flow is asked for rather than run
-  // on activation — it shows a status item and notifies when `omc` is missing,
-  // neither of which belongs in a window that has no Modelica in it. A window
-  // that acquires some later reaches `omcPath()` instead, which resolves (and
-  // so renders the item) before it reports the same missing dependency.
-  void startOmcSetupIfWanted();
-  autoload.run();
-
-  async function startOmcSetupIfWanted(): Promise<void> {
+  // notification waits on the user. A window with no Modelica in it skips the
+  // setup flow entirely — see `hasModelicaContent`; it reaches OMC through
+  // `omcPath()` instead, which renders the status item on the way to reporting
+  // the same missing dependency.
+  void (async () => {
     const wanted = await hasModelicaContent({
       openDocuments: () =>
         vscode.workspace.textDocuments.map((d) => ({
@@ -318,7 +311,8 @@ export async function activate(
       scanMoFiles: () => moFileScanner.scan(),
     });
     if (wanted) await omcSetup.start();
-  }
+  })();
+  autoload.run();
 
   // Exported API surface. Tested separately via the `repl-eval` integration
   // suite; the wiring here is just plumbing.

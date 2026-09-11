@@ -110,13 +110,9 @@ export function describeFunction(name: OmcFnName): FunctionDescription {
 export function describeFunctionAsJsonSchema(
   name: OmcFnName,
 ): FunctionJsonSchema {
-  const entry = REGISTRY[name];
   return {
-    name,
-    category: entry.category,
-    description: entry.description,
-    input: toJsonSchema(entry.inputSchema, "input"),
-    output: toJsonSchema(entry.outputSchema, "output"),
+    ...describeFunctionInputAsJsonSchema(name),
+    output: toJsonSchema(REGISTRY[name].outputSchema, "output"),
   };
 }
 

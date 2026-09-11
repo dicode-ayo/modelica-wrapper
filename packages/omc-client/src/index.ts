@@ -245,8 +245,9 @@ export {
 export { shapeToRecord } from "./api/diagram/shape-serialize.js";
 
 export {
+  ShapeIndexSchema,
+  WriteClassGraphicsInputSchema,
   WriteCoordinateSystemSchema,
-  type WriteCoordinateSystemInput,
 } from "./api/editing/writeClassGraphics.js";
 
 // --- Functional API (re-export by category) ---

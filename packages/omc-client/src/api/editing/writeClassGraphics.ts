@@ -38,7 +38,7 @@ import { shapeToRecord } from "../diagram/shape-serialize.js";
 import { decodeAnnotationShape } from "../diagram/shapes.js";
 import { addClassAnnotation } from "./addClassAnnotation.js";
 
-const NonNegativeIndex = z.number().int().nonnegative();
+export const ShapeIndexSchema = z.number().int().nonnegative();
 
 /**
  * The `coordinateSystem` fields a caller may set. Every field is optional and
@@ -70,14 +70,14 @@ export const WriteClassGraphicsInputSchema = z.object({
       z.object({ kind: z.literal("add"), shape: ShapeSchema }),
       z.object({
         kind: z.literal("modify"),
-        index: NonNegativeIndex,
+        index: ShapeIndexSchema,
         shape: ShapeSchema,
       }),
-      z.object({ kind: z.literal("delete"), index: NonNegativeIndex }),
+      z.object({ kind: z.literal("delete"), index: ShapeIndexSchema }),
       z.object({
         kind: z.literal("reorder"),
-        from: NonNegativeIndex,
-        to: NonNegativeIndex,
+        from: ShapeIndexSchema,
+        to: ShapeIndexSchema,
       }),
       z.object({
         kind: z.literal("setCoordinateSystem"),
@@ -153,31 +153,39 @@ export async function writeClassGraphics(
       `writeClassGraphics: index ${i} out of range (${shapes.length} ${layer} shapes)`,
     );
 
-  if (op.kind === "add") {
-    shapes.push(op.shape);
-  } else if (op.kind === "reorder") {
-    const moved = moveWithin(shapes, op.from, op.to);
-    if (moved === null) {
-      throw outOfRange(op.from >= shapes.length ? op.from : op.to);
+  let coordinateSystem = annotationCoordinateSystem(annotation);
+  switch (op.kind) {
+    case "add":
+      shapes.push(op.shape);
+      break;
+    case "reorder": {
+      const moved = moveWithin(shapes, op.from, op.to);
+      if (moved === null) {
+        throw outOfRange(op.from >= shapes.length ? op.from : op.to);
+      }
+      shapes.splice(0, shapes.length, ...moved);
+      break;
     }
-    shapes.splice(0, shapes.length, ...moved);
-  } else if (op.kind === "modify" || op.kind === "delete") {
-    if (op.index >= shapes.length) throw outOfRange(op.index);
-    if (op.kind === "modify") shapes[op.index] = op.shape;
-    else shapes.splice(op.index, 1);
-  } else if (op.kind !== "setCoordinateSystem") {
-    // A new op kind reaching here would re-emit the layer unchanged and report
-    // success, which is the one failure this chain cannot show the caller.
-    op satisfies never;
+    case "modify":
+      if (op.index >= shapes.length) throw outOfRange(op.index);
+      shapes[op.index] = op.shape;
+      break;
+    case "delete":
+      if (op.index >= shapes.length) throw outOfRange(op.index);
+      shapes.splice(op.index, 1);
+      break;
+    case "setCoordinateSystem":
+      coordinateSystem = mergeCoordinateSystem(
+        coordinateSystem,
+        op.coordinateSystem,
+      );
+      break;
+    default:
+      op satisfies never;
   }
 
-  const current = annotationCoordinateSystem(annotation);
   const head = layer === "icon" ? "Icon" : "Diagram";
-  const coordSys = coordinateSystemClause(
-    op.kind === "setCoordinateSystem"
-      ? mergeCoordinateSystem(current, op.coordinateSystem)
-      : current,
-  );
+  const coordSys = coordinateSystemClause(coordinateSystem);
   const parts = coordSys ? [coordSys] : [];
   // An empty `graphics={}` array trips the same empty-array typing rule OMC
   // rejects, so omit the clause entirely when the last shape was deleted.

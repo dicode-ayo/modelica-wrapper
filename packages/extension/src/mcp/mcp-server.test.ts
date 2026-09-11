@@ -326,7 +326,7 @@ describe("the escape hatch", () => {
     expect(described).not.toHaveProperty("output");
   });
 
-  it("names its neighbours when the function does not exist", async () => {
+  it("names its neighbors when the function does not exist", async () => {
     const mcp = await connect();
 
     const result = (await mcp.callTool({

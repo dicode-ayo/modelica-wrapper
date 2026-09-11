@@ -2,12 +2,10 @@
  * Whether this window has any Modelica in it.
  *
  * Contributing an MCP server definition provider makes VSCode activate the
- * extension in every window to ask what it offers, so activation no longer
- * implies a Modelica workspace the way the `workspaceContains` activation
- * event alone did.
- * The OpenModelica setup flow — the status item and the notification when no
- * `omc` is installed — is for someone who opened Modelica, not for someone who
- * happens to have an assistant attached.
+ * extension in every window to ask what it offers, so activation does not imply
+ * a Modelica workspace. The OpenModelica setup flow — the status item and the
+ * notification when no `omc` is installed — is for someone who opened Modelica,
+ * not for someone who happens to have an assistant attached.
  *
  * An open document is checked before the disk: a restored `modelica-source:`
  * editor is a reason on its own, and it can point at a library class no file in
@@ -15,10 +13,11 @@
  */
 
 import { MODELICA_DOC_SCHEME } from "./documentation/documentation-html-provider.js";
+import { MODELICA_LANGUAGE_ID } from "./language/parse.js";
 import { MODELICA_SOURCE_SCHEME } from "./source-provider.js";
 
 /** The languages this extension owns, by the id its documents carry. */
-const LANGUAGES = new Set(["modelica", "omresults"]);
+const LANGUAGES = new Set<string>([MODELICA_LANGUAGE_ID, "omresults"]);
 
 const SCHEMES = new Set<string>([MODELICA_SOURCE_SCHEME, MODELICA_DOC_SCHEME]);
 

@@ -14,7 +14,7 @@ import type { McpToolDeps } from "./dispatch.js";
 import { registerParityTools } from "./parity-tools.js";
 import { registerShapeTools } from "./shape-tools.js";
 
-export const MCP_SERVER_NAME = "modelica-omc";
+const MCP_SERVER_NAME = "modelica-omc";
 
 export function buildMcpServer(deps: McpToolDeps, version: string): McpServer {
   const server = new McpServer({ name: MCP_SERVER_NAME, version });

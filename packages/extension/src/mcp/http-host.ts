@@ -65,11 +65,10 @@ export function createMcpHttpHost(
   let started: Promise<Opened> | undefined;
 
   /**
-   * One `McpServer` per session: the SDK binds a server to exactly one
-   * transport. A transport that never reports a session id was rejected before
-   * it adopted anything, so its server is closed here rather than left
-   * reachable — and with it the tool closures and `deps` — for the life of the
-   * extension host.
+   * One `McpServer` per adopted transport: the SDK binds a server to exactly
+   * one. A transport that never reports a session id was rejected before it
+   * adopted anything, so its server is closed here to hold that invariant —
+   * `onsessionclosed` only fires for one that was adopted.
    */
   const openSession = async (
     req: IncomingMessage,
@@ -81,8 +80,8 @@ export function createMcpHttpHost(
     const transport: StreamableHTTPServerTransport =
       new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
-        // Passed as an option rather than assigned afterwards: the transport
-        // reads it once at construction and never consults the property.
+        // The transport reads this once at construction and never consults
+        // the property afterwards.
         onsessioninitialized: (id: string) => {
           adopted = true;
           sessions.set(id, transport);
@@ -152,8 +151,8 @@ export function createMcpHttpHost(
       sessions.clear();
       await Promise.all(open.map((transport) => transport.close()));
       if (opening === undefined) return;
-      // Awaited rather than read back from a second slot, so a dispose landing
-      // before the listen resolves still closes the socket it opened.
+      // A dispose landing before the listen resolves must still close the
+      // socket that listen opened.
       const opened = await opening.catch(() => undefined);
       if (opened === undefined) return;
       await new Promise<void>((resolve) => {
