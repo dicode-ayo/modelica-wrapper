@@ -25,18 +25,9 @@ import type { MutatingFnName, OmcFnName, OmcInput } from "@dicode/omc-client";
 
 import type {
   WriteAction,
-  WriteVerdict,
   WriteVerdictClient,
+  WriteVerdictSource,
 } from "./write-verdict.js";
-
-/** The subset of `WriteVerdicts` the gate uses. */
-export interface WriteVerdictSource {
-  forClass(
-    client: WriteVerdictClient,
-    className: string,
-    action: WriteAction,
-  ): Promise<WriteVerdict>;
-}
 
 /**
  * Which argument of `K` names the class a call would write, and what the caller
@@ -159,8 +150,22 @@ export async function refusalFor(
   const raw: unknown = (input as Record<string, unknown>)[argument.field];
   if (typeof raw !== "string" || raw === "") return undefined;
   const className = argument.as === "element" ? enclosingScope(raw) : raw;
-  if (className === "") return undefined;
 
-  const verdict = await verdicts.forClass(client, className, argument.action);
+  return refusalForClass(verdicts, client, className, argument.action);
+}
+
+/**
+ * The refusal `className` earns, for a tool that knows which class it writes
+ * even though the wrapper it dispatches does not name one. An empty name has no
+ * verdict to derive, so it passes — the same way a lookup that fails does.
+ */
+export async function refusalForClass(
+  verdicts: WriteVerdictSource,
+  client: WriteVerdictClient,
+  className: string,
+  action: WriteAction,
+): Promise<string | undefined> {
+  if (className === "") return undefined;
+  const verdict = await verdicts.forClass(client, className, action);
   return verdict.ok ? undefined : verdict.reason;
 }

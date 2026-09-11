@@ -43,12 +43,16 @@ export function registerMcpServerProvider(
   deps: McpToolDeps,
   version: string,
 ): vscode.Disposable {
-  const host = createMcpHttpHost(deps, version, {
-    warn: (message) => {
-      log.warn("mcp", message);
-    },
-    info: (message) => {
-      log.info("mcp", message);
+  const host = createMcpHttpHost({
+    deps,
+    version,
+    log: {
+      warn: (message) => {
+        log.warn("mcp", message);
+      },
+      info: (message) => {
+        log.info("mcp", message);
+      },
     },
   });
 

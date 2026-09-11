@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { WriteAction, WriteVerdictClient } from "./write-verdict.js";
-import { refusalFor, type WriteVerdictSource } from "./write-gate.js";
+import { refusalFor } from "./write-gate.js";
+import type { WriteVerdictSource } from "./write-verdict.js";
 
 const REFUSAL =
   "Cannot edit Modelica.Blocks.Math.Sin — it belongs to a read-only system library.";

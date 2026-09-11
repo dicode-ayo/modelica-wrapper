@@ -6,9 +6,8 @@
  * immediately before each start. No other client has that channel: an MCP
  * client reads a static config file, and nothing in `.mcp.json` or `mcp.json`
  * can ask this window for today's port. So the address is handed over once, by
- * the user, and goes stale when the server restarts — which the document says
- * in its first line, because a config that silently stops working is worse than
- * one that never worked.
+ * the user, and goes stale when the server restarts — which the document states
+ * in its first line.
  *
  * Both forms are offered because clients disagree on which they accept: Claude
  * Code takes a CLI invocation, most others take the JSON object.

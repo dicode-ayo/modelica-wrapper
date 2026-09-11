@@ -3,10 +3,9 @@
  * this package spends on them.
  *
  * `writeClassGraphics` takes a discriminated union of every shape, whose JSON
- * Schema costs more than the rest of the curated set combined — every caller
- * pays for every shape's fields. Split, a model drawing a line never pays for
- * the polygon and text branches, so matching OMEdit's tool count is also the
- * cheaper option here.
+ * Schema costs more than the rest of the curated set combined: every caller
+ * pays for every shape's fields. Split, a model drawing a line pays only for a
+ * line.
  *
  * The schemas here are the tools' own rather than slices of `ShapeSchema`:
  * flattening `extent` to four numbers and dropping the fields a caller drawing
@@ -44,15 +43,15 @@ const Points = z
   .describe("Vertices as [x, y] pairs in diagram coordinates.");
 
 /** What every one of these tools reads to find the layer it edits. */
-const placed = WriteClassGraphicsInputSchema.pick({
+const placedFields = WriteClassGraphicsInputSchema.pick({
   typeName: true,
   layer: true,
 }).shape;
 
-type Placed = z.infer<z.ZodObject<typeof placed>>;
+type Placed = z.infer<z.ZodObject<typeof placedFields>>;
 
 /** The `FilledShape` style fields (Modelica spec §18.6). */
-const filled = {
+const filledFields = {
   lineColor: Color.optional(),
   fillColor: Color.optional(),
   lineThickness: z.number().optional(),
@@ -75,22 +74,22 @@ function extentOf(flat: [number, number, number, number]): Extent {
 }
 
 const RectangleSchema = z.object({
-  ...placed,
+  ...placedFields,
   extent: FlatExtent,
   radius: z.number().optional().describe("Corner radius."),
-  ...filled,
+  ...filledFields,
 });
 
 const EllipseSchema = z.object({
-  ...placed,
+  ...placedFields,
   extent: FlatExtent,
   startAngle: z.number().optional().describe("Arc start in degrees."),
   endAngle: z.number().optional().describe("Arc end in degrees."),
-  ...filled,
+  ...filledFields,
 });
 
 const LineSchema = z.object({
-  ...placed,
+  ...placedFields,
   points: Points,
   color: Color.optional(),
   thickness: z.number().optional(),
@@ -101,10 +100,14 @@ const LineSchema = z.object({
     .describe("Start and end arrow heads, e.g. [None, Filled]."),
 });
 
-const PolygonSchema = z.object({ ...placed, points: Points, ...filled });
+const PolygonSchema = z.object({
+  ...placedFields,
+  points: Points,
+  ...filledFields,
+});
 
 const TextSchema = z.object({
-  ...placed,
+  ...placedFields,
   extent: FlatExtent,
   textString: z
     .string()
@@ -115,7 +118,7 @@ const TextSchema = z.object({
 });
 
 const RemoveShapeSchema = z.object({
-  ...placed,
+  ...placedFields,
   index: ShapeIndexSchema.describe(
     "Position in the layer's graphics list, in the order getIconAnnotation / getDiagramAnnotation return.",
   ),
@@ -126,7 +129,7 @@ const RemoveShapeSchema = z.object({
  * fail when a field is added there and silently dropped by the rest spread this
  * tool forwards.
  */
-const CoordinateSystemSchema = WriteCoordinateSystemSchema.extend(placed);
+const CoordinateSystemSchema = WriteCoordinateSystemSchema.extend(placedFields);
 
 export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
   /**

@@ -12,6 +12,10 @@
  * tools combined, since every caller pays for every shape's fields.
  * `shape-tools.ts` publishes it as the seven tools OMEdit spends on that job.
  *
+ * `loadString` is absent for a different reason: its arguments never name a
+ * class, so the write gate would have nothing to judge. `source-tools.ts`
+ * publishes it as OMEdit's `setSourceCode`, which does name one.
+ *
  * `readOnlyHint` reads the same table invalidation reads, so the hint cannot
  * claim a call is read-only that the refresh treats as a mutation.
  */
@@ -31,7 +35,6 @@ export const PARITY_TOOLS: readonly OmcFnName[] = [
   "listFile",
   "checkModel",
   // Lifecycle
-  "loadString",
   "loadFile",
   "loadModel",
   "newModel",

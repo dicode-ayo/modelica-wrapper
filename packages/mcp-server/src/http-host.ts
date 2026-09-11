@@ -1,14 +1,9 @@
 /**
  * The loopback HTTP server the MCP client talks to, inside the extension host.
  *
- * HTTP rather than stdio, and the reason is the OMC singleton. `OmcClientCache`
- * holds one `OmcClient` per window and coalesces every caller onto it; a stdio
- * server is a separate process that would have to spawn its own `omc`, so a
- * class an assistant loaded would be invisible to the sidebar, the diagram and
- * the diagnostics pipeline. That is the split-brain `OmcClientCache` exists to
- * prevent, reintroduced across a process boundary its coalescing cannot reach.
- * VSCode's own MCP HTTP client runs in this same extension host, so loopback
- * reaches it with no CORS and no IPC.
+ * The server runs in the extension host because OMC is a per-window singleton:
+ * anything outside this process would have to spawn its own `omc`, and a class
+ * loaded there is invisible to the sidebar, the diagram and the diagnostics.
  *
  * The port is ephemeral, so two windows cannot collide on it.
  *
@@ -34,7 +29,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { errorDetail } from "./error-detail.js";
-import { logOr, type McpLog } from "./log.js";
+import type { McpLog } from "./log.js";
 import { buildMcpServer } from "./mcp-server.js";
 import type { McpToolDeps } from "./dispatch.js";
 
@@ -44,6 +39,14 @@ const LOOPBACK = "127.0.0.1";
 export interface McpEndpoint {
   readonly url: string;
   readonly token: string;
+}
+
+/** What a host supplies to stand the server up. */
+export interface McpHostOptions {
+  readonly deps: McpToolDeps;
+  /** Reported to clients; a change prompts them to refresh their tool list. */
+  readonly version: string;
+  readonly log: McpLog;
 }
 
 export interface McpHttpHost {
@@ -57,13 +60,9 @@ interface Opened {
   readonly endpoint: McpEndpoint;
 }
 
-export function createMcpHttpHost(
-  deps: McpToolDeps,
-  version: string,
-  log?: McpLog,
-): McpHttpHost {
+export function createMcpHttpHost(options: McpHostOptions): McpHttpHost {
+  const { deps, version, log } = options;
   const sessions = new Map<string, StreamableHTTPServerTransport>();
-  const logger = logOr(log);
   let started: Promise<Opened> | undefined;
 
   /**
@@ -143,7 +142,7 @@ export function createMcpHttpHost(
 
   return {
     start: async () => {
-      started ??= listen(handle, logger);
+      started ??= listen(handle, log);
       return (await started).endpoint;
     },
     dispose: async () => {

@@ -13,7 +13,7 @@ import type { WriteVerdictClient } from "./write-verdict.js";
 import type { McpToolClient } from "./dispatch.js";
 import { buildMcpServer } from "./mcp-server.js";
 import { PARITY_TOOLS } from "./parity-tools.js";
-import type { WriteVerdictSource } from "./write-gate.js";
+import type { WriteVerdictSource } from "./write-verdict.js";
 
 interface Call {
   fn: string;
@@ -26,6 +26,8 @@ const REFUSAL = `Cannot edit ${SYSTEM_LIBRARY} — it belongs to a read-only sys
 const calls: Call[] = [];
 let failWith: string | undefined;
 
+let sourceFile = "/w/Demo.mo";
+
 const client: McpToolClient = {
   invoke: async (fn, input) => {
     calls.push({ fn, input });
@@ -33,7 +35,7 @@ const client: McpToolClient = {
     return { ok: true };
   },
   getClassInformation: async () => ({ fileReadOnly: false }),
-  getSourceFile: async () => ({ fileName: "/w/Demo.mo" }),
+  getSourceFile: async () => ({ fileName: sourceFile }),
   getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
 };
 
@@ -65,6 +67,7 @@ function text(result: CallToolResult): string {
 beforeEach(() => {
   calls.length = 0;
   failWith = undefined;
+  sourceFile = "/w/Demo.mo";
 });
 
 describe("the published tool set", () => {
@@ -74,7 +77,7 @@ describe("the published tool set", () => {
     const { tools } = await mcp.listTools();
     const names = tools.map((t) => t.name);
 
-    expect(names).toHaveLength(PARITY_TOOLS.length + 7 + 3);
+    expect(names).toHaveLength(PARITY_TOOLS.length + 1 + 7 + 3);
     expect(names).toEqual(expect.arrayContaining([...PARITY_TOOLS]));
     expect(names).toEqual(
       expect.arrayContaining([
@@ -88,11 +91,14 @@ describe("the published tool set", () => {
         "omc_list_functions",
         "omc_describe_function",
         "omc_invoke",
+        "setSourceCode",
       ]),
     );
-    // `writeClassGraphics` is what the seven shape tools replace; publishing it
-    // as well would restore the 3,544 tokens the split exists to avoid.
+    // `writeClassGraphics` is what the seven shape tools replace, and
+    // `loadString` what `setSourceCode` replaces; either published raw would
+    // undo the reason its replacement exists.
     expect(names).not.toContain("writeClassGraphics");
+    expect(names).not.toContain("loadString");
   });
 
   it("hints read-only exactly where the mutation table says nothing changes", async () => {
@@ -358,5 +364,60 @@ describe("the escape hatch", () => {
     expect(calls).toEqual([
       { fn: "deleteClass", input: { typeName: "Demo.Circuit" } },
     ]);
+  });
+});
+
+describe("setSourceCode", () => {
+  it("refuses a class that is not the user's to write", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "setSourceCode",
+      arguments: { className: SYSTEM_LIBRARY, code: "model Sin end Sin;" },
+    })) as CallToolResult;
+
+    // The gate is the whole reason this tool exists rather than `loadString`,
+    // whose arguments name no class for a verdict to be derived from.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+    expect(calls).toEqual([]);
+  });
+
+  it("reloads the class under the file it already came from", async () => {
+    const mcp = await connect();
+
+    await mcp.callTool({
+      name: "setSourceCode",
+      arguments: {
+        className: "Demo.Circuit",
+        code: "model Circuit end Circuit;",
+      },
+    });
+
+    // `loadString` binds the class to whatever filename it is given, and the
+    // default would evict it from the file it was stored in.
+    expect(calls).toEqual([
+      {
+        fn: "loadString",
+        input: expect.objectContaining({
+          data: "model Circuit end Circuit;",
+          filename: "/w/Demo.mo",
+        }),
+      },
+    ]);
+  });
+
+  it("omits the filename for a class OMC cannot place", async () => {
+    const mcp = await connect();
+    sourceFile = "<interactive>";
+
+    await mcp.callTool({
+      name: "setSourceCode",
+      arguments: { className: "Fresh", code: "model Fresh end Fresh;" },
+    });
+
+    const [only] = calls;
+    expect(only?.fn).toBe("loadString");
+    expect(only?.input).not.toHaveProperty("filename");
   });
 });

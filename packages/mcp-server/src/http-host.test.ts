@@ -35,7 +35,11 @@ afterEach(async () => {
 
 /** Starts a host the `afterEach` will dispose, and returns it with its port. */
 async function serve(): Promise<{ host: McpHttpHost; endpoint: McpEndpoint }> {
-  const started = createMcpHttpHost(deps, "1.2.3");
+  const started = createMcpHttpHost({
+    deps,
+    version: "1.2.3",
+    log: { warn: () => undefined, info: () => undefined },
+  });
   host = started;
   return { host: started, endpoint: await started.start() };
 }
