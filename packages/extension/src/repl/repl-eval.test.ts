@@ -199,6 +199,18 @@ describe("evalLine — meta commands", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
+  it(":help <fnName> survives an output schema that has no JSON Schema projection", async () => {
+    // `handleMeta` returns ahead of the `try` that covers plain OMC
+    // commands, so anything thrown while rendering help escapes `evalLine`.
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":help getModelInstance", deps);
+    expect(result.isError).toBe(false);
+    expect(result.output).toContain("getModelInstance");
+    expect(result.output).toContain("typeName");
+    expect(fake.calls).toHaveLength(0);
+  });
+
   it(":help <category> returns a function list", async () => {
     const fake = makeClient();
     const { deps } = makeDeps(fake.client);

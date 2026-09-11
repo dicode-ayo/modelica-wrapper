@@ -26,23 +26,23 @@ describe("describeFunction", () => {
     expect(d.category).toBe("browsing");
     expect(d.description).toMatch(/restriction kind/i);
     expect(d.parameters).toHaveLength(1);
-    expect(d.parameters[0]?.name).toBe("typeName");
-    expect(d.parameters[0]?.typeLabel).toBe("string");
-    expect(d.parameters[0]?.optional).toBe(false);
-    expect(d.parameters[0]?.defaultValue).toBeUndefined();
-    expect(d.returns.length).toBeGreaterThanOrEqual(22);
-    const fileName = d.returns.find((f) => f.name === "fileName");
+    expect(d.parameters?.[0]?.name).toBe("typeName");
+    expect(d.parameters?.[0]?.typeLabel).toBe("string");
+    expect(d.parameters?.[0]?.optional).toBe(false);
+    expect(d.parameters?.[0]?.defaultValue).toBeUndefined();
+    expect(d.returns?.length ?? 0).toBeGreaterThanOrEqual(22);
+    const fileName = d.returns?.find((f) => f.name === "fileName");
     expect(fileName?.typeLabel).toBe("string");
-    const dimensions = d.returns.find((f) => f.name === "dimensions");
+    const dimensions = d.returns?.find((f) => f.name === "dimensions");
     expect(dimensions?.typeLabel).toBe("string[]");
   });
 
   it("captures optional + default markers for loadString", () => {
     const d = describeFunction("loadString");
-    const filename = d.parameters.find((f) => f.name === "filename");
+    const filename = d.parameters?.find((f) => f.name === "filename");
     expect(filename?.optional).toBe(true);
     expect(filename?.defaultValue).toBe("<interactive>");
-    const merge = d.parameters.find((f) => f.name === "merge");
+    const merge = d.parameters?.find((f) => f.name === "merge");
     expect(merge?.optional).toBe(true);
     expect(merge?.defaultValue).toBe(false);
     expect(merge?.typeLabel).toBe("boolean");
@@ -102,13 +102,16 @@ describe("describeFunctionAsJsonSchema", () => {
     const j = describeFunctionAsJsonSchema("loadString");
     expect(j.name).toBe("loadString");
     expect(j.category).toBe("lifecycle");
-    expect(j.input.$schema).toBe(
+    expect(j.input?.$schema).toBe(
       "https://json-schema.org/draft/2020-12/schema",
     );
-    expect(j.input.type).toBe("object");
+    expect(j.input?.type).toBe("object");
     // Input-mode: only `data` is truly required from the caller.
-    expect(j.input.required).toEqual(["data"]);
-    const props = j.input.properties as Record<string, Record<string, unknown>>;
+    expect(j.input?.required).toEqual(["data"]);
+    const props = j.input?.properties as Record<
+      string,
+      Record<string, unknown>
+    >;
     expect(props.data?.type).toBe("string");
     // Defaults travel through.
     expect(props.merge?.default).toBe(false);
@@ -117,7 +120,44 @@ describe("describeFunctionAsJsonSchema", () => {
 
   it("input-mode for getClassInformation lists typeName as the only required field", () => {
     const j = describeFunctionAsJsonSchema("getClassInformation");
-    expect(j.input.required).toEqual(["typeName"]);
+    expect(j.input?.required).toEqual(["typeName"]);
+  });
+});
+
+describe("schemas with no JSON Schema projection", () => {
+  // Both functions' outputs recurse into `DegradingModifierSchema`, whose
+  // transform zod refuses to render as JSON Schema.
+  it.each(["getModelInstance", "getModelInstanceAnnotation"] as const)(
+    "describes the input of %s and marks the output undescribable",
+    (name) => {
+      const d = describeFunction(name);
+      expect(d.parameters?.map((f) => f.name)).toContain("typeName");
+      expect(d.returns).toBeUndefined();
+    },
+  );
+
+  it("renders help for getModelInstance rather than throwing", () => {
+    const out = renderFunctionHelp("getModelInstance");
+    expect(out).toMatch(/^getModelInstance — contents/);
+    expect(out).toContain("typeName: string");
+    expect(out).toContain("(schema not introspectable)");
+    // An undescribable output must not masquerade as a scalar return.
+    expect(out).not.toContain("(raw value)");
+  });
+
+  it("keeps the input JSON Schema when only the output is unprojectable", () => {
+    const j = describeFunctionAsJsonSchema("getModelInstance");
+    expect(j.input?.type).toBe("object");
+    expect(j.input?.required).toEqual(["typeName"]);
+    expect(j.output).toBeUndefined();
+  });
+
+  it("describes every function in the registry without throwing", () => {
+    for (const name of omcFunctionNames) {
+      expect(() => describeFunction(name), name).not.toThrow();
+      expect(() => describeFunctionAsJsonSchema(name), name).not.toThrow();
+      expect(() => renderFunctionHelp(name), name).not.toThrow();
+    }
   });
 });
 

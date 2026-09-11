@@ -57,8 +57,10 @@ export interface FunctionDescription {
   name: OmcFnName;
   category: string;
   description: string;
-  parameters: FieldInfo[];
-  returns: FieldInfo[];
+  /** `undefined` when the input schema has no JSON Schema projection. */
+  parameters: FieldInfo[] | undefined;
+  /** `undefined` when the output schema has no JSON Schema projection. */
+  returns: FieldInfo[] | undefined;
 }
 
 /**
@@ -73,17 +75,24 @@ export interface FunctionJsonSchema {
   name: OmcFnName;
   category: string;
   description: string;
-  /** JSON Schema (draft 2020-12) of the input — `io: "input"` semantics. */
-  input: JsonSchema;
-  /** JSON Schema (draft 2020-12) of the output — `io: "output"` semantics. */
-  output: JsonSchema;
+  /**
+   * JSON Schema (draft 2020-12) of the input — `io: "input"` semantics.
+   * `undefined` when the schema has no JSON Schema projection.
+   */
+  input: JsonSchema | undefined;
+  /**
+   * JSON Schema (draft 2020-12) of the output — `io: "output"` semantics.
+   * `undefined` when the schema has no JSON Schema projection.
+   */
+  output: JsonSchema | undefined;
 }
 
 /**
  * Structured introspection: returns the function's metadata plus the
- * field-by-field shape of its input and output schemas. The lists are
- * empty when the relevant schema isn't an object (e.g. a function
- * returning a bare boolean via `SuccessOutput`).
+ * field-by-field shape of its input and output schemas. A list is empty
+ * when the relevant schema isn't an object (e.g. a function returning a
+ * bare boolean via `SuccessOutput`), and `undefined` when the schema has
+ * no JSON Schema projection.
  */
 export function describeFunction(name: OmcFnName): FunctionDescription {
   const entry = REGISTRY[name];
@@ -109,10 +118,13 @@ export function describeFunctionAsJsonSchema(
     name,
     category: entry.category,
     description: entry.description,
-    input: z.toJSONSchema(entry.inputSchema, { io: "input" }),
-    output: z.toJSONSchema(entry.outputSchema),
+    input: toJsonSchema(entry.inputSchema, "input"),
+    output: toJsonSchema(entry.outputSchema, "output"),
   };
 }
+
+/** Stands in for a field list whose schema has no JSON Schema projection. */
+const NOT_INTROSPECTABLE = "(schema not introspectable)";
 
 /**
  * Plain-text help block for a single function. See file-level docstring
@@ -126,7 +138,9 @@ export function renderFunctionHelp(name: OmcFnName): string {
   lines.push("");
 
   lines.push("Parameters:");
-  if (desc.parameters.length === 0) {
+  if (desc.parameters === undefined) {
+    lines.push(`  ${NOT_INTROSPECTABLE}`);
+  } else if (desc.parameters.length === 0) {
     lines.push("  (none)");
   } else {
     for (const f of desc.parameters) {
@@ -137,7 +151,9 @@ export function renderFunctionHelp(name: OmcFnName): string {
   lines.push("");
 
   lines.push("Returns:");
-  if (desc.returns.length === 0) {
+  if (desc.returns === undefined) {
+    lines.push(`  ${NOT_INTROSPECTABLE}`);
+  } else if (desc.returns.length === 0) {
     lines.push("  (raw value)");
   } else {
     for (const f of desc.returns) {
@@ -202,11 +218,30 @@ function asNode(s: unknown): Node | undefined {
   return s && typeof s === "object" ? (s as Node) : undefined;
 }
 
+/**
+ * `z.toJSONSchema` throws outright on a schema containing a `.transform()`,
+ * which zod 4 has no JSON Schema representation for. The transforms it trips
+ * over are load-bearing parse guarantees (`DegradingModifierSchema`, reached
+ * from every `ModelInstance` output), so introspection degrades to "cannot
+ * describe this" rather than taking the caller down with it.
+ */
+function toJsonSchema(
+  schema: z.ZodType,
+  io: "input" | "output",
+): JsonSchema | undefined {
+  try {
+    return z.toJSONSchema(schema, { io });
+  } catch {
+    return undefined;
+  }
+}
+
 function describeFieldsFromSchema(
   schema: z.ZodType,
   io: "input" | "output",
-): FieldInfo[] {
-  const node = z.toJSONSchema(schema, { io });
+): FieldInfo[] | undefined {
+  const node = toJsonSchema(schema, io);
+  if (!node) return undefined;
   if (node.type !== "object" || !node.properties) return [];
   const requiredSet = new Set(node.required ?? []);
   const out: FieldInfo[] = [];
