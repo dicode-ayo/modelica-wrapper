@@ -83,11 +83,10 @@ function inputKeys(fn: OmcFnName): ReadonlySet<string> {
 /**
  * Argument names `fn` does not have.
  *
- * Sixteen of the registry's input schemas accept an unknown key and drop it,
- * and for a function with an argument-less OMC overload that silently answers a
- * different question than the one asked — `getVersion` with a misspelled class
- * argument reports the compiler's version rather than the library's. A name
- * this boundary cannot place is a mistake, not an extra.
+ * The input schema rejects these on its own, naming only the offending key.
+ * Answering with the arguments the function does take is what turns a caller
+ * working from OMC's own spellings — `cl` for `typeName` — into a corrected
+ * retry rather than a second guess.
  */
 function unknownArguments(
   fn: OmcFnName,

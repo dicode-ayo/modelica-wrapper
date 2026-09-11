@@ -26,7 +26,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const ParseStringInputSchema = z.object({
+export const ParseStringInputSchema = z.strictObject({
   data: z.string().describe("Modelica source text to parse."),
   filename: z
     .string()

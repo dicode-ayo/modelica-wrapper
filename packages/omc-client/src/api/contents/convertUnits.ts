@@ -48,7 +48,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { quote } from "../../_shared/format.js";
 import { asBool, asFloat, asList, parseLeading } from "../../parse.js";
 
-export const ConvertUnitsInputSchema = z.object({
+export const ConvertUnitsInputSchema = z.strictObject({
   s1: z
     .string()
     .describe(

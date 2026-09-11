@@ -19,7 +19,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const ClassAnnotationExistsInputSchema = z.object({
+export const ClassAnnotationExistsInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

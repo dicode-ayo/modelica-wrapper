@@ -13,7 +13,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
-export const GetNthConnectionAnnotationInputSchema = z.object({
+export const GetNthConnectionAnnotationInputSchema = z.strictObject({
   typeName: typeNameOfConnection,
   index: z
     .number()

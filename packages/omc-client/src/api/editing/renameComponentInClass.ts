@@ -25,7 +25,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const RenameComponentInClassInputSchema = z.object({
+export const RenameComponentInClassInputSchema = z.strictObject({
   typeName: z.string().describe("Class containing the component to rename."),
   oldName: z.string().describe("Current local name of the component."),
   newName: z.string().describe("New local name to give the component."),

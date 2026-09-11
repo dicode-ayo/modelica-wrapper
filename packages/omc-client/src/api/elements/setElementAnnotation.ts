@@ -41,7 +41,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetElementAnnotationInputSchema = z.object({
+export const SetElementAnnotationInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

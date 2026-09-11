@@ -39,7 +39,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const LoadClassContentStringInputSchema = z.object({
+export const LoadClassContentStringInputSchema = z.strictObject({
   data: z
     .string()
     .describe("Modelica class elements to parse and insert into the class."),

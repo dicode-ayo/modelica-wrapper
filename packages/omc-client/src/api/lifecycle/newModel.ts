@@ -40,7 +40,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const NewModelInputSchema = z.object({
+export const NewModelInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

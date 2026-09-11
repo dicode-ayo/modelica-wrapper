@@ -36,7 +36,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
-export const CdInputSchema = z.object({
+export const CdInputSchema = z.strictObject({
   newWorkingDirectory: z
     .string()
     .optional()

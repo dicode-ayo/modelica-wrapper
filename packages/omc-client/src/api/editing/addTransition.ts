@@ -19,7 +19,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const AddTransitionInputSchema = z.object({
+export const AddTransitionInputSchema = z.strictObject({
   typeName: z.string().describe("Class containing the state machine."),
   from: z.string().describe("Source state of the new transition."),
   to: z.string().describe("Target state of the new transition."),

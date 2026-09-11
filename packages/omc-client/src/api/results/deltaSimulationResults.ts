@@ -27,7 +27,7 @@ import { quote, quoteListOrFillEmpty } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectFloat, parse } from "../../parse.js";
 
-export const DeltaSimulationResultsInputSchema = z.object({
+export const DeltaSimulationResultsInputSchema = z.strictObject({
   filename: z.string().describe("Result file under test."),
   reffilename: z.string().describe("Reference result file to compare against."),
   method: z

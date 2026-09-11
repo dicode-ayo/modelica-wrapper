@@ -36,7 +36,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const UpdateConnectionInputSchema = z.object({
+export const UpdateConnectionInputSchema = z.strictObject({
   typeName: typeNameOfConnection,
   from: z
     .string()

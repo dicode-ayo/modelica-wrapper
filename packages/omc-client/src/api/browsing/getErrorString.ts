@@ -23,7 +23,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 import type { OmcCommand } from "../../commands.js";
 
-export const GetErrorStringInputSchema = z.object({
+export const GetErrorStringInputSchema = z.strictObject({
   warningsAsErrors: z
     .boolean()
     .optional()

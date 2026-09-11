@@ -26,7 +26,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const RemoveExtendsModifiersInputSchema = z.object({
+export const RemoveExtendsModifiersInputSchema = z.strictObject({
   typeName: typeNameOfExtends,
   extendsBase: extendsBase.describe(
     "TypeName of the base class on the `extends` clause whose modifiers will be cleared.",

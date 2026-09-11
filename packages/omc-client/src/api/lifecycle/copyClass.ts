@@ -27,7 +27,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const CopyClassInputSchema = z.object({
+export const CopyClassInputSchema = z.strictObject({
   source: z
     .string()
     .describe(

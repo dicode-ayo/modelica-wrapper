@@ -31,7 +31,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
-export const QualifyPathInputSchema = z.object({
+export const QualifyPathInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

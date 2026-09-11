@@ -24,7 +24,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const GetAvailablePackageConversionsToInputSchema = z.object({
+export const GetAvailablePackageConversionsToInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

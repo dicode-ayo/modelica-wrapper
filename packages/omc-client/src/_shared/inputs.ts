@@ -10,6 +10,11 @@
  * extra fields can `.extend(...)` these (e.g. `TypeNameAndModifierInput.extend({
  * expr: z.string() })`).
  *
+ * These are strict, as every registry input schema is. `invoke()` is the
+ * validated boundary, and an OMC alias that reached it unnormalized would
+ * otherwise be dropped rather than refused — leaving a function with an
+ * argument-less overload to answer a question nobody asked.
+ *
  * Every field carries a generic `.describe(...)` for the MCP-generation
  * pipeline. Per-function files only override these when the OMC docs say
  * something specifically different (e.g. `loadModel.typeName` means "library
@@ -19,7 +24,7 @@
 import { z } from "zod";
 
 /** A required `TypeName` input. Used by isPackage, existClass, getInheritanceCount, etc. */
-export const TypeNameInput = z.object({
+export const TypeNameInput = z.strictObject({
   typeName: z
     .string()
     .describe(
@@ -32,7 +37,7 @@ export type TypeNameInput = z.input<typeof TypeNameInput>;
  * A `TypeName` input with an OMC default (e.g., `getClassNames` defaults to
  * `AllLoadedClasses`, `getVersion` defaults to `OpenModelica`). Caller may omit.
  */
-export const OptionalTypeNameInput = z.object({
+export const OptionalTypeNameInput = z.strictObject({
   typeName: z
     .string()
     .optional()
@@ -47,7 +52,7 @@ export type OptionalTypeNameInput = z.input<typeof OptionalTypeNameInput>;
  * `getComponentModifierValue`, `getElementModifierValue`. Wrappers with extra
  * fields (e.g. `setComponentModifierValue` with `expr`) extend this.
  */
-export const TypeNameAndModifierInput = z.object({
+export const TypeNameAndModifierInput = z.strictObject({
   typeName: z
     .string()
     .describe(
@@ -66,7 +71,7 @@ export type TypeNameAndModifierInput = z.input<typeof TypeNameAndModifierInput>;
  * like `getComponentModifierNames`, `getComponentComment`. Wrappers with extra
  * fields extend this.
  */
-export const TypeNameAndComponentNameInput = z.object({
+export const TypeNameAndComponentNameInput = z.strictObject({
   typeName: z
     .string()
     .describe(
@@ -88,7 +93,7 @@ export type TypeNameAndComponentNameInput = z.input<
  * we expose it as `n` to match (note: `getNthConnection*` use `index` per OMC
  * docs and stay distinct).
  */
-export const TypeNameAndIndexInput = z.object({
+export const TypeNameAndIndexInput = z.strictObject({
   typeName: z
     .string()
     .describe(

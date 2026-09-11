@@ -15,7 +15,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const AddComponentInputSchema = z.object({
+export const AddComponentInputSchema = z.strictObject({
   /** Local instance name to give the new component. */
   componentName: z
     .string()

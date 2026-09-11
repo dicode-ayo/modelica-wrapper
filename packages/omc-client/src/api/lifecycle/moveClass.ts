@@ -28,7 +28,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const MoveClassInputSchema = z.object({
+export const MoveClassInputSchema = z.strictObject({
   typeName: z.string().describe("Class to move."),
   offset: z
     .number()

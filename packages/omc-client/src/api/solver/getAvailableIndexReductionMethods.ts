@@ -23,7 +23,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
 
-export const GetAvailableIndexReductionMethodsInputSchema = z.object({});
+export const GetAvailableIndexReductionMethodsInputSchema = z.strictObject({});
 export type GetAvailableIndexReductionMethodsInput = z.input<
   typeof GetAvailableIndexReductionMethodsInputSchema
 >;

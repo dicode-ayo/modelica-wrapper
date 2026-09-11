@@ -14,7 +14,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const UpdateComponentInputSchema = z.object({
+export const UpdateComponentInputSchema = z.strictObject({
   componentName: z
     .string()
     .describe("Local instance name of the component to update."),

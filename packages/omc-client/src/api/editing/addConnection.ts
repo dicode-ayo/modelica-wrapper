@@ -14,7 +14,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const AddConnectionInputSchema = z.object({
+export const AddConnectionInputSchema = z.strictObject({
   from: z
     .string()
     .describe("Left-hand-side connector reference for the new connection."),

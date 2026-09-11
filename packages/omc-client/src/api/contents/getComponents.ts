@@ -30,7 +30,7 @@ import {
   type Value,
 } from "../../parse.js";
 
-export const GetComponentsInputSchema = z.object({
+export const GetComponentsInputSchema = z.strictObject({
   typeName: z.string().describe("Class to inspect."),
   useQuotes: z
     .boolean()

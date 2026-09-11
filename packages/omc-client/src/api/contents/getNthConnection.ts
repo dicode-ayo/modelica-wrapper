@@ -21,7 +21,7 @@ import { typeNameOfConnection } from "../../_shared/fields.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const GetNthConnectionInputSchema = z.object({
+export const GetNthConnectionInputSchema = z.strictObject({
   typeName: typeNameOfConnection,
   index: z
     .number()

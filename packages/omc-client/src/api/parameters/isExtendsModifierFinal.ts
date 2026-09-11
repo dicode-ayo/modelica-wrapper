@@ -20,7 +20,7 @@ import { extendsBase, typeNameOfExtends } from "../../_shared/fields.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const IsExtendsModifierFinalInputSchema = z.object({
+export const IsExtendsModifierFinalInputSchema = z.strictObject({
   typeName: typeNameOfExtends,
   extendsName: extendsBase.describe(
     "TypeName of the base class on the `extends` clause to inspect.",

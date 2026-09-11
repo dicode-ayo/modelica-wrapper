@@ -25,7 +25,7 @@ import { mlBool, quote, quoteList } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
-export const BuildModelFMUInputSchema = z.object({
+export const BuildModelFMUInputSchema = z.strictObject({
   typeName: z.string().describe("Class to export as an FMU."),
   version: z
     .enum(["1.0", "2.0", "3.0"])

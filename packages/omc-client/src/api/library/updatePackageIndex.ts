@@ -17,7 +17,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const UpdatePackageIndexInputSchema = z.object({});
+export const UpdatePackageIndexInputSchema = z.strictObject({});
 export type UpdatePackageIndexInput = z.input<
   typeof UpdatePackageIndexInputSchema
 >;

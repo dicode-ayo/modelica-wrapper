@@ -33,7 +33,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const UpdateConnectionNamesInputSchema = z.object({
+export const UpdateConnectionNamesInputSchema = z.strictObject({
   typeName: typeNameOfConnection,
   from: z
     .string()

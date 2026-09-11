@@ -21,7 +21,7 @@ import { mlBool, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const SearchClassNamesInputSchema = z.object({
+export const SearchClassNamesInputSchema = z.strictObject({
   searchText: z
     .string()
     .describe("Substring to look for in loaded class names."),

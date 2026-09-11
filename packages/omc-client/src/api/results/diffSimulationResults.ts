@@ -39,7 +39,7 @@ import {
   parse,
 } from "../../parse.js";
 
-export const DiffSimulationResultsInputSchema = z.object({
+export const DiffSimulationResultsInputSchema = z.strictObject({
   actualFile: z.string().describe("Actual simulation result file."),
   expectedFile: z
     .string()

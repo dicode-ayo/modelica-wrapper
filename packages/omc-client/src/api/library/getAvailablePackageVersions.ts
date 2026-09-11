@@ -19,7 +19,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const GetAvailablePackageVersionsInputSchema = z.object({
+export const GetAvailablePackageVersionsInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

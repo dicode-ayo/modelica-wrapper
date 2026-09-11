@@ -40,7 +40,7 @@ import { mlBool, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
-export const ImportFMUInputSchema = z.object({
+export const ImportFMUInputSchema = z.strictObject({
   filename: z.string().describe("Path to the `.fmu` file to import."),
   workdir: z
     .string()

@@ -21,7 +21,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const RenameClassInputSchema = z.object({
+export const RenameClassInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

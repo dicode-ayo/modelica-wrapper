@@ -20,7 +20,7 @@ import { getDocumentationAnnotation } from "../contents/getDocumentationAnnotati
 
 import { addClassAnnotation } from "./addClassAnnotation.js";
 
-export const SetFullDocumentationAnnotationInputSchema = z.object({
+export const SetFullDocumentationAnnotationInputSchema = z.strictObject({
   typeName: z.string().describe("Class to annotate."),
   info: z
     .string()

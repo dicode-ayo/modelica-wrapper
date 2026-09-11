@@ -24,7 +24,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
 
-export const GetAvailableTearingMethodsInputSchema = z.object({});
+export const GetAvailableTearingMethodsInputSchema = z.strictObject({});
 export type GetAvailableTearingMethodsInput = z.input<
   typeof GetAvailableTearingMethodsInputSchema
 >;

@@ -20,7 +20,7 @@ import { mlBool, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const InstallPackageInputSchema = z.object({
+export const InstallPackageInputSchema = z.strictObject({
   typeName: z
     .string()
     .describe(

@@ -11,7 +11,7 @@ import { mlBool, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
-export const ReadSimulationResultVarsInputSchema = z.object({
+export const ReadSimulationResultVarsInputSchema = z.strictObject({
   fileName: z
     .string()
     .describe("Path to the simulation result file to inspect."),

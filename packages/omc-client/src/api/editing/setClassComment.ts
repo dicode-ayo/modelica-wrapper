@@ -24,7 +24,7 @@ import {
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
-export const SetClassCommentInputSchema = z.object({
+export const SetClassCommentInputSchema = z.strictObject({
   typeName: z.string().describe("Class to update."),
   filename: z
     .string()

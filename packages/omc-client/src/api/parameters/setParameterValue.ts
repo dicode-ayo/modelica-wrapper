@@ -22,7 +22,7 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetParameterValueInputSchema = z.object({
+export const SetParameterValueInputSchema = z.strictObject({
   typeName: z.string().describe("Class containing the parameter."),
   variableName: z
     .string()

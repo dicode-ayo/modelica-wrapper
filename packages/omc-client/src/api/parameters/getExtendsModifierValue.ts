@@ -12,7 +12,7 @@ import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
-export const GetExtendsModifierValueInputSchema = z.object({
+export const GetExtendsModifierValueInputSchema = z.strictObject({
   typeName: typeNameOfExtends,
   extendsBase,
   modifier: z

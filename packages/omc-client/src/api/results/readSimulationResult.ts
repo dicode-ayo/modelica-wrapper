@@ -22,7 +22,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, expectList, parse } from "../../parse.js";
 
-export const ReadSimulationResultInputSchema = z.object({
+export const ReadSimulationResultInputSchema = z.strictObject({
   filename: z
     .string()
     .describe("Path to the simulation result file (.mat / .csv / etc.)."),

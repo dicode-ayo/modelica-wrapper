@@ -11,7 +11,7 @@ import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
-export const DiffModelicaFileListingsInputSchema = z.object({
+export const DiffModelicaFileListingsInputSchema = z.strictObject({
   before: z.string().describe("Modelica source listing before the change."),
   after: z.string().describe("Modelica source listing after the change."),
   kind: z
