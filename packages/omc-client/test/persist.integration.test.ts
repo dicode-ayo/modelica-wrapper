@@ -87,7 +87,13 @@ describeIf("persist + OMC roundtrip", () => {
     });
     expect(before.fileName).toBe("<runtime:RoundtripFlat>");
 
-    const result = await persistClass(client, tree, "RoundtripFlat", src);
+    const result = await persistClass(
+      client,
+      tree,
+      "RoundtripFlat",
+      src,
+      "model",
+    );
     await linkPersistedClass(client, "RoundtripFlat", result);
 
     // Disk artifact exists at the expected location.
@@ -119,6 +125,7 @@ describeIf("persist + OMC roundtrip", () => {
       tree,
       "RoundtripPkg.Sub.Model",
       src,
+      "model",
     );
     await linkPersistedClass(client, "RoundtripPkg.Sub.Model", result);
 
@@ -173,6 +180,7 @@ describeIf("persist + OMC roundtrip", () => {
       tree,
       "Roundtrip2.Sub.Reloaded",
       src,
+      "model",
     );
     await linkPersistedClass(client, "Roundtrip2.Sub.Reloaded", result);
     await client.close();
@@ -217,7 +225,13 @@ describeIf("persist + OMC roundtrip", () => {
     for (const name of ["First", "Second"]) {
       const src = `within ${root};\nmodel ${name}\nend ${name};\n`;
       await loadStepwise(client, [[`${root}.${name}`, src]]);
-      const member = await persistClass(client, tree, `${root}.${name}`, src);
+      const member = await persistClass(
+        client,
+        tree,
+        `${root}.${name}`,
+        src,
+        "model",
+      );
       await linkPersistedClass(client, `${root}.${name}`, member);
     }
 
@@ -236,6 +250,36 @@ describeIf("persist + OMC roundtrip", () => {
       expect(success).toBe(true);
       const { classNames } = await fresh.getClassNames({ typeName: root });
       expect(classNames).toEqual(["First", "Second"]);
+    } finally {
+      await fresh.close();
+    }
+  });
+
+  it("persists a multi-word restriction as OMC spells it", async () => {
+    // `expandable connector` and the operator kinds are two words; anything
+    // that split or camel-cased them would not parse on the way back in.
+    const src = "expandable connector RoundtripBus\nend RoundtripBus;\n";
+    await loadStepwise(client, [["RoundtripBus", src]]);
+    const result = await persistClass(
+      client,
+      tree,
+      "RoundtripBus",
+      src,
+      "expandable connector",
+    );
+    await linkPersistedClass(client, "RoundtripBus", result);
+    await client.close();
+
+    const fresh = await OmcClient.create({
+      omcPath: process.env.OMC_PATH ?? "",
+    });
+    try {
+      const { success } = await fresh.loadFile({ fileName: result.leafPath });
+      expect(success).toBe(true);
+      const { restriction } = await fresh.getClassInformation({
+        typeName: "RoundtripBus",
+      });
+      expect(restriction).toBe("expandable connector");
     } finally {
       await fresh.close();
     }

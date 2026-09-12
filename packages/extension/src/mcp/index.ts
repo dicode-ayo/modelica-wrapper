@@ -45,21 +45,31 @@ export const MCP_PROVIDER_LABEL = "Modelica (OpenModelica)";
  */
 const UNRESOLVED = vscode.Uri.parse("http://127.0.0.1/mcp");
 
+/**
+ * `deps` with the source tree attached, read on every access: adding or
+ * removing a workspace folder does not restart the extension host, so a value
+ * captured once would go stale.
+ */
+export function mcpToolDeps(
+  deps: Omit<McpToolDeps, "workspace">,
+  writer: SourceWriter,
+): McpToolDeps {
+  return {
+    ...deps,
+    get workspace() {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      return root === undefined ? undefined : { root, writer };
+    },
+  };
+}
+
 export function registerMcpServerProvider(
   deps: Omit<McpToolDeps, "workspace">,
   writer: SourceWriter,
   version: string,
 ): vscode.Disposable {
   const host = createMcpHttpHost({
-    deps: {
-      ...deps,
-      // Read per call: adding or removing a folder does not restart the
-      // extension host, so a value captured here would go stale.
-      get workspace() {
-        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        return root === undefined ? undefined : { root, writer };
-      },
-    },
+    deps: mcpToolDeps(deps, writer),
     version,
     log: {
       warn: (message) => {

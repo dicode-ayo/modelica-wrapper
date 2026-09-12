@@ -94,6 +94,11 @@ async function connect(): Promise<Client> {
   return mcp;
 }
 
+/** A writer that fails after `persistClass` has made the directories. */
+const rejectingWriter = {
+  write: () => Promise.reject(new Error("EACCES: permission denied")),
+};
+
 /** The one text block a tool result carries. */
 function text(result: CallToolResult): string {
   const [first] = result.content;
@@ -507,24 +512,18 @@ describe("createClass", () => {
     });
   });
 
-  it("offers every restriction OMEdit's New Class dialog does", async () => {
+  it("refuses an empty withinPath rather than reading it as top-level", async () => {
     const mcp = await connect();
 
-    const { tools } = await mcp.listTools();
-    const kinds = (
-      tools.find((t) => t.name === "createClass")?.inputSchema.properties as
-        Record<string, { enum?: string[] }> | undefined
-    )?.kind?.enum;
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Loose", kind: "model", withinPath: "" },
+    })) as CallToolResult;
 
-    expect(kinds).toEqual(
-      expect.arrayContaining([
-        "expandable connector",
-        "operator",
-        "operator record",
-        "operator function",
-        "class",
-      ]),
-    );
+    // Empty is not nullish, so it would skip the root-package resolver and
+    // land a class with no `within` clause beside the root package.mo.
+    expect(result.isError).toBe(true);
+    expect(calls).toEqual([]);
   });
 
   it("refuses to extend a class that is not loaded", async () => {
@@ -665,49 +664,49 @@ describe("createClass", () => {
   });
 
   it("unloads the class again when its files cannot be written", async () => {
-    workspace = {
-      root: "/nowhere",
-      writer: {
-        write: () => Promise.reject(new Error("EACCES: permission denied")),
-      },
-    };
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-unwritable-"));
+    workspace = { root, writer: rejectingWriter };
     const mcp = await connect();
 
-    const result = (await mcp.callTool({
-      name: "createClass",
-      arguments: { name: "Loose", kind: "model" },
-    })) as CallToolResult;
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Loose", kind: "model" },
+      })) as CallToolResult;
 
-    // Left loaded it would be the very thing this tool exists to prevent, and
-    // the retry would be refused for already existing.
-    expect(result.isError).toBe(true);
-    expect(text(result)).toContain("EACCES");
-    expect(text(result)).toContain("unloaded");
-    expect(calls).toContainEqual({
-      fn: "deleteClass",
-      input: { typeName: "Loose" },
-    });
+      // Left loaded it would be the very thing this tool exists to prevent,
+      // and the retry would be refused for already existing.
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("EACCES");
+      expect(text(result)).toContain("unloaded");
+      expect(calls).toContainEqual({
+        fn: "deleteClass",
+        input: { typeName: "Loose" },
+      });
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("says the class is still loaded when unloading it also fails", async () => {
-    workspace = {
-      root: "/nowhere",
-      writer: {
-        write: () => Promise.reject(new Error("EACCES: permission denied")),
-      },
-    };
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-unwritable-"));
+    workspace = { root, writer: rejectingWriter };
     unloadFails = "deleteClass returned false";
     const mcp = await connect();
 
-    const result = (await mcp.callTool({
-      name: "createClass",
-      arguments: { name: "Loose", kind: "model" },
-    })) as CallToolResult;
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Loose", kind: "model" },
+      })) as CallToolResult;
 
-    // The caller has to know a retry will be refused, and why.
-    expect(result.isError).toBe(true);
-    expect(text(result)).toContain("still loaded in OMC");
-    expect(text(result)).toContain("deleteClass returned false");
+      // The caller has to know a retry will be refused, and why.
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("still loaded in OMC");
+      expect(text(result)).toContain("deleteClass returned false");
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("writes the file and points OMC at it", async () => {

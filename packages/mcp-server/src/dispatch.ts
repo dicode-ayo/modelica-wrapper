@@ -12,6 +12,7 @@
  */
 
 import type {
+  DeclareClient,
   OmcFnName,
   OmcInput,
   PersistClient,
@@ -37,16 +38,10 @@ import { refusalFor, refusalForClass } from "./write-gate.js";
  * reaching a model.
  */
 export interface McpToolClient
-  extends WriteVerdictClient, PersistClient, RootPackageClient {
+  extends WriteVerdictClient, PersistClient, RootPackageClient, DeclareClient {
   invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
   existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
-  getErrorString(): Promise<{ errorString: string }>;
-  loadString(input: {
-    data: string;
-    filename: string;
-    merge: boolean;
-  }): Promise<{ success: boolean }>;
   /** Narrows the bases, which disagree on which fields they need. */
   getClassInformation(input: { typeName: string }): Promise<{
     fileReadOnly: boolean;
@@ -60,11 +55,10 @@ export interface McpToolDeps {
   ensureClient: () => Promise<McpToolClient>;
   verdicts: WriteVerdictSource;
   /**
-   * Where a created class is written. The one thing no tool can derive from
-   * OMC: `save` writes only to the path already in the symbol table, so the
-   * host chooses it, and the host's writer is what lets the VSCode extension's
-   * watcher tell this write apart from a user's own edit. Absent when the host
-   * has nowhere to write, which `createClass` reports to the caller.
+   * Where a created class is written. Nothing derivable from OMC decides
+   * this, so the host does; every file `createClass` creates goes through the
+   * host's writer. Absent when the host has nowhere to write, which
+   * `createClass` reports to the caller.
    */
   workspace?: SourceTree | undefined;
 }

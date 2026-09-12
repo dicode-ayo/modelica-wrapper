@@ -223,8 +223,10 @@ export function registerClassCommands(
   ];
 }
 
-/** `expandable connector` has to suggest `MyExpandableConnector`, not a name
- * with a space in it that `validateIdentifier` would then reject. */
+/**
+ * `expandable connector` has to suggest `MyExpandableConnector`, not a name
+ * with a space in it that `validateIdentifier` would then reject.
+ */
 function defaultPlaceholder(kind: ClassKind): string {
   const camel = kind
     .split(" ")

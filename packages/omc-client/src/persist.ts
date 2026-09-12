@@ -2,14 +2,11 @@
  * Writing a class OMC holds in memory out to a source tree.
  *
  * OMC's own `save` writes only to the path already recorded in its symbol
- * table and never touches `package.order`, so the decisions about where bytes
- * land belong to the caller. OMEdit reaches the same conclusion: its
- * `OMCProxy` has no `save` wrapper at all, and `LibraryWidget` creates the
- * directories, writes the files, and then tells OMC where they went.
+ * table and never touches `package.order`, so where the bytes land is the
+ * caller's decision.
  *
- * Nothing here knows about an editor. A host supplies a root to write under
- * and a {@link SourceWriter}; the VSCode extension passes one that tags the
- * write so its own file watcher does not mistake it for an external edit.
+ * A host supplies a root to write under and a {@link SourceWriter}. Every file
+ * this creates goes through that writer, so a host can record what it wrote.
  */
 
 import { mkdir, readFile } from "node:fs/promises";
@@ -117,7 +114,7 @@ export async function persistClass(
   tree: SourceTree,
   qualifiedName: string,
   classText: string,
-  restriction?: string,
+  restriction: string,
 ): Promise<PersistResult> {
   const { root, writer } = tree;
   const parts = qualifiedName.split(".");
@@ -161,8 +158,8 @@ export async function persistClass(
     enclosing === undefined
       ? undefined
       : enclosing.structured
-        ? ("directory" as const)
-        : ("file" as const);
+        ? "directory"
+        : "file";
   const leafName = parts.at(-1);
   if (leafName === undefined) {
     return { leafPath: "", newParents, enclosingPackage };

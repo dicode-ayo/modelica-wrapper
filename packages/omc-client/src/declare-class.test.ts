@@ -1,11 +1,15 @@
 /**
- * The root-package resolver: which class a `<root>/package.mo` declares, and
- * when it refuses to answer.
+ * Building a class declaration, and resolving which class a
+ * `<root>/package.mo` declares — and when that refuses to answer.
  */
 
 import { describe, expect, it, vi } from "vitest";
 
-import { classSource, resolveRootPackageParent } from "./declare-class.js";
+import {
+  classSource,
+  resolveRootPackageParent,
+  type RootPackageClient,
+} from "./declare-class.js";
 
 describe("classSource", () => {
   it("writes a multi-word restriction as OMC spells it", () => {
@@ -33,7 +37,7 @@ describe("resolveRootPackageParent", () => {
       getClassInformation?: ReturnType<typeof vi.fn>;
     } = {},
   ): {
-    client: Parameters<typeof resolveRootPackageParent>[0];
+    client: RootPackageClient;
     parseFile: ReturnType<typeof vi.fn>;
     getClassInformation: ReturnType<typeof vi.fn>;
   } {
@@ -44,9 +48,7 @@ describe("resolveRootPackageParent", () => {
       overrides.getClassInformation ??
       vi.fn(() => Promise.resolve({ restriction: "package" }));
     return {
-      client: { parseFile, getClassInformation } as unknown as Parameters<
-        typeof resolveRootPackageParent
-      >[0],
+      client: { parseFile, getClassInformation },
       parseFile,
       getClassInformation,
     };
@@ -102,9 +104,8 @@ describe("resolveRootPackageParent", () => {
 
   it("refuses rather than guessing when the resolved class isn't loaded into OMC yet", async () => {
     // parseFile reads straight off disk and never touches OMC's symbol
-    // table — workspace autoload (workspace-autoload.ts) loads entry files
-    // asynchronously, so the file can parse cleanly before OMC has actually
-    // loaded the class it declares. OMC 1.27.0 doesn't reject for an unknown
+    // table, so the file can parse cleanly before the class it declares is
+    // loaded. OMC 1.27.0 doesn't reject for an unknown
     // class — it answers with every field defaulted, empty `restriction`
     // among them — so that's the signal, not a thrown rejection.
     const { client } = makeClient({

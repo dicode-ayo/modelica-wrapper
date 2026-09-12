@@ -154,6 +154,7 @@ describe("persistClass", () => {
       tree,
       "TempModel",
       "model TempModel\nend TempModel;\n",
+      "model",
     );
     expect(result.leafPath).toBe(path.join(tmp, "TempModel.mo"));
     expect(result.newParents).toEqual([]);
@@ -170,6 +171,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Sub.Model",
       "block Model\nend Model;\n",
+      "model",
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyLib", "Sub", "Model.mo"));
     expect(result.newParents).toEqual([
@@ -204,8 +206,9 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
-    // Still still our hand-edited content — persist must not clobber.
+    // Still our hand-edited content — persist must not clobber.
     expect(await fsp.readFile(path.join(myLibDir, "package.mo"), "utf8")).toBe(
       original,
     );
@@ -224,6 +227,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     // Leaf lands inside MyLib's existing directory, NOT under tmp.
     expect(result.leafPath).toBe(path.join(externalDir, "Model.mo"));
@@ -247,6 +251,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyLib", "Model.mo"));
     expect(result.newParents).toEqual([
@@ -263,6 +268,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Sub.Model",
       "block Model\nend Model;\n",
+      "model",
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -286,6 +292,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     expect(writer.paths).toEqual([
       path.join(tmp, "MyLib", "package.mo"),
@@ -302,6 +309,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -320,6 +328,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     expect(
       await fsp.readFile(path.join(myLibDir, "package.order"), "utf8"),
@@ -347,6 +356,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
 
     expect(await fsp.readFile(path.join(libDir, "package.order"), "utf8")).toBe(
@@ -365,18 +375,21 @@ describe("persistClass", () => {
       tree,
       "Folder.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     const inline = await persistClass(
       client,
       tree,
       "Inline.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     const orphan = await persistClass(
       client,
       tree,
       "Alone",
       "model Alone\nend Alone;\n",
+      "model",
     );
 
     expect(folder.enclosingPackage).toBe("directory");
@@ -400,6 +413,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
 
     await expect(fsp.access(path.join(tmp, "package.order"))).rejects.toThrow();
@@ -414,6 +428,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -429,6 +444,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -444,6 +460,7 @@ describe("persistClass", () => {
       tree,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      "model",
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -521,6 +538,7 @@ describe("persistClass", () => {
       tree,
       "MyPkg.Child",
       "within MyPkg;\nmodel Child\nend Child;\n",
+      "model",
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "Child.mo"));
     expect(result.newParents).toEqual([]);

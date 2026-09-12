@@ -54,18 +54,13 @@ export interface ClassDeclaration {
 /** The dotted name `declaration` will be known by once it is loaded. */
 export function qualifiedNameOf(declaration: ClassDeclaration): string {
   const { name, withinPath } = declaration;
-  return withinPath === undefined || withinPath === ""
-    ? name
-    : `${withinPath}.${name}`;
+  return withinPath === undefined ? name : `${withinPath}.${name}`;
 }
 
 /** The Modelica source text for `declaration`, `within` clause included. */
 export function classSource(declaration: ClassDeclaration): string {
   const { name, kind, withinPath, extendsFrom } = declaration;
-  const header =
-    withinPath === undefined || withinPath === ""
-      ? ""
-      : `within ${withinPath};\n`;
+  const header = withinPath === undefined ? "" : `within ${withinPath};\n`;
   const base = extendsFrom === undefined ? "" : `  extends ${extendsFrom};\n`;
   return `${header}${kind} ${name}\n${base}end ${name};\n`;
 }
@@ -120,9 +115,7 @@ export interface RootPackageClient {
  *
  * The load check only confirms a class named `name` is loaded, not that it is
  * specifically the one `rootPkg` declares — a same-named class loaded from
- * elsewhere would pass it too. The caller's write verdict catches a
- * MODELICAPATH collision downstream; a same-named class from another file in
- * the same tree is a narrower case this doesn't distinguish.
+ * elsewhere would pass it too.
  */
 export async function resolveRootPackageParent(
   client: RootPackageClient,
@@ -134,7 +127,7 @@ export async function resolveRootPackageParent(
   } catch (err) {
     return {
       ok: false,
-      reason: `could not read ${rootPkg}'s class name (${(err as Error).message})`,
+      reason: `could not read ${rootPkg}'s class name (${detail(err)})`,
     };
   }
   if (classNames.length > 1) {
@@ -167,8 +160,12 @@ export async function resolveRootPackageParent(
   } catch (err) {
     return {
       ok: false,
-      reason: `could not confirm ${name} is loaded into OMC (${(err as Error).message})`,
+      reason: `could not confirm ${name} is loaded into OMC (${detail(err)})`,
     };
   }
   return { ok: true, parent: name };
+}
+
+function detail(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
