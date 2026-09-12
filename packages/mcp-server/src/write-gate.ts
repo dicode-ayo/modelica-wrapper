@@ -18,6 +18,13 @@
  * The table is exhaustive over `MutatingFnName` and each field name is checked
  * against that function's own input type, so a new mutating wrapper — or a
  * renamed argument — fails the build rather than shipping an ungated tool.
+ *
+ * `save` rewrites a class's own source file without touching OMC's symbol
+ * table, so `MUTATIONS` in `@dicode/omc-client` classifies it `"readOnly"` and
+ * it is not a `MutatingFnName` — yet it reaches OMC through the same
+ * `omc_invoke` path as every gated wrapper (issue #654). It gets its own entry
+ * below rather than folding into `MutatingFnName`, so the cache-invalidation
+ * table keeps meaning "changes the model".
  */
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
@@ -118,8 +125,21 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
 };
 
 /**
- * The same table read by a name only known at runtime, which erases the
- * per-function field-name literals the declaration above is checked against.
+ * `save`'s row, outside `CLASS_ARGUMENTS` because `save` is not a
+ * `MutatingFnName`. The literal is `ClassArgument`'s type argument rather than
+ * a key of a derived set: the `K extends OmcFnName` constraint is checked
+ * here, where a mapped type over `Extract` would collapse to `{}` and take the
+ * field check with it.
+ */
+const SAVE_ARGUMENT: ClassArgument<"save"> = {
+  field: "typeName",
+  as: "class",
+  action: "save",
+};
+
+/**
+ * `CLASS_ARGUMENTS` and `SAVE_ARGUMENT` with their per-function field-name
+ * literals erased, which is all a lookup by a runtime name can preserve.
  */
 interface ResolvedClassArgument {
   readonly field: string;
@@ -129,7 +149,7 @@ interface ResolvedClassArgument {
 
 const BY_NAME: Readonly<
   Record<string, ResolvedClassArgument | null | undefined>
-> = CLASS_ARGUMENTS;
+> = { save: SAVE_ARGUMENT, ...CLASS_ARGUMENTS };
 
 /**
  * The refusal `fn` earns for `input`, or `undefined` when the call may proceed.
