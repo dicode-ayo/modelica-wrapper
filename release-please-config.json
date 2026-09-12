@@ -35,6 +35,11 @@
       "package-name": "@dicode/diagram-ui",
       "changelog-path": "CHANGELOG.md"
     },
+    "packages/documentation-ui": {
+      "component": "@dicode/documentation-ui",
+      "package-name": "@dicode/documentation-ui",
+      "changelog-path": "CHANGELOG.md"
+    },
     "packages/omc-client": {
       "component": "@dicode/omc-client",
       "package-name": "@dicode/omc-client",
