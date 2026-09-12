@@ -26,8 +26,8 @@ Reading results:
   check.
 
 Arguments are this API's names, not the ones in the OMC scripting docs: it is
-typeName rather than cl, fileName rather than filename, save rather than
-saveModel. omc_describe_function gives the exact shape for anything, and
-omc_list_functions finds what is not published as its own tool.
+typeName rather than cl, fileName rather than filename. omc_describe_function
+gives the exact shape for anything, and omc_list_functions finds what is not
+published as its own tool.
 
 Editing a class from an installed library is refused, with the reason.`;

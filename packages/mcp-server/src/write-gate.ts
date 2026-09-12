@@ -18,6 +18,14 @@
  * The table is exhaustive over `MutatingFnName` and each field name is checked
  * against that function's own input type, so a new mutating wrapper — or a
  * renamed argument — fails the build rather than shipping an ungated tool.
+ *
+ * `save` writes a class's file without touching OMC's symbol table, so
+ * `MUTATIONS` in `@dicode/omc-client` classifies it `"readOnly"` and it is not
+ * a `MutatingFnName` — but it reaches OMC through the same `omc_invoke` path
+ * as every gated wrapper, and a name can move bytes onto disk without
+ * mutating anything a cache derives from a class (issue #654). It gets its
+ * own one-row table below rather than folding into `MutatingFnName`, so the
+ * cache-invalidation table keeps meaning "changes the model".
  */
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
@@ -118,6 +126,22 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
 };
 
 /**
+ * `save`'s own input type, per {@link ClassArgument}'s field check — the same
+ * safety `CLASS_ARGUMENTS` gets, over a type too narrow for `MutatingFnName`
+ * to admit. `Extract` rather than a bare literal: if `save` ever left the OMC
+ * function registry, this would shrink to `never` and the table below would
+ * fail the build instead of silently keying on a function that no longer
+ * exists.
+ */
+type FileWritingFnName = Extract<OmcFnName, "save">;
+
+const FILE_WRITE_ARGUMENTS: {
+  readonly [K in FileWritingFnName]: ClassArgument<K>;
+} = {
+  save: { field: "typeName", as: "class", action: "save" },
+};
+
+/**
  * The same table read by a name only known at runtime, which erases the
  * per-function field-name literals the declaration above is checked against.
  */
@@ -129,7 +153,7 @@ interface ResolvedClassArgument {
 
 const BY_NAME: Readonly<
   Record<string, ResolvedClassArgument | null | undefined>
-> = CLASS_ARGUMENTS;
+> = { ...CLASS_ARGUMENTS, ...FILE_WRITE_ARGUMENTS };
 
 /**
  * The refusal `fn` earns for `input`, or `undefined` when the call may proceed.
