@@ -22,6 +22,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -56,7 +57,7 @@ export async function extendsFrom(
   input: ExtendsFromInput,
 ): Promise<ExtendsFromOutput> {
   const raw = await ctx.call(
-    `extendsFrom(${input.typeName}, ${input.baseClassName})`,
+    `extendsFrom(${bareName(input.typeName)}, ${bareName(input.baseClassName)})`,
   );
   return parseOutput(
     ExtendsFromOutputSchema,

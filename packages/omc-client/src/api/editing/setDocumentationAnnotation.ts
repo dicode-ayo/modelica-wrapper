@@ -16,7 +16,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import {
   parseMutationSuccess,
   parseOutput,
@@ -64,7 +64,7 @@ export async function setDocumentationAnnotation(
   const info = input.info ?? "";
   const revisions = input.revisions ?? "";
   const raw = await ctx.call(
-    `setDocumentationAnnotation(${input.typeName}, ${quote(info)}, ${quote(revisions)})`,
+    `setDocumentationAnnotation(${bareName(input.typeName)}, ${quote(info)}, ${quote(revisions)})`,
   );
   return parseOutput(
     SetDocumentationAnnotationOutputSchema,

@@ -8,6 +8,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -44,11 +45,11 @@ export async function updateComponent(
   ctx: CallContext,
   input: UpdateComponentInput,
 ): Promise<UpdateComponentOutput> {
-  const annotation = input.annotation ?? "";
+  const annotation = bareExpr(input.annotation ?? "");
   const ann =
     annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;
   const raw = await ctx.call(
-    `updateComponent(${input.componentName}, ${input.componentClass}, ${input.intoTypeName}, ${ann})`,
+    `updateComponent(${bareName(input.componentName)}, ${bareName(input.componentClass)}, ${bareName(input.intoTypeName)}, ${ann})`,
   );
   return parseOutput(
     UpdateComponentOutputSchema,

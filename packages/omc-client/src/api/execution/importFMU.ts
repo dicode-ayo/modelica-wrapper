@@ -36,7 +36,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { mlBool, quote } from "../../_shared/format.js";
+import { bareName, mlBool, num, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
@@ -104,9 +104,9 @@ export async function importFMU(
   const modelNameArg =
     input.modelName === undefined || input.modelName === ""
       ? "Default"
-      : input.modelName;
+      : bareName(input.modelName);
   const raw = await ctx.call(
-    `importFMU(${quote(input.filename)}, ${quote(input.workdir ?? "")}, ${input.loglevel ?? 3}, ${mlBool(input.fullPath ?? false)}, ${mlBool(input.debugLogging ?? false)}, ${mlBool(input.generateInputConnectors ?? true)}, ${mlBool(input.generateOutputConnectors ?? true)}, ${modelNameArg})`,
+    `importFMU(${quote(input.filename)}, ${quote(input.workdir ?? "")}, ${num(input.loglevel ?? 3)}, ${mlBool(input.fullPath ?? false)}, ${mlBool(input.debugLogging ?? false)}, ${mlBool(input.generateInputConnectors ?? true)}, ${mlBool(input.generateOutputConnectors ?? true)}, ${modelNameArg})`,
   );
   return parseOutput(
     ImportFMUOutputSchema,

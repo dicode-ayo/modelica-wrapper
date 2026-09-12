@@ -21,7 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import {
@@ -56,7 +56,7 @@ export async function getParameterValue(
   input: GetParameterValueInput,
 ): Promise<GetParameterValueOutput> {
   const raw = await ctx.call(
-    `getParameterValue(${input.typeName}, ${quote(input.name)})`,
+    `getParameterValue(${bareName(input.typeName)}, ${quote(input.name)})`,
   );
   const v = parse(raw);
   let value = "";

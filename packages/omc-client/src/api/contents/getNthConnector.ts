@@ -16,6 +16,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName, num } from "../../_shared/format.js";
 import { TypeNameAndIndexInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
@@ -38,7 +39,9 @@ export async function getNthConnector(
   ctx: CallContext,
   input: GetNthConnectorInput,
 ): Promise<GetNthConnectorOutput> {
-  const raw = await ctx.call(`getNthConnector(${input.typeName}, ${input.n})`);
+  const raw = await ctx.call(
+    `getNthConnector(${bareName(input.typeName)}, ${num(input.n)})`,
+  );
   return parseOutput(
     GetNthConnectorOutputSchema,
     { result: parse(raw) },

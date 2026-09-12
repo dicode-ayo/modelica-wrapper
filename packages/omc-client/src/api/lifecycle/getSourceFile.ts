@@ -8,6 +8,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
@@ -31,7 +32,7 @@ export async function getSourceFile(
   ctx: CallContext,
   input: GetSourceFileInput,
 ): Promise<GetSourceFileOutput> {
-  const raw = await ctx.call(`getSourceFile(${input.typeName})`);
+  const raw = await ctx.call(`getSourceFile(${bareName(input.typeName)})`);
   return parseOutput(
     GetSourceFileOutputSchema,
     { fileName: expectString(parse(raw)) },

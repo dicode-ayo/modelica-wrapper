@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
@@ -39,7 +40,9 @@ export async function getAvailableLibraryVersions(
   ctx: CallContext,
   input: GetAvailableLibraryVersionsInput,
 ): Promise<GetAvailableLibraryVersionsOutput> {
-  const raw = await ctx.call(`getAvailableLibraryVersions(${input.typeName})`);
+  const raw = await ctx.call(
+    `getAvailableLibraryVersions(${bareName(input.typeName)})`,
+  );
   return parseOutput(
     GetAvailableLibraryVersionsOutputSchema,
     { librariesAndVersions: expectStringList(parse(raw)) },

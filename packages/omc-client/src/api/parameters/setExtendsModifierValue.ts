@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { expr, extendsBase, typeNameOfExtends } from "../../_shared/fields.js";
+import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -41,9 +42,10 @@ export async function setExtendsModifierValue(
   ctx: CallContext,
   input: SetExtendsModifierValueInput,
 ): Promise<SetExtendsModifierValueOutput> {
-  const codeArg = input.expr === "" ? "$Code(=)" : `$Code(=${input.expr})`;
+  const codeArg =
+    input.expr === "" ? "$Code(=)" : `$Code(=${bareExpr(input.expr)})`;
   const raw = await ctx.call(
-    `setExtendsModifierValue(${input.typeName}, ${input.extendsBase}, ${input.modifier}, ${codeArg})`,
+    `setExtendsModifierValue(${bareName(input.typeName)}, ${bareName(input.extendsBase)}, ${bareName(input.modifier)}, ${codeArg})`,
   );
   return parseOutput(
     SetExtendsModifierValueOutputSchema,

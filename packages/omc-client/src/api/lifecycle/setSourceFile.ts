@@ -8,7 +8,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -34,7 +34,7 @@ export async function setSourceFile(
   input: SetSourceFileInput,
 ): Promise<SetSourceFileOutput> {
   const raw = await ctx.call(
-    `setSourceFile(${input.typeName}, ${quote(input.fileName)})`,
+    `setSourceFile(${bareName(input.typeName)}, ${quote(input.fileName)})`,
   );
   return parseOutput(
     SetSourceFileOutputSchema,

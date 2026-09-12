@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { typeNameOfConnection } from "../../_shared/fields.js";
+import { bareName, num } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
@@ -42,7 +43,7 @@ export async function getNthConnectionAnnotation(
   input: GetNthConnectionAnnotationInput,
 ): Promise<GetNthConnectionAnnotationOutput> {
   const raw = await ctx.call(
-    `getNthConnectionAnnotation(${input.typeName}, ${input.index})`,
+    `getNthConnectionAnnotation(${bareName(input.typeName)}, ${num(input.index)})`,
   );
   return parseOutput(
     GetNthConnectionAnnotationOutputSchema,

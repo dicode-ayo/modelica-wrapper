@@ -8,6 +8,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -26,7 +27,7 @@ export async function translateModel(
   ctx: CallContext,
   input: TranslateModelInput,
 ): Promise<TranslateModelOutput> {
-  const raw = await ctx.call(`translateModel(${input.typeName})`);
+  const raw = await ctx.call(`translateModel(${bareName(input.typeName)})`);
   return parseOutput(
     TranslateModelOutputSchema,
     { success: expectBool(parse(raw)) },

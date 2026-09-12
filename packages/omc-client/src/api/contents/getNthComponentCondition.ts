@@ -19,6 +19,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName, num } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
@@ -53,7 +54,7 @@ export async function getNthComponentCondition(
   input: GetNthComponentConditionInput,
 ): Promise<GetNthComponentConditionOutput> {
   const raw = await ctx.call(
-    `getNthComponentCondition(${input.typeName}, ${input.n})`,
+    `getNthComponentCondition(${bareName(input.typeName)}, ${num(input.n)})`,
   );
   return parseOutput(
     GetNthComponentConditionOutputSchema,

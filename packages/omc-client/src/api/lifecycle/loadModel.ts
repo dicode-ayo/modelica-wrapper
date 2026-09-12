@@ -22,7 +22,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { requireExactVersion } from "../../_shared/fields.js";
-import { mlBool, quote, quoteList } from "../../_shared/format.js";
+import { bareName, mlBool, quote, quoteList } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -68,7 +68,7 @@ export async function loadModel(
 ): Promise<LoadModelOutput> {
   const versions = input.priorityVersion ?? ["default"];
   const raw = await ctx.call(
-    `loadModel(${input.typeName}, ${quoteList(versions)}, ${mlBool(input.notify ?? false)}, ${quote(input.languageStandard ?? "")}, ${mlBool(input.requireExactVersion ?? false)})`,
+    `loadModel(${bareName(input.typeName)}, ${quoteList(versions)}, ${mlBool(input.notify ?? false)}, ${quote(input.languageStandard ?? "")}, ${mlBool(input.requireExactVersion ?? false)})`,
   );
   return parseOutput(
     LoadModelOutputSchema,

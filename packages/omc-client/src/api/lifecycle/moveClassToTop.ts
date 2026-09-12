@@ -13,6 +13,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
@@ -33,7 +34,7 @@ export async function moveClassToTop(
   ctx: CallContext,
   input: MoveClassToTopInput,
 ): Promise<MoveClassToTopOutput> {
-  const raw = await ctx.call(`moveClassToTop(${input.typeName})`);
+  const raw = await ctx.call(`moveClassToTop(${bareName(input.typeName)})`);
   return parseOutput(
     MoveClassToTopOutputSchema,
     { success: await parseMutationSuccess(ctx, raw, "moveClassToTop") },

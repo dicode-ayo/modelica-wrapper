@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { extendsBase, typeNameOfExtends } from "../../_shared/fields.js";
+import { bareName } from "../../_shared/format.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
@@ -38,7 +39,7 @@ export async function getExtendsModifierValue(
   input: GetExtendsModifierValueInput,
 ): Promise<GetExtendsModifierValueOutput> {
   const raw = await ctx.call(
-    `getExtendsModifierValue(${input.typeName}, ${input.extendsBase}, ${input.modifier})`,
+    `getExtendsModifierValue(${bareName(input.typeName)}, ${bareName(input.extendsBase)}, ${bareName(input.modifier)})`,
   );
   // Unlike `getComponentModifierValue` (which always quotes its result),
   // `getExtendsModifierValue` returns the binding *bare* when it is numeric

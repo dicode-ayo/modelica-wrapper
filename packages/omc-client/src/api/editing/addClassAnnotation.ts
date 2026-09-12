@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -38,7 +39,7 @@ export async function addClassAnnotation(
   input: AddClassAnnotationInput,
 ): Promise<AddClassAnnotationOutput> {
   const raw = await ctx.call(
-    `addClassAnnotation(${input.typeName}, ${input.annotation})`,
+    `addClassAnnotation(${bareName(input.typeName)}, ${bareExpr(input.annotation)})`,
   );
   return parseOutput(
     AddClassAnnotationOutputSchema,

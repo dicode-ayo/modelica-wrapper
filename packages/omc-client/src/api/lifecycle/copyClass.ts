@@ -20,8 +20,8 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import type { OmcCommand } from "../../commands.js";
 import { quote } from "../../_shared/format.js";
+import type { OmcCommand } from "../../commands.js";
 import {
   parseMutationSuccess,
   parseOutput,

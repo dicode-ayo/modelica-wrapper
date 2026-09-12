@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
@@ -37,7 +38,7 @@ export async function getClassComment(
   ctx: CallContext,
   input: GetClassCommentInput,
 ): Promise<GetClassCommentOutput> {
-  const raw = await ctx.call(`getClassComment(${input.typeName})`);
+  const raw = await ctx.call(`getClassComment(${bareName(input.typeName)})`);
   return parseOutput(
     GetClassCommentOutputSchema,
     { comment: asString(parse(raw)) ?? "" },

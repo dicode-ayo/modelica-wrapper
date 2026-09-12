@@ -17,7 +17,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { mlBool, quote } from "../../_shared/format.js";
+import { bareName, mlBool, quote } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
@@ -53,7 +53,7 @@ export async function removeElementModifiers(
 ): Promise<RemoveElementModifiersOutput> {
   const keepRedeclares = input.keepRedeclares ?? false;
   const raw = await ctx.call(
-    `removeElementModifiers(${input.typeName}, ${quote(input.componentName)}, ${mlBool(keepRedeclares)})`,
+    `removeElementModifiers(${bareName(input.typeName)}, ${quote(input.componentName)}, ${mlBool(keepRedeclares)})`,
   );
   return parseOutput(
     RemoveElementModifiersOutputSchema,

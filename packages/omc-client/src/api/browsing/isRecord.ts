@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -32,7 +33,7 @@ export async function isRecord(
   ctx: CallContext,
   input: IsRecordInput,
 ): Promise<IsRecordOutput> {
-  const raw = await ctx.call(`isRecord(${input.typeName})`);
+  const raw = await ctx.call(`isRecord(${bareName(input.typeName)})`);
   return parseOutput(
     IsRecordOutputSchema,
     { b: expectBool(parse(raw)) },

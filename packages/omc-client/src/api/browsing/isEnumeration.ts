@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -32,7 +33,7 @@ export async function isEnumeration(
   ctx: CallContext,
   input: IsEnumerationInput,
 ): Promise<IsEnumerationOutput> {
-  const raw = await ctx.call(`isEnumeration(${input.typeName})`);
+  const raw = await ctx.call(`isEnumeration(${bareName(input.typeName)})`);
   return parseOutput(
     IsEnumerationOutputSchema,
     { b: expectBool(parse(raw)) },

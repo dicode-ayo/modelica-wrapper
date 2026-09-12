@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { typeNameOfConnection } from "../../_shared/fields.js";
+import { bareName } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -42,7 +43,7 @@ export async function deleteConnection(
   input: DeleteConnectionInput,
 ): Promise<DeleteConnectionOutput> {
   const raw = await ctx.call(
-    `deleteConnection(${input.from}, ${input.to}, ${input.typeName})`,
+    `deleteConnection(${bareName(input.from)}, ${bareName(input.to)}, ${bareName(input.typeName)})`,
   );
   return parseOutput(
     DeleteConnectionOutputSchema,

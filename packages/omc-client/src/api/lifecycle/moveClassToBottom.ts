@@ -11,6 +11,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
@@ -35,7 +36,7 @@ export async function moveClassToBottom(
   ctx: CallContext,
   input: MoveClassToBottomInput,
 ): Promise<MoveClassToBottomOutput> {
-  const raw = await ctx.call(`moveClassToBottom(${input.typeName})`);
+  const raw = await ctx.call(`moveClassToBottom(${bareName(input.typeName)})`);
   return parseOutput(
     MoveClassToBottomOutputSchema,
     { success: await parseMutationSuccess(ctx, raw, "moveClassToBottom") },

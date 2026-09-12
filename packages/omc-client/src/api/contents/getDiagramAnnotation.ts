@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
@@ -33,7 +34,9 @@ export async function getDiagramAnnotation(
   ctx: CallContext,
   input: GetDiagramAnnotationInput,
 ): Promise<GetDiagramAnnotationOutput> {
-  const raw = await ctx.call(`getDiagramAnnotation(${input.typeName})`);
+  const raw = await ctx.call(
+    `getDiagramAnnotation(${bareName(input.typeName)})`,
+  );
   return parseOutput(
     GetDiagramAnnotationOutputSchema,
     { annotation: parse(raw) },

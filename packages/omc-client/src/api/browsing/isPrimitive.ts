@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { BooleanResultOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -32,7 +33,7 @@ export async function isPrimitive(
   ctx: CallContext,
   input: IsPrimitiveInput,
 ): Promise<IsPrimitiveOutput> {
-  const raw = await ctx.call(`isPrimitive(${input.typeName})`);
+  const raw = await ctx.call(`isPrimitive(${bareName(input.typeName)})`);
   return parseOutput(
     IsPrimitiveOutputSchema,
     { result: expectBool(parse(raw)) },

@@ -19,7 +19,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { extendsBase, typeNameOfExtends } from "../../_shared/fields.js";
-import { mlBool } from "../../_shared/format.js";
+import { bareName, mlBool } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
   parseMutationSuccess,
@@ -55,7 +55,7 @@ export async function removeExtendsModifiers(
 ): Promise<RemoveExtendsModifiersOutput> {
   const keepRedeclares = input.keepRedeclares ?? false;
   const raw = await ctx.call(
-    `removeExtendsModifiers(${input.typeName}, ${input.extendsBase}, ${mlBool(keepRedeclares)})`,
+    `removeExtendsModifiers(${bareName(input.typeName)}, ${bareName(input.extendsBase)}, ${mlBool(keepRedeclares)})`,
   );
   return parseOutput(
     RemoveExtendsModifiersOutputSchema,

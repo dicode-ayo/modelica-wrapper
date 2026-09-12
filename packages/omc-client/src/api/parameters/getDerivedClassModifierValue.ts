@@ -18,6 +18,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
@@ -59,7 +60,7 @@ export async function getDerivedClassModifierValue(
   input: GetDerivedClassModifierValueInput,
 ): Promise<GetDerivedClassModifierValueOutput> {
   const raw = await ctx.call(
-    `getDerivedClassModifierValue(${input.typeName}, ${input.modifierName})`,
+    `getDerivedClassModifierValue(${bareName(input.typeName)}, ${bareName(input.modifierName)})`,
   );
   // String modifiers (`unit`, `quantity`) come back quoted; numeric ones may
   // come back bare. Fall back to the trimmed raw text so scalar bindings keep

@@ -25,7 +25,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { mlBool, quote } from "../../_shared/format.js";
+import { bareName, mlBool, quote } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
@@ -72,7 +72,7 @@ export async function setComponentProperties(
   input: SetComponentPropertiesInput,
 ): Promise<SetComponentPropertiesOutput> {
   const raw = await ctx.call(
-    `setComponentProperties(${input.typeName}, ${input.componentName}, {${mlBool(input.finalPrefix)},${mlBool(input.flow)},${mlBool(input.stream)},${mlBool(input.protectedPrefix)},${mlBool(input.replaceablePrefix)}}, {${quote(input.variability)}}, {${mlBool(input.inner)},${mlBool(input.outer)}}, {${quote(input.direction)}})`,
+    `setComponentProperties(${bareName(input.typeName)}, ${bareName(input.componentName)}, {${mlBool(input.finalPrefix)},${mlBool(input.flow)},${mlBool(input.stream)},${mlBool(input.protectedPrefix)},${mlBool(input.replaceablePrefix)}}, {${quote(input.variability)}}, {${mlBool(input.inner)},${mlBool(input.outer)}}, {${quote(input.direction)}})`,
   );
   return parseOutput(
     SetComponentPropertiesOutputSchema,

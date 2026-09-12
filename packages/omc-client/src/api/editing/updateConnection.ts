@@ -29,7 +29,7 @@ import {
   connectionAnnotation,
   typeNameOfConnection,
 } from "../../_shared/fields.js";
-import { quote } from "../../_shared/format.js";
+import { bareExpr, bareName, quote } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -64,10 +64,10 @@ export async function updateConnection(
   ctx: CallContext,
   input: UpdateConnectionInput,
 ): Promise<UpdateConnectionOutput> {
-  const annotation = input.annotation ?? "";
+  const annotation = bareExpr(input.annotation ?? "");
   const ann = annotation === "" ? "Line()" : annotation;
   const raw = await ctx.call(
-    `updateConnection(${input.typeName}, ${quote(input.from)}, ${quote(input.to)}, ${ann})`,
+    `updateConnection(${bareName(input.typeName)}, ${quote(input.from)}, ${quote(input.to)}, ${ann})`,
   );
   return parseOutput(
     UpdateConnectionOutputSchema,

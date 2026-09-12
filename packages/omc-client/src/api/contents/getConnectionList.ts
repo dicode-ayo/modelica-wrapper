@@ -15,6 +15,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
@@ -54,7 +55,7 @@ export async function getConnectionList(
   ctx: CallContext,
   input: GetConnectionListInput,
 ): Promise<GetConnectionListOutput> {
-  const raw = await ctx.call(`getConnectionList(${input.typeName})`);
+  const raw = await ctx.call(`getConnectionList(${bareName(input.typeName)})`);
   const rows = expectList(parse(raw));
   const result = rows.map((row, idx) => {
     const fields = expectStringList(row);

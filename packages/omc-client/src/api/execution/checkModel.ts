@@ -8,6 +8,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { StringResultOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -26,7 +27,7 @@ export async function checkModel(
   ctx: CallContext,
   input: CheckModelInput,
 ): Promise<CheckModelOutput> {
-  const raw = await ctx.call(`checkModel(${input.typeName})`);
+  const raw = await ctx.call(`checkModel(${bareName(input.typeName)})`);
   return parseOutput(
     CheckModelOutputSchema,
     { result: expectString(parse(raw)) },

@@ -31,6 +31,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asBool, asInt, asString, expectList, parse } from "../../parse.js";
@@ -123,7 +124,9 @@ export async function getClassInformation(
   ctx: CallContext,
   input: GetClassInformationInput,
 ): Promise<GetClassInformationOutput> {
-  const raw = await ctx.call(`getClassInformation(${input.typeName})`);
+  const raw = await ctx.call(
+    `getClassInformation(${bareName(input.typeName)})`,
+  );
   const items = expectList(parse(raw));
   // OMC 1.27.0 drops the four trailing version-annotation fields (indices
   // 18–21) for a class with no such annotation — where 1.26.7 padded them with

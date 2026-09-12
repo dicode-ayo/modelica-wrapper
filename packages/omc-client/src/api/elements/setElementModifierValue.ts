@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { expr } from "../../_shared/fields.js";
+import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -49,9 +50,10 @@ export async function setElementModifierValue(
   ctx: CallContext,
   input: SetElementModifierValueInput,
 ): Promise<SetElementModifierValueOutput> {
-  const codeArg = input.expr === "" ? "$Code(=)" : `$Code(=${input.expr})`;
+  const codeArg =
+    input.expr === "" ? "$Code(=)" : `$Code(=${bareExpr(input.expr)})`;
   const raw = await ctx.call(
-    `setElementModifierValue(${input.typeName}, ${input.elementName}, ${codeArg})`,
+    `setElementModifierValue(${bareName(input.typeName)}, ${bareName(input.elementName)}, ${codeArg})`,
   );
   return parseOutput(
     SetElementModifierValueOutputSchema,

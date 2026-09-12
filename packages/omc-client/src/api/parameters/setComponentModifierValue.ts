@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { expr } from "../../_shared/fields.js";
+import { bareExpr, bareName } from "../../_shared/format.js";
 import { TypeNameAndModifierInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -36,9 +37,10 @@ export async function setComponentModifierValue(
   ctx: CallContext,
   input: SetComponentModifierValueInput,
 ): Promise<SetComponentModifierValueOutput> {
-  const codeArg = input.expr === "" ? "$Code(=)" : `$Code(=${input.expr})`;
+  const codeArg =
+    input.expr === "" ? "$Code(=)" : `$Code(=${bareExpr(input.expr)})`;
   const raw = await ctx.call(
-    `setComponentModifierValue(${input.typeName}, ${input.modifier}, ${codeArg})`,
+    `setComponentModifierValue(${bareName(input.typeName)}, ${bareName(input.modifier)}, ${codeArg})`,
   );
   return parseOutput(
     SetComponentModifierValueOutputSchema,

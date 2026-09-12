@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { connectionAnnotation } from "../../_shared/fields.js";
+import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -36,10 +37,10 @@ export async function addConnection(
   ctx: CallContext,
   input: AddConnectionInput,
 ): Promise<AddConnectionOutput> {
-  const annotation = input.annotation ?? "";
+  const annotation = bareExpr(input.annotation ?? "");
   const ann = annotation === "" ? "annotate=Line()" : `annotate=${annotation}`;
   const raw = await ctx.call(
-    `addConnection(${input.from}, ${input.to}, ${input.typeName}, ${ann})`,
+    `addConnection(${bareName(input.from)}, ${bareName(input.to)}, ${bareName(input.typeName)}, ${ann})`,
   );
   return parseOutput(
     AddConnectionOutputSchema,
