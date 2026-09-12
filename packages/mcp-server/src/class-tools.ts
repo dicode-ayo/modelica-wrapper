@@ -115,6 +115,18 @@ async function declareAndPersist(
     );
   }
 
+  const { extendsFrom } = declaration;
+  if (extendsFrom !== undefined) {
+    // OMC takes `extends` on faith: a misspelled base class loads, reports
+    // success and reaches disk, and only surfaces at the next checkModel.
+    const base = await client.existClass({ typeName: extendsFrom });
+    if (!base.exists) {
+      return errorResult(
+        `no class named ${extendsFrom} is loaded, so ${className} cannot extend it — load the library it comes from first.`,
+      );
+    }
+  }
+
   const declared = await declareClass(client, declaration);
   if (!declared.ok) return errorResult(declared.reason);
 

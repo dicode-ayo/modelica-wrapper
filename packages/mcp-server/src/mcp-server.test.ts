@@ -476,6 +476,7 @@ describe("createClass", () => {
   });
 
   it("declares the class under a within clause, and says so when there is nowhere to write it", async () => {
+    loaded.add("Modelica.Icons.Example");
     const mcp = await connect();
 
     const result = (await mcp.callTool({
@@ -504,6 +505,25 @@ describe("createClass", () => {
       className: "Demo.Circuit",
       fileName: null,
     });
+  });
+
+  it("refuses to extend a class that is not loaded", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: {
+        name: "Circuit",
+        kind: "model",
+        extendsFrom: "Modelica.Icons.Exmaple",
+      },
+    })) as CallToolResult;
+
+    // OMC accepts a base class that does not exist, so the broken class would
+    // reach disk reported as a success.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("Modelica.Icons.Exmaple");
+    expect(calls).toEqual([]);
   });
 
   it("reports OMC's own reason when the class will not parse", async () => {
