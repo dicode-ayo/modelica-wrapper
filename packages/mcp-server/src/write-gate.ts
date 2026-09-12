@@ -20,12 +20,11 @@
  * renamed argument — fails the build rather than shipping an ungated tool.
  *
  * `save` rewrites a class's own source file without touching OMC's symbol
- * table, so `MUTATIONS` in `@dicode/omc-client` classifies it `"readOnly"`
- * and it is not a `MutatingFnName` — but it reaches OMC through the same
- * `omc_invoke` path as every gated wrapper, and a class's file can be
- * rewritten without mutating anything a cache derives from it (issue #654).
- * It gets its own entry below rather than folding into `MutatingFnName`, so
- * the cache-invalidation table keeps meaning "changes the model".
+ * table, so `MUTATIONS` in `@dicode/omc-client` classifies it `"readOnly"` and
+ * it is not a `MutatingFnName` — yet it reaches OMC through the same
+ * `omc_invoke` path as every gated wrapper (issue #654). It gets its own entry
+ * below rather than folding into `MutatingFnName`, so the cache-invalidation
+ * table keeps meaning "changes the model".
  */
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
@@ -126,15 +125,11 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
 };
 
 /**
- * `save` alone, checked against its own input type the same way
- * `CLASS_ARGUMENTS`'s rows are — outside that table because `save` is not a
- * `MutatingFnName`. Naming the function as `ClassArgument`'s own type
- * argument, rather than deriving a key set with `Extract<OmcFnName, "save">`,
- * is what makes this fail the build if `save` ever left the OMC function
- * registry: `ClassArgument<K extends OmcFnName>`'s constraint is checked
- * where the argument is given, while `Extract` over a name that no longer
- * exists silently narrows to `never` and the row disappears rather than
- * erroring.
+ * `save`'s row, outside `CLASS_ARGUMENTS` because `save` is not a
+ * `MutatingFnName`. The literal is `ClassArgument`'s type argument rather than
+ * a key of a derived set: the `K extends OmcFnName` constraint is checked
+ * here, where a mapped type over `Extract` would collapse to `{}` and take the
+ * field check with it.
  */
 const SAVE_ARGUMENT: ClassArgument<"save"> = {
   field: "typeName",
@@ -143,9 +138,8 @@ const SAVE_ARGUMENT: ClassArgument<"save"> = {
 };
 
 /**
- * `CLASS_ARGUMENTS` plus `save`, read by a name only known at runtime — which
- * erases the per-function field-name literals both declarations above are
- * checked against.
+ * `CLASS_ARGUMENTS` and `SAVE_ARGUMENT` with their per-function field-name
+ * literals erased, which is all a lookup by a runtime name can preserve.
  */
 interface ResolvedClassArgument {
   readonly field: string;
@@ -155,7 +149,7 @@ interface ResolvedClassArgument {
 
 const BY_NAME: Readonly<
   Record<string, ResolvedClassArgument | null | undefined>
-> = { ...CLASS_ARGUMENTS, save: SAVE_ARGUMENT };
+> = { save: SAVE_ARGUMENT, ...CLASS_ARGUMENTS };
 
 /**
  * The refusal `fn` earns for `input`, or `undefined` when the call may proceed.
