@@ -45,4 +45,4 @@ outside a string. Anything else is refused rather than escaped, because it
 would otherwise run as part of the command. A refusal here names the field and
 means the value was malformed, not that the operation was forbidden.
 
-Editing a class from an installed library is refused, with the reason.`;
+Writing to a class from an installed library is refused, with the reason.`;
