@@ -11,9 +11,9 @@ export const SERVER_INSTRUCTIONS = `OpenModelica scripting, driving the same OMC
 you load or edit here is the one the user sees in their diagram and sidebar.
 
 Creating a class:
-- newModel only registers it in OMC's symbol table. It has no file until
-  setSourceFile names one and save writes it, and nothing adds it to the
-  package's package.order.
+- createClass declares it, writes it to disk and adds it to the enclosing
+  package's package.order. newModel, reachable through omc_invoke, does only
+  the first of those, so a class made with it is gone at the next restart.
 
 Building a model — two ways, pick by what the user needs to see:
 - setSourceCode writes a whole class at once, and is far fewer calls.

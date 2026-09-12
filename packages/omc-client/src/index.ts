@@ -66,6 +66,29 @@ export {
   type JsonSchema,
 } from "./help.js";
 
+// --- Declaring a class, then writing it out to a source tree ---
+export {
+  CLASS_KINDS,
+  classSource,
+  declareClass,
+  qualifiedNameOf,
+  resolveRootPackageParent,
+  type ClassDeclaration,
+  type ClassKind,
+  type DeclareClient,
+  type RootPackageClient,
+} from "./declare-class.js";
+export { pathExists } from "./fs-util.js";
+export {
+  isLikelyDiskPath,
+  linkPersistedClass,
+  persistClass,
+  type PersistClient,
+  type PersistResult,
+  type SourceTree,
+  type SourceWriter,
+} from "./persist.js";
+
 // --- Supported OMC version pin (see docs/audit.md) ---
 export {
   SUPPORTED_OMC,

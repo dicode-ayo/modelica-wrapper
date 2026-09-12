@@ -36,15 +36,15 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
-
-import { log } from "./logger.js";
-
 import {
   isLikelyDiskPath,
   linkPersistedClass,
-  persistClassUnderWorkspace,
-} from "./persist.js";
+  persistClass,
+  type OmcClient,
+} from "@dicode/omc-client";
+
+import { log } from "./logger.js";
+
 import {
   fileOwnerClass,
   realSourceFilename,
@@ -57,9 +57,6 @@ import {
 } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import type { WriteVerdicts } from "./write-verdict.js";
-
-export { isLikelyDiskPath, linkPersistedClass, persistClassUnderWorkspace };
-export type { PersistResult } from "./persist.js";
 
 export const MODELICA_SOURCE_SCHEME = "modelica-source";
 
@@ -256,13 +253,12 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
         );
       } else {
         const { restriction } = await client.getClassInformation({ typeName });
-        const result = await persistClassUnderWorkspace(
+        const result = await persistClass(
           client,
-          ws.uri.fsPath,
+          { root: ws.uri.fsPath, writer: this.guard },
           typeName,
           text,
-          this.guard,
-          restriction === "package" ? "package" : undefined,
+          restriction,
         );
         await linkPersistedClass(client, typeName, result);
       }

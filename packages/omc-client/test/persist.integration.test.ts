@@ -2,15 +2,15 @@
  * Integration test: end-to-end OMC ↔ disk persistence.
  *
  * Validates that:
- *  1. `persistClassUnderWorkspace` + `linkPersistedClass` actually update
+ *  1. `persistClass` + `linkPersistedClass` actually update
  *     OMC's symbol-table `fileName` to a real path.
  *  2. The on-disk artifacts we produce are self-sufficient: a *fresh* OMC
  *     instance can `loadFile` them and see the class come back. This is the
  *     guarantee that matters for the "next time you open the workspace,
  *     your model is still there" story.
  *
- * Auto-skips when OMC isn't on PATH; honours `OMC_INTEGRATION=0/1` overrides
- * the same way the omc-client integration suite does.
+ * Auto-skips when OMC isn't on PATH; honors `OMC_INTEGRATION=0/1` overrides
+ * the same way the rest of this suite does.
  */
 
 import * as fsp from "node:fs/promises";
@@ -19,11 +19,14 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import { OmcClient } from "@dicode/omc-client";
+import {
+  OmcClient,
+  linkPersistedClass,
+  persistClass,
+  type SourceTree,
+} from "../src/index.js";
 
-import { describeIf } from "../test-support/integration-gate.js";
-import { linkPersistedClass, persistClassUnderWorkspace } from "./persist.js";
-import { createSelfWriteGuard } from "./self-write-guard.js";
+import { describeIf } from "./fixtures.js";
 
 /**
  * Run a sequence of `loadString` calls, one class at a time. OMC requires
@@ -51,11 +54,15 @@ async function loadStepwise(
 describeIf("persist + OMC roundtrip", () => {
   let client: OmcClient;
   let ws: string;
-  const guard = createSelfWriteGuard();
+  let tree: SourceTree;
 
   beforeEach(async () => {
     client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
     ws = await fsp.mkdtemp(path.join(os.tmpdir(), "persist-int-"));
+    tree = {
+      root: ws,
+      writer: { write: (fsPath, text) => fsp.writeFile(fsPath, text, "utf8") },
+    };
   });
 
   afterEach(async () => {
@@ -80,12 +87,12 @@ describeIf("persist + OMC roundtrip", () => {
     });
     expect(before.fileName).toBe("<runtime:RoundtripFlat>");
 
-    const result = await persistClassUnderWorkspace(
+    const result = await persistClass(
       client,
-      ws,
+      tree,
       "RoundtripFlat",
       src,
-      guard,
+      "model",
     );
     await linkPersistedClass(client, "RoundtripFlat", result);
 
@@ -113,12 +120,12 @@ describeIf("persist + OMC roundtrip", () => {
       ],
     ]);
     const src = "within RoundtripPkg.Sub;\nblock Model\nend Model;\n";
-    const result = await persistClassUnderWorkspace(
+    const result = await persistClass(
       client,
-      ws,
+      tree,
       "RoundtripPkg.Sub.Model",
       src,
-      guard,
+      "model",
     );
     await linkPersistedClass(client, "RoundtripPkg.Sub.Model", result);
 
@@ -168,12 +175,12 @@ describeIf("persist + OMC roundtrip", () => {
       ],
     ]);
     const src = "within Roundtrip2.Sub;\nmodel Reloaded\nend Reloaded;\n";
-    const result = await persistClassUnderWorkspace(
+    const result = await persistClass(
       client,
-      ws,
+      tree,
       "Roundtrip2.Sub.Reloaded",
       src,
-      guard,
+      "model",
     );
     await linkPersistedClass(client, "Roundtrip2.Sub.Reloaded", result);
     await client.close();
@@ -196,6 +203,84 @@ describeIf("persist + OMC roundtrip", () => {
     } finally {
       // afterEach will also call client.close() — already done above and
       // OmcClient.close() is idempotent, so the second call is a no-op.
+      await fresh.close();
+    }
+  });
+
+  it("a package built one class at a time reloads with every member", async () => {
+    // The flow the MCP `createClass` tool drives: the package is persisted
+    // before its members exist, so each member has to reach the
+    // package.order that was written without it.
+    const root = "Roundtrip3";
+    await loadStepwise(client, [[root, `package ${root}\nend ${root};\n`]]);
+    const pkg = await persistClass(
+      client,
+      tree,
+      root,
+      `package ${root}\nend ${root};\n`,
+      "package",
+    );
+    await linkPersistedClass(client, root, pkg);
+
+    for (const name of ["First", "Second"]) {
+      const src = `within ${root};\nmodel ${name}\nend ${name};\n`;
+      await loadStepwise(client, [[`${root}.${name}`, src]]);
+      const member = await persistClass(
+        client,
+        tree,
+        `${root}.${name}`,
+        src,
+        "model",
+      );
+      await linkPersistedClass(client, `${root}.${name}`, member);
+    }
+
+    expect(
+      await fsp.readFile(path.join(ws, root, "package.order"), "utf8"),
+    ).toBe("First\nSecond\n");
+
+    await client.close();
+    const fresh = await OmcClient.create({
+      omcPath: process.env.OMC_PATH ?? "",
+    });
+    try {
+      const { success } = await fresh.loadFile({
+        fileName: path.join(ws, root, "package.mo"),
+      });
+      expect(success).toBe(true);
+      const { classNames } = await fresh.getClassNames({ typeName: root });
+      expect(classNames).toEqual(["First", "Second"]);
+    } finally {
+      await fresh.close();
+    }
+  });
+
+  it("persists a multi-word restriction as OMC spells it", async () => {
+    // `expandable connector` and the operator kinds are two words; anything
+    // that split or camel-cased them would not parse on the way back in.
+    const src = "expandable connector RoundtripBus\nend RoundtripBus;\n";
+    await loadStepwise(client, [["RoundtripBus", src]]);
+    const result = await persistClass(
+      client,
+      tree,
+      "RoundtripBus",
+      src,
+      "expandable connector",
+    );
+    await linkPersistedClass(client, "RoundtripBus", result);
+    await client.close();
+
+    const fresh = await OmcClient.create({
+      omcPath: process.env.OMC_PATH ?? "",
+    });
+    try {
+      const { success } = await fresh.loadFile({ fileName: result.leafPath });
+      expect(success).toBe(true);
+      const { restriction } = await fresh.getClassInformation({
+        typeName: "RoundtripBus",
+      });
+      expect(restriction).toBe("expandable connector");
+    } finally {
       await fresh.close();
     }
   });

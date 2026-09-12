@@ -81,8 +81,10 @@ export interface ResolveClient {
 
 ### Where shared utilities live
 
-- `packages/extension/src/fs-util.ts` — `pathExists` and friends. Don't roll a
-  fourth `try { await fsp.access(p); ... }`; use this.
+- `pathExists` lives in `packages/omc-client/src/fs-util.ts`, so the class
+  persistence helpers there share it; `packages/extension/src/fs-util.ts`
+  re-exports it for the extension's own callers. Don't roll a fourth
+  `try { await fsp.access(p); ... }`; use one of those.
 - `packages/extension/src/language/position.ts` — `omcToVscodePosition`,
   `ZeroBasedPosition`, `ZeroBasedRange`. The single 1-based-to-0-based shift.
 - `packages/lang-core/src/qualified-name.ts` — `leafName`, `enclosingScope`.

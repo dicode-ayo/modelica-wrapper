@@ -30,7 +30,7 @@ import {
 import { createSelfWriteGuard } from "../self-write-guard.js";
 import { WriteVerdicts } from "../write-verdict.js";
 
-import { registerClassCommands, resolveRootPackageParent } from "./class.js";
+import { registerClassCommands } from "./class.js";
 import type { CommandContext, LibraryNode } from "./context.js";
 
 const MODELICA_PATH = "/home/u/.openmodelica/libraries";
@@ -203,116 +203,6 @@ describe("modelica.createClass", () => {
       expect(loadString).toHaveBeenCalledWith(
         expect.objectContaining({ data: "model MyModel\nend MyModel;\n" }),
       );
-    });
-  });
-});
-
-describe("resolveRootPackageParent", () => {
-  const ROOT_PKG = "/ws/package.mo";
-
-  function makeClient(
-    overrides: {
-      parseFile?: ReturnType<typeof vi.fn>;
-      getClassInformation?: ReturnType<typeof vi.fn>;
-    } = {},
-  ): {
-    client: Parameters<typeof resolveRootPackageParent>[0];
-    parseFile: ReturnType<typeof vi.fn>;
-    getClassInformation: ReturnType<typeof vi.fn>;
-  } {
-    const parseFile =
-      overrides.parseFile ??
-      vi.fn(() => Promise.resolve({ classNames: ["RootPkg"] }));
-    const getClassInformation =
-      overrides.getClassInformation ??
-      vi.fn(() => Promise.resolve({ restriction: "package" }));
-    return {
-      client: { parseFile, getClassInformation } as unknown as Parameters<
-        typeof resolveRootPackageParent
-      >[0],
-      parseFile,
-      getClassInformation,
-    };
-  }
-
-  it("resolves the single class a root package.mo declares, once OMC confirms it's loaded", async () => {
-    const { client, getClassInformation } = makeClient();
-
-    const result = await resolveRootPackageParent(client, ROOT_PKG);
-
-    expect(result).toEqual({ ok: true, parent: "RootPkg" });
-    expect(getClassInformation).toHaveBeenCalledWith({ typeName: "RootPkg" });
-  });
-
-  it("refuses when the file declares no parseable class", async () => {
-    const { client } = makeClient({
-      parseFile: vi.fn(() => Promise.resolve({ classNames: [] })),
-    });
-
-    const result = await resolveRootPackageParent(client, ROOT_PKG);
-
-    expect(result).toEqual({
-      ok: false,
-      reason: `${ROOT_PKG} declares no class OMC could parse`,
-    });
-  });
-
-  it("refuses when the file declares more than one top-level class, naming them", async () => {
-    const { client } = makeClient({
-      parseFile: vi.fn(() => Promise.resolve({ classNames: ["A", "B"] })),
-    });
-
-    const result = await resolveRootPackageParent(client, ROOT_PKG);
-
-    expect(result).toEqual({
-      ok: false,
-      reason: `${ROOT_PKG} declares more than one top-level class (A, B)`,
-    });
-  });
-
-  it("refuses rather than throwing when parseFile itself fails", async () => {
-    const { client } = makeClient({
-      parseFile: vi.fn(() => Promise.reject(new Error("omc gone"))),
-    });
-
-    const result = await resolveRootPackageParent(client, ROOT_PKG);
-
-    expect(result).toEqual({
-      ok: false,
-      reason: `could not read ${ROOT_PKG}'s class name (omc gone)`,
-    });
-  });
-
-  it("refuses rather than guessing when the resolved class isn't loaded into OMC yet", async () => {
-    // parseFile reads straight off disk and never touches OMC's symbol
-    // table — workspace autoload (workspace-autoload.ts) loads entry files
-    // asynchronously, so the file can parse cleanly before OMC has actually
-    // loaded the class it declares. OMC 1.27.0 doesn't reject for an unknown
-    // class — it answers with every field defaulted, empty `restriction`
-    // among them — so that's the signal, not a thrown rejection.
-    const { client } = makeClient({
-      getClassInformation: vi.fn(() => Promise.resolve({ restriction: "" })),
-    });
-
-    const result = await resolveRootPackageParent(client, ROOT_PKG);
-
-    expect(result).toEqual({
-      ok: false,
-      reason:
-        "no class named RootPkg is loaded into OMC yet — wait for the workspace to finish loading and try again",
-    });
-  });
-
-  it("refuses rather than throwing when the load-confirmation call itself fails", async () => {
-    const { client } = makeClient({
-      getClassInformation: vi.fn(() => Promise.reject(new Error("omc gone"))),
-    });
-
-    const result = await resolveRootPackageParent(client, ROOT_PKG);
-
-    expect(result).toEqual({
-      ok: false,
-      reason: "could not confirm RootPkg is loaded into OMC (omc gone)",
     });
   });
 });

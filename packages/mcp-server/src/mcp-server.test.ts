@@ -4,6 +4,11 @@
  * `invoke` was called with.
  */
 
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import type { SourceTree } from "@dicode/omc-client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -27,14 +32,49 @@ const calls: Call[] = [];
 let failWith: string | undefined;
 
 let sourceFile = "/w/Demo.mo";
+let loaded: Set<string>;
+let loadFails: string | undefined;
+let unloadFails: string | undefined;
+let rootPackageClasses: string[];
+/** What `getClassInformation` reports as a class's file, as OMC would. */
+let classFiles: Map<string, string>;
+/** Overrides the restriction `getClassInformation` reports for one class. */
+let restrictions: Map<string, string>;
+let workspace: SourceTree | undefined;
 
+/**
+ * The wrappers `createClass` composes are recorded alongside `invoke` so every
+ * assertion reads the same way, whichever path reached OMC.
+ */
 const client: McpToolClient = {
   invoke: async (fn, input) => {
     calls.push({ fn, input });
     if (failWith !== undefined) throw new Error(failWith);
     return { ok: true };
   },
-  getClassInformation: async () => ({ fileReadOnly: false }),
+  deleteClass: async (input) => {
+    calls.push({ fn: "deleteClass", input });
+    if (unloadFails !== undefined) throw new Error(unloadFails);
+    return { success: true };
+  },
+  existClass: async ({ typeName }) => ({ exists: loaded.has(typeName) }),
+  getClassInformation: async ({ typeName }) => ({
+    fileReadOnly: false,
+    fileName: classFiles.get(typeName) ?? "",
+    restriction:
+      restrictions.get(typeName) ?? (loaded.has(typeName) ? "package" : ""),
+  }),
+  parseFile: async () => ({ classNames: rootPackageClasses }),
+  getClassNames: async () => ({ classNames: [] }),
+  getErrorString: async () => ({ errorString: loadFails ?? "" }),
+  loadString: async (input) => {
+    calls.push({ fn: "loadString", input });
+    return { success: loadFails === undefined };
+  },
+  setSourceFile: async (input) => {
+    calls.push({ fn: "setSourceFile", input });
+    return { success: true };
+  },
   getSourceFile: async () => ({ fileName: sourceFile }),
   getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
 };
@@ -48,7 +88,7 @@ const verdicts: WriteVerdictSource = {
 
 async function connect(): Promise<Client> {
   const server = buildMcpServer(
-    { ensureClient: async () => client, verdicts },
+    { ensureClient: async () => client, verdicts, workspace },
     "1.2.3",
   );
   const mcp = new Client({ name: "test", version: "0" });
@@ -56,6 +96,11 @@ async function connect(): Promise<Client> {
   await Promise.all([server.connect(serverSide), mcp.connect(clientSide)]);
   return mcp;
 }
+
+/** A writer that fails after `persistClass` has made the directories. */
+const rejectingWriter = {
+  write: () => Promise.reject(new Error("EACCES: permission denied")),
+};
 
 /** The one text block a tool result carries. */
 function text(result: CallToolResult): string {
@@ -68,6 +113,13 @@ beforeEach(() => {
   calls.length = 0;
   failWith = undefined;
   sourceFile = "/w/Demo.mo";
+  loaded = new Set();
+  loadFails = undefined;
+  unloadFails = undefined;
+  rootPackageClasses = [];
+  classFiles = new Map();
+  restrictions = new Map();
+  workspace = undefined;
 });
 
 describe("the published tool set", () => {
@@ -77,7 +129,7 @@ describe("the published tool set", () => {
     const { tools } = await mcp.listTools();
     const names = tools.map((t) => t.name);
 
-    expect(names).toHaveLength(PARITY_TOOLS.length + 1 + 7 + 3);
+    expect(names).toHaveLength(PARITY_TOOLS.length + 2 + 7 + 3);
     expect(names).toContain("readSimulationResult");
     expect(names).toEqual(expect.arrayContaining([...PARITY_TOOLS]));
     expect(names).toEqual(
@@ -93,6 +145,7 @@ describe("the published tool set", () => {
         "omc_describe_function",
         "omc_invoke",
         "setSourceCode",
+        "createClass",
       ]),
     );
     // `writeClassGraphics` is what the seven shape tools replace, and
@@ -100,6 +153,9 @@ describe("the published tool set", () => {
     // undo the reason its replacement exists.
     expect(names).not.toContain("writeClassGraphics");
     expect(names).not.toContain("loadString");
+    // `newModel` is what `createClass` replaces: it registers a class and
+    // writes nothing, so a caller who stops there loses it at the next restart.
+    expect(names).not.toContain("newModel");
   });
 
   it("hints read-only exactly where the mutation table says nothing changes", async () => {
@@ -151,7 +207,7 @@ describe("the server's instructions", () => {
 
     // A tool description reaches a model once it is already reading that tool;
     // this reaches it while it is still deciding what to do.
-    expect(instructions).toContain("newModel only registers it");
+    expect(instructions).toContain("createClass declares it");
     expect(instructions).toContain("readSimulationResult returns whole series");
     expect(instructions).toContain("typeName rather than cl");
   });
@@ -396,6 +452,322 @@ describe("the escape hatch", () => {
     expect(calls).toEqual([
       { fn: "deleteClass", input: { typeName: "Demo.Circuit" } },
     ]);
+  });
+});
+
+describe("createClass", () => {
+  it("refuses a package that is not the user's to write into", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Mine", kind: "model", withinPath: SYSTEM_LIBRARY },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to load over a class that already exists", async () => {
+    const mcp = await connect();
+    loaded.add("Demo.Circuit");
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Circuit", kind: "model", withinPath: "Demo" },
+    })) as CallToolResult;
+
+    // `loadString` with merge would replace the class, discarding its body.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("already exists");
+    expect(calls).toEqual([]);
+  });
+
+  it("declares the class under a within clause, and says so when there is nowhere to write it", async () => {
+    loaded.add("Modelica.Icons.Example");
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: {
+        name: "Circuit",
+        kind: "block",
+        withinPath: "Demo",
+        extendsFrom: "Modelica.Icons.Example",
+      },
+    })) as CallToolResult;
+
+    expect(calls).toEqual([
+      {
+        fn: "loadString",
+        input: {
+          data:
+            "within Demo;\nblock Circuit\n" +
+            "  extends Modelica.Icons.Example;\nend Circuit;\n",
+          filename: "<runtime:Demo.Circuit>",
+          merge: true,
+        },
+      },
+    ]);
+    expect(JSON.parse(text(result))).toMatchObject({
+      className: "Demo.Circuit",
+      fileName: null,
+    });
+  });
+
+  it("refuses an empty withinPath rather than reading it as top-level", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Loose", kind: "model", withinPath: "" },
+    })) as CallToolResult;
+
+    // Empty is not nullish, so it would skip the root-package resolver and
+    // land a class with no `within` clause beside the root package.mo.
+    expect(result.isError).toBe(true);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to create inside something that is not a package", async () => {
+    const mcp = await connect();
+    loaded.add("Demo.RLC");
+    restrictions.set("Demo.RLC", "model");
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "X", kind: "model", withinPath: "Demo.RLC" },
+    })) as CallToolResult;
+
+    // The file would land in the parent's directory carrying
+    // `within Demo.RLC;`, and OMC refuses the whole package over it.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("is a model, not a package");
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to extend a class that is not loaded", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: {
+        name: "Circuit",
+        kind: "model",
+        extendsFrom: "Modelica.Icons.Exmaple",
+      },
+    })) as CallToolResult;
+
+    // OMC accepts a base class that does not exist, so the broken class would
+    // reach disk reported as a success.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("Modelica.Icons.Exmaple");
+    expect(calls).toEqual([]);
+  });
+
+  it("reports OMC's own reason when the class will not parse", async () => {
+    const mcp = await connect();
+    loadFails = "Parse error near 'end'";
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Broken", kind: "model" },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe("Parse error near 'end'");
+  });
+
+  it("nests a class under the package the tree's own root declares", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
+    await fsp.writeFile(
+      path.join(root, "package.mo"),
+      "package Demo\nend Demo;\n",
+      "utf8",
+    );
+    await fsp.writeFile(path.join(root, "package.order"), "", "utf8");
+    rootPackageClasses = ["Demo"];
+    loaded.add("Demo");
+    classFiles.set("Demo", path.join(root, "package.mo"));
+    workspace = {
+      root,
+      writer: {
+        write: (fsPath, textContent) =>
+          fsp.writeFile(fsPath, textContent, "utf8"),
+      },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Circuit", kind: "model" },
+      })) as CallToolResult;
+
+      // Written beside the root package.mo with no `within`, OMC refuses the
+      // whole package rather than just this file.
+      expect(JSON.parse(text(result))).toEqual({
+        className: "Demo.Circuit",
+        fileName: path.join(root, "Circuit.mo"),
+      });
+      expect(await fsp.readFile(path.join(root, "Circuit.mo"), "utf8")).toBe(
+        "within Demo;\nmodel Circuit\nend Circuit;\n",
+      );
+      expect(await fsp.readFile(path.join(root, "package.order"), "utf8")).toBe(
+        "Circuit\n",
+      );
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when the tree's root package cannot be named", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
+    await fsp.writeFile(path.join(root, "package.mo"), "", "utf8");
+    rootPackageClasses = ["A", "B"];
+    workspace = {
+      root,
+      writer: { write: () => Promise.resolve() },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Circuit", kind: "model" },
+      })) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("more than one top-level class");
+      expect(text(result)).toContain("withinPath");
+      expect(calls).toEqual([]);
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("warns that a single-file parent will not bring the new class in", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-inline-"));
+    await fsp.writeFile(
+      path.join(root, "Demo.mo"),
+      "package Demo\nend Demo;\n",
+      "utf8",
+    );
+    classFiles.set("Demo", path.join(root, "Demo.mo"));
+    workspace = {
+      root,
+      writer: {
+        write: (fsPath, textContent) =>
+          fsp.writeFile(fsPath, textContent, "utf8"),
+      },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Circuit", kind: "model", withinPath: "Demo" },
+      })) as CallToolResult;
+
+      // The file is written and loaded, but no package.order names it, so a
+      // loader that opens Demo.mo on its own never reads it.
+      const written = JSON.parse(text(result)) as {
+        fileName: string;
+        warning?: string;
+      };
+      expect(written.fileName).toBe(path.join(root, "Circuit.mo"));
+      expect(written.warning).toContain("single file");
+      expect(written.warning).toContain("setSourceCode");
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("unloads the class again when its files cannot be written", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-unwritable-"));
+    workspace = { root, writer: rejectingWriter };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Loose", kind: "model" },
+      })) as CallToolResult;
+
+      // Left loaded it would be the very thing this tool exists to prevent,
+      // and the retry would be refused for already existing.
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("EACCES");
+      expect(text(result)).toContain("unloaded");
+      expect(calls).toContainEqual({
+        fn: "deleteClass",
+        input: { typeName: "Loose" },
+      });
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("says the class is still loaded when unloading it also fails", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-unwritable-"));
+    workspace = { root, writer: rejectingWriter };
+    unloadFails = "deleteClass returned false";
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Loose", kind: "model" },
+      })) as CallToolResult;
+
+      // The caller has to know a retry will be refused, and why.
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("still loaded in OMC");
+      expect(text(result)).toContain("deleteClass returned false");
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes the file and points OMC at it", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-create-"));
+    const written: string[] = [];
+    workspace = {
+      root,
+      writer: {
+        write: async (fsPath, textContent) => {
+          written.push(fsPath);
+          await fsp.writeFile(fsPath, textContent, "utf8");
+        },
+      },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Loose", kind: "model" },
+      })) as CallToolResult;
+
+      const leaf = path.join(root, "Loose.mo");
+      expect(JSON.parse(text(result))).toEqual({
+        className: "Loose",
+        fileName: leaf,
+      });
+      expect(written).toEqual([leaf]);
+      expect(await fsp.readFile(leaf, "utf8")).toBe(
+        "model Loose\nend Loose;\n",
+      );
+      // Without this OMC keeps the `<runtime:…>` placeholder, and the next
+      // save writes to a path that is not a path.
+      expect(calls).toContainEqual({
+        fn: "setSourceFile",
+        input: { typeName: "Loose", fileName: leaf },
+      });
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   });
 });
 

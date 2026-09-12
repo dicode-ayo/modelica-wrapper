@@ -11,7 +11,14 @@
  * making the call.
  */
 
-import type { OmcFnName, OmcInput } from "@dicode/omc-client";
+import type {
+  DeclareClient,
+  OmcFnName,
+  OmcInput,
+  PersistClient,
+  RootPackageClient,
+  SourceTree,
+} from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { errorDetail } from "./error-detail.js";
@@ -22,15 +29,38 @@ import type {
 } from "./write-verdict.js";
 import { refusalFor, refusalForClass } from "./write-gate.js";
 
-/** The subset of `OmcClient` the MCP tools call. */
-export interface McpToolClient extends WriteVerdictClient {
+/**
+ * The subset of `OmcClient` the MCP tools call.
+ *
+ * `invoke` carries every published wrapper. The typed methods beside it are
+ * the ones `createClass` composes by hand, and they are declared for the same
+ * reason {@link dispatch} is: a renamed argument fails the build rather than
+ * reaching a model.
+ */
+export interface McpToolClient
+  extends WriteVerdictClient, PersistClient, RootPackageClient, DeclareClient {
   invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
+  deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
+  existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
+  /** Narrows the bases, which disagree on which fields they need. */
+  getClassInformation(input: { typeName: string }): Promise<{
+    fileReadOnly: boolean;
+    fileName: string;
+    restriction: string;
+  }>;
 }
 
 export interface McpToolDeps {
   /** Spawns OMC on first use; a tool call is the earliest this may happen. */
   ensureClient: () => Promise<McpToolClient>;
   verdicts: WriteVerdictSource;
+  /**
+   * Where a created class is written. Nothing derivable from OMC decides
+   * this, so the host does; every file `createClass` creates goes through the
+   * host's writer. Absent when the host has nowhere to write, which
+   * `createClass` reports to the caller.
+   */
+  workspace?: SourceTree | undefined;
 }
 
 /** The class a tool writes, when its wrapper's arguments do not name one. */

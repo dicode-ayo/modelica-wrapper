@@ -24,12 +24,16 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { pathExists } from "../fs-util.js";
 import {
+  CLASS_KINDS,
+  declareClass,
   linkPersistedClass,
-  persistClassUnderWorkspace,
-} from "../source-provider.js";
-import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
+  persistClass,
+  resolveRootPackageParent,
+  type ClassKind,
+} from "@dicode/omc-client";
+
+import { pathExists } from "../fs-util.js";
 
 import {
   parentFromNode,
@@ -40,17 +44,6 @@ import {
 } from "./context.js";
 import { loadRootPackage } from "./package.js";
 import { createReplLog } from "./repl.js";
-
-const CLASS_KINDS = [
-  "package",
-  "model",
-  "block",
-  "connector",
-  "function",
-  "record",
-  "type",
-] as const;
-type ClassKind = (typeof CLASS_KINDS)[number];
 
 export function registerClassCommands(
   ctx: CommandContext,
@@ -163,8 +156,6 @@ export function registerClassCommands(
         }
 
         const qualified = parent ? `${parent}.${name}` : name;
-        const body = `${kind} ${name}\nend ${name};\n`;
-        const data = parent ? `within ${parent};\n${body}` : body;
         const log = createReplLog(`createClass ${kind} ${qualified}`);
         try {
           const c = await ctx.ensureClient();
@@ -184,16 +175,15 @@ export function registerClassCommands(
               return;
             }
           }
-          const { success } = await c.loadString({
-            data,
-            filename: `<runtime:${qualified}>`,
-            merge: true,
+          const declared = await declareClass(c, {
+            name,
+            kind,
+            withinPath: parent,
           });
-          if (!success) {
-            const { errorString } = await c.getErrorString();
-            log.error(errorString || "loadString returned success=false");
+          if (!declared.ok) {
+            log.error(declared.reason);
             await vscode.window.showErrorMessage(
-              `Modelica: failed to create ${qualified}${errorString ? `: ${errorString}` : ""}`,
+              `Modelica: failed to create ${qualified}: ${declared.reason}`,
             );
             return;
           }
@@ -201,13 +191,12 @@ export function registerClassCommands(
           if (ws) {
             // Persist to disk and rewrite OMC's fileName so subsequent
             // saves write through to the same path.
-            const result = await persistClassUnderWorkspace(
+            const result = await persistClass(
               c,
-              ws.uri.fsPath,
+              { root: ws.uri.fsPath, writer: ctx.selfWriteGuard },
               qualified,
-              data,
-              ctx.selfWriteGuard,
-              kind === "package" ? "package" : undefined,
+              declared.source,
+              kind,
             );
             await linkPersistedClass(c, qualified, result);
             diskPath = result.leafPath;
@@ -234,85 +223,21 @@ export function registerClassCommands(
   ];
 }
 
-/** OMC surface {@link resolveRootPackageParent} needs. `OmcClient` satisfies it. */
-export interface RootPackageClient extends FileParseClient {
-  getClassInformation(input: {
-    typeName: string;
-  }): Promise<{ restriction: string }>;
-}
-
 /**
- * The class `rootPkg` (an already-confirmed `<workspaceRoot>/package.mo`)
- * declares — the one destination a `view/title` invocation with no tree node
- * can mean once the workspace root is itself a package. Refuses rather than
- * guessing when the file doesn't parse to exactly one
- * top-level class, or when that class isn't actually loaded into OMC yet:
- * `parseFile` only reads the file off disk, and workspace autoload
- * (`workspace-autoload.ts`) loads entry files asynchronously — a title-bar
- * invocation right after opening the workspace, or right after a `:reset`,
- * could otherwise resolve a parent OMC hasn't loaded, and the `within`
- * merge that follows would fail against it.
- *
- * The load check only confirms a class named `name` is loaded, not that it's
- * specifically the one `rootPkg` declares — a same-named class loaded from
- * elsewhere would pass it too. `ctx.writeVerdicts.forClass`'s downstream
- * system-library check catches a MODELICAPATH collision; a same-named class
- * from another workspace file is a narrower case this doesn't distinguish.
+ * `expandable connector` has to suggest `MyExpandableConnector`, not a name
+ * with a space in it that `validateIdentifier` would then reject.
  */
-export async function resolveRootPackageParent(
-  client: RootPackageClient,
-  rootPkg: string,
-): Promise<{ ok: true; parent: string } | { ok: false; reason: string }> {
-  let classNames: string[];
-  try {
-    ({ classNames } = await client.parseFile({ fileName: rootPkg }));
-  } catch (err) {
-    return {
-      ok: false,
-      reason: `could not read ${rootPkg}'s class name (${(err as Error).message})`,
-    };
-  }
-  const multiple = moreThanOne(classNames);
-  if (multiple !== undefined) {
-    return {
-      ok: false,
-      reason: `${rootPkg} declares more than one top-level class (${multiple.join(", ")})`,
-    };
-  }
-  const [name] = classNames;
-  if (name === undefined) {
-    return {
-      ok: false,
-      reason: `${rootPkg} declares no class OMC could parse`,
-    };
-  }
-  try {
-    const info = await client.getClassInformation({ typeName: name });
-    // A not-yet-loaded class doesn't reject — OMC 1.27.0 answers with every
-    // field defaulted (empty `restriction` among them) rather than an error
-    // (see packages/omc-client/src/api/browsing/getClassInformation.test.ts's
-    // `NOT_FOUND_18` fixture). Every real class restriction (model, package,
-    // block, …) is non-empty, so that's the signal to key off instead of a
-    // thrown rejection.
-    if (info.restriction === "") {
-      return {
-        ok: false,
-        reason: `no class named ${name} is loaded into OMC yet — wait for the workspace to finish loading and try again`,
-      };
-    }
-  } catch (err) {
-    return {
-      ok: false,
-      reason: `could not confirm ${name} is loaded into OMC (${(err as Error).message})`,
-    };
-  }
-  return { ok: true, parent: name };
-}
-
 function defaultPlaceholder(kind: ClassKind): string {
-  const first = kind.at(0);
-  if (first === undefined) return "My";
-  return `My${first.toUpperCase()}${kind.slice(1)}`;
+  const camel = kind
+    .split(" ")
+    .map((word) => {
+      const first = word.at(0);
+      return first === undefined
+        ? ""
+        : `${first.toUpperCase()}${word.slice(1)}`;
+    })
+    .join("");
+  return `My${camel}`;
 }
 
 /**
