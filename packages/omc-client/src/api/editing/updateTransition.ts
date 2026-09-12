@@ -38,7 +38,13 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { connectionAnnotation } from "../../_shared/fields.js";
-import { mlBool, quote } from "../../_shared/format.js";
+import {
+  bareExpr,
+  bareName,
+  mlBool,
+  num,
+  quote,
+} from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -94,10 +100,10 @@ export async function updateTransition(
   ctx: CallContext,
   input: UpdateTransitionInput,
 ): Promise<UpdateTransitionOutput> {
-  const annotation = input.annotation ?? "";
+  const annotation = bareExpr(input.annotation ?? "");
   const ann = annotation === "" ? "annotate=Line()" : `annotate=${annotation}`;
   const raw = await ctx.call(
-    `updateTransition(${input.typeName}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.oldCondition)}, ${mlBool(input.oldImmediate)}, ${mlBool(input.oldReset)}, ${mlBool(input.oldSynchronize)}, ${input.oldPriority}, ${quote(input.newCondition)}, ${mlBool(input.newImmediate)}, ${mlBool(input.newReset)}, ${mlBool(input.newSynchronize)}, ${input.newPriority}, ${ann})`,
+    `updateTransition(${bareName(input.typeName)}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.oldCondition)}, ${mlBool(input.oldImmediate)}, ${mlBool(input.oldReset)}, ${mlBool(input.oldSynchronize)}, ${num(input.oldPriority)}, ${quote(input.newCondition)}, ${mlBool(input.newImmediate)}, ${mlBool(input.newReset)}, ${mlBool(input.newSynchronize)}, ${num(input.newPriority)}, ${ann})`,
   );
   return parseOutput(
     UpdateTransitionOutputSchema,

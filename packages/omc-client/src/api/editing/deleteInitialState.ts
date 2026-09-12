@@ -21,7 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -49,7 +49,7 @@ export async function deleteInitialState(
   input: DeleteInitialStateInput,
 ): Promise<DeleteInitialStateOutput> {
   const raw = await ctx.call(
-    `deleteInitialState(${input.typeName}, ${quote(input.state)})`,
+    `deleteInitialState(${bareName(input.typeName)}, ${quote(input.state)})`,
   );
   return parseOutput(
     DeleteInitialStateOutputSchema,

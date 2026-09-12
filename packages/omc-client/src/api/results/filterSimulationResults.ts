@@ -25,7 +25,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { mlBool, quote, quoteList } from "../../_shared/format.js";
+import { mlBool, num, quote, quoteList } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -80,7 +80,7 @@ export async function filterSimulationResults(
   input: FilterSimulationResultsInput,
 ): Promise<FilterSimulationResultsOutput> {
   const raw = await ctx.call(
-    `filterSimulationResults(${quote(input.inFile)}, ${quote(input.outFile)}, ${quoteList(input.vars)}, ${input.numberOfIntervals ?? 0}, ${mlBool(input.removeDescription ?? false)}, ${mlBool(input.hintReadAllVars ?? true)})`,
+    `filterSimulationResults(${quote(input.inFile)}, ${quote(input.outFile)}, ${quoteList(input.vars)}, ${num(input.numberOfIntervals ?? 0)}, ${mlBool(input.removeDescription ?? false)}, ${mlBool(input.hintReadAllVars ?? true)})`,
   );
   return parseOutput(
     FilterSimulationResultsOutputSchema,

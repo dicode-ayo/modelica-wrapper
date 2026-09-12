@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
@@ -32,7 +33,7 @@ export async function renameComponent(
   input: RenameComponentInput,
 ): Promise<RenameComponentOutput> {
   const raw = await ctx.call(
-    `renameComponent(${input.typeName}, ${input.oldName}, ${input.newName})`,
+    `renameComponent(${bareName(input.typeName)}, ${bareName(input.oldName)}, ${bareName(input.newName)})`,
   );
   return parseOutput(
     RenameComponentOutputSchema,

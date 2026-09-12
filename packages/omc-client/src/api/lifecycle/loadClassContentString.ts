@@ -32,7 +32,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, num, quote } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -78,7 +78,7 @@ export async function loadClassContentString(
   input: LoadClassContentStringInput,
 ): Promise<LoadClassContentStringOutput> {
   const raw = await ctx.call(
-    `loadClassContentString(${quote(input.data)}, ${input.typeName}, ${input.offsetX ?? 0}, ${input.offsetY ?? 0})`,
+    `loadClassContentString(${quote(input.data)}, ${bareName(input.typeName)}, ${num(input.offsetX ?? 0)}, ${num(input.offsetY ?? 0)})`,
   );
   return parseOutput(
     LoadClassContentStringOutputSchema,

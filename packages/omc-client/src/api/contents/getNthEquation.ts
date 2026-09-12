@@ -18,6 +18,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName, num } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
@@ -50,7 +51,7 @@ export async function getNthEquation(
   input: GetNthEquationInput,
 ): Promise<GetNthEquationOutput> {
   const raw = await ctx.call(
-    `getNthEquation(${input.typeName}, ${input.index})`,
+    `getNthEquation(${bareName(input.typeName)}, ${num(input.index)})`,
   );
   return parseOutput(
     GetNthEquationOutputSchema,

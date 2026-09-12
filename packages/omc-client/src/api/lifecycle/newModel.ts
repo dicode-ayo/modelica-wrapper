@@ -34,6 +34,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
   parseMutationSuccess,
@@ -65,7 +66,7 @@ export async function newModel(
   input: NewModelInput,
 ): Promise<NewModelOutput> {
   const raw = await ctx.call(
-    `newModel(${input.typeName}, ${input.withinPath})`,
+    `newModel(${bareName(input.typeName)}, ${bareName(input.withinPath)})`,
   );
   return parseOutput(
     NewModelOutputSchema,

@@ -34,7 +34,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
@@ -133,7 +133,7 @@ export async function simulate(
   // then crashes `/bin/sh` at compile time (the `<` / `>` are parsed as
   // redirection operators). The matching `val.ts` wrapper uses the same
   // omit-when-default idiom for the same reason.
-  const parts: string[] = [input.typeName];
+  const parts: string[] = [bareName(input.typeName)];
   const num = (name: string, v: number | undefined): void => {
     if (v !== undefined) parts.push(`${name}=${v}`);
   };

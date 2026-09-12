@@ -26,6 +26,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { prettyPrint } from "../../_shared/fields.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
   ModelInstanceSchema,
@@ -53,10 +54,9 @@ export async function getModelInstance(
   ctx: CallContext,
   input: GetModelInstanceInput,
 ): Promise<GetModelInstanceOutput> {
+  const typeName = bareName(input.typeName);
   const args =
-    input.prettyPrint === true
-      ? `${input.typeName}, prettyPrint=true`
-      : `${input.typeName}`;
+    input.prettyPrint === true ? `${typeName}, prettyPrint=true` : typeName;
   const raw = await ctx.call(`getModelInstance(${args})`);
   const json = expectString(parse(raw));
   const parsed: unknown = JSON.parse(json);

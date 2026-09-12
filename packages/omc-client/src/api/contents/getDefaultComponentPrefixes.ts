@@ -15,6 +15,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
@@ -42,7 +43,9 @@ export async function getDefaultComponentPrefixes(
   ctx: CallContext,
   input: GetDefaultComponentPrefixesInput,
 ): Promise<GetDefaultComponentPrefixesOutput> {
-  const raw = await ctx.call(`getDefaultComponentPrefixes(${input.typeName})`);
+  const raw = await ctx.call(
+    `getDefaultComponentPrefixes(${bareName(input.typeName)})`,
+  );
   return parseOutput(
     GetDefaultComponentPrefixesOutputSchema,
     { prefixes: asString(parse(raw)) ?? "" },

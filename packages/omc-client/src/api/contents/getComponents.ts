@@ -20,7 +20,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { mlBool } from "../../_shared/format.js";
+import { bareName, mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import {
   asBool,
@@ -88,7 +88,7 @@ export async function getComponents(
 ): Promise<GetComponentsOutput> {
   const useQuotes = input.useQuotes ?? false;
   const raw = await ctx.call(
-    `getComponents(${input.typeName}, useQuotes=${mlBool(useQuotes)})`,
+    `getComponents(${bareName(input.typeName)}, useQuotes=${mlBool(useQuotes)})`,
   );
   const rows = expectList(parse(raw));
   const components = rows.map((row, idx) => {

@@ -37,6 +37,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -73,9 +74,9 @@ export async function setElementAnnotation(
   // parens, no leading `=`. The leading-`=` shape is silently destructive on
   // OMC 1.26.7 (returns true but clears the annotation); see the file
   // docstring for the drift-probe counter-example.
-  const codeArg = `$Code((${input.annotationMod}))`;
+  const codeArg = `$Code((${bareExpr(input.annotationMod)}))`;
   const raw = await ctx.call(
-    `setElementAnnotation(${input.typeName}, ${codeArg})`,
+    `setElementAnnotation(${bareName(input.typeName)}, ${codeArg})`,
   );
   return parseOutput(
     SetElementAnnotationOutputSchema,

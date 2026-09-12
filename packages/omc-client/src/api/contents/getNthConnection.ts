@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { typeNameOfConnection } from "../../_shared/fields.js";
+import { bareName, num } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
@@ -48,7 +49,7 @@ export async function getNthConnection(
   input: GetNthConnectionInput,
 ): Promise<GetNthConnectionOutput> {
   const raw = await ctx.call(
-    `getNthConnection(${input.typeName}, ${input.index})`,
+    `getNthConnection(${bareName(input.typeName)}, ${num(input.index)})`,
   );
   const fields = expectStringList(parse(raw));
   if (fields.length < 2) {

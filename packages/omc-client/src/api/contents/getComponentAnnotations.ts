@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
@@ -37,7 +38,9 @@ export async function getComponentAnnotations(
   ctx: CallContext,
   input: GetComponentAnnotationsInput,
 ): Promise<GetComponentAnnotationsOutput> {
-  const raw = await ctx.call(`getComponentAnnotations(${input.typeName})`);
+  const raw = await ctx.call(
+    `getComponentAnnotations(${bareName(input.typeName)})`,
+  );
   const annotations = expectList(parse(raw));
   return parseOutput(
     GetComponentAnnotationsOutputSchema,

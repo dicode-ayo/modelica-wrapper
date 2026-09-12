@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -41,7 +41,7 @@ export async function isProtectedClass(
   input: IsProtectedClassInput,
 ): Promise<IsProtectedClassOutput> {
   const raw = await ctx.call(
-    `isProtectedClass(${input.typeName}, ${quote(input.c2)})`,
+    `isProtectedClass(${bareName(input.typeName)}, ${quote(input.c2)})`,
   );
   return parseOutput(
     IsProtectedClassOutputSchema,

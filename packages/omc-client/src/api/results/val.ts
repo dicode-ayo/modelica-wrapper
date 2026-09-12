@@ -20,7 +20,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, num, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectFloat, parse } from "../../parse.js";
 
@@ -57,13 +57,15 @@ export async function val(
   ctx: CallContext,
   input: ValInput,
 ): Promise<ValOutput> {
-  const timePoint = input.timePoint ?? 0.0;
+  const timePoint = num(input.timePoint ?? 0.0);
   const fileName = input.fileName ?? "<default>";
   // Omit fileName on the documented sentinel so OMC's parser-level default
   // (currentSimulationResult) kicks in; passing the literal "<default>" string
   // would not trigger the runtime sentinel path.
   const fileArg = fileName === "<default>" ? "" : `, ${quote(fileName)}`;
-  const raw = await ctx.call(`val(${input.var}, ${timePoint}${fileArg})`);
+  const raw = await ctx.call(
+    `val(${bareName(input.var)}, ${timePoint}${fileArg})`,
+  );
   return parseOutput(
     ValOutputSchema,
     { valAtTime: expectFloat(parse(raw)) },

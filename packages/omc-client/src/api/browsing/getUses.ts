@@ -17,6 +17,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
@@ -40,7 +41,7 @@ export async function getUses(
   ctx: CallContext,
   input: GetUsesInput,
 ): Promise<GetUsesOutput> {
-  const raw = await ctx.call(`getUses(${input.typeName})`);
+  const raw = await ctx.call(`getUses(${bareName(input.typeName)})`);
   const rows = expectList(parse(raw));
   const uses: [string, string][] = rows.map((row) => {
     const pair = expectStringList(row);

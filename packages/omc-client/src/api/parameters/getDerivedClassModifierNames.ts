@@ -17,6 +17,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
@@ -44,7 +45,9 @@ export async function getDerivedClassModifierNames(
   ctx: CallContext,
   input: GetDerivedClassModifierNamesInput,
 ): Promise<GetDerivedClassModifierNamesOutput> {
-  const raw = await ctx.call(`getDerivedClassModifierNames(${input.typeName})`);
+  const raw = await ctx.call(
+    `getDerivedClassModifierNames(${bareName(input.typeName)})`,
+  );
   return parseOutput(
     GetDerivedClassModifierNamesOutputSchema,
     { modifierNames: expectStringList(parse(raw)) },

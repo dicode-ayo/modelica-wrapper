@@ -17,7 +17,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
@@ -56,7 +56,7 @@ export async function getAvailablePackageConversionsFrom(
   input: GetAvailablePackageConversionsFromInput,
 ): Promise<GetAvailablePackageConversionsFromOutput> {
   const raw = await ctx.call(
-    `getAvailablePackageConversionsFrom(${input.typeName}, ${quote(input.version)})`,
+    `getAvailablePackageConversionsFrom(${bareName(input.typeName)}, ${quote(input.version)})`,
   );
   return parseOutput(
     GetAvailablePackageConversionsFromOutputSchema,

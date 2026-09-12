@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -36,7 +37,7 @@ export async function isOperatorFunction(
   ctx: CallContext,
   input: IsOperatorFunctionInput,
 ): Promise<IsOperatorFunctionOutput> {
-  const raw = await ctx.call(`isOperatorFunction(${input.typeName})`);
+  const raw = await ctx.call(`isOperatorFunction(${bareName(input.typeName)})`);
   return parseOutput(
     IsOperatorFunctionOutputSchema,
     { b: expectBool(parse(raw)) },

@@ -16,6 +16,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -54,7 +55,7 @@ export async function classAnnotationExists(
   input: ClassAnnotationExistsInput,
 ): Promise<ClassAnnotationExistsOutput> {
   const raw = await ctx.call(
-    `classAnnotationExists(${input.typeName}, ${input.annotationName})`,
+    `classAnnotationExists(${bareName(input.typeName)}, ${bareName(input.annotationName)})`,
   );
   return parseOutput(
     ClassAnnotationExistsOutputSchema,

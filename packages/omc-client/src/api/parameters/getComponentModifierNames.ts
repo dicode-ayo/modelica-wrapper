@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
@@ -34,7 +35,7 @@ export async function getComponentModifierNames(
   input: GetComponentModifierNamesInput,
 ): Promise<GetComponentModifierNamesOutput> {
   const raw = await ctx.call(
-    `getComponentModifierNames(${input.typeName}, ${input.componentName})`,
+    `getComponentModifierNames(${bareName(input.typeName)}, ${bareName(input.componentName)})`,
   );
   return parseOutput(
     GetComponentModifierNamesOutputSchema,

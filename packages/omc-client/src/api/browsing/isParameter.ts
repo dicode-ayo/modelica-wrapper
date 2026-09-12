@@ -20,6 +20,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { BooleanResultOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -39,7 +40,7 @@ export async function isParameter(
   input: IsParameterInput,
 ): Promise<IsParameterOutput> {
   const raw = await ctx.call(
-    `isParameter(${input.componentName}, ${input.typeName})`,
+    `isParameter(${bareName(input.componentName)}, ${bareName(input.typeName)})`,
   );
   return parseOutput(
     IsParameterOutputSchema,

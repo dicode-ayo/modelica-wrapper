@@ -18,7 +18,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, num, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, expectList, parse } from "../../parse.js";
 
@@ -60,8 +60,8 @@ export async function readSimulationResult(
   ctx: CallContext,
   input: ReadSimulationResultInput,
 ): Promise<ReadSimulationResultOutput> {
-  const size = input.size ?? 0;
-  const variableList = `{${input.variables.join(", ")}}`;
+  const size = num(input.size ?? 0);
+  const variableList = `{${input.variables.map(bareName).join(", ")}}`;
   const raw = await ctx.call(
     `readSimulationResult(${quote(input.filename)}, ${variableList}, ${size})`,
   );

@@ -8,7 +8,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quoteList } from "../../_shared/format.js";
+import { bareName, quoteList } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -39,7 +39,7 @@ export async function setComponentDimensions(
   input: SetComponentDimensionsInput,
 ): Promise<SetComponentDimensionsOutput> {
   const raw = await ctx.call(
-    `setComponentDimensions(${input.typeName}, ${input.componentName}, ${quoteList(input.dimensions)})`,
+    `setComponentDimensions(${bareName(input.typeName)}, ${bareName(input.componentName)}, ${quoteList(input.dimensions)})`,
   );
   return parseOutput(
     SetComponentDimensionsOutputSchema,

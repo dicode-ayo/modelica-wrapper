@@ -26,7 +26,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { typeNameOfConnection } from "../../_shared/fields.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -65,7 +65,7 @@ export async function updateConnectionNames(
   input: UpdateConnectionNamesInput,
 ): Promise<UpdateConnectionNamesOutput> {
   const raw = await ctx.call(
-    `updateConnectionNames(${input.typeName}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.fromNew)}, ${quote(input.toNew)})`,
+    `updateConnectionNames(${bareName(input.typeName)}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.fromNew)}, ${quote(input.toNew)})`,
   );
   return parseOutput(
     UpdateConnectionNamesOutputSchema,

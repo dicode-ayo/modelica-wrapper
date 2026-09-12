@@ -15,6 +15,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
@@ -37,7 +38,7 @@ export async function getElementsInfo(
   ctx: CallContext,
   input: GetElementsInfoInput,
 ): Promise<GetElementsInfoOutput> {
-  const raw = await ctx.call(`getElementsInfo(${input.typeName})`);
+  const raw = await ctx.call(`getElementsInfo(${bareName(input.typeName)})`);
   return parseOutput(
     GetElementsInfoOutputSchema,
     { result: parse(raw) },

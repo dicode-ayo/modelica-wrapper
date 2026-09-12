@@ -15,7 +15,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
@@ -46,7 +46,7 @@ export async function getElementModifierNames(
   input: GetElementModifierNamesInput,
 ): Promise<GetElementModifierNamesOutput> {
   const raw = await ctx.call(
-    `getElementModifierNames(${input.typeName}, ${quote(input.elementName)})`,
+    `getElementModifierNames(${bareName(input.typeName)}, ${quote(input.elementName)})`,
   );
   return parseOutput(
     GetElementModifierNamesOutputSchema,

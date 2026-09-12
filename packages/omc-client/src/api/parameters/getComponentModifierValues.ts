@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameAndModifierInput } from "../../_shared/inputs.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -30,7 +31,7 @@ export async function getComponentModifierValues(
   input: GetComponentModifierValuesInput,
 ): Promise<GetComponentModifierValuesOutput> {
   const raw = await ctx.call(
-    `getComponentModifierValues(${input.typeName}, ${input.modifier})`,
+    `getComponentModifierValues(${bareName(input.typeName)}, ${bareName(input.modifier)})`,
   );
   const v = parse(raw);
   return parseOutput(

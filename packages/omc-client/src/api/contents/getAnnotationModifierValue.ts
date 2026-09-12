@@ -24,7 +24,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareName, quote } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -56,7 +56,7 @@ export async function getAnnotationModifierValue(
   input: GetAnnotationModifierValueInput,
 ): Promise<GetAnnotationModifierValueOutput> {
   const raw = await ctx.call(
-    `getAnnotationModifierValue(${input.typeName}, ${quote(input.annotation)}, ${quote(input.modifier)})`,
+    `getAnnotationModifierValue(${bareName(input.typeName)}, ${quote(input.annotation)}, ${quote(input.modifier)})`,
   );
   return parseOutput(
     GetAnnotationModifierValueOutputSchema,

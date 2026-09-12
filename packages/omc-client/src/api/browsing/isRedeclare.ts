@@ -14,6 +14,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -32,7 +33,7 @@ export async function isRedeclare(
   ctx: CallContext,
   input: IsRedeclareInput,
 ): Promise<IsRedeclareOutput> {
-  const raw = await ctx.call(`isRedeclare(${input.typeName})`);
+  const raw = await ctx.call(`isRedeclare(${bareName(input.typeName)})`);
   return parseOutput(
     IsRedeclareOutputSchema,
     { b: expectBool(parse(raw)) },

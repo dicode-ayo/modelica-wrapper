@@ -18,6 +18,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
@@ -48,7 +49,7 @@ export async function renameClass(
   input: RenameClassInput,
 ): Promise<RenameClassOutput> {
   const raw = await ctx.call(
-    `renameClass(${input.typeName}, ${input.newName})`,
+    `renameClass(${bareName(input.typeName)}, ${bareName(input.newName)})`,
   );
   return parseOutput(
     RenameClassOutputSchema,

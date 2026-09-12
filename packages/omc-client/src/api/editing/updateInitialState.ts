@@ -21,7 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { bareExpr, bareName, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -53,11 +53,11 @@ export async function updateInitialState(
   ctx: CallContext,
   input: UpdateInitialStateInput,
 ): Promise<UpdateInitialStateOutput> {
-  const annotation = input.annotation ?? "";
+  const annotation = bareExpr(input.annotation ?? "");
   const ann =
     annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;
   const raw = await ctx.call(
-    `updateInitialState(${input.typeName}, ${quote(input.state)}, ${ann})`,
+    `updateInitialState(${bareName(input.typeName)}, ${quote(input.state)}, ${ann})`,
   );
   return parseOutput(
     UpdateInitialStateOutputSchema,

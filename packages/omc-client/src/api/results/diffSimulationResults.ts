@@ -30,7 +30,12 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { mlBool, quote, quoteListOrFillEmpty } from "../../_shared/format.js";
+import {
+  mlBool,
+  num,
+  quote,
+  quoteListOrFillEmpty,
+} from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import {
   expectBool,
@@ -106,7 +111,7 @@ export async function diffSimulationResults(
 ): Promise<DiffSimulationResultsOutput> {
   const vars = input.vars ?? [];
   const raw = await ctx.call(
-    `diffSimulationResults(${quote(input.actualFile)}, ${quote(input.expectedFile)}, ${quote(input.diffPrefix)}, ${input.relTol ?? 1e-3}, ${input.relTolDiffMinMax ?? 1e-4}, ${input.rangeDelta ?? 0.002}, ${quoteListOrFillEmpty(vars)}, ${mlBool(input.keepEqualResults ?? false)})`,
+    `diffSimulationResults(${quote(input.actualFile)}, ${quote(input.expectedFile)}, ${quote(input.diffPrefix)}, ${num(input.relTol ?? 1e-3)}, ${num(input.relTolDiffMinMax ?? 1e-4)}, ${num(input.rangeDelta ?? 0.002)}, ${quoteListOrFillEmpty(vars)}, ${mlBool(input.keepEqualResults ?? false)})`,
   );
   // OMC returns a paren-tuple `(success, {failVars...})`.
   const tuple = expectList(parse(raw));

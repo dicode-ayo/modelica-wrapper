@@ -15,6 +15,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
@@ -42,7 +43,9 @@ export async function getElementAnnotation(
   ctx: CallContext,
   input: GetElementAnnotationInput,
 ): Promise<GetElementAnnotationOutput> {
-  const raw = await ctx.call(`getElementAnnotation(${input.typeName})`);
+  const raw = await ctx.call(
+    `getElementAnnotation(${bareName(input.typeName)})`,
+  );
   return parseOutput(
     GetElementAnnotationOutputSchema,
     { annotationString: asString(parse(raw)) ?? "" },

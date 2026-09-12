@@ -25,7 +25,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { mlBool } from "../../_shared/format.js";
+import { bareName, mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
 
@@ -76,7 +76,7 @@ export async function getReplaceableChoices(
   const includePartial = input.includePartial ?? false;
   const sort = input.sort ?? false;
   const raw = await ctx.call(
-    `getReplaceableChoices(${input.baseClass}, ${input.parentClass}, ${mlBool(includePartial)}, ${mlBool(sort)})`,
+    `getReplaceableChoices(${bareName(input.baseClass)}, ${bareName(input.parentClass)}, ${mlBool(includePartial)}, ${mlBool(sort)})`,
   );
   const rows = expectList(parse(raw));
   const choices = rows.map((row) => expectStringList(row));

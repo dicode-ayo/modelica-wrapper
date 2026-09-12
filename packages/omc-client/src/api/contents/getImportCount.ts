@@ -19,6 +19,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectInt, parse } from "../../parse.js";
@@ -41,7 +42,7 @@ export async function getImportCount(
   ctx: CallContext,
   input: GetImportCountInput,
 ): Promise<GetImportCountOutput> {
-  const raw = await ctx.call(`getImportCount(${input.typeName})`);
+  const raw = await ctx.call(`getImportCount(${bareName(input.typeName)})`);
   return parseOutput(
     GetImportCountOutputSchema,
     { count: expectInt(parse(raw)) },

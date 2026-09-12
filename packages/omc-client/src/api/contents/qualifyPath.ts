@@ -28,6 +28,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
@@ -61,7 +62,9 @@ export async function qualifyPath(
   ctx: CallContext,
   input: QualifyPathInput,
 ): Promise<QualifyPathOutput> {
-  const raw = await ctx.call(`qualifyPath(${input.typeName}, ${input.path})`);
+  const raw = await ctx.call(
+    `qualifyPath(${bareName(input.typeName)}, ${bareName(input.path)})`,
+  );
   return parseOutput(
     QualifyPathOutputSchema,
     { qualifiedPath: expectString(parse(raw)) },

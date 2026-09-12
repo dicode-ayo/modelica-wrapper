@@ -21,6 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { bareName, num } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
@@ -64,7 +65,9 @@ export async function getNthImport(
   ctx: CallContext,
   input: GetNthImportInput,
 ): Promise<GetNthImportOutput> {
-  const raw = await ctx.call(`getNthImport(${input.typeName}, ${input.index})`);
+  const raw = await ctx.call(
+    `getNthImport(${bareName(input.typeName)}, ${num(input.index)})`,
+  );
   const fields = expectStringList(parse(raw));
   if (fields.length < 3) {
     throw new Error(
