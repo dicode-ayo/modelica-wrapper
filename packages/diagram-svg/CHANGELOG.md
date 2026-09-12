@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.5](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-svg-v0.0.4...@dicode/diagram-svg-v0.0.5) (2026-09-12)
+
+
+### Bug Fixes
+
+* **diagram-svg:** match OMEdit's arrowhead geometry ([#652](https://github.com/dicode-ayo/modelica-wrapper/issues/652)) ([cddf4e1](https://github.com/dicode-ayo/modelica-wrapper/commit/cddf4e11b92c19164039f9b6ff5b2128edeeba30))
+
 ## [0.0.4](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-svg-v0.0.3...@dicode/diagram-svg-v0.0.4) (2026-09-11)
 
 

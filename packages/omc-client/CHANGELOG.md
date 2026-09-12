@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.0](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.0.5...@dicode/omc-client-v0.1.0) (2026-09-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **omc-client:** registry input schemas reject unknown keys. An argument name the function does not have was silently removed from the input; it now raises a ZodError naming the key.
+
+### Features
+
+* **mcp:** publish createClass in place of raw newModel ([#651](https://github.com/dicode-ayo/modelica-wrapper/issues/651)) ([1cdeb43](https://github.com/dicode-ayo/modelica-wrapper/commit/1cdeb4356ed056498828e61654789597a307389c)), closes [#644](https://github.com/dicode-ayo/modelica-wrapper/issues/644)
+
+
+### Bug Fixes
+
+* **omc-client:** reject an argument name the function does not have ([#650](https://github.com/dicode-ayo/modelica-wrapper/issues/650)) ([b6869f1](https://github.com/dicode-ayo/modelica-wrapper/commit/b6869f15e926dbd32af4d38caf3d19c948d0376e))
+
 ## [0.0.5](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.0.4...@dicode/omc-client-v0.0.5) (2026-09-11)
 
 
