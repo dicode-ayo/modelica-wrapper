@@ -66,7 +66,16 @@ export {
   type JsonSchema,
 } from "./help.js";
 
-// --- Writing an in-memory class out to a source tree ---
+// --- Declaring a class, then writing it out to a source tree ---
+export {
+  CLASS_KINDS,
+  classSource,
+  declareClass,
+  qualifiedNameOf,
+  type ClassDeclaration,
+  type ClassKind,
+  type DeclareClient,
+} from "./declare-class.js";
 export { pathExists } from "./fs-util.js";
 export {
   isLikelyDiskPath,

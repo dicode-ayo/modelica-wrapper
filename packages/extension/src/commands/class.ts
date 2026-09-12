@@ -24,7 +24,13 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { linkPersistedClass, persistClass } from "@dicode/omc-client";
+import {
+  CLASS_KINDS,
+  declareClass,
+  linkPersistedClass,
+  persistClass,
+  type ClassKind,
+} from "@dicode/omc-client";
 
 import { pathExists } from "../fs-util.js";
 import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
@@ -38,17 +44,6 @@ import {
 } from "./context.js";
 import { loadRootPackage } from "./package.js";
 import { createReplLog } from "./repl.js";
-
-const CLASS_KINDS = [
-  "package",
-  "model",
-  "block",
-  "connector",
-  "function",
-  "record",
-  "type",
-] as const;
-type ClassKind = (typeof CLASS_KINDS)[number];
 
 export function registerClassCommands(
   ctx: CommandContext,
@@ -161,8 +156,6 @@ export function registerClassCommands(
         }
 
         const qualified = parent ? `${parent}.${name}` : name;
-        const body = `${kind} ${name}\nend ${name};\n`;
-        const data = parent ? `within ${parent};\n${body}` : body;
         const log = createReplLog(`createClass ${kind} ${qualified}`);
         try {
           const c = await ctx.ensureClient();
@@ -182,16 +175,15 @@ export function registerClassCommands(
               return;
             }
           }
-          const { success } = await c.loadString({
-            data,
-            filename: `<runtime:${qualified}>`,
-            merge: true,
+          const declared = await declareClass(c, {
+            name,
+            kind,
+            withinPath: parent,
           });
-          if (!success) {
-            const { errorString } = await c.getErrorString();
-            log.error(errorString || "loadString returned success=false");
+          if (!declared.ok) {
+            log.error(declared.reason);
             await vscode.window.showErrorMessage(
-              `Modelica: failed to create ${qualified}${errorString ? `: ${errorString}` : ""}`,
+              `Modelica: failed to create ${qualified}: ${declared.reason}`,
             );
             return;
           }
@@ -203,8 +195,8 @@ export function registerClassCommands(
               c,
               { root: ws.uri.fsPath, writer: ctx.selfWriteGuard },
               qualified,
-              data,
-              kind === "package" ? "package" : undefined,
+              declared.source,
+              kind,
             );
             await linkPersistedClass(c, qualified, result);
             diskPath = result.leafPath;

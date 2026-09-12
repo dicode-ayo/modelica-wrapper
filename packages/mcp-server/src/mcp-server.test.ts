@@ -34,6 +34,7 @@ let failWith: string | undefined;
 let sourceFile = "/w/Demo.mo";
 let loaded: Set<string>;
 let loadFails: string | undefined;
+let unloadFails: string | undefined;
 let workspace: SourceTree | undefined;
 
 /**
@@ -48,6 +49,7 @@ const client: McpToolClient = {
   },
   deleteClass: async (input) => {
     calls.push({ fn: "deleteClass", input });
+    if (unloadFails !== undefined) throw new Error(unloadFails);
     return { success: true };
   },
   existClass: async ({ typeName }) => ({ exists: loaded.has(typeName) }),
@@ -97,6 +99,7 @@ beforeEach(() => {
   sourceFile = "/w/Demo.mo";
   loaded = new Set();
   loadFails = undefined;
+  unloadFails = undefined;
   workspace = undefined;
 });
 
@@ -529,6 +532,27 @@ describe("createClass", () => {
       fn: "deleteClass",
       input: { typeName: "Loose" },
     });
+  });
+
+  it("says the class is still loaded when unloading it also fails", async () => {
+    workspace = {
+      root: "/nowhere",
+      writer: {
+        write: () => Promise.reject(new Error("EACCES: permission denied")),
+      },
+    };
+    unloadFails = "deleteClass returned false";
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Loose", kind: "model" },
+    })) as CallToolResult;
+
+    // The caller has to know a retry will be refused, and why.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("still loaded in OMC");
+    expect(text(result)).toContain("deleteClass returned false");
   });
 
   it("writes the file and points OMC at it", async () => {

@@ -100,16 +100,16 @@ interface OnDiskParent {
  * package this never created, and that has no `package.order`, keeps having
  * none.
  *
- * When `leafKind` is `"package"` the leaf is written as
- * `<baseDir>/<leafName>/package.mo` so its own directory becomes the parent
- * for subsequent children.
+ * A `package` is written as `<baseDir>/<leafName>/package.mo` so its own
+ * directory becomes the parent for subsequent children; every other
+ * restriction is a single `<baseDir>/<leafName>.mo`.
  */
 export async function persistClass(
   client: PersistClient,
   tree: SourceTree,
   qualifiedName: string,
   classText: string,
-  leafKind?: "package",
+  restriction?: string,
 ): Promise<PersistResult> {
   const { root, writer } = tree;
   const parts = qualifiedName.split(".");
@@ -152,7 +152,7 @@ export async function persistClass(
   const leafName = parts.at(-1);
   if (leafName === undefined) return { leafPath: "", newParents };
   let leafPath: string;
-  if (leafKind === "package") {
+  if (restriction === "package") {
     const leafDir = path.join(baseDir, leafName);
     await mkdir(leafDir, { recursive: true });
     leafPath = path.join(leafDir, "package.mo");
@@ -178,9 +178,9 @@ export async function persistClass(
 }
 
 /**
- * Apply `setSourceFile` for the leaf + each newly created parent. Order
- * matters slightly: parents first so OMC sees the package files before the
- * member class. Failures bubble up — the caller decides whether to surface.
+ * Apply `setSourceFile` for the leaf + each newly created parent. Parents go
+ * first, so OMC sees the package files before the member class. Failures
+ * bubble up — the caller decides whether to surface.
  */
 export async function linkPersistedClass(
   client: PersistClient,

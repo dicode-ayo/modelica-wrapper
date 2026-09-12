@@ -59,8 +59,8 @@ export interface McpToolDeps {
    * Where a created class is written. The one thing no tool can derive from
    * OMC: `save` writes only to the path already in the symbol table, so the
    * host chooses it, and the host's writer is what lets the VSCode extension's
-   * watcher tell this write apart from a user's own edit. Absent when there is
-   * nowhere to write; `createClass` says so rather than pretending.
+   * watcher tell this write apart from a user's own edit. Absent when the host
+   * has nowhere to write, which `createClass` reports to the caller.
    */
   workspace?: SourceTree | undefined;
 }

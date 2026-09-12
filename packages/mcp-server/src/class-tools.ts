@@ -8,16 +8,21 @@
  * writes to whatever path the symbol table already holds and never touches
  * `package.order`.
  *
- * The composition is a `loadString` that declares the class under a `within`
- * clause, then the source tree written out around it and OMC told where it
- * went. Only `loadString` can declare a restriction other than `model`, or a
- * top-level class at all.
+ * The composition is {@link declareClass} followed by {@link persistClass},
+ * the same pair the editor's own New Class command runs.
  *
  * The gate is on `withinPath`, the package this writes into. A top-level class
  * names no package, and an empty name has no verdict to derive.
  */
 
-import { linkPersistedClass, persistClass } from "@dicode/omc-client";
+import {
+  CLASS_KINDS,
+  declareClass,
+  linkPersistedClass,
+  persistClass,
+  qualifiedNameOf,
+  type ClassDeclaration,
+} from "@dicode/omc-client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -30,16 +35,6 @@ import {
 } from "./dispatch.js";
 import { errorDetail } from "./error-detail.js";
 import { refusalForClass } from "./write-gate.js";
-
-const CLASS_KINDS = [
-  "model",
-  "package",
-  "block",
-  "connector",
-  "function",
-  "record",
-  "type",
-] as const;
 
 const CreateClassSchema = z.object({
   name: z
@@ -80,13 +75,12 @@ export function registerClassTools(server: McpServer, deps: McpToolDeps): void {
         );
         if (refusal !== undefined) return errorResult(refusal);
       }
-      const className =
-        withinPath === undefined ? name : `${withinPath}.${name}`;
       try {
-        return await create(deps, client, {
-          className,
-          source: classSource(name, kind, withinPath, extendsFrom),
-          leafKind: kind === "package" ? "package" : undefined,
+        return await declareAndPersist(deps, client, {
+          name,
+          kind,
+          withinPath,
+          extendsFrom,
         });
       } catch (err) {
         return errorResult(errorDetail(err));
@@ -95,17 +89,12 @@ export function registerClassTools(server: McpServer, deps: McpToolDeps): void {
   );
 }
 
-interface NewClass {
-  readonly className: string;
-  readonly source: string;
-  readonly leafKind: "package" | undefined;
-}
-
-async function create(
+async function declareAndPersist(
   deps: McpToolDeps,
   client: McpToolClient,
-  { className, source, leafKind }: NewClass,
+  declaration: ClassDeclaration,
 ): Promise<CallToolResult> {
+  const className = qualifiedNameOf(declaration);
   const { exists } = await client.existClass({ typeName: className });
   if (exists) {
     return errorResult(
@@ -113,19 +102,8 @@ async function create(
     );
   }
 
-  const { success } = await client.loadString({
-    data: source,
-    // The class has no file yet, and `loadString` binds it to whatever it is
-    // given; a real path here would claim a file nothing has written.
-    filename: `<runtime:${className}>`,
-    merge: true,
-  });
-  if (!success) {
-    const { errorString } = await client.getErrorString();
-    return errorResult(
-      errorString === "" ? `OMC refused to create ${className}` : errorString,
-    );
-  }
+  const declared = await declareClass(client, declaration);
+  if (!declared.ok) return errorResult(declared.reason);
 
   const { workspace } = deps;
   if (workspace === undefined) {
@@ -142,8 +120,8 @@ async function create(
       client,
       workspace,
       className,
-      source,
-      leafKind,
+      declared.source,
+      declaration.kind,
     );
     await linkPersistedClass(client, className, result);
     return textResult(JSON.stringify({ className, fileName: result.leafPath }));
@@ -173,15 +151,4 @@ async function unloadAfterFailedWrite(
     return `${reason}. It is still loaded in OMC and unloading it failed too (${errorDetail(unloadErr)}), so creating it again will be refused until it is removed.`;
   }
   return `${reason}. It has been unloaded from OMC, so nothing was left half-created.`;
-}
-
-function classSource(
-  name: string,
-  kind: (typeof CLASS_KINDS)[number],
-  withinPath: string | undefined,
-  extendsFrom: string | undefined,
-): string {
-  const header = withinPath === undefined ? "" : `within ${withinPath};\n`;
-  const base = extendsFrom === undefined ? "" : `  extends ${extendsFrom};\n`;
-  return `${header}${kind} ${name}\n${base}end ${name};\n`;
 }

@@ -258,7 +258,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
           { root: ws.uri.fsPath, writer: this.guard },
           typeName,
           text,
-          restriction === "package" ? "package" : undefined,
+          restriction,
         );
         await linkPersistedClass(client, typeName, result);
       }
