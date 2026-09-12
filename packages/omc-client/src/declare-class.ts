@@ -21,14 +21,23 @@ export interface DeclareClient {
   getErrorString(): Promise<{ errorString: string }>;
 }
 
+/**
+ * Every restriction OMEdit's New Class dialog offers. All of them load as an
+ * empty class, the multi-word ones included.
+ */
 export const CLASS_KINDS = [
   "model",
   "package",
   "block",
   "connector",
+  "expandable connector",
   "function",
   "record",
   "type",
+  "class",
+  "operator",
+  "operator record",
+  "operator function",
 ] as const;
 
 export type ClassKind = (typeof CLASS_KINDS)[number];

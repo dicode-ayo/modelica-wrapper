@@ -507,6 +507,26 @@ describe("createClass", () => {
     });
   });
 
+  it("offers every restriction OMEdit's New Class dialog does", async () => {
+    const mcp = await connect();
+
+    const { tools } = await mcp.listTools();
+    const kinds = (
+      tools.find((t) => t.name === "createClass")?.inputSchema.properties as
+        Record<string, { enum?: string[] }> | undefined
+    )?.kind?.enum;
+
+    expect(kinds).toEqual(
+      expect.arrayContaining([
+        "expandable connector",
+        "operator",
+        "operator record",
+        "operator function",
+        "class",
+      ]),
+    );
+  });
+
   it("refuses to extend a class that is not loaded", async () => {
     const mcp = await connect();
 

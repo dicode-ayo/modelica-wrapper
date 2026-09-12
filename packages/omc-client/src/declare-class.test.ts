@@ -5,7 +5,24 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveRootPackageParent } from "./declare-class.js";
+import { classSource, resolveRootPackageParent } from "./declare-class.js";
+
+describe("classSource", () => {
+  it("writes a multi-word restriction as OMC spells it", () => {
+    // `expandable connector` and the operator kinds are two words; splitting
+    // or camel-casing them here would not parse.
+    expect(classSource({ name: "Bus", kind: "expandable connector" })).toBe(
+      "expandable connector Bus\nend Bus;\n",
+    );
+    expect(
+      classSource({
+        name: "Add",
+        kind: "operator function",
+        withinPath: "Lib.Ops",
+      }),
+    ).toBe("within Lib.Ops;\noperator function Add\nend Add;\n");
+  });
+});
 
 describe("resolveRootPackageParent", () => {
   const ROOT_PKG = "/ws/package.mo";

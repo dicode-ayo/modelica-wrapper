@@ -223,10 +223,19 @@ export function registerClassCommands(
   ];
 }
 
+/** `expandable connector` has to suggest `MyExpandableConnector`, not a name
+ * with a space in it that `validateIdentifier` would then reject. */
 function defaultPlaceholder(kind: ClassKind): string {
-  const first = kind.at(0);
-  if (first === undefined) return "My";
-  return `My${first.toUpperCase()}${kind.slice(1)}`;
+  const camel = kind
+    .split(" ")
+    .map((word) => {
+      const first = word.at(0);
+      return first === undefined
+        ? ""
+        : `${first.toUpperCase()}${word.slice(1)}`;
+    })
+    .join("");
+  return `My${camel}`;
 }
 
 /**
