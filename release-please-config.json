@@ -48,7 +48,8 @@
     "packages/mcp-server": {
       "component": "@dicode/modelica-mcp",
       "package-name": "@dicode/modelica-mcp",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "initial-version": "0.0.1"
     },
     "packages/lang-core": {
       "component": "@dicode/modelica-lang-core",
