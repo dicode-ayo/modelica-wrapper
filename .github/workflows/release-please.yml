@@ -6,7 +6,7 @@ name: Release Please
 # layout is described once in release-please-config.json.
 #
 # When a release is cut, the `publish-npm` job below builds every workspace
-# library with tsup and publishes the ones Release Please just bumped to the
+# library with tsup and publishes the ones Release Please manages to the
 # npm registry under the @dicode scope. The VSCode extension stays
 # `private: true`, so it is skipped by the npm publish. Instead, when
 # Release Please bumps the extension specifically, `attach-vsix` packages it
@@ -37,6 +37,10 @@ name: Release Please
 on:
   push:
     branches: [main]
+  # Publishing the backlog once a token exists: Release Please finds nothing
+  # to release on a manual run, and the publish step below skips whatever is
+  # already on the registry, so what it uploads is exactly what is missing.
+  workflow_dispatch:
 
 # Only one release run per ref; a newer push supersedes an in-flight one.
 concurrency:
@@ -69,8 +73,12 @@ jobs:
   publish-npm:
     name: Publish libraries to npm
     needs: release-please
-    # Only run when Release Please actually cut at least one release this run.
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    # Only when Release Please cut a release this run — or on a manual run,
+    # which is how a version that was tagged while publishing was broken gets
+    # onto the registry afterwards.
+    if: >-
+      ${{ needs.release-please.outputs.releases_created == 'true'
+      || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -102,14 +110,17 @@ jobs:
       - name: Build all libraries (tsup)
         run: pnpm -r build
 
-      # `pnpm -r publish` only publishes workspace packages whose current
-      # version isn't already on the registry — which is exactly the set
-      # Release Please just bumped (everything else is a no-op "already
-      # published"). The extension keeps `private: true`, so it is skipped
-      # automatically. If finer-grained control is ever needed, the released
-      # paths are available as needs.release-please.outputs.paths_released.
+      # Scoped to the packages release-please-config.json manages, so a
+      # workspace package nobody versioned cannot reach the registry on the
+      # back of someone else's release. Within that set, publish skips any
+      # version already there, so a run uploads only what is missing. The
+      # extension keeps `private: true` and is skipped either way.
       - name: Publish to npm
-        run: pnpm -r publish --access public --no-git-checks --provenance
+        run: |
+          filters=()
+          while IFS= read -r pkg; do filters+=(--filter "./$pkg"); done \
+            < <(jq -r '.packages | keys[]' release-please-config.json)
+          pnpm "${filters[@]}" publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
