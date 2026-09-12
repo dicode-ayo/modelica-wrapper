@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.5...modelica-wrapper-v0.0.6) (2026-09-12)
+
+
+### Features
+
+* **mcp:** publish createClass in place of raw newModel ([#651](https://github.com/dicode-ayo/modelica-wrapper/issues/651)) ([1cdeb43](https://github.com/dicode-ayo/modelica-wrapper/commit/1cdeb4356ed056498828e61654789597a307389c)), closes [#644](https://github.com/dicode-ayo/modelica-wrapper/issues/644)
+
 ## [0.0.5](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.4...modelica-wrapper-v0.0.5) (2026-09-11)
 
 
