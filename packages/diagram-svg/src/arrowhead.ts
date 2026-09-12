@@ -13,11 +13,8 @@
  * neighbor coincides with all resolve to no head at all, so a renderer draws
  * what it is handed without re-deciding any of that.
  *
- * The construction is the canvas renderer's, not OMEdit's: the base sits
- * `size` back along the shaft with the corners 15° off it, where
- * `LineAnnotation::drawArrow` makes each wing `size` long at 30°, putting its
- * base `size·√3/2` back. Heads here come out longer and narrower than OMEdit
- * draws them.
+ * The wing construction matches OMEdit's `LineAnnotation::drawArrow` (see
+ * `arrowheadVertices` for the formula).
  */
 
 import { LINE_DEFAULTS } from "@dicode/omc-client/shapes";
@@ -37,7 +34,7 @@ export interface Arrowhead {
   readonly tip: readonly [number, number];
   /** Unit vector from the shaft toward the tip. */
   readonly direction: readonly [number, number];
-  /** Length along the shaft, in the line's own coordinate space. */
+  /** Each wing's length, tip to base corner, in the line's own coordinate space. */
   readonly size: number;
 }
 
@@ -59,7 +56,7 @@ export interface ArrowheadOutline {
 }
 
 /** Angle from the shaft centerline to each base corner. */
-const HALF_ANGLE_RAD = 15 * (Math.PI / 180);
+const HALF_ANGLE_RAD = 30 * (Math.PI / 180);
 
 /**
  * The heads a line annotation draws, in `[start, end]` order, with the ends
@@ -86,15 +83,17 @@ export function lineArrowheads(shape: {
 }
 
 /**
- * A head's corners. The base sits `size` back along the shaft with the corners
- * ±15° off the centerline; `left` is the counter-clockwise side.
+ * A head's corners. Each wing is `size` long, ±30° off the centerline, so the
+ * base sits `size·cos(30°)` back along the shaft with the corners
+ * `size·sin(30°)` off it; `left` is the counter-clockwise side.
  */
 export function arrowheadVertices(head: Arrowhead): ArrowheadVertices {
   const [tipX, tipY] = head.tip;
   const [dirX, dirY] = head.direction;
-  const halfWidth = head.size * Math.tan(HALF_ANGLE_RAD);
-  const baseX = tipX - dirX * head.size;
-  const baseY = tipY - dirY * head.size;
+  const halfWidth = head.size * Math.sin(HALF_ANGLE_RAD);
+  const baseOffset = head.size * Math.cos(HALF_ANGLE_RAD);
+  const baseX = tipX - dirX * baseOffset;
+  const baseY = tipY - dirY * baseOffset;
   const perpX = -dirY;
   const perpY = dirX;
   return {
