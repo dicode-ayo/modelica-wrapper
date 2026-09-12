@@ -2,7 +2,7 @@
   "packages/extension": "0.0.6",
   "packages/diagram-svg": "0.0.5",
   "packages/diagram-ui": "0.0.5",
-  "packages/documentation-ui": "0.0.1",
+  "packages/documentation-ui": "0.0.2",
   "packages/omc-client": "0.1.0",
   "packages/omc-bootstrap": "0.0.2",
   "packages/mcp-server": "0.0.1",
