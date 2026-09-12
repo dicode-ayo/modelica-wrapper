@@ -119,6 +119,22 @@ async function declareAndPersist(
     );
   }
 
+  const { withinPath } = declaration;
+  if (withinPath !== undefined) {
+    // A class written into a directory whose package.mo declares something
+    // else carries the wrong `within`, and OMC then refuses the whole
+    // package rather than just the new file. An empty restriction is a class
+    // OMC has not loaded, which `declareClass` reports in its own words.
+    const { restriction } = await client.getClassInformation({
+      typeName: withinPath,
+    });
+    if (restriction !== "" && restriction !== "package") {
+      return errorResult(
+        `${withinPath} is a ${restriction}, not a package, so nothing can be created inside it.`,
+      );
+    }
+  }
+
   const { extendsFrom } = declaration;
   if (extendsFrom !== undefined) {
     // OMC takes `extends` on faith: a misspelled base class loads, reports
@@ -153,7 +169,6 @@ async function declareAndPersist(
       declaration.kind,
     );
     await linkPersistedClass(client, className, result);
-    const { withinPath } = declaration;
     const inlineParent =
       result.enclosingPackage === "file" && withinPath !== undefined
         ? { warning: inlineParentWarning(withinPath) }

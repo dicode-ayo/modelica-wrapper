@@ -38,6 +38,8 @@ let unloadFails: string | undefined;
 let rootPackageClasses: string[];
 /** What `getClassInformation` reports as a class's file, as OMC would. */
 let classFiles: Map<string, string>;
+/** Overrides the restriction `getClassInformation` reports for one class. */
+let restrictions: Map<string, string>;
 let workspace: SourceTree | undefined;
 
 /**
@@ -59,7 +61,8 @@ const client: McpToolClient = {
   getClassInformation: async ({ typeName }) => ({
     fileReadOnly: false,
     fileName: classFiles.get(typeName) ?? "",
-    restriction: loaded.has(typeName) ? "package" : "",
+    restriction:
+      restrictions.get(typeName) ?? (loaded.has(typeName) ? "package" : ""),
   }),
   parseFile: async () => ({ classNames: rootPackageClasses }),
   getClassNames: async () => ({ classNames: [] }),
@@ -115,6 +118,7 @@ beforeEach(() => {
   unloadFails = undefined;
   rootPackageClasses = [];
   classFiles = new Map();
+  restrictions = new Map();
   workspace = undefined;
 });
 
@@ -523,6 +527,23 @@ describe("createClass", () => {
     // Empty is not nullish, so it would skip the root-package resolver and
     // land a class with no `within` clause beside the root package.mo.
     expect(result.isError).toBe(true);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to create inside something that is not a package", async () => {
+    const mcp = await connect();
+    loaded.add("Demo.RLC");
+    restrictions.set("Demo.RLC", "model");
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "X", kind: "model", withinPath: "Demo.RLC" },
+    })) as CallToolResult;
+
+    // The file would land in the parent's directory carrying
+    // `within Demo.RLC;`, and OMC refuses the whole package over it.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("is a model, not a package");
     expect(calls).toEqual([]);
   });
 
