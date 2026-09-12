@@ -1,6 +1,6 @@
 {
   "name": "@dicode/documentation-ui",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Standalone Lit + TipTap custom element (<om-documentation-editor>) for editing a Modelica class's Documentation(info=…) HTML. VSCode-agnostic pure renderer, reusable in a web client.",
   "type": "module",
   "main": "./src/index.ts",
