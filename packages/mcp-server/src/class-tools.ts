@@ -13,15 +13,25 @@
  *
  * The gate is on `withinPath`, the package this writes into. A top-level class
  * names no package, and an empty name has no verdict to derive.
+ *
+ * A tree whose own root is a package has no top-level destination: a class
+ * written beside its `package.mo` with no `within` clause makes OMC refuse the
+ * whole package. {@link enclosingPackage} resolves that root as the parent
+ * instead, and refuses when it cannot name exactly one loaded class.
  */
+
+import * as path from "node:path";
 
 import {
   CLASS_KINDS,
   declareClass,
   linkPersistedClass,
+  pathExists,
   persistClass,
   qualifiedNameOf,
+  resolveRootPackageParent,
   type ClassDeclaration,
+  type SourceTree,
 } from "@dicode/omc-client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -66,20 +76,23 @@ export function registerClassTools(server: McpServer, deps: McpToolDeps): void {
     },
     async ({ name, kind, withinPath, extendsFrom }) => {
       const client = await deps.ensureClient();
-      if (withinPath !== undefined) {
-        const refusal = await refusalForClass(
-          deps.verdicts,
-          client,
-          withinPath,
-          "createInside",
-        );
-        if (refusal !== undefined) return errorResult(refusal);
-      }
       try {
+        const parent =
+          withinPath ?? (await enclosingPackage(client, deps.workspace));
+        if (typeof parent === "object") return errorResult(parent.reason);
+        if (parent !== undefined) {
+          const refusal = await refusalForClass(
+            deps.verdicts,
+            client,
+            parent,
+            "createInside",
+          );
+          if (refusal !== undefined) return errorResult(refusal);
+        }
         return await declareAndPersist(deps, client, {
           name,
           kind,
-          withinPath,
+          withinPath: parent,
           extendsFrom,
         });
       } catch (err) {
@@ -124,10 +137,55 @@ async function declareAndPersist(
       declaration.kind,
     );
     await linkPersistedClass(client, className, result);
-    return textResult(JSON.stringify({ className, fileName: result.leafPath }));
+    const warning = inlineParentWarning(declaration, result.enclosingPackage);
+    return textResult(
+      JSON.stringify({
+        className,
+        fileName: result.leafPath,
+        ...(warning === undefined ? {} : { warning }),
+      }),
+    );
   } catch (err) {
     return errorResult(await unloadAfterFailedWrite(client, className, err));
   }
+}
+
+/**
+ * What to tell a caller whose new class went beside a package stored as one
+ * file rather than inside a directory package.
+ *
+ * The class is loaded and the file is written, but no `package.order` names
+ * it, so anything that loads the parent on its own — another client, a fresh
+ * checkout, OMEdit — will not see it. The editor that hosts this server loads
+ * every top-level file in the tree, so there it comes back.
+ */
+function inlineParentWarning(
+  declaration: ClassDeclaration,
+  enclosingPackage: "directory" | "file" | undefined,
+): string | undefined {
+  if (enclosingPackage !== "file") return undefined;
+  const parent = declaration.withinPath ?? "its parent";
+  return `${parent} is stored as a single file rather than a directory package, so nothing beside the new file lists it — loading ${parent} on its own will not bring it in. Use setSourceCode on ${parent} to declare the class inside that file instead.`;
+}
+
+/**
+ * The package a class with no `withinPath` has to be created inside: the one
+ * the tree's own root `package.mo` declares, or nothing when the root is not a
+ * package and a top-level class is a real destination.
+ */
+async function enclosingPackage(
+  client: McpToolClient,
+  workspace: SourceTree | undefined,
+): Promise<string | undefined | { reason: string }> {
+  if (workspace === undefined) return undefined;
+  const rootPkg = path.join(workspace.root, "package.mo");
+  if (!(await pathExists(rootPkg))) return undefined;
+  const resolved = await resolveRootPackageParent(client, rootPkg);
+  return resolved.ok
+    ? resolved.parent
+    : {
+        reason: `this source tree's root is a package, so a class cannot be created outside it — ${resolved.reason}. Name the package to create it inside with withinPath.`,
+      };
 }
 
 /**

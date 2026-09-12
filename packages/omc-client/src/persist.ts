@@ -67,6 +67,14 @@ export interface PersistResult {
   /** Path of the leaf class file we wrote. */
   leafPath: string;
   /**
+   * How the leaf's enclosing package is stored, or `undefined` for a leaf with
+   * no parent. A `"directory"` package finds the leaf through the
+   * `package.order` written beside it; a `"file"` package declares its members
+   * inline, so nothing beside the leaf references it and only a loader reading
+   * the leaf directly will see it.
+   */
+  enclosingPackage: "directory" | "file" | undefined;
+  /**
    * Parents that ended up rooted under the tree's root because OMC didn't
    * already know an on-disk location for them. Caller should `setSourceFile`
    * each so OMC's symbol table tracks the new path.
@@ -149,8 +157,16 @@ export async function persistClass(
     enclosing = { dir: baseDir, structured: true };
     newParents.push({ typeName: parentName, pkgFile });
   }
+  const enclosingPackage =
+    enclosing === undefined
+      ? undefined
+      : enclosing.structured
+        ? ("directory" as const)
+        : ("file" as const);
   const leafName = parts.at(-1);
-  if (leafName === undefined) return { leafPath: "", newParents };
+  if (leafName === undefined) {
+    return { leafPath: "", newParents, enclosingPackage };
+  }
   let leafPath: string;
   if (restriction === "package") {
     const leafDir = path.join(baseDir, leafName);
@@ -174,7 +190,7 @@ export async function persistClass(
   if (enclosing?.structured === true) {
     await addToPackageOrder(writer, enclosing.dir, leafName);
   }
-  return { leafPath, newParents };
+  return { leafPath, newParents, enclosingPackage };
 }
 
 /**

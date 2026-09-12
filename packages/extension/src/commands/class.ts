@@ -29,11 +29,11 @@ import {
   declareClass,
   linkPersistedClass,
   persistClass,
+  resolveRootPackageParent,
   type ClassKind,
 } from "@dicode/omc-client";
 
 import { pathExists } from "../fs-util.js";
-import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
 
 import {
   parentFromNode,
@@ -221,81 +221,6 @@ export function registerClassCommands(
       },
     ),
   ];
-}
-
-/** OMC surface {@link resolveRootPackageParent} needs. `OmcClient` satisfies it. */
-export interface RootPackageClient extends FileParseClient {
-  getClassInformation(input: {
-    typeName: string;
-  }): Promise<{ restriction: string }>;
-}
-
-/**
- * The class `rootPkg` (an already-confirmed `<workspaceRoot>/package.mo`)
- * declares — the one destination a `view/title` invocation with no tree node
- * can mean once the workspace root is itself a package. Refuses rather than
- * guessing when the file doesn't parse to exactly one
- * top-level class, or when that class isn't actually loaded into OMC yet:
- * `parseFile` only reads the file off disk, and workspace autoload
- * (`workspace-autoload.ts`) loads entry files asynchronously — a title-bar
- * invocation right after opening the workspace, or right after a `:reset`,
- * could otherwise resolve a parent OMC hasn't loaded, and the `within`
- * merge that follows would fail against it.
- *
- * The load check only confirms a class named `name` is loaded, not that it's
- * specifically the one `rootPkg` declares — a same-named class loaded from
- * elsewhere would pass it too. `ctx.writeVerdicts.forClass`'s downstream
- * system-library check catches a MODELICAPATH collision; a same-named class
- * from another workspace file is a narrower case this doesn't distinguish.
- */
-export async function resolveRootPackageParent(
-  client: RootPackageClient,
-  rootPkg: string,
-): Promise<{ ok: true; parent: string } | { ok: false; reason: string }> {
-  let classNames: string[];
-  try {
-    ({ classNames } = await client.parseFile({ fileName: rootPkg }));
-  } catch (err) {
-    return {
-      ok: false,
-      reason: `could not read ${rootPkg}'s class name (${(err as Error).message})`,
-    };
-  }
-  const multiple = moreThanOne(classNames);
-  if (multiple !== undefined) {
-    return {
-      ok: false,
-      reason: `${rootPkg} declares more than one top-level class (${multiple.join(", ")})`,
-    };
-  }
-  const [name] = classNames;
-  if (name === undefined) {
-    return {
-      ok: false,
-      reason: `${rootPkg} declares no class OMC could parse`,
-    };
-  }
-  try {
-    const info = await client.getClassInformation({ typeName: name });
-    // A not-yet-loaded class doesn't reject — OMC 1.27.0 answers with every
-    // field defaulted (empty `restriction` among them) rather than an error
-    // (see packages/omc-client/src/api/browsing/getClassInformation.test.ts's
-    // `NOT_FOUND_18` fixture). Every real class restriction (model, package,
-    // block, …) is non-empty, so that's the signal to key off instead of a
-    // thrown rejection.
-    if (info.restriction === "") {
-      return {
-        ok: false,
-        reason: `no class named ${name} is loaded into OMC yet — wait for the workspace to finish loading and try again`,
-      };
-    }
-  } catch (err) {
-    return {
-      ok: false,
-      reason: `could not confirm ${name} is loaded into OMC (${(err as Error).message})`,
-    };
-  }
-  return { ok: true, parent: name };
 }
 
 function defaultPlaceholder(kind: ClassKind): string {

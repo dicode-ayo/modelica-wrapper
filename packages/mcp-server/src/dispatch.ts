@@ -15,6 +15,7 @@ import type {
   OmcFnName,
   OmcInput,
   PersistClient,
+  RootPackageClient,
   SourceTree,
 } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -35,7 +36,8 @@ import { refusalFor, refusalForClass } from "./write-gate.js";
  * reason {@link dispatch} is: a renamed argument fails the build rather than
  * reaching a model.
  */
-export interface McpToolClient extends WriteVerdictClient, PersistClient {
+export interface McpToolClient
+  extends WriteVerdictClient, PersistClient, RootPackageClient {
   invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
   existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
@@ -45,10 +47,12 @@ export interface McpToolClient extends WriteVerdictClient, PersistClient {
     filename: string;
     merge: boolean;
   }): Promise<{ success: boolean }>;
-  /** Narrows both bases, which disagree on which field they need. */
-  getClassInformation(input: {
-    typeName: string;
-  }): Promise<{ fileReadOnly: boolean; fileName: string }>;
+  /** Narrows the bases, which disagree on which fields they need. */
+  getClassInformation(input: { typeName: string }): Promise<{
+    fileReadOnly: boolean;
+    fileName: string;
+    restriction: string;
+  }>;
 }
 
 export interface McpToolDeps {

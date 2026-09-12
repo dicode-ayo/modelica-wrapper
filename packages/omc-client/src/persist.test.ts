@@ -354,6 +354,36 @@ describe("persistClass", () => {
     );
   });
 
+  it("reports how the enclosing package is stored", async () => {
+    const { client, seedClass } = makeClientStub();
+    seedClass("Folder", path.join(tmp, "Folder", "package.mo"));
+    await fsp.mkdir(path.join(tmp, "Folder"), { recursive: true });
+    seedClass("Inline", path.join(tmp, "Inline.mo"));
+
+    const folder = await persistClass(
+      client,
+      tree,
+      "Folder.Model",
+      "model Model\nend Model;\n",
+    );
+    const inline = await persistClass(
+      client,
+      tree,
+      "Inline.Model",
+      "model Model\nend Model;\n",
+    );
+    const orphan = await persistClass(
+      client,
+      tree,
+      "Alone",
+      "model Alone\nend Alone;\n",
+    );
+
+    expect(folder.enclosingPackage).toBe("directory");
+    expect(inline.enclosingPackage).toBe("file");
+    expect(orphan.enclosingPackage).toBeUndefined();
+  });
+
   it("writes no package.order beside a package stored as a single file", async () => {
     // A package whose members are declared inline in one .mo file has no
     // package.order, and its directory is not the package.

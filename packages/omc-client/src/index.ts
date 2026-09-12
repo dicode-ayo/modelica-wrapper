@@ -72,9 +72,11 @@ export {
   classSource,
   declareClass,
   qualifiedNameOf,
+  resolveRootPackageParent,
   type ClassDeclaration,
   type ClassKind,
   type DeclareClient,
+  type RootPackageClient,
 } from "./declare-class.js";
 export { pathExists } from "./fs-util.js";
 export {

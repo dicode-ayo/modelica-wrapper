@@ -35,6 +35,9 @@ let sourceFile = "/w/Demo.mo";
 let loaded: Set<string>;
 let loadFails: string | undefined;
 let unloadFails: string | undefined;
+let rootPackageClasses: string[];
+/** What `getClassInformation` reports as a class's file, as OMC would. */
+let classFiles: Map<string, string>;
 let workspace: SourceTree | undefined;
 
 /**
@@ -53,7 +56,12 @@ const client: McpToolClient = {
     return { success: true };
   },
   existClass: async ({ typeName }) => ({ exists: loaded.has(typeName) }),
-  getClassInformation: async () => ({ fileReadOnly: false, fileName: "" }),
+  getClassInformation: async ({ typeName }) => ({
+    fileReadOnly: false,
+    fileName: classFiles.get(typeName) ?? "",
+    restriction: loaded.has(typeName) ? "package" : "",
+  }),
+  parseFile: async () => ({ classNames: rootPackageClasses }),
   getClassNames: async () => ({ classNames: [] }),
   getErrorString: async () => ({ errorString: loadFails ?? "" }),
   loadString: async (input) => {
@@ -100,6 +108,8 @@ beforeEach(() => {
   loaded = new Set();
   loadFails = undefined;
   unloadFails = undefined;
+  rootPackageClasses = [];
+  classFiles = new Map();
   workspace = undefined;
 });
 
@@ -507,6 +517,111 @@ describe("createClass", () => {
 
     expect(result.isError).toBe(true);
     expect(text(result)).toBe("Parse error near 'end'");
+  });
+
+  it("nests a class under the package the tree's own root declares", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
+    await fsp.writeFile(
+      path.join(root, "package.mo"),
+      "package Demo\nend Demo;\n",
+      "utf8",
+    );
+    await fsp.writeFile(path.join(root, "package.order"), "", "utf8");
+    rootPackageClasses = ["Demo"];
+    loaded.add("Demo");
+    classFiles.set("Demo", path.join(root, "package.mo"));
+    workspace = {
+      root,
+      writer: {
+        write: (fsPath, textContent) =>
+          fsp.writeFile(fsPath, textContent, "utf8"),
+      },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Circuit", kind: "model" },
+      })) as CallToolResult;
+
+      // Written beside the root package.mo with no `within`, OMC refuses the
+      // whole package rather than just this file.
+      expect(JSON.parse(text(result))).toEqual({
+        className: "Demo.Circuit",
+        fileName: path.join(root, "Circuit.mo"),
+      });
+      expect(await fsp.readFile(path.join(root, "Circuit.mo"), "utf8")).toBe(
+        "within Demo;\nmodel Circuit\nend Circuit;\n",
+      );
+      expect(await fsp.readFile(path.join(root, "package.order"), "utf8")).toBe(
+        "Circuit\n",
+      );
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses when the tree's root package cannot be named", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
+    await fsp.writeFile(path.join(root, "package.mo"), "", "utf8");
+    rootPackageClasses = ["A", "B"];
+    workspace = {
+      root,
+      writer: { write: () => Promise.resolve() },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Circuit", kind: "model" },
+      })) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("more than one top-level class");
+      expect(text(result)).toContain("withinPath");
+      expect(calls).toEqual([]);
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("warns that a single-file parent will not bring the new class in", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-inline-"));
+    await fsp.writeFile(
+      path.join(root, "Demo.mo"),
+      "package Demo\nend Demo;\n",
+      "utf8",
+    );
+    classFiles.set("Demo", path.join(root, "Demo.mo"));
+    workspace = {
+      root,
+      writer: {
+        write: (fsPath, textContent) =>
+          fsp.writeFile(fsPath, textContent, "utf8"),
+      },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Circuit", kind: "model", withinPath: "Demo" },
+      })) as CallToolResult;
+
+      // The file is written and loaded, but no package.order names it, so a
+      // loader that opens Demo.mo on its own never reads it.
+      const written = JSON.parse(text(result)) as {
+        fileName: string;
+        warning?: string;
+      };
+      expect(written.fileName).toBe(path.join(root, "Circuit.mo"));
+      expect(written.warning).toContain("single file");
+      expect(written.warning).toContain("setSourceCode");
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("unloads the class again when its files cannot be written", async () => {
