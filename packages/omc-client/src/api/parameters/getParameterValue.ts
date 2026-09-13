@@ -21,6 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName, quote } from "../../_shared/format.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -34,7 +35,7 @@ import {
 } from "../../parse.js";
 
 export const GetParameterValueInputSchema = z.strictObject({
-  typeName: z.string().describe("Class containing the parameter."),
+  typeName: modelicaName.describe("Class containing the parameter."),
   name: z
     .string()
     .describe("Parameter name to read (dotted path for nested parameters)."),

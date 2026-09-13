@@ -16,6 +16,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName, quote } from "../../_shared/format.js";
 import {
   parseMutationSuccess,
@@ -23,7 +24,7 @@ import {
 } from "../../_shared/parseOutput.js";
 
 export const SetDocumentationAnnotationInputSchema = z.strictObject({
-  typeName: z.string().describe("Class to annotate."),
+  typeName: modelicaName.describe("Class to annotate."),
   info: z
     .string()
     .optional()

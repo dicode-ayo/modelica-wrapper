@@ -20,7 +20,8 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { quote } from "../../_shared/format.js";
+import { modelicaName } from "../../_shared/fields.js";
+import { bareName, quote } from "../../_shared/format.js";
 import type { OmcCommand } from "../../commands.js";
 import {
   parseMutationSuccess,
@@ -28,11 +29,9 @@ import {
 } from "../../_shared/parseOutput.js";
 
 export const CopyClassInputSchema = z.strictObject({
-  source: z
-    .string()
-    .describe(
-      "TypeName of the existing class to copy (OMC `className`, emitted bare).",
-    ),
+  source: modelicaName.describe(
+    "TypeName of the existing class to copy (OMC `className`, emitted bare).",
+  ),
   destination: z
     .string()
     .describe(
@@ -67,8 +66,8 @@ export async function copyClass(
   const within = input.within ?? "";
   const cmd: OmcCommand =
     within === ""
-      ? `copyClass(${input.source}, ${quote(input.destination)})`
-      : `copyClass(${input.source}, ${quote(input.destination)}, ${within})`;
+      ? `copyClass(${bareName(input.source)}, ${quote(input.destination)})`
+      : `copyClass(${bareName(input.source)}, ${quote(input.destination)}, ${bareName(within)})`;
   const raw = await ctx.call(cmd);
   return parseOutput(
     CopyClassOutputSchema,

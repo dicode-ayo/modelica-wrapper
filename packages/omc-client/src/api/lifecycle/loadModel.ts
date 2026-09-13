@@ -21,18 +21,16 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { requireExactVersion } from "../../_shared/fields.js";
+import { modelicaName, requireExactVersion } from "../../_shared/fields.js";
 import { bareName, mlBool, quote, quoteList } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const LoadModelInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      'Library to load (e.g. "Modelica"); resolved against the MODELICAPATH.',
-    ),
+  typeName: modelicaName.describe(
+    'Library to load (e.g. "Modelica"); resolved against the MODELICAPATH.',
+  ),
   priorityVersion: z
     .array(z.string())
     .optional()

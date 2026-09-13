@@ -32,6 +32,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName, num, quote } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
@@ -43,11 +44,9 @@ export const LoadClassContentStringInputSchema = z.strictObject({
   data: z
     .string()
     .describe("Modelica class elements to parse and insert into the class."),
-  typeName: z
-    .string()
-    .describe(
-      "Fully qualified TypeName of the target class (OMC parameter `className`); emitted bare to OMC.",
-    ),
+  typeName: modelicaName.describe(
+    "Fully qualified TypeName of the target class (OMC parameter `className`); emitted bare to OMC.",
+  ),
   offsetX: z
     .number()
     .int()

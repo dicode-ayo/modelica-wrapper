@@ -18,17 +18,16 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const RenameClassInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Path of the class to rename (overrides the generic shared description: this is the OMC `oldName` argument).",
-    ),
-  newName: z.string().describe("New non-qualified name to give the class."),
+  typeName: modelicaName.describe(
+    "Path of the class to rename (overrides the generic shared description: this is the OMC `oldName` argument).",
+  ),
+  newName: modelicaName.describe("New non-qualified name to give the class."),
 });
 export type RenameClassInput = z.input<typeof RenameClassInputSchema>;
 

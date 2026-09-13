@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaExpr, modelicaName } from "../../_shared/fields.js";
 import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
@@ -18,20 +19,19 @@ import {
 
 export const AddComponentInputSchema = z.strictObject({
   /** Local instance name to give the new component. */
-  componentName: z
-    .string()
-    .describe("Local instance name to give the new component."),
+  componentName: modelicaName.describe(
+    "Local instance name to give the new component.",
+  ),
   /** Type to instantiate (e.g. "Modelica.Blocks.Math.Gain"). */
-  componentClass: z
-    .string()
-    .describe('Type to instantiate (e.g. "Modelica.Blocks.Math.Gain").'),
+  componentClass: modelicaName.describe(
+    'Type to instantiate (e.g. "Modelica.Blocks.Math.Gain").',
+  ),
   /** Class to insert into. */
-  intoTypeName: z
-    .string()
-    .describe("Class into which the new component is inserted."),
+  intoTypeName: modelicaName.describe(
+    "Class into which the new component is inserted.",
+  ),
   /** Raw Modelica `Placement(...)` expression; "" → default. */
-  annotation: z
-    .string()
+  annotation: modelicaExpr
     .optional()
     .default("")
     .describe(

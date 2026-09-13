@@ -28,21 +28,18 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
 export const QualifyPathInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Class scope (OMC parameter `classPath`) in which to qualify the path; emitted bare to OMC.",
-    ),
-  path: z
-    .string()
-    .describe(
-      "Short or partial TypeName to resolve within the class scope; emitted bare to OMC.",
-    ),
+  typeName: modelicaName.describe(
+    "Class scope (OMC parameter `classPath`) in which to qualify the path; emitted bare to OMC.",
+  ),
+  path: modelicaName.describe(
+    "Short or partial TypeName to resolve within the class scope; emitted bare to OMC.",
+  ),
 });
 export type QualifyPathInput = z.input<typeof QualifyPathInputSchema>;
 

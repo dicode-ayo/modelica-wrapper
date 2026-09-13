@@ -20,16 +20,15 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName, num, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectFloat, parse } from "../../parse.js";
 
 export const ValInputSchema = z.strictObject({
-  var: z
-    .string()
-    .describe(
-      "Variable identifier (dotted path) emitted bare; field name `var` is OMC verbatim.",
-    ),
+  var: modelicaName.describe(
+    "Variable identifier (dotted path) emitted bare; field name `var` is OMC verbatim.",
+  ),
   timePoint: z
     .number()
     .optional()

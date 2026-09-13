@@ -34,6 +34,46 @@
 
 import { z } from "zod";
 
+import { MODELICA_NAME, expressionFault } from "./format.js";
+
+/**
+ * A name OMC receives unquoted — a TypeName, a component reference, a modifier
+ * path. Consumers override the description at the use site; the constraint is
+ * not theirs to override, because it is the command grammar, not a preference.
+ *
+ * The pattern reaches an MCP client as the field's JSON-Schema `pattern`, so a
+ * model sees the shape before it calls rather than after. It is the same
+ * `RegExp` `bareName` enforces when the command is built: this one is the
+ * early, attributable failure, that one is the control.
+ */
+export const modelicaName = z
+  .string()
+  .regex(
+    MODELICA_NAME,
+    'must be a Modelica name — dot-separated identifiers, each optionally subscripted (e.g. "Modelica.Blocks.Math.Gain", "pins[3].p"), or a single-quoted Q-IDENT',
+  );
+
+/**
+ * {@link modelicaName} for the wrappers that also read `""` as "argument
+ * omitted", so the sentinel does not have to be smuggled past the pattern.
+ */
+export const modelicaOrOmittedName = z.union([modelicaName, z.literal("")]);
+
+/**
+ * A raw Modelica expression OMC receives unquoted — an annotation, a modifier
+ * value. No pattern describes these, so the constraint is a refinement and only
+ * the description crosses into JSON Schema.
+ */
+export const modelicaExpr = z.string().superRefine((s, ctx) => {
+  const fault = expressionFault(s);
+  if (fault !== undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message: `must be one self-contained Modelica expression; this one ${fault}`,
+    });
+  }
+});
+
 /**
  * `prettyPrint` flag — used by JSON-emitting calls (`getModelInstance`,
  * `getModelInstanceAnnotation`, `modifierToJSON`).
@@ -58,29 +98,28 @@ export const requireExactVersion = z
  * `typeName` specialized for connection-targeted calls (`getNthConnection`,
  * `getNthConnectionAnnotation`, `deleteConnection`, `updateConnection`).
  */
-export const typeNameOfConnection = z
-  .string()
-  .describe("Class containing the connection.");
+export const typeNameOfConnection = modelicaName.describe(
+  "Class containing the connection; emitted to OMC unquoted.",
+);
 
 /**
  * `typeName` specialized for `extends`-clause-targeted calls
  * (`getExtendsModifierNames`, `getExtendsModifierValue`,
  * `setExtendsModifierValue`).
  */
-export const typeNameOfExtends = z
-  .string()
-  .describe("Class containing the `extends` clause.");
+export const typeNameOfExtends = modelicaName.describe(
+  "Class containing the `extends` clause; emitted to OMC unquoted.",
+);
 
 /**
  * Optional `Line(...)` annotation argument used by connection / transition
  * mutators (`addConnection`, `addTransition`, `updateConnection`).
  */
-export const connectionAnnotation = z
-  .string()
+export const connectionAnnotation = modelicaExpr
   .optional()
   .default("")
   .describe(
-    'Raw Modelica `Line(...)` annotation (no `annotate=` prefix); "" yields the default Line.',
+    'Raw Modelica `Line(...)` annotation (no `annotate=` prefix); "" yields the default Line. Emitted to OMC unquoted, so it must be one self-contained expression.',
   );
 
 /**
@@ -89,9 +128,9 @@ export const connectionAnnotation = z
  * `getExtendsModifierValue`, `setExtendsModifierValue`. Setters override
  * with "...to mutate." at the use site.
  */
-export const extendsBase = z
-  .string()
-  .describe("TypeName of the base class on the `extends` clause to inspect.");
+export const extendsBase = modelicaName.describe(
+  "TypeName of the base class on the `extends` clause to inspect; emitted to OMC unquoted.",
+);
 
 /**
  * `expr` — raw Modelica expression for a modifier value, wrapped in
@@ -100,8 +139,6 @@ export const extendsBase = z
  * `setElementModifierValue`. Variants override at the use site for slightly
  * different OMC docs phrasing.
  */
-export const expr = z
-  .string()
-  .describe(
-    "Raw Modelica expression for the new modifier value (wrapped in `$Code(=…)` for OMC); empty removes the modifier.",
-  );
+export const expr = modelicaExpr.describe(
+  "Raw Modelica expression for the new modifier value (wrapped in `$Code(=…)` for OMC); empty removes the modifier. Emitted unquoted, so it must be one self-contained expression.",
+);

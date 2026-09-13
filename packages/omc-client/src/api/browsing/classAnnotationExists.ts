@@ -16,21 +16,18 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const ClassAnnotationExistsInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Fully qualified TypeName of the class to inspect (OMC parameter `className`); emitted bare to OMC.",
-    ),
-  annotationName: z
-    .string()
-    .describe(
-      "Name of the class annotation to look for (e.g. `Icon`, `experiment`); a TypeName, emitted bare to OMC.",
-    ),
+  typeName: modelicaName.describe(
+    "Fully qualified TypeName of the class to inspect (OMC parameter `className`); emitted bare to OMC.",
+  ),
+  annotationName: modelicaName.describe(
+    "Name of the class annotation to look for (e.g. `Icon`, `experiment`); a TypeName, emitted bare to OMC.",
+  ),
 });
 export type ClassAnnotationExistsInput = z.input<
   typeof ClassAnnotationExistsInputSchema

@@ -370,6 +370,52 @@ describe("the shape tools", () => {
     expect(fields("addRectangle")).not.toContain("points");
     expect(fields("addText")).not.toContain("fillColor");
   });
+
+  /**
+   * The name grammar is enforced when the command is built, which is too late
+   * for the model to learn anything from. It is declared on the input schema
+   * as well so it crosses into JSON Schema — but only if the SDK's conversion
+   * carries `pattern` through, which is not ours to assume.
+   */
+  it("advertise the grammar an unquoted argument is held to", async () => {
+    const mcp = await connect();
+
+    const { tools } = await mcp.listTools();
+    const property = (
+      name: string,
+      field: string,
+    ): { pattern?: string } | undefined =>
+      (
+        tools.find((t) => t.name === name)?.inputSchema.properties as
+          Record<string, { pattern?: string }> | undefined
+      )?.[field];
+
+    for (const [tool, field] of [
+      ["addConnection", "from"],
+      ["addConnection", "to"],
+      ["addConnection", "typeName"],
+      ["addComponent", "componentName"],
+    ] as const) {
+      expect(property(tool, field)?.pattern).toBeTypeOf("string");
+    }
+  });
+
+  it("refuse an argument that would close the command, naming the field", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "addConnection",
+      arguments: {
+        from: "a.p",
+        to: 'b.p); loadString("model Injected end Injected;"); addConnection(a.p, b.p, Demo.MSD',
+        typeName: "Demo.MSD",
+      },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("to");
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("the escape hatch", () => {

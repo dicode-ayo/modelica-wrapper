@@ -27,18 +27,16 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName, mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const GetAllSubtypeOfInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Fully qualified TypeName of the base class to find subtypes of (OMC parameter `className`); emitted bare to OMC.",
-    ),
-  parentClass: z
-    .string()
+  typeName: modelicaName.describe(
+    "Fully qualified TypeName of the base class to find subtypes of (OMC parameter `className`); emitted bare to OMC.",
+  ),
+  parentClass: modelicaName
     .optional()
     .describe(
       "TypeName under which the lookup should start. Omit to search all loaded classes (OMC default `AllLoadedClasses`).",

@@ -92,7 +92,7 @@ const IDENT = "[A-Za-z_][A-Za-z0-9_]*";
 const QIDENT = "'(?:[^'\\\\]|\\\\.)+'";
 const SUBSCRIPT = "(?:\\[[0-9,:\\s]+\\])?";
 const SEGMENT = `(?:${IDENT}|${QIDENT})${SUBSCRIPT}`;
-const NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
+export const MODELICA_NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
 
 /**
  * Return `s` if it is a Modelica name, else throw.
@@ -102,7 +102,7 @@ const NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
  * text, and a `)` in one closes the call and starts another.
  */
 export function bareName(s: string): string {
-  if (!NAME.test(s)) {
+  if (!MODELICA_NAME.test(s)) {
     throw new Error(
       `not a Modelica name, so it cannot be sent to OMC unquoted: ${JSON.stringify(s)}`,
     );
@@ -123,10 +123,26 @@ const OPENER: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
  * appear outside a string literal.
  */
 export function bareExpr(s: string): string {
-  const reject = (why: string): never => {
+  const fault = expressionFault(s);
+  if (fault !== undefined) {
     throw new Error(
-      `${why}, so it cannot be sent to OMC as a command argument: ${JSON.stringify(s)}`,
+      `${fault}, so it cannot be sent to OMC as a command argument: ${JSON.stringify(s)}`,
     );
+  }
+  return s;
+}
+
+/**
+ * Why `s` would leave the argument position it is interpolated into, or
+ * `undefined` if it stays put.
+ *
+ * Split out from {@link bareExpr} so the input schemas can report the same
+ * fault to a caller before the call is built, rather than re-deriving the rule.
+ */
+export function expressionFault(s: string): string | undefined {
+  let fault: string | undefined;
+  const reject = (why: string): void => {
+    fault ??= why;
   };
   const stack: string[] = [];
   let inString = false;
@@ -152,5 +168,5 @@ export function bareExpr(s: string): string {
   }
   if (inString) reject("leaves a string literal open");
   if (stack.length > 0) reject("leaves a bracket open");
-  return s;
+  return fault;
 }

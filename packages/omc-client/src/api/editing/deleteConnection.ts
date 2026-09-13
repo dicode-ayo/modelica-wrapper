@@ -7,7 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { typeNameOfConnection } from "../../_shared/fields.js";
+import { modelicaName, typeNameOfConnection } from "../../_shared/fields.js";
 import { bareName } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
@@ -16,16 +16,12 @@ import {
 } from "../../_shared/parseOutput.js";
 
 export const DeleteConnectionInputSchema = z.strictObject({
-  from: z
-    .string()
-    .describe(
-      "Left-hand-side connector reference of the connection to remove.",
-    ),
-  to: z
-    .string()
-    .describe(
-      "Right-hand-side connector reference of the connection to remove.",
-    ),
+  from: modelicaName.describe(
+    "Left-hand-side connector reference of the connection to remove.",
+  ),
+  to: modelicaName.describe(
+    "Right-hand-side connector reference of the connection to remove.",
+  ),
   typeName: typeNameOfConnection,
 });
 export type DeleteConnectionInput = z.input<typeof DeleteConnectionInputSchema>;

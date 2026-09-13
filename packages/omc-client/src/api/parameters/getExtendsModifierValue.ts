@@ -7,7 +7,11 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { extendsBase, typeNameOfExtends } from "../../_shared/fields.js";
+import {
+  extendsBase,
+  modelicaName,
+  typeNameOfExtends,
+} from "../../_shared/fields.js";
 import { bareName } from "../../_shared/format.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -16,11 +20,9 @@ import { asString, parse } from "../../parse.js";
 export const GetExtendsModifierValueInputSchema = z.strictObject({
   typeName: typeNameOfExtends,
   extendsBase,
-  modifier: z
-    .string()
-    .describe(
-      "Dotted path identifying the modifier within the extends clause.",
-    ),
+  modifier: modelicaName.describe(
+    "Dotted path identifying the modifier within the extends clause.",
+  ),
 });
 export type GetExtendsModifierValueInput = z.input<
   typeof GetExtendsModifierValueInputSchema

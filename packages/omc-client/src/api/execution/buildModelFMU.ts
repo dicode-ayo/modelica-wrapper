@@ -21,12 +21,13 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName, mlBool, quote, quoteList } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
 export const BuildModelFMUInputSchema = z.strictObject({
-  typeName: z.string().describe("Class to export as an FMU."),
+  typeName: modelicaName.describe("Class to export as an FMU."),
   version: z
     .enum(["1.0", "2.0", "3.0"])
     .optional()

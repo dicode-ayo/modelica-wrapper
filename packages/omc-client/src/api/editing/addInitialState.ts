@@ -24,16 +24,16 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaExpr, modelicaName } from "../../_shared/fields.js";
 import { bareExpr, bareName, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const AddInitialStateInputSchema = z.strictObject({
-  typeName: z.string().describe("Class containing the state machine."),
+  typeName: modelicaName.describe("Class containing the state machine."),
   state: z.string().describe("Name of the state to mark as initial."),
-  annotation: z
-    .string()
+  annotation: modelicaExpr
     .optional()
     .default("")
     .describe(

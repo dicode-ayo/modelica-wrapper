@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
@@ -15,10 +16,10 @@ import {
 } from "../../_shared/parseOutput.js";
 
 export const DeleteComponentInputSchema = z.strictObject({
-  componentName: z
-    .string()
-    .describe("Local instance name of the component to delete."),
-  typeName: z.string().describe("Class containing the component to delete."),
+  componentName: modelicaName.describe(
+    "Local instance name of the component to delete.",
+  ),
+  typeName: modelicaName.describe("Class containing the component to delete."),
 });
 export type DeleteComponentInput = z.input<typeof DeleteComponentInputSchema>;
 

@@ -18,23 +18,20 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaExpr, modelicaName } from "../../_shared/fields.js";
 import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetParameterValueInputSchema = z.strictObject({
-  typeName: z.string().describe("Class containing the parameter."),
-  variableName: z
-    .string()
-    .describe(
-      "Dotted variable path within the class (OMC `variableName`, kept verbatim per the secondary-TypeName convention).",
-    ),
-  value: z
-    .string()
-    .describe(
-      "Modelica expression to bind to the parameter; empty clears the binding.",
-    ),
+  typeName: modelicaName.describe("Class containing the parameter."),
+  variableName: modelicaName.describe(
+    "Dotted variable path within the class (OMC `variableName`, kept verbatim per the secondary-TypeName convention).",
+  ),
+  value: modelicaExpr.describe(
+    "Modelica expression to bind to the parameter; empty clears the binding.",
+  ),
 });
 export type SetParameterValueInput = z.input<
   typeof SetParameterValueInputSchema

@@ -15,16 +15,15 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { bareName, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const GetAvailablePackageVersionsInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Package name to query (OMC `pkg`, mapped to `typeName` per the package convention).",
-    ),
+  typeName: modelicaName.describe(
+    "Package name to query (OMC `pkg`, mapped to `typeName` per the package convention).",
+  ),
   version: z.string().describe("Version constraint string."),
 });
 export type GetAvailablePackageVersionsInput = z.input<

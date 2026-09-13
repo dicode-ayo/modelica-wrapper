@@ -37,7 +37,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { connectionAnnotation } from "../../_shared/fields.js";
+import { connectionAnnotation, modelicaName } from "../../_shared/fields.js";
 import {
   bareExpr,
   bareName,
@@ -50,7 +50,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const UpdateTransitionInputSchema = z.strictObject({
-  typeName: z.string().describe("Class containing the state machine."),
+  typeName: modelicaName.describe("Class containing the state machine."),
   from: z
     .string()
     .describe(

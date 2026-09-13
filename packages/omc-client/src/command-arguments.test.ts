@@ -6,7 +6,9 @@
  * input field raw — which is how all 155 of them came to.
  *
  * So the sources are read back: no command template names an input field
- * except through a formatter.
+ * except through a formatter. Every template shaped like a call is scanned,
+ * not only the ones inline in `ctx.call(`, because a wrapper is free to build
+ * its command into a variable first — four of them do.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -26,13 +28,11 @@ const FORMATTERS = [
   "bareExpr",
 ];
 
-/** `${...}` substitutions inside every `ctx.call(`…`)` template in `src`. */
+/** `${...}` substitutions inside every command-shaped template in `src`. */
 function callArguments(src: string): string[] {
   const args: string[] = [];
-  for (const call of src.matchAll(/ctx\.call\(\s*(`[^`]*`)/gs)) {
-    const template = call[1];
-    if (template === undefined) continue;
-    for (const arg of template.matchAll(/\$\{([^}]*)\}/g)) {
+  for (const call of src.matchAll(/`[A-Za-z_$][\w$]*\([^`]*`/g)) {
+    for (const arg of call[0].matchAll(/\$\{([^}]*)\}/g)) {
       const expr = arg[1]?.trim();
       if (expr !== undefined) args.push(expr);
     }

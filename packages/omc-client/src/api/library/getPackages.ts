@@ -14,15 +14,18 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaOrOmittedName } from "../../_shared/fields.js";
+import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 import type { OmcCommand } from "../../commands.js";
 
 export const GetPackagesInputSchema = z.strictObject({
-  typeName: z
-    .string()
+  typeName: modelicaOrOmittedName
     .optional()
-    .describe("Class to inspect; omit to default to OMC's AllLoadedClasses."),
+    .describe(
+      'Class to inspect; omit (or pass "") to default to OMC\'s AllLoadedClasses.',
+    ),
 });
 export type GetPackagesInput = z.input<typeof GetPackagesInputSchema>;
 
@@ -43,7 +46,7 @@ export async function getPackages(
   const cmd: OmcCommand =
     input.typeName === undefined || input.typeName === ""
       ? "getPackages()"
-      : `getPackages(${input.typeName})`;
+      : `getPackages(${bareName(input.typeName)})`;
   const raw = await ctx.call(cmd);
   return parseOutput(
     GetPackagesOutputSchema,
