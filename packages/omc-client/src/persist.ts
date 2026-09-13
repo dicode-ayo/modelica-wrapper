@@ -134,15 +134,23 @@ export async function persistClass(
     baseDir = path.join(baseDir, part);
     await mkdir(baseDir, { recursive: true });
     const pkgFile = path.join(baseDir, "package.mo");
+    const orderFile = path.join(baseDir, "package.order");
+    const orderFileMissing = !(await pathExists(orderFile));
+    // Resolved before package.mo is written: once that write lands, a
+    // sibling whose fileName OMC happens to report as this exact path would
+    // pass the disk-backed check purely because of this write, whether or
+    // not it is really declared inside the (still memberless) file we just
+    // created.
+    const base = orderFileMissing
+      ? await diskBackedClassNames(client, parentName)
+      : [];
     if (!(await pathExists(pkgFile))) {
       const within = parts.slice(0, i).join(".");
       const header = within ? `within ${within};\n` : "";
       await writer.write(pkgFile, `${header}package ${part}\nend ${part};\n`);
     }
-    const orderFile = path.join(baseDir, "package.order");
-    if (!(await pathExists(orderFile))) {
+    if (orderFileMissing) {
       const nextSegment = parts[i + 1];
-      const base = await diskBackedClassNames(client, parentName);
       const children =
         nextSegment !== undefined && !base.includes(nextSegment)
           ? [...base, nextSegment]
