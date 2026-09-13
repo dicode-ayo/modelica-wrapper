@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { expressionFault, modelicaExpr, modelicaName } from "./fields.js";
+import {
+  expressionFault,
+  modelicaExpr,
+  modelicaName,
+  resultVariable,
+} from "./fields.js";
 
 describe("the name a field is held to", () => {
   it("accepts the shapes a cref reaching OMC actually carries", () => {
@@ -72,6 +77,20 @@ describe("the expression a field is held to", () => {
     ] as const) {
       expect(expressionFault(s)).toBe(why);
       expect(modelicaExpr.safeParse(s).success).toBe(false);
+    }
+  });
+});
+
+describe("the variable a result field is held to", () => {
+  it("accepts a derivative, which is how OMC names one in a result file", () => {
+    for (const s of ["x", "body.r[1]", "der(x)", "der(body.r[1])"]) {
+      expect(resultVariable.safeParse(s).success).toBe(true);
+    }
+  });
+
+  it("still refuses a call that is not der", () => {
+    for (const s of ["f(x)", "der(x), g(", "der(x))", "der(", "der()"]) {
+      expect(resultVariable.safeParse(s).success).toBe(false);
     }
   });
 });

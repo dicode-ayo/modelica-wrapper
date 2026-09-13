@@ -12,7 +12,7 @@
  * ```
  *
  * Like `getElementModifierValue` but returns the full bound expression including
- * sub-modifications. `modifier` is a dotted path TypeName; emitted bare.
+ * sub-modifications. `modifier` is a dotted path TypeName; emitted to OMC unquoted.
  */
 
 import { z } from "zod";

@@ -372,10 +372,9 @@ describe("the shape tools", () => {
   });
 
   /**
-   * The name grammar is enforced when the command is built, which is too late
-   * for the model to learn anything from. It is declared on the input schema
-   * as well so it crosses into JSON Schema — but only if the SDK's conversion
-   * carries `pattern` through, which is not ours to assume.
+   * A grammar the model only learns by failing a call teaches it nothing in
+   * time. It reaches the model as the field's JSON-Schema `pattern` instead —
+   * which depends on the SDK's zod conversion carrying `pattern` through.
    */
   it("advertise the grammar an unquoted argument is held to", async () => {
     const mcp = await connect();

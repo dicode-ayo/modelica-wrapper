@@ -28,10 +28,10 @@ import { expectBool, parse } from "../../parse.js";
 
 export const ExtendsFromInputSchema = z.strictObject({
   typeName: modelicaName.describe(
-    "Fully qualified TypeName of the child class to test (OMC parameter `className`); emitted bare to OMC.",
+    "Fully qualified TypeName of the child class to test (OMC parameter `className`); emitted to OMC unquoted.",
   ),
   baseClassName: modelicaName.describe(
-    "Fully qualified TypeName of the base class to test against; emitted bare to OMC.",
+    "Fully qualified TypeName of the base class to test against; emitted to OMC unquoted.",
   ),
 });
 export type ExtendsFromInput = z.input<typeof ExtendsFromInputSchema>;

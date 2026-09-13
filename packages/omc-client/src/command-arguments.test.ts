@@ -17,10 +17,18 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import type { CallContext } from "./_shared/callContext.js";
+import { REGISTRY } from "./registry.js";
+
 const API_DIR = join(dirname(fileURLToPath(import.meta.url)), "api");
 
 /** Atoms that carry a grammar. A field declared any other way carries none. */
-const CONSTRAINED = ["modelicaName", "modelicaExpr", "modelicaOrOmittedName"];
+const CONSTRAINED = [
+  "modelicaName",
+  "modelicaExpr",
+  "modelicaOrOmittedName",
+  "resultVariable",
+];
 
 /**
  * Fields each `_shared/inputs.ts` shape declares with a constrained atom. A
@@ -81,8 +89,10 @@ function bareFields(src: string): string[] {
       if (ref[1] !== undefined) fields.push(ref[1]);
     }
   };
-  for (const call of src.matchAll(/`[A-Za-z_$][\w$]*\([^`]*`/g)) {
-    for (const arg of call[0].matchAll(/\$\{([^}]*)\}/g)) {
+  // Every template carrying a substitution, not only the call-shaped ones: a
+  // wrapper may build an argument list in its own template and pass that.
+  for (const tpl of src.matchAll(/`[^`]*\$\{[^`]*`/g)) {
+    for (const arg of tpl[0].matchAll(/\$\{([^}]*)\}/g)) {
       push(arg[1]?.trim() ?? "", false);
     }
   }
@@ -112,7 +122,11 @@ function isConstrained(src: string, field: string): boolean {
   )
     return true;
   return Object.entries(CONSTRAINED_SHAPE_FIELDS).some(
-    ([shape, fields]) => src.includes(shape) && fields.includes(field),
+    ([shape, fields]) =>
+      fields.includes(field) &&
+      new RegExp(`InputSchema\\s*=\\s*${shape}\\b|${shape}\\.extend\\(`).test(
+        src,
+      ),
   );
 }
 
@@ -150,5 +164,64 @@ describe("a field a command emits unquoted", () => {
     // A regex that silently stopped matching would pass the assertion above
     // while checking nothing.
     expect(checked).toBeGreaterThan(150);
+  });
+});
+
+/**
+ * The two steps `invoke` takes, against the real registry entry: parse the
+ * input, then hand it to the wrapper. `client-dispatch.test.ts` pins that
+ * every method arrives here; this pins what happens once it does.
+ */
+describe("an argument that would close the command", () => {
+  const recordingContext = (): { ctx: CallContext; commands: string[] } => {
+    const commands: string[] = [];
+    return {
+      commands,
+      ctx: {
+        call: (cmd) => {
+          commands.push(cmd);
+          return Promise.resolve("true");
+        },
+        getErrorString: () => Promise.resolve({ errorString: "" }),
+      },
+    };
+  };
+
+  const INJECTION =
+    'b.p); loadString("model Injected end Injected;"); addConnection(a.p, b.p, Demo.MSD';
+
+  it("never reaches the wrapper that would build the command", () => {
+    const { ctx, commands } = recordingContext();
+    const entry = REGISTRY.addConnection;
+
+    expect(() =>
+      entry.inputSchema.parse({
+        from: "a.p",
+        to: INJECTION,
+        typeName: "Demo.MSD",
+      }),
+    ).toThrow();
+
+    expect(commands).toEqual([]);
+    expect(ctx).toBeDefined();
+  });
+
+  it("leaves the same call working when every argument is a name", async () => {
+    const { ctx, commands } = recordingContext();
+    const entry = REGISTRY.addConnection;
+
+    const input = entry.inputSchema.parse({
+      from: "a.p",
+      to: "b.p",
+      typeName: "Demo.MSD",
+    });
+    await (entry.fn as (c: CallContext, i: unknown) => Promise<unknown>)(
+      ctx,
+      input,
+    );
+
+    expect(commands).toEqual([
+      "addConnection(a.p, b.p, Demo.MSD, annotate=Line())",
+    ]);
   });
 });

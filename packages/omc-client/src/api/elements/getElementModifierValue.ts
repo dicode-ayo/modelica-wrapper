@@ -11,7 +11,7 @@
  * end getElementModifierValue;
  * ```
  *
- * `modifier` is a dotted path TypeName (e.g. `PI.k.value`); emitted bare.
+ * `modifier` is a dotted path TypeName (e.g. `PI.k.value`); emitted to OMC unquoted.
  */
 
 import { z } from "zod";

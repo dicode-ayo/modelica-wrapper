@@ -27,7 +27,7 @@ import { modelicaName } from "./fields.js";
 /** A required `TypeName` input. Used by isPackage, existClass, getInheritanceCount, etc. */
 export const TypeNameInput = z.strictObject({
   typeName: modelicaName.describe(
-    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"). Emitted to OMC unquoted, so it must be a Modelica name and nothing else — a value carrying a bracket, a separator or a quote is refused, not escaped.',
+    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller").',
   ),
 });
 export type TypeNameInput = z.input<typeof TypeNameInput>;
@@ -40,7 +40,7 @@ export const OptionalTypeNameInput = z.strictObject({
   typeName: modelicaName
     .optional()
     .describe(
-      "Fully qualified Modelica TypeName, emitted to OMC unquoted and refused unless it is a Modelica name. Omit to use the OMC-side default for this function.",
+      "Fully qualified Modelica TypeName. Omit to use the OMC-side default for this function.",
     ),
 });
 export type OptionalTypeNameInput = z.input<typeof OptionalTypeNameInput>;
@@ -52,10 +52,10 @@ export type OptionalTypeNameInput = z.input<typeof OptionalTypeNameInput>;
  */
 export const TypeNameAndModifierInput = z.strictObject({
   typeName: modelicaName.describe(
-    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"). Emitted to OMC unquoted, so it must be a Modelica name and nothing else — a value carrying a bracket, a separator or a quote is refused, not escaped.',
+    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller").',
   ),
   modifier: modelicaName.describe(
-    "Dotted modifier path within the class (e.g. `controller.k`), emitted to OMC unquoted and refused unless it is a Modelica name.",
+    "Dotted modifier path within the class (e.g. `controller.k`).",
   ),
 });
 export type TypeNameAndModifierInput = z.input<typeof TypeNameAndModifierInput>;
@@ -67,10 +67,10 @@ export type TypeNameAndModifierInput = z.input<typeof TypeNameAndModifierInput>;
  */
 export const TypeNameAndComponentNameInput = z.strictObject({
   typeName: modelicaName.describe(
-    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"). Emitted to OMC unquoted, so it must be a Modelica name and nothing else — a value carrying a bracket, a separator or a quote is refused, not escaped.',
+    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller").',
   ),
   componentName: modelicaName.describe(
-    "Component (variable) name within the class, emitted to OMC unquoted and refused unless it is a Modelica name.",
+    "Component (variable) name within the class.",
   ),
 });
 export type TypeNameAndComponentNameInput = z.input<
@@ -85,7 +85,7 @@ export type TypeNameAndComponentNameInput = z.input<
  */
 export const TypeNameAndIndexInput = z.strictObject({
   typeName: modelicaName.describe(
-    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"). Emitted to OMC unquoted, so it must be a Modelica name and nothing else — a value carrying a bracket, a separator or a quote is refused, not escaped.',
+    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller").',
   ),
   n: z
     .number()

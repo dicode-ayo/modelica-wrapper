@@ -82,7 +82,7 @@ export const ImportFMUInputSchema = z.strictObject({
     .optional()
     .default("")
     .describe(
-      "Override name for the generated wrapper class (Modelica TypeName, emitted bare); empty defers to the OMC default (derives the name from the FMU).",
+      "Override name for the generated wrapper class (Modelica TypeName, emitted to OMC unquoted); empty defers to the OMC default (derives the name from the FMU).",
     ),
 });
 export type ImportFMUInput = z.input<typeof ImportFMUInputSchema>;

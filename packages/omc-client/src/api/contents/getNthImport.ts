@@ -27,7 +27,7 @@ import { expectStringList, parse } from "../../parse.js";
 
 export const GetNthImportInputSchema = z.strictObject({
   typeName: modelicaName.describe(
-    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"); emitted bare to OMC.',
+    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"); emitted to OMC unquoted.',
   ),
   index: z
     .number()

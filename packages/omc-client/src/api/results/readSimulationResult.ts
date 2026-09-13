@@ -18,7 +18,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { modelicaName } from "../../_shared/fields.js";
+import { resultVariable } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, expectList, parse } from "../../parse.js";
@@ -28,7 +28,7 @@ export const ReadSimulationResultInputSchema = z.strictObject({
     .string()
     .describe("Path to the simulation result file (.mat / .csv / etc.)."),
   variables: z
-    .array(modelicaName)
+    .array(resultVariable)
     .describe(
       "Variable identifiers to read (dotted paths), each emitted to OMC unquoted.",
     ),

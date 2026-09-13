@@ -22,10 +22,10 @@ import { expectBool, parse } from "../../parse.js";
 
 export const ClassAnnotationExistsInputSchema = z.strictObject({
   typeName: modelicaName.describe(
-    "Fully qualified TypeName of the class to inspect (OMC parameter `className`); emitted bare to OMC.",
+    "Fully qualified TypeName of the class to inspect (OMC parameter `className`); emitted to OMC unquoted.",
   ),
   annotationName: modelicaName.describe(
-    "Name of the class annotation to look for (e.g. `Icon`, `experiment`); a TypeName, emitted bare to OMC.",
+    "Name of the class annotation to look for (e.g. `Icon`, `experiment`); a TypeName, emitted to OMC unquoted.",
   ),
 });
 export type ClassAnnotationExistsInput = z.input<

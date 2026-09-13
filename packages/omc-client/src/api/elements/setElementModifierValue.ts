@@ -25,7 +25,7 @@ import { expectBool, parse } from "../../parse.js";
 export const SetElementModifierValueInputSchema = z.strictObject({
   typeName: modelicaName.describe("Class containing the element."),
   elementName: modelicaName.describe(
-    "Dotted element path within the class (OMC `elementName`, emitted bare).",
+    "Dotted element path within the class (OMC `elementName`, emitted to OMC unquoted).",
   ),
   expr: expr.describe(
     "Modelica expression to bind to the modifier; empty clears the modifier.",

@@ -46,10 +46,15 @@ import { z } from "zod";
  * would end the argument.
  */
 const IDENT = "[A-Za-z_][A-Za-z0-9_]*";
+
+/** One unquoted Modelica identifier, whole — no dots, no subscript. */
+export const MODELICA_IDENT = new RegExp(`^${IDENT}$`);
 const QIDENT = "'(?:[^'\\\\]|\\\\.)+'";
 const SUBSCRIPT = "(?:\\[[A-Za-z0-9_,:\\s]+\\])?";
 const SEGMENT = `(?:${IDENT}|${QIDENT})${SUBSCRIPT}`;
 const MODELICA_NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
+const NAME_BODY = `${SEGMENT}(?:\\.${SEGMENT})*`;
+const RESULT_VARIABLE = new RegExp(`^(?:${NAME_BODY}|der\\(${NAME_BODY}\\))$`);
 
 /** Bracket kind opened, keyed by the character that closes it. */
 const OPENER: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
@@ -104,19 +109,33 @@ export function expressionFault(s: string): string | undefined {
 
 /**
  * A name OMC receives unquoted — a TypeName, a component reference, a modifier
- * path. Consumers override the description at the use site; the constraint is
- * not theirs to override, because it is the command grammar, not a preference.
+ * path. Consumers override the description at the use site, not the pattern:
+ * it is the command grammar rather than a preference.
  *
- * The pattern reaches an MCP client as the field's JSON-Schema `pattern`, so a
- * model sees the shape before it calls rather than after. It is the same
- * `RegExp` `bareName` enforces when the command is built: this one is the
- * early, attributable failure, that one is the control.
+ * The pattern crosses into the field's JSON Schema, so an MCP client sees the
+ * shape before it calls rather than after.
  */
 export const modelicaName = z
   .string()
+  .describe(
+    "A Modelica name, emitted to OMC unquoted: a value carrying a bracket, a separator or a quote is refused, not escaped.",
+  )
   .regex(
     MODELICA_NAME,
     'must be a Modelica name — dot-separated identifiers, each optionally subscripted (e.g. "Modelica.Blocks.Math.Gain", "pins[3].p"), or a single-quoted Q-IDENT',
+  );
+
+/**
+ * A variable as it is named in a simulation result: a cref, or a cref under
+ * `der(...)`, which is how OMC names a state derivative in the result file.
+ * `val` and `readSimulationResult` emit these unquoted, and a plot of a
+ * derivative asks for one by that name.
+ */
+export const resultVariable = z
+  .string()
+  .regex(
+    RESULT_VARIABLE,
+    'must be a result variable — a Modelica name, optionally wrapped in `der(...)` (e.g. "body.r[1]", "der(x)")',
   );
 
 /**

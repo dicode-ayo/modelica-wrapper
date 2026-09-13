@@ -10,7 +10,7 @@
  * end setParameterValue;
  * ```
  *
- * `variableName` is a dotted path TypeName emitted bare. `value` is the raw
+ * `variableName` is a dotted path TypeName emitted to OMC unquoted. `value` is the raw
  * Modelica expression (e.g. `1.5`, `{1, 2}`); wrapped in `$Code(=...)` so OMC
  * doesn't string-escape it. Empty `value` clears the binding.
  */

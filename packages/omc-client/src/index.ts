@@ -9,14 +9,14 @@
  *        const client = await OmcClient.create();
  *        const { version } = await client.getVersion();
  *
- *   2. Functional API (tree-shakable; compose your own CallContext):
+ * There is one way in. A per-function module takes a `CallContext` and builds
+ * its command from the input it is handed, trusting the schema to have run —
+ * `invoke` is what runs it. Reaching those functions directly would skip it,
+ * so they are not exported.
  *
- *        import { getVersion } from "@dicode/omc-client/api/browsing";
- *        const result = await getVersion(myCtx, {});
- *
- * Each per-function module also exports `<Fn>InputSchema`, `<Fn>OutputSchema`,
- * and the inferred `<Fn>Input`/`<Fn>Output` types for callers that want to
- * pre-validate or generate UI from the schemas.
+ * `<Fn>InputSchema`, `<Fn>OutputSchema` and the inferred `<Fn>Input`/
+ * `<Fn>Output` types are exported for callers that pre-validate or generate UI
+ * from the schemas.
  */
 
 // --- Class API ---
@@ -273,19 +273,16 @@ export {
   WriteCoordinateSystemSchema,
 } from "./api/editing/writeClassGraphics.js";
 
-// --- Functional API (re-export by category) ---
-export * as browsing from "./api/browsing/index.js";
-export * as contents from "./api/contents/index.js";
+/**
+ * The api modules that transform a model instance rather than talk to OMC.
+ * They take no `CallContext` and build no command, so nothing is skipped by
+ * calling them directly. The ten that do build commands stay unexported.
+ */
 export * as diagram from "./api/diagram/index.js";
 export * as parametersForm from "./api/parameters-form/index.js";
-export * as editing from "./api/editing/index.js";
-export * as elements from "./api/elements/index.js";
-export * as execution from "./api/execution/index.js";
-export * as library from "./api/library/index.js";
-export * as lifecycle from "./api/lifecycle/index.js";
-export * as parameters from "./api/parameters/index.js";
-export * as results from "./api/results/index.js";
-export * as solver from "./api/solver/index.js";
+
+// Types a consumer needs that only a per-function module declares.
+export type { ConvertUnitsOutput } from "./api/contents/index.js";
 
 export {
   evaluateExpression,

@@ -34,7 +34,7 @@ import { expectStringList, parse } from "../../parse.js";
 
 export const GetAllSubtypeOfInputSchema = z.strictObject({
   typeName: modelicaName.describe(
-    "Fully qualified TypeName of the base class to find subtypes of (OMC parameter `className`); emitted bare to OMC.",
+    "Fully qualified TypeName of the base class to find subtypes of (OMC parameter `className`); emitted to OMC unquoted.",
   ),
   parentClass: modelicaName
     .optional()

@@ -32,7 +32,7 @@ export const IsExtendsModifierFinalInputSchema = z.strictObject({
   // OMC's `modifierName` is a secondary TypeName arg (a member path), so it
   // keeps the OMC docs name verbatim (audit.md §2.3).
   modifierName: modelicaName.describe(
-    "Name of the modifier on the `extends` clause to inspect; emitted bare to OMC.",
+    "Name of the modifier on the `extends` clause to inspect; emitted to OMC unquoted.",
   ),
 });
 export type IsExtendsModifierFinalInput = z.input<

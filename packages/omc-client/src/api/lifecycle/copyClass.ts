@@ -30,7 +30,7 @@ import {
 
 export const CopyClassInputSchema = z.strictObject({
   source: modelicaName.describe(
-    "TypeName of the existing class to copy (OMC `className`, emitted bare).",
+    "TypeName of the existing class to copy (OMC `className`, emitted to OMC unquoted).",
   ),
   destination: z
     .string()

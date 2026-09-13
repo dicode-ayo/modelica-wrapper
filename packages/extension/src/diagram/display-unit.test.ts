@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { DiagramLayout } from "@dicode/omc-client";
-import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
+import type { ConvertUnitsOutput } from "@dicode/omc-client";
 
 import { paramOf } from "../../test-support/diagram-layout.js";
 import {

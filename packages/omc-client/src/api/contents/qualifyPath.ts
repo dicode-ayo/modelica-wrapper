@@ -34,10 +34,10 @@ import { expectString, parse } from "../../parse.js";
 
 export const QualifyPathInputSchema = z.strictObject({
   typeName: modelicaName.describe(
-    "Class scope (OMC parameter `classPath`) in which to qualify the path; emitted bare to OMC.",
+    "Class scope (OMC parameter `classPath`) in which to qualify the path; emitted to OMC unquoted.",
   ),
   path: modelicaName.describe(
-    "Short or partial TypeName to resolve within the class scope; emitted bare to OMC.",
+    "Short or partial TypeName to resolve within the class scope; emitted to OMC unquoted.",
   ),
 });
 export type QualifyPathInput = z.input<typeof QualifyPathInputSchema>;
