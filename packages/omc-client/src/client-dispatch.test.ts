@@ -14,15 +14,23 @@ import { describe, expect, it } from "vitest";
 
 const CLIENT = join(dirname(fileURLToPath(import.meta.url)), "client.ts");
 
-/** `name(input: ns.XInput): Promise<…> { return ns.x(this, input); }` */
-const DELEGATES_DIRECTLY =
-  /\n {2}(\w+)\(\s*\n?\s*input: \w+\.\w+,?\s*\n?\s*\): Promise<[^>]+> \{\s*\n\s*return \w+\.\w+\(this, input\);/g;
+/**
+ * `return <ns>.<fn>(this…)` — a wrapper reached without `invoke`.
+ *
+ * Matching the call rather than the method signature is deliberate: a default
+ * parameter, an overload or a renamed argument all change the signature, and
+ * every one of those has already hidden a method from an earlier version of
+ * this check.
+ */
+const DELEGATES_DIRECTLY = /\n\s*return (\w+)\.(\w+)\(this[,)]/g;
 
 describe("every OmcClient method taking an input", () => {
   it("reaches its wrapper through invoke, so the schema cannot be skipped", async () => {
     const src = await readFile(CLIENT, "utf8");
 
-    const bypassing = [...src.matchAll(DELEGATES_DIRECTLY)].map((m) => m[1]);
+    const bypassing = [...src.matchAll(DELEGATES_DIRECTLY)].map(
+      (m) => `${m[1]}.${m[2]}`,
+    );
 
     expect(bypassing).toEqual([]);
   });

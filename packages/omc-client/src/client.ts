@@ -18,16 +18,16 @@ import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
 import { SerialQueue } from "./queue.js";
 
-import * as browsing from "./api/browsing/index.js";
-import * as contents from "./api/contents/index.js";
-import * as editing from "./api/editing/index.js";
-import * as elements from "./api/elements/index.js";
-import * as execution from "./api/execution/index.js";
-import * as library from "./api/library/index.js";
-import * as lifecycle from "./api/lifecycle/index.js";
-import * as parameters from "./api/parameters/index.js";
-import * as results from "./api/results/index.js";
-import * as solver from "./api/solver/index.js";
+import type * as browsing from "./api/browsing/index.js";
+import type * as contents from "./api/contents/index.js";
+import type * as editing from "./api/editing/index.js";
+import type * as elements from "./api/elements/index.js";
+import type * as execution from "./api/execution/index.js";
+import type * as library from "./api/library/index.js";
+import type * as lifecycle from "./api/lifecycle/index.js";
+import type * as parameters from "./api/parameters/index.js";
+import type * as results from "./api/results/index.js";
+import type * as solver from "./api/solver/index.js";
 import {
   REGISTRY,
   type OmcFnName,
@@ -224,17 +224,17 @@ export class OmcClient implements CallContext {
   getVersion(
     input: browsing.GetVersionInput = {},
   ): Promise<browsing.GetVersionOutput> {
-    return browsing.getVersion(this, input);
+    return this.invoke("getVersion", input);
   }
 
   getModelicaPath(): Promise<browsing.GetModelicaPathOutput> {
-    return browsing.getModelicaPath(this);
+    return this.invoke("getModelicaPath", {});
   }
 
   getClassNames(
     input: browsing.GetClassNamesInput = {},
   ): Promise<browsing.GetClassNamesOutput> {
-    return browsing.getClassNames(this, input);
+    return this.invoke("getClassNames", input);
   }
 
   searchClassNames(
@@ -278,13 +278,13 @@ export class OmcClient implements CallContext {
   getErrorString(
     input: browsing.GetErrorStringInput = {},
   ): Promise<browsing.GetErrorStringOutput> {
-    return browsing.getErrorString(this, input);
+    return this.invoke("getErrorString", input);
   }
 
   getMessagesStringInternal(
     input: browsing.GetMessagesStringInternalInput = {},
   ): Promise<browsing.GetMessagesStringInternalOutput> {
-    return browsing.getMessagesStringInternal(this, input);
+    return this.invoke("getMessagesStringInternal", input);
   }
 
   existModel(
@@ -878,7 +878,7 @@ export class OmcClient implements CallContext {
   }
 
   cd(input: lifecycle.CdInput = {}): Promise<lifecycle.CdOutput> {
-    return lifecycle.cd(this, input);
+    return this.invoke("cd", input);
   }
 
   loadClassContentString(
@@ -1058,7 +1058,7 @@ export class OmcClient implements CallContext {
   getAvailableLibraries(
     input: library.GetAvailableLibrariesInput = {},
   ): Promise<library.GetAvailableLibrariesOutput> {
-    return library.getAvailableLibraries(this, input);
+    return this.invoke("getAvailableLibraries", input);
   }
 
   getAvailableLibraryVersions(
@@ -1100,25 +1100,25 @@ export class OmcClient implements CallContext {
   updatePackageIndex(
     input: library.UpdatePackageIndexInput = {},
   ): Promise<library.UpdatePackageIndexOutput> {
-    return library.updatePackageIndex(this, input);
+    return this.invoke("updatePackageIndex", input);
   }
 
   upgradeInstalledPackages(
     input: library.UpgradeInstalledPackagesInput = {},
   ): Promise<library.UpgradeInstalledPackagesOutput> {
-    return library.upgradeInstalledPackages(this, input);
+    return this.invoke("upgradeInstalledPackages", input);
   }
 
   getLoadedLibraries(
     input: library.GetLoadedLibrariesInput = {},
   ): Promise<library.GetLoadedLibrariesOutput> {
-    return library.getLoadedLibraries(this, input);
+    return this.invoke("getLoadedLibraries", input);
   }
 
   getPackages(
     input: library.GetPackagesInput = {},
   ): Promise<library.GetPackagesOutput> {
-    return library.getPackages(this, input);
+    return this.invoke("getPackages", input);
   }
 
   loadFiles(input: library.LoadFilesInput): Promise<library.LoadFilesOutput> {
@@ -1148,31 +1148,31 @@ export class OmcClient implements CallContext {
   getMatchingAlgorithm(
     input: solver.GetMatchingAlgorithmInput = {},
   ): Promise<solver.GetMatchingAlgorithmOutput> {
-    return solver.getMatchingAlgorithm(this, input);
+    return this.invoke("getMatchingAlgorithm", input);
   }
 
   getAvailableMatchingAlgorithms(
     input: solver.GetAvailableMatchingAlgorithmsInput = {},
   ): Promise<solver.GetAvailableMatchingAlgorithmsOutput> {
-    return solver.getAvailableMatchingAlgorithms(this, input);
+    return this.invoke("getAvailableMatchingAlgorithms", input);
   }
 
   getIndexReductionMethod(
     input: solver.GetIndexReductionMethodInput = {},
   ): Promise<solver.GetIndexReductionMethodOutput> {
-    return solver.getIndexReductionMethod(this, input);
+    return this.invoke("getIndexReductionMethod", input);
   }
 
   getAvailableIndexReductionMethods(
     input: solver.GetAvailableIndexReductionMethodsInput = {},
   ): Promise<solver.GetAvailableIndexReductionMethodsOutput> {
-    return solver.getAvailableIndexReductionMethods(this, input);
+    return this.invoke("getAvailableIndexReductionMethods", input);
   }
 
   getAvailableTearingMethods(
     input: solver.GetAvailableTearingMethodsInput = {},
   ): Promise<solver.GetAvailableTearingMethodsOutput> {
-    return solver.getAvailableTearingMethods(this, input);
+    return this.invoke("getAvailableTearingMethods", input);
   }
 
   // === Editing =========================================================
@@ -1386,7 +1386,7 @@ export class OmcClient implements CallContext {
   closeSimulationResultFile(
     input: results.CloseSimulationResultFileInput = {},
   ): Promise<results.CloseSimulationResultFileOutput> {
-    return results.closeSimulationResultFile(this, input);
+    return this.invoke("closeSimulationResultFile", input);
   }
 
   readSimulationResult(
