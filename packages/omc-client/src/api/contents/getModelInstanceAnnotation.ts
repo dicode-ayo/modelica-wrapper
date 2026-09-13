@@ -23,11 +23,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import {
-  bareName,
-  mlBool,
-  quoteListOrFillEmpty,
-} from "../../_shared/format.js";
+import { mlBool, quoteListOrFillEmpty } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
   ModelInstanceAnnotationSchema,
@@ -76,7 +72,7 @@ export async function getModelInstanceAnnotation(
   const filter = input.filter ?? [];
   const prettyPrint = input.prettyPrint ?? false;
   const raw = await ctx.call(
-    `getModelInstanceAnnotation(${bareName(input.typeName)}, ${quoteListOrFillEmpty(filter)}, ${mlBool(prettyPrint)})`,
+    `getModelInstanceAnnotation(${input.typeName}, ${quoteListOrFillEmpty(filter)}, ${mlBool(prettyPrint)})`,
   );
   const json = expectString(parse(raw));
   const parsed: unknown = JSON.parse(json);

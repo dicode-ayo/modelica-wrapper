@@ -17,7 +17,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName, num } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
@@ -52,7 +51,7 @@ export async function getNthAnnotationString(
   input: GetNthAnnotationStringInput,
 ): Promise<GetNthAnnotationStringOutput> {
   const raw = await ctx.call(
-    `getNthAnnotationString(${bareName(input.typeName)}, ${num(input.index)})`,
+    `getNthAnnotationString(${input.typeName}, ${input.index})`,
   );
   return parseOutput(
     GetNthAnnotationStringOutputSchema,

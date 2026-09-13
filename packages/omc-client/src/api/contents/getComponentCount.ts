@@ -17,7 +17,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectInt, parse } from "../../parse.js";
@@ -44,7 +43,7 @@ export async function getComponentCount(
   ctx: CallContext,
   input: GetComponentCountInput,
 ): Promise<GetComponentCountOutput> {
-  const raw = await ctx.call(`getComponentCount(${bareName(input.typeName)})`);
+  const raw = await ctx.call(`getComponentCount(${input.typeName})`);
   return parseOutput(
     GetComponentCountOutputSchema,
     { count: expectInt(parse(raw)) },

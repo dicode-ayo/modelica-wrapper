@@ -21,7 +21,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName, quote } from "../../_shared/format.js";
+import { quote } from "../../_shared/format.js";
 import type { OmcCommand } from "../../commands.js";
 import {
   parseMutationSuccess,
@@ -66,8 +66,8 @@ export async function copyClass(
   const within = input.within ?? "";
   const cmd: OmcCommand =
     within === ""
-      ? `copyClass(${bareName(input.source)}, ${quote(input.destination)})`
-      : `copyClass(${bareName(input.source)}, ${quote(input.destination)}, ${bareName(within)})`;
+      ? `copyClass(${input.source}, ${quote(input.destination)})`
+      : `copyClass(${input.source}, ${quote(input.destination)}, ${within})`;
   const raw = await ctx.call(cmd);
   return parseOutput(
     CopyClassOutputSchema,

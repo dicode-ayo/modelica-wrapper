@@ -23,7 +23,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
@@ -56,9 +55,7 @@ export async function getConversionsFromVersions(
   ctx: CallContext,
   input: GetConversionsFromVersionsInput,
 ): Promise<GetConversionsFromVersionsOutput> {
-  const raw = await ctx.call(
-    `getConversionsFromVersions(${bareName(input.typeName)})`,
-  );
+  const raw = await ctx.call(`getConversionsFromVersions(${input.typeName})`);
   // OMC returns a paren-tuple `(withoutConversion, withConversion)`.
   const tuple = expectList(parse(raw));
   if (tuple.length !== 2) {

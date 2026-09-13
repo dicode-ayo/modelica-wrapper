@@ -8,7 +8,6 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -34,7 +33,7 @@ export async function deleteComponent(
   input: DeleteComponentInput,
 ): Promise<DeleteComponentOutput> {
   const raw = await ctx.call(
-    `deleteComponent(${bareName(input.componentName)}, ${bareName(input.typeName)})`,
+    `deleteComponent(${input.componentName}, ${input.typeName})`,
   );
   return parseOutput(
     DeleteComponentOutputSchema,

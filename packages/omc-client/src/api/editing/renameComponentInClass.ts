@@ -23,7 +23,6 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
@@ -53,7 +52,7 @@ export async function renameComponentInClass(
   input: RenameComponentInClassInput,
 ): Promise<RenameComponentInClassOutput> {
   const raw = await ctx.call(
-    `renameComponentInClass(${bareName(input.typeName)}, ${bareName(input.oldName)}, ${bareName(input.newName)})`,
+    `renameComponentInClass(${input.typeName}, ${input.oldName}, ${input.newName})`,
   );
   return parseOutput(
     RenameComponentInClassOutputSchema,

@@ -26,7 +26,6 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName, num } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, asInt, expectList, parse, type Value } from "../../parse.js";
 
@@ -91,7 +90,7 @@ export async function getSimulationOptions(
   input: GetSimulationOptionsInput,
 ): Promise<GetSimulationOptionsOutput> {
   const raw = await ctx.call(
-    `getSimulationOptions(${bareName(input.typeName)}, ${num(input.defaultStartTime ?? 0.0)}, ${num(input.defaultStopTime ?? 1.0)}, ${num(input.defaultTolerance ?? 1e-6)}, ${num(input.defaultNumberOfIntervals ?? 500)}, ${num(input.defaultInterval ?? 0.0)})`,
+    `getSimulationOptions(${input.typeName}, ${input.defaultStartTime ?? 0.0}, ${input.defaultStopTime ?? 1.0}, ${input.defaultTolerance ?? 1e-6}, ${input.defaultNumberOfIntervals ?? 500}, ${input.defaultInterval ?? 0.0})`,
   );
   const items = expectList(parse(raw));
   if (items.length < 5) {

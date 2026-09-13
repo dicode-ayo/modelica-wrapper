@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { CallContext } from "./callContext.js";
-import { addConnection } from "../api/editing/addConnection.js";
-import { bareExpr, bareName } from "./format.js";
+import { modelicaExpr, modelicaName } from "./fields.js";
+import { expressionFault } from "./format.js";
 
-describe("bareName", () => {
+describe("the name a field is held to", () => {
   it("accepts the shapes a cref reaching OMC actually carries", () => {
     for (const s of [
       "Gain",
@@ -16,7 +15,7 @@ describe("bareName", () => {
       "'has.a.dot'",
       "'quoted )'",
     ]) {
-      expect(bareName(s)).toBe(s);
+      expect(modelicaName.safeParse(s).success).toBe(true);
     }
   });
 
@@ -30,12 +29,12 @@ describe("bareName", () => {
       "a b",
       "a.'unterminated",
     ]) {
-      expect(() => bareName(s)).toThrow(/not a Modelica name/);
+      expect(modelicaName.safeParse(s).success).toBe(false);
     }
   });
 });
 
-describe("bareExpr", () => {
+describe("the expression a field is held to", () => {
   it("accepts a self-contained expression", () => {
     for (const s of [
       "",
@@ -44,40 +43,24 @@ describe("bareExpr", () => {
       "{1, 2}",
       "[1, 2; 3, 4]",
     ]) {
-      expect(bareExpr(s)).toBe(s);
+      expect(expressionFault(s)).toBeUndefined();
+      expect(modelicaExpr.safeParse(s).success).toBe(true);
     }
   });
 
-  it("refuses an expression that leaves its argument position", () => {
-    for (const s of [
-      'Placement()); loadString("model X end X;"); addComponent(a, B, C, annotate=Placement(',
-      "Line(), extraArgument",
-      "Line(",
-      'Line(color = "unterminated',
-      "Line() // the rest of the command is now a comment",
-    ]) {
-      expect(() => bareExpr(s)).toThrow(/cannot be sent to OMC/);
+  it("names why an expression would leave its argument position", () => {
+    for (const [s, why] of [
+      [
+        'Placement()); loadString("model X end X;"); addComponent(a, B, C, annotate=Placement(',
+        "closes a bracket it did not open",
+      ],
+      ["Line(), extraArgument", "separates arguments at the top level"],
+      ["Line(", "leaves a bracket open"],
+      ['Line(color = "unterminated', "leaves a string literal open"],
+      ["Line() // rest of the command", "comments out the rest of the command"],
+    ] as const) {
+      expect(expressionFault(s)).toBe(why);
+      expect(modelicaExpr.safeParse(s).success).toBe(false);
     }
-  });
-});
-
-describe("a wrapper's arguments", () => {
-  it("refuses a connector reference that would close the call", async () => {
-    const calls: string[] = [];
-    const ctx: CallContext = {
-      call: (cmd) => {
-        calls.push(cmd);
-        return Promise.resolve("true");
-      },
-      getErrorString: () => Promise.resolve({ errorString: "" }),
-    };
-    await expect(
-      addConnection(ctx, {
-        from: "a.p",
-        to: 'b.p); loadString("model Injected end Injected;"); addConnection(a.p, b.p, Demo.MSD',
-        typeName: "Demo.MSD",
-      }),
-    ).rejects.toThrow(/not a Modelica name/);
-    expect(calls).toEqual([]);
   });
 });

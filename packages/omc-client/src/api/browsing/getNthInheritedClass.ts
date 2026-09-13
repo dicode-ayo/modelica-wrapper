@@ -16,7 +16,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName, num } from "../../_shared/format.js";
 import { TypeNameAndIndexInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
@@ -45,7 +44,7 @@ export async function getNthInheritedClass(
   input: GetNthInheritedClassInput,
 ): Promise<GetNthInheritedClassOutput> {
   const raw = await ctx.call(
-    `getNthInheritedClass(${bareName(input.typeName)}, ${num(input.n)})`,
+    `getNthInheritedClass(${input.typeName}, ${input.n})`,
   );
   return parseOutput(
     GetNthInheritedClassOutputSchema,

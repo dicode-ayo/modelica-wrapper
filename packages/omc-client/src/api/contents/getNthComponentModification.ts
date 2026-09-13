@@ -20,7 +20,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName, num } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
@@ -54,7 +53,7 @@ export async function getNthComponentModification(
   input: GetNthComponentModificationInput,
 ): Promise<GetNthComponentModificationOutput> {
   const raw = await ctx.call(
-    `getNthComponentModification(${bareName(input.typeName)}, ${num(input.n)})`,
+    `getNthComponentModification(${input.typeName}, ${input.n})`,
   );
   return parseOutput(
     GetNthComponentModificationOutputSchema,

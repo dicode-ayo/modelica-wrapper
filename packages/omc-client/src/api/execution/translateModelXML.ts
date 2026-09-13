@@ -7,7 +7,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
@@ -33,7 +32,7 @@ export async function translateModelXML(
   ctx: CallContext,
   input: TranslateModelXMLInput,
 ): Promise<TranslateModelXMLOutput> {
-  const raw = await ctx.call(`translateModelXML(${bareName(input.typeName)})`);
+  const raw = await ctx.call(`translateModelXML(${input.typeName})`);
   return parseOutput(
     TranslateModelXMLOutputSchema,
     { generatedFileName: expectString(parse(raw)) },

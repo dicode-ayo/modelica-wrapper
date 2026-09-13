@@ -10,7 +10,6 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaExpr, modelicaName } from "../../_shared/fields.js";
-import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -64,11 +63,11 @@ export async function addComponent(
   ctx: CallContext,
   input: AddComponentInput,
 ): Promise<AddComponentOutput> {
-  const annotation = bareExpr(input.annotation ?? "");
+  const annotation = input.annotation ?? "";
   const ann =
     annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;
   const raw = await ctx.call(
-    `addComponent(${bareName(input.componentName)}, ${bareName(input.componentClass)}, ${bareName(input.intoTypeName)}, ${ann})`,
+    `addComponent(${input.componentName}, ${input.componentClass}, ${input.intoTypeName}, ${ann})`,
   );
   return parseOutput(
     AddComponentOutputSchema,

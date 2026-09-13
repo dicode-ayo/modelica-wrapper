@@ -19,7 +19,6 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaExpr, modelicaName } from "../../_shared/fields.js";
-import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -49,10 +48,9 @@ export async function setParameterValue(
   ctx: CallContext,
   input: SetParameterValueInput,
 ): Promise<SetParameterValueOutput> {
-  const codeArg =
-    input.value === "" ? "$Code(=)" : `$Code(=${bareExpr(input.value)})`;
+  const codeArg = input.value === "" ? "$Code(=)" : `$Code(=${input.value})`;
   const raw = await ctx.call(
-    `setParameterValue(${bareName(input.typeName)}, ${bareName(input.variableName)}, ${codeArg})`,
+    `setParameterValue(${input.typeName}, ${input.variableName}, ${codeArg})`,
   );
   return parseOutput(
     SetParameterValueOutputSchema,

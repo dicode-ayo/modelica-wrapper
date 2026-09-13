@@ -9,7 +9,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
@@ -35,7 +34,7 @@ export async function instantiateModel(
   ctx: CallContext,
   input: InstantiateModelInput,
 ): Promise<InstantiateModelOutput> {
-  const raw = await ctx.call(`instantiateModel(${bareName(input.typeName)})`);
+  const raw = await ctx.call(`instantiateModel(${input.typeName})`);
   return parseOutput(
     InstantiateModelOutputSchema,
     { flatSource: expectString(parse(raw)) },

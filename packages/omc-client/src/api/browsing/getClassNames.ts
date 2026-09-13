@@ -23,7 +23,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaOrOmittedName } from "../../_shared/fields.js";
-import { bareName, mlBool } from "../../_shared/format.js";
+import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 import type { OmcCommand } from "../../commands.js";
@@ -97,7 +97,7 @@ export async function getClassNames(
   const cmd: OmcCommand =
     input.typeName === undefined || input.typeName === ""
       ? `getClassNames(${flags})`
-      : `getClassNames(${bareName(input.typeName)}, ${flags})`;
+      : `getClassNames(${input.typeName}, ${flags})`;
   const raw = await ctx.call(cmd);
   return parseOutput(
     GetClassNamesOutputSchema,

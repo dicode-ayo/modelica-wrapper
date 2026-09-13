@@ -17,7 +17,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName, mlBool, quote } from "../../_shared/format.js";
+import { mlBool, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -57,7 +57,7 @@ export async function installPackage(
   const version = input.version ?? "";
   const exactMatch = input.exactMatch ?? false;
   const raw = await ctx.call(
-    `installPackage(${bareName(input.typeName)}, ${quote(version)}, ${mlBool(exactMatch)})`,
+    `installPackage(${input.typeName}, ${quote(version)}, ${mlBool(exactMatch)})`,
   );
   return parseOutput(
     InstallPackageOutputSchema,

@@ -17,7 +17,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName, mlBool } from "../../_shared/format.js";
+import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
@@ -48,7 +48,7 @@ export async function getElements(
 ): Promise<GetElementsOutput> {
   const useQuotes = input.useQuotes ?? false;
   const raw = await ctx.call(
-    `getElements(${bareName(input.typeName)}, useQuotes=${mlBool(useQuotes)})`,
+    `getElements(${input.typeName}, useQuotes=${mlBool(useQuotes)})`,
   );
   return parseOutput(
     GetElementsOutputSchema,

@@ -14,7 +14,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -33,7 +32,7 @@ export async function isClass(
   ctx: CallContext,
   input: IsClassInput,
 ): Promise<IsClassOutput> {
-  const raw = await ctx.call(`isClass(${bareName(input.typeName)})`);
+  const raw = await ctx.call(`isClass(${input.typeName})`);
   return parseOutput(
     IsClassOutputSchema,
     { b: expectBool(parse(raw)) },

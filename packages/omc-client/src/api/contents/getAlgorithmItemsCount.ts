@@ -16,7 +16,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectInt, parse } from "../../parse.js";
@@ -45,9 +44,7 @@ export async function getAlgorithmItemsCount(
   ctx: CallContext,
   input: GetAlgorithmItemsCountInput,
 ): Promise<GetAlgorithmItemsCountOutput> {
-  const raw = await ctx.call(
-    `getAlgorithmItemsCount(${bareName(input.typeName)})`,
-  );
+  const raw = await ctx.call(`getAlgorithmItemsCount(${input.typeName})`);
   return parseOutput(
     GetAlgorithmItemsCountOutputSchema,
     { count: expectInt(parse(raw)) },

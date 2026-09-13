@@ -17,7 +17,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectInt, parse } from "../../parse.js";
@@ -46,9 +45,7 @@ export async function getInitialEquationItemsCount(
   ctx: CallContext,
   input: GetInitialEquationItemsCountInput,
 ): Promise<GetInitialEquationItemsCountOutput> {
-  const raw = await ctx.call(
-    `getInitialEquationItemsCount(${bareName(input.typeName)})`,
-  );
+  const raw = await ctx.call(`getInitialEquationItemsCount(${input.typeName})`);
   return parseOutput(
     GetInitialEquationItemsCountOutputSchema,
     { count: expectInt(parse(raw)) },

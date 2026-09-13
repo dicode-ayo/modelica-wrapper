@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName, mlBool, num, quote } from "../../_shared/format.js";
+import { mlBool, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -52,7 +52,7 @@ export async function deleteTransition(
   input: DeleteTransitionInput,
 ): Promise<DeleteTransitionOutput> {
   const raw = await ctx.call(
-    `deleteTransition(${bareName(input.typeName)}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.condition)}, ${mlBool(input.immediate)}, ${mlBool(input.reset)}, ${mlBool(input.synchronize)}, ${num(input.priority)})`,
+    `deleteTransition(${input.typeName}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.condition)}, ${mlBool(input.immediate)}, ${mlBool(input.reset)}, ${mlBool(input.synchronize)}, ${input.priority})`,
   );
   return parseOutput(
     DeleteTransitionOutputSchema,

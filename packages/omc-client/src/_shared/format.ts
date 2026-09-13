@@ -1,6 +1,11 @@
 /**
  * Modelica command-string formatting helpers used by API functions to build
  * the `OmcCommand` strings sent over the ZMQ transport.
+ *
+ * `quote` defends a string argument by escaping it. An argument OMC wants
+ * unquoted cannot be defended that way, so the grammar it must satisfy lives
+ * here too — `MODELICA_NAME` and `expressionFault` — and `_shared/fields.ts`
+ * enforces them on the input schemas, which every call is parsed against.
  */
 
 /** Wrap s as a Modelica string literal, escaping the necessary characters. */
@@ -64,21 +69,6 @@ export function mlBool(b: boolean): string {
 }
 
 /**
- * Render a numeric argument.
- *
- * `NaN` and the infinities stringify to identifiers OMC resolves as names,
- * so they reach the parser as a command that is not the one asked for.
- */
-export function num(n: number): string {
-  if (!Number.isFinite(n)) {
-    throw new Error(
-      `not a finite number, so OMC would read it as a name: ${n}`,
-    );
-  }
-  return `${n}`;
-}
-
-/**
  * Modelica name grammar, as OMC's scripting parser reads an argument emitted
  * without quotes: dot-separated segments, each an IDENT or a Q-IDENT, each
  * optionally subscripted.
@@ -94,50 +84,18 @@ const SUBSCRIPT = "(?:\\[[0-9,:\\s]+\\])?";
 const SEGMENT = `(?:${IDENT}|${QIDENT})${SUBSCRIPT}`;
 export const MODELICA_NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
 
-/**
- * Return `s` if it is a Modelica name, else throw.
- *
- * OMC wants TypeName and component-reference arguments unquoted, so `quote`
- * cannot defend them: whatever they contain reaches the parser as command
- * text, and a `)` in one closes the call and starts another.
- */
-export function bareName(s: string): string {
-  if (!MODELICA_NAME.test(s)) {
-    throw new Error(
-      `not a Modelica name, so it cannot be sent to OMC unquoted: ${JSON.stringify(s)}`,
-    );
-  }
-  return s;
-}
-
 /** Bracket kind opened, keyed by the character that closes it. */
 const OPENER: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
-
-/**
- * Return `s` if it is a self-contained Modelica expression, else throw.
- *
- * Annotation and modifier-value arguments are arbitrary expressions, so no
- * grammar as narrow as {@link bareName} fits them. What they must not do is
- * leave the argument position they are interpolated into: brackets stay
- * balanced, and a separator that would end the argument or the call cannot
- * appear outside a string literal.
- */
-export function bareExpr(s: string): string {
-  const fault = expressionFault(s);
-  if (fault !== undefined) {
-    throw new Error(
-      `${fault}, so it cannot be sent to OMC as a command argument: ${JSON.stringify(s)}`,
-    );
-  }
-  return s;
-}
 
 /**
  * Why `s` would leave the argument position it is interpolated into, or
  * `undefined` if it stays put.
  *
- * Split out from {@link bareExpr} so the input schemas can report the same
- * fault to a caller before the call is built, rather than re-deriving the rule.
+ * An annotation or modifier value is an arbitrary expression, so no pattern as
+ * narrow as {@link MODELICA_NAME} fits it. What it must not do is leave the
+ * argument position it is interpolated into: brackets stay balanced, and a
+ * separator or comment marker that would end the argument or the call cannot
+ * appear outside a string literal.
  */
 export function expressionFault(s: string): string | undefined {
   let fault: string | undefined;

@@ -1,14 +1,14 @@
 /**
  * A wrapper builds its OMC command by interpolating arguments into a template
  * string, so an argument carrying a `)` or a `;` closes the call and starts
- * another (issue #656). `quote`, `bareName` and `bareExpr` each close that for
- * one argument kind, but nothing stops the next wrapper from interpolating an
- * input field raw — which is how all 155 of them came to.
+ * another (issue #656). What stops it is the field's schema: `modelicaName`
+ * and `modelicaExpr` refuse a value that would not stay inside its argument,
+ * and every call is parsed against the schema on its way through `invoke`.
  *
- * So the sources are read back: no command template names an input field
- * except through a formatter. Every template shaped like a call is scanned,
- * not only the ones inline in `ctx.call(`, because a wrapper is free to build
- * its command into a variable first — four of them do.
+ * Nothing in a wrapper ties the two together — the template is one region of
+ * the file and the schema is another, and a field declared `z.string()` still
+ * compiles. So the sources are read back: a field a command emits unquoted is
+ * declared with a constrained atom.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -19,25 +19,59 @@ import { describe, expect, it } from "vitest";
 
 const API_DIR = join(dirname(fileURLToPath(import.meta.url)), "api");
 
-const FORMATTERS = [
-  "quote",
-  "quoteList",
-  "quoteListOrFillEmpty",
-  "mlBool",
-  "bareName",
-  "bareExpr",
+/** Atoms that carry a grammar. A field declared any other way carries none. */
+const CONSTRAINED = ["modelicaName", "modelicaExpr", "modelicaOrOmittedName"];
+
+/** Field-bearing atoms from `_shared/inputs.ts`, whose fields are constrained. */
+const CONSTRAINED_SHAPES = [
+  "TypeNameInput",
+  "OptionalTypeNameInput",
+  "TypeNameAndModifierInput",
+  "TypeNameAndComponentNameInput",
+  "TypeNameAndIndexInput",
 ];
 
-/** `${...}` substitutions inside every command-shaped template in `src`. */
-function callArguments(src: string): string[] {
-  const args: string[] = [];
+/** Atoms in `_shared/fields.ts` that are themselves built on a constrained one. */
+const CONSTRAINED_FIELDS = [
+  "typeNameOfConnection",
+  "typeNameOfExtends",
+  "extendsBase",
+  "connectionAnnotation",
+  "expr",
+];
+
+/** `input.<field>` interpolated bare into a command-shaped template. */
+function bareFields(src: string): string[] {
+  const fields: string[] = [];
   for (const call of src.matchAll(/`[A-Za-z_$][\w$]*\([^`]*`/g)) {
     for (const arg of call[0].matchAll(/\$\{([^}]*)\}/g)) {
-      const expr = arg[1]?.trim();
-      if (expr !== undefined) args.push(expr);
+      const expr = arg[1]?.trim() ?? "";
+      const m = /^input\.(\w+)$/.exec(expr);
+      if (m?.[1] !== undefined) fields.push(m[1]);
     }
   }
-  return args;
+  return fields;
+}
+
+/**
+ * True when `field` is declared through something that carries a grammar.
+ *
+ * `z.number()` counts: a number cannot produce a bracket or a separator, so it
+ * stays inside its argument whatever its value.
+ */
+function isConstrained(src: string, field: string): boolean {
+  const declared = new RegExp(
+    `\\b${field}:\\s*(${[...CONSTRAINED, ...CONSTRAINED_FIELDS].join("|")})\\b`,
+  );
+  if (declared.test(src)) return true;
+  if (new RegExp(`\\b${field}:\\s*z\\s*\\.number\\(\\)`).test(src)) return true;
+  // `foo,` shorthand for an atom of the same name, e.g. `expr,`
+  if (
+    CONSTRAINED_FIELDS.includes(field) &&
+    new RegExp(`^\\s+${field},$`, "m").test(src)
+  )
+    return true;
+  return CONSTRAINED_SHAPES.some((shape) => src.includes(shape));
 }
 
 async function wrapperSources(): Promise<[string, string][]> {
@@ -59,16 +93,20 @@ async function wrapperSources(): Promise<[string, string][]> {
   );
 }
 
-describe("every OMC command argument", () => {
-  it("passes an input field through a formatter before interpolating it", async () => {
-    const raw: string[] = [];
+describe("a field a command emits unquoted", () => {
+  it("is declared with an atom that constrains it", async () => {
+    const unconstrained: string[] = [];
+    let checked = 0;
     for (const [file, src] of await wrapperSources()) {
-      for (const expr of callArguments(src)) {
-        if (!expr.startsWith("input.")) continue;
-        if (FORMATTERS.some((f) => expr.startsWith(`${f}(`))) continue;
-        raw.push(`${file}: \${${expr}}`);
+      for (const field of bareFields(src)) {
+        checked += 1;
+        if (!isConstrained(src, field)) unconstrained.push(`${file}: ${field}`);
       }
     }
-    expect(raw).toEqual([]);
+
+    expect(unconstrained).toEqual([]);
+    // A regex that silently stopped matching would pass the assertion above
+    // while checking nothing.
+    expect(checked).toBeGreaterThan(150);
   });
 });

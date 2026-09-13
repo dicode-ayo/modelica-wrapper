@@ -17,7 +17,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameAndModifierInput } from "../../_shared/inputs.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -41,7 +40,7 @@ export async function getElementModifierValue(
   input: GetElementModifierValueInput,
 ): Promise<GetElementModifierValueOutput> {
   const raw = await ctx.call(
-    `getElementModifierValue(${bareName(input.typeName)}, ${bareName(input.modifier)})`,
+    `getElementModifierValue(${input.typeName}, ${input.modifier})`,
   );
   return parseOutput(
     GetElementModifierValueOutputSchema,

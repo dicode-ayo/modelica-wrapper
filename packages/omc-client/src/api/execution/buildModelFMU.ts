@@ -22,7 +22,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName, mlBool, quote, quoteList } from "../../_shared/format.js";
+import { mlBool, quote, quoteList } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
@@ -78,7 +78,7 @@ export async function buildModelFMU(
 ): Promise<BuildModelFMUOutput> {
   const platforms = input.platforms ?? ["static"];
   const raw = await ctx.call(
-    `buildModelFMU(${bareName(input.typeName)}, version=${quote(input.version ?? "2.0")}, fmuType=${quote(input.fmuType ?? "me")}, fileNamePrefix=${quote(input.fileNamePrefix ?? "<default>")}, platforms=${quoteList(platforms)}, includeResources=${mlBool(input.includeResources ?? false)})`,
+    `buildModelFMU(${input.typeName}, version=${quote(input.version ?? "2.0")}, fmuType=${quote(input.fmuType ?? "me")}, fileNamePrefix=${quote(input.fileNamePrefix ?? "<default>")}, platforms=${quoteList(platforms)}, includeResources=${mlBool(input.includeResources ?? false)})`,
   );
   return parseOutput(
     BuildModelFMUOutputSchema,

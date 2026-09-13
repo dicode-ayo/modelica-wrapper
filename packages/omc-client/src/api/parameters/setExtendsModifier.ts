@@ -30,7 +30,6 @@ import {
   modelicaExpr,
   typeNameOfExtends,
 } from "../../_shared/fields.js";
-import { bareExpr, bareName } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -61,9 +60,9 @@ export async function setExtendsModifier(
   input: SetExtendsModifierInput,
 ): Promise<SetExtendsModifierOutput> {
   const codeArg =
-    input.modifier === "" ? "$Code(())" : `$Code(${bareExpr(input.modifier)})`;
+    input.modifier === "" ? "$Code(())" : `$Code(${input.modifier})`;
   const raw = await ctx.call(
-    `setExtendsModifier(${bareName(input.typeName)}, ${bareName(input.extendsName)}, ${codeArg})`,
+    `setExtendsModifier(${input.typeName}, ${input.extendsName}, ${codeArg})`,
   );
   return parseOutput(
     SetExtendsModifierOutputSchema,

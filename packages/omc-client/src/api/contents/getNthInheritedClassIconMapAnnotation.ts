@@ -15,7 +15,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName, num } from "../../_shared/format.js";
 import { TypeNameAndIndexInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
@@ -44,7 +43,7 @@ export async function getNthInheritedClassIconMapAnnotation(
   input: GetNthInheritedClassIconMapAnnotationInput,
 ): Promise<GetNthInheritedClassIconMapAnnotationOutput> {
   const raw = await ctx.call(
-    `getNthInheritedClassIconMapAnnotation(${bareName(input.typeName)}, ${num(input.n)})`,
+    `getNthInheritedClassIconMapAnnotation(${input.typeName}, ${input.n})`,
   );
   return parseOutput(
     GetNthInheritedClassIconMapAnnotationOutputSchema,

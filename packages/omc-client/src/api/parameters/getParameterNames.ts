@@ -14,7 +14,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
@@ -40,7 +39,7 @@ export async function getParameterNames(
   ctx: CallContext,
   input: GetParameterNamesInput,
 ): Promise<GetParameterNamesOutput> {
-  const raw = await ctx.call(`getParameterNames(${bareName(input.typeName)})`);
+  const raw = await ctx.call(`getParameterNames(${input.typeName})`);
   return parseOutput(
     GetParameterNamesOutputSchema,
     { parameters: expectStringList(parse(raw)) },

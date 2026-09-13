@@ -16,7 +16,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { OptionalTypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
@@ -44,7 +43,7 @@ export async function getVersion(
   const cmd: OmcCommand =
     input.typeName === undefined
       ? "getVersion()"
-      : `getVersion(${bareName(input.typeName)})`;
+      : `getVersion(${input.typeName})`;
   const raw = await ctx.call(cmd);
   return parseOutput(
     GetVersionOutputSchema,

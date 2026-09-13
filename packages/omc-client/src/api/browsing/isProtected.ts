@@ -21,7 +21,6 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { bareName } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { BooleanResultOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -41,7 +40,7 @@ export async function isProtected(
   input: IsProtectedInput,
 ): Promise<IsProtectedOutput> {
   const raw = await ctx.call(
-    `isProtected(${bareName(input.componentName)}, ${bareName(input.typeName)})`,
+    `isProtected(${input.componentName}, ${input.typeName})`,
   );
   return parseOutput(
     IsProtectedOutputSchema,

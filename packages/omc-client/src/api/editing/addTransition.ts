@@ -14,13 +14,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { connectionAnnotation, modelicaName } from "../../_shared/fields.js";
-import {
-  bareExpr,
-  bareName,
-  mlBool,
-  num,
-  quote,
-} from "../../_shared/format.js";
+import { mlBool, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -60,10 +54,10 @@ export async function addTransition(
   ctx: CallContext,
   input: AddTransitionInput,
 ): Promise<AddTransitionOutput> {
-  const annotation = bareExpr(input.annotation ?? "");
+  const annotation = input.annotation ?? "";
   const ann = annotation === "" ? "annotate=Line()" : `annotate=${annotation}`;
   const raw = await ctx.call(
-    `addTransition(${bareName(input.typeName)}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.condition)}, ${mlBool(input.immediate)}, ${mlBool(input.reset)}, ${mlBool(input.synchronize)}, ${num(input.priority)}, ${ann})`,
+    `addTransition(${input.typeName}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.condition)}, ${mlBool(input.immediate)}, ${mlBool(input.reset)}, ${mlBool(input.synchronize)}, ${input.priority}, ${ann})`,
   );
   return parseOutput(
     AddTransitionOutputSchema,

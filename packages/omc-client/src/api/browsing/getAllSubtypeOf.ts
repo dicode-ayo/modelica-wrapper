@@ -28,7 +28,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { modelicaName } from "../../_shared/fields.js";
-import { bareName, mlBool } from "../../_shared/format.js";
+import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
@@ -77,12 +77,12 @@ export async function getAllSubtypeOf(
   ctx: CallContext,
   input: GetAllSubtypeOfInput,
 ): Promise<GetAllSubtypeOfOutput> {
-  const parentClass = bareName(input.parentClass ?? "AllLoadedClasses");
+  const parentClass = input.parentClass ?? "AllLoadedClasses";
   const qualified = input.qualified ?? false;
   const includePartial = input.includePartial ?? false;
   const sort = input.sort ?? false;
   const raw = await ctx.call(
-    `getAllSubtypeOf(${bareName(input.typeName)}, ${parentClass}, ${mlBool(qualified)}, ${mlBool(includePartial)}, ${mlBool(sort)})`,
+    `getAllSubtypeOf(${input.typeName}, ${parentClass}, ${mlBool(qualified)}, ${mlBool(includePartial)}, ${mlBool(sort)})`,
   );
   return parseOutput(
     GetAllSubtypeOfOutputSchema,
