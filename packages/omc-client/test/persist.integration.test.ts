@@ -241,9 +241,13 @@ describeIf("persist + OMC roundtrip", () => {
       "utf8",
     );
     // Ghost has no file, so naming it would make OMC drop it with a warning
-    // on every subsequent load of the package — the orphan this fix targets.
-    expect(order).not.toContain("Ghost");
-    expect(order).toContain("Reloaded");
+    // on every subsequent load of the package.
+    expect(
+      order
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== ""),
+    ).toEqual(["Reloaded"]);
   });
 
   it("a package built one class at a time reloads with every member", async () => {

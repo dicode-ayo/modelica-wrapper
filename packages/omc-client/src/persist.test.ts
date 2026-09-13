@@ -484,10 +484,40 @@ describe("persistClass", () => {
 
   it("keeps a member declared inline in the parent's package.mo", async () => {
     const { client, seedChildren, seedClass } = makeClientStub();
-    // An inline member reports the enclosing package.mo as its own fileName,
-    // so the disk-backed filter must keep it.
+    // The file genuinely exists with Inline already in it — unlike the
+    // fresh package.mo persistClass itself would write, so the disk-backed
+    // check has real content behind it rather than a coincidence of write
+    // order. "MyLib" itself is deliberately left unseeded so onDiskParent
+    // still reports it as memory-only and the from-scratch path still runs.
+    const libDir = path.join(tmp, "MyLib");
+    await fsp.mkdir(libDir, { recursive: true });
+    await fsp.writeFile(
+      path.join(libDir, "package.mo"),
+      "package MyLib\n  model Inline\n  end Inline;\nend MyLib;\n",
+      "utf8",
+    );
     seedChildren("MyLib", ["Inline"]);
-    seedClass("MyLib.Inline", path.join(tmp, "MyLib", "package.mo"));
+    seedClass("MyLib.Inline", path.join(libDir, "package.mo"));
+    await persistClass(
+      client,
+      tree,
+      "MyLib.Model",
+      "model Model\nend Model;\n",
+      "model",
+    );
+    expect(await fsp.readFile(path.join(libDir, "package.order"), "utf8")).toBe(
+      "Inline\nModel\n",
+    );
+  });
+
+  it("does not name a sibling whose recorded path only exists because persistClass is about to create it", async () => {
+    const { client, seedChildren, seedClass } = makeClientStub();
+    // "Coincidence" is recorded against the exact package.mo persistClass is
+    // about to write fresh, empty, for MyLib itself. If the disk-backed
+    // check ran after that write, pathExists on this path would trivially
+    // pass — the check must resolve while the path still doesn't exist.
+    seedChildren("MyLib", ["Coincidence"]);
+    seedClass("MyLib.Coincidence", path.join(tmp, "MyLib", "package.mo"));
     await persistClass(
       client,
       tree,
@@ -497,7 +527,7 @@ describe("persistClass", () => {
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
-    ).toBe("Inline\nModel\n");
+    ).toBe("Model\n");
   });
 
   it("does not name a memory-only sibling in a package.order written from scratch", async () => {
@@ -521,9 +551,8 @@ describe("persistClass", () => {
   it("does not name a sibling whose recorded path was never actually written", async () => {
     const { client, seedChildren, seedClass } = makeClientStub();
     // OMC's symbol table can point a class at a path that looks real
-    // (isLikelyDiskPath passes) but was never written to disk — the same
-    // orphan this fix targets, arrived at through setSourceFile rather than
-    // a class that never got a source file at all.
+    // (isLikelyDiskPath passes) but was never written to disk, e.g. via
+    // setSourceFile ahead of the actual write.
     seedChildren("MyLib", ["Phantom"]);
     seedClass("MyLib.Phantom", path.join(tmp, "MyLib", "Phantom.mo"));
     await persistClass(
