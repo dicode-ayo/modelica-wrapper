@@ -207,6 +207,45 @@ describeIf("persist + OMC roundtrip", () => {
     }
   });
 
+  it("does not name a memory-only sibling in a from-scratch package.order", async () => {
+    // Ghost is loaded but never persisted, so OMC reports its fileName as
+    // the `<runtime:…>` placeholder from loadString — the live-OMC shape
+    // the disk-backed filter (persist.ts) has to recognize as not disk-backed.
+    // Only Reloaded gets persisted here.
+    await loadStepwise(client, [
+      [
+        "RoundtripGhostPkg",
+        "package RoundtripGhostPkg\nend RoundtripGhostPkg;\n",
+      ],
+      [
+        "RoundtripGhostPkg.Ghost",
+        "within RoundtripGhostPkg;\nmodel Ghost\nend Ghost;\n",
+      ],
+      [
+        "RoundtripGhostPkg.Reloaded",
+        "within RoundtripGhostPkg;\nmodel Reloaded\nend Reloaded;\n",
+      ],
+    ]);
+    const src = "within RoundtripGhostPkg;\nmodel Reloaded\nend Reloaded;\n";
+    const result = await persistClass(
+      client,
+      tree,
+      "RoundtripGhostPkg.Reloaded",
+      src,
+      "model",
+    );
+    await linkPersistedClass(client, "RoundtripGhostPkg.Reloaded", result);
+
+    const order = await fsp.readFile(
+      path.join(ws, "RoundtripGhostPkg", "package.order"),
+      "utf8",
+    );
+    // Ghost has no file, so naming it would make OMC drop it with a warning
+    // on every subsequent load of the package — the orphan this fix targets.
+    expect(order).not.toContain("Ghost");
+    expect(order).toContain("Reloaded");
+  });
+
   it("a package built one class at a time reloads with every member", async () => {
     // The flow the MCP `createClass` tool drives: the package is persisted
     // before its members exist, so each member has to reach the
