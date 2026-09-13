@@ -452,9 +452,13 @@ describe("persistClass", () => {
   });
 
   it("filters invalid identifiers from getClassNames before writing package.order", async () => {
-    const { client, seedChildren } = makeClientStub();
+    const { client, seedChildren, seedClass } = makeClientStub();
     // A class name with an embedded newline would corrupt the file format.
     seedChildren("MyLib", ["Valid", "bad\nname", "", "Also_Valid"]);
+    // Disk-backed, so this test isolates the identifier filter from the
+    // disk-backed filter covered separately below.
+    seedClass("MyLib.Valid", path.join(tmp, "MyLib", "Valid.mo"));
+    seedClass("MyLib.Also_Valid", path.join(tmp, "MyLib", "Also_Valid.mo"));
     await persistClass(
       client,
       tree,
@@ -465,6 +469,24 @@ describe("persistClass", () => {
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
     ).toBe("Valid\nAlso_Valid\nModel\n");
+  });
+
+  it("does not name a memory-only sibling in a package.order written from scratch", async () => {
+    const { client, seedChildren } = makeClientStub();
+    // OMC's symbol table holds "Ghost" for MyLib but no file backs it (e.g.
+    // created but never persisted) — a from-scratch package.order must not
+    // name it, or OMC drops it with a warning on every load of the package.
+    seedChildren("MyLib", ["Ghost"]);
+    await persistClass(
+      client,
+      tree,
+      "MyLib.Model",
+      "model Model\nend Model;\n",
+      "model",
+    );
+    expect(
+      await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
+    ).toBe("Model\n");
   });
 
   it("package leaf: writes <Name>/package.mo, not <Name>.mo", async () => {
@@ -520,6 +542,25 @@ describe("persistClass", () => {
     expect(setCalls).toEqual([
       { typeName: "MyPkg", fileName: path.join(tmp, "MyPkg", "package.mo") },
     ]);
+  });
+
+  it("does not name a memory-only sibling in a package leaf's own package.order", async () => {
+    const { client, seedChildren } = makeClientStub();
+    // Same hazard as the parent-package case, on the package-leaf's own
+    // from-scratch package.order: "Ghost" is in OMC's symbol table but no
+    // file backs it.
+    seedChildren("MyPkg", ["Ghost"]);
+    const result = await persistClass(
+      client,
+      tree,
+      "MyPkg",
+      "package MyPkg\nend MyPkg;\n",
+      "package",
+    );
+    expect(
+      await fsp.readFile(path.join(tmp, "MyPkg", "package.order"), "utf8"),
+    ).toBe("");
+    expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "package.mo"));
   });
 
   it("package leaf: onDiskParentDir resolves to package directory for children", async () => {

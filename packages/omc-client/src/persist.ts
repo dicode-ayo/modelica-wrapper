@@ -142,7 +142,11 @@ export async function persistClass(
     const orderFile = path.join(baseDir, "package.order");
     if (!(await pathExists(orderFile))) {
       const nextSegment = parts[i + 1];
-      const base = await safeGetClassNames(client, parentName);
+      const base = await diskBackedMembers(
+        client,
+        parentName,
+        await safeGetClassNames(client, parentName),
+      );
       const children =
         nextSegment !== undefined && !base.includes(nextSegment)
           ? [...base, nextSegment]
@@ -173,7 +177,11 @@ export async function persistClass(
     if (!(await pathExists(orderFile))) {
       // Written even when the package has no members yet: it is what the next
       // class created inside gets appended to.
-      const children = await safeGetClassNames(client, qualifiedName);
+      const children = await diskBackedMembers(
+        client,
+        qualifiedName,
+        await safeGetClassNames(client, qualifiedName),
+      );
       await writer.write(
         orderFile,
         children.length === 0 ? "" : children.join("\n") + "\n",
@@ -250,6 +258,37 @@ async function onDiskParent(
     /* parent not in OMC — caller will create it */
   }
   return undefined;
+}
+
+/**
+ * `members` (local names under `parentName`) filtered down to those OMC
+ * reports a real on-disk file for. A `package.order` written from scratch
+ * must list only names a file backs — a name with no file behind it is
+ * dropped with a warning on every load of the package, the same hazard
+ * {@link addToPackageOrder}'s append path avoids by only ever adding the
+ * member just written rather than consulting `getClassNames`.
+ *
+ * A member declared inline in the parent's own `package.mo` reports that
+ * file as its `fileName` (not a `<runtime:…>` placeholder), so it survives
+ * this filter same as a member with its own file does.
+ */
+async function diskBackedMembers(
+  client: PersistClient,
+  parentName: string,
+  members: string[],
+): Promise<string[]> {
+  const kept: string[] = [];
+  for (const member of members) {
+    try {
+      const { fileName } = await client.getClassInformation({
+        typeName: `${parentName}.${member}`,
+      });
+      if (isLikelyDiskPath(fileName)) kept.push(member);
+    } catch {
+      /* unknown to OMC — treat as not disk-backed */
+    }
+  }
+  return kept;
 }
 
 const MODELICA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
