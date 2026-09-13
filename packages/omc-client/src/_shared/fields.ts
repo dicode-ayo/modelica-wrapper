@@ -34,7 +34,73 @@
 
 import { z } from "zod";
 
-import { MODELICA_NAME, expressionFault } from "./format.js";
+/**
+ * Modelica name grammar, as OMC's scripting parser reads an argument emitted
+ * without quotes: dot-separated segments, each an IDENT or a Q-IDENT, each
+ * optionally subscripted.
+ *
+ * A Q-IDENT lexes as one token, so a `.` or a `)` inside one is inert and the
+ * pattern admits it. A subscript admits integers, identifiers, `end`, ranges
+ * and the dimension separator (`pins[3].p`, `ports[i]`, `a[1, 2]`,
+ * `v[1:n]`) — none of which can carry a bracket, a quote or a separator that
+ * would end the argument.
+ */
+const IDENT = "[A-Za-z_][A-Za-z0-9_]*";
+const QIDENT = "'(?:[^'\\\\]|\\\\.)+'";
+const SUBSCRIPT = "(?:\\[[A-Za-z0-9_,:\\s]+\\])?";
+const SEGMENT = `(?:${IDENT}|${QIDENT})${SUBSCRIPT}`;
+const MODELICA_NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
+
+/** Bracket kind opened, keyed by the character that closes it. */
+const OPENER: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+
+/**
+ * Why `s` would leave the argument position it is interpolated into, or
+ * `undefined` if it stays put.
+ *
+ * An annotation or modifier value is an arbitrary expression, so no pattern as
+ * narrow as {@link MODELICA_NAME} fits it. What it must not do is leave the
+ * argument position it is interpolated into: brackets stay balanced, and a
+ * separator or comment marker that would end the argument or the call cannot
+ * appear outside a string literal.
+ */
+export function expressionFault(s: string): string | undefined {
+  let fault: string | undefined;
+  const reject = (why: string): void => {
+    fault ??= why;
+  };
+  const stack: string[] = [];
+  let inString = false;
+  // A Q-IDENT is one token to OMC's lexer, so a comma or bracket inside one is
+  // inert and must not be read as structure.
+  let inQident = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charAt(i);
+    if (inString || inQident) {
+      if (c === "\\") i++;
+      else if (inString && c === '"') inString = false;
+      else if (inQident && c === "'") inQident = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === "'") inQident = true;
+    else if (c === "(" || c === "[" || c === "{") stack.push(c);
+    else if (c === ")" || c === "]" || c === "}") {
+      if (stack.pop() !== OPENER[c]) reject("closes a bracket it did not open");
+    } else if (c === "," || c === ";") {
+      if (stack.length === 0) reject("separates arguments at the top level");
+    } else if (
+      c === "/" &&
+      (s.charAt(i + 1) === "/" || s.charAt(i + 1) === "*")
+    ) {
+      reject("comments out the rest of the command");
+    }
+  }
+  if (inString) reject("leaves a string literal open");
+  if (inQident) reject("leaves a quoted identifier open");
+  if (stack.length > 0) reject("leaves a bracket open");
+  return fault;
+}
 
 /**
  * A name OMC receives unquoted — a TypeName, a component reference, a modifier

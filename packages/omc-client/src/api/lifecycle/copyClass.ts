@@ -20,7 +20,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { modelicaName } from "../../_shared/fields.js";
+import { modelicaName, modelicaOrOmittedName } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import type { OmcCommand } from "../../commands.js";
 import {
@@ -37,12 +37,11 @@ export const CopyClassInputSchema = z.strictObject({
     .describe(
       "New name for the copied class (OMC `newClassName`, emitted as a String).",
     ),
-  within: z
-    .string()
+  within: modelicaOrOmittedName
     .optional()
     .default("")
     .describe(
-      'TypeName of the parent under which the copy is placed; "" places it at the top level.',
+      'TypeName of the parent under which the copy is placed, emitted to OMC unquoted; "" places it at the top level.',
     ),
 });
 export type CopyClassInput = z.input<typeof CopyClassInputSchema>;

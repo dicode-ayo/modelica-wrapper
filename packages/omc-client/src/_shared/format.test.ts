@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { modelicaExpr, modelicaName } from "./fields.js";
-import { expressionFault } from "./format.js";
+import { expressionFault, modelicaExpr, modelicaName } from "./fields.js";
 
 describe("the name a field is held to", () => {
   it("accepts the shapes a cref reaching OMC actually carries", () => {
@@ -11,6 +10,9 @@ describe("the name a field is held to", () => {
       "a.p",
       "pins[3].p",
       "a[1, 2].p",
+      "ports[i]",
+      "values[end]",
+      "v[1:n]",
       "'a class'.p",
       "'has.a.dot'",
       "'quoted )'",
@@ -28,6 +30,8 @@ describe("the name a field is held to", () => {
       "1a",
       "a b",
       "a.'unterminated",
+      "a[1)].p",
+      "a['x'].p",
     ]) {
       expect(modelicaName.safeParse(s).success).toBe(false);
     }
@@ -42,6 +46,8 @@ describe("the expression a field is held to", () => {
       'Documentation(info = "a ) is fine inside a string")',
       "{1, 2}",
       "[1, 2; 3, 4]",
+      "record.'a,b'",
+      "Line(points = {{0, 0}}, color = 'weird )name')",
     ]) {
       expect(expressionFault(s)).toBeUndefined();
       expect(modelicaExpr.safeParse(s).success).toBe(true);
@@ -56,6 +62,11 @@ describe("the expression a field is held to", () => {
       ],
       ["Line(), extraArgument", "separates arguments at the top level"],
       ["Line(", "leaves a bracket open"],
+      ["Line('unterminated", "leaves a quoted identifier open"],
+      [
+        "'a'); loadString(\"model X end X;\"); f(",
+        "closes a bracket it did not open",
+      ],
       ['Line(color = "unterminated', "leaves a string literal open"],
       ["Line() // rest of the command", "comments out the rest of the command"],
     ] as const) {

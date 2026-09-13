@@ -22,14 +22,18 @@ const API_DIR = join(dirname(fileURLToPath(import.meta.url)), "api");
 /** Atoms that carry a grammar. A field declared any other way carries none. */
 const CONSTRAINED = ["modelicaName", "modelicaExpr", "modelicaOrOmittedName"];
 
-/** Field-bearing atoms from `_shared/inputs.ts`, whose fields are constrained. */
-const CONSTRAINED_SHAPES = [
-  "TypeNameInput",
-  "OptionalTypeNameInput",
-  "TypeNameAndModifierInput",
-  "TypeNameAndComponentNameInput",
-  "TypeNameAndIndexInput",
-];
+/**
+ * Fields each `_shared/inputs.ts` shape declares with a constrained atom. A
+ * wrapper extending a shape still declares its own extra fields itself, so
+ * membership is per field, not per file.
+ */
+const CONSTRAINED_SHAPE_FIELDS: Record<string, string[]> = {
+  TypeNameInput: ["typeName"],
+  OptionalTypeNameInput: ["typeName"],
+  TypeNameAndModifierInput: ["typeName", "modifier"],
+  TypeNameAndComponentNameInput: ["typeName", "componentName"],
+  TypeNameAndIndexInput: ["typeName", "n"],
+};
 
 /** Atoms in `_shared/fields.ts` that are themselves built on a constrained one. */
 const CONSTRAINED_FIELDS = [
@@ -40,14 +44,46 @@ const CONSTRAINED_FIELDS = [
   "expr",
 ];
 
-/** `input.<field>` interpolated bare into a command-shaped template. */
+/**
+ * Input fields a command-shaped template interpolates bare.
+ *
+ * A wrapper is free to assemble an argument into a local first — `const within
+ * = input.within ?? ""` — so a local is resolved back to the fields its
+ * initializer reads. One level is enough for every wrapper here, and a local
+ * built from another local would surface as an unresolved name rather than
+ * passing quietly.
+ */
 function bareFields(src: string): string[] {
   const fields: string[] = [];
+  const locals = new Map<string, string>();
+  for (const decl of src.matchAll(/\bconst (\w+)(?:: \w+)? =\s*([^;]*);/gs)) {
+    const [, name, init] = decl;
+    if (name !== undefined && init !== undefined) locals.set(name, init);
+  }
+  const push = (expr: string, viaLocal: boolean): void => {
+    const direct = /^input\.(\w+)$/.exec(expr);
+    if (direct?.[1] !== undefined) {
+      fields.push(direct[1]);
+      return;
+    }
+    if (viaLocal) return;
+    let init = locals.get(expr);
+    if (init === undefined) return;
+    // A field the initializer already ran through a formatter is safe, and a
+    // field it only compares against is never emitted at all.
+    init = init.replace(
+      /\b(?:quote|quoteList|quoteListOrFillEmpty|mlBool)\([^()]*\)/g,
+      "",
+    );
+    const branches = init.indexOf("?");
+    if (branches !== -1) init = init.slice(branches + 1);
+    for (const ref of init.matchAll(/\binput\.(\w+)\b/g)) {
+      if (ref[1] !== undefined) fields.push(ref[1]);
+    }
+  };
   for (const call of src.matchAll(/`[A-Za-z_$][\w$]*\([^`]*`/g)) {
     for (const arg of call[0].matchAll(/\$\{([^}]*)\}/g)) {
-      const expr = arg[1]?.trim() ?? "";
-      const m = /^input\.(\w+)$/.exec(expr);
-      if (m?.[1] !== undefined) fields.push(m[1]);
+      push(arg[1]?.trim() ?? "", false);
     }
   }
   return fields;
@@ -60,18 +96,24 @@ function bareFields(src: string): string[] {
  * stays inside its argument whatever its value.
  */
 function isConstrained(src: string, field: string): boolean {
+  // `foo: modelicaName` and `foo: z.array(modelicaName)` both constrain `foo`.
   const declared = new RegExp(
-    `\\b${field}:\\s*(${[...CONSTRAINED, ...CONSTRAINED_FIELDS].join("|")})\\b`,
+    `\\b${field}:\\s*(?:z\\s*\\.array\\(\\s*)?(${[...CONSTRAINED, ...CONSTRAINED_FIELDS].join("|")})\\b`,
   );
   if (declared.test(src)) return true;
-  if (new RegExp(`\\b${field}:\\s*z\\s*\\.number\\(\\)`).test(src)) return true;
+  // `z.number()`, `z.boolean()` and `z.enum([...])` each pin the value to a
+  // form that cannot carry a bracket or a separator.
+  if (new RegExp(`\\b${field}:\\s*z\\s*\\.(number|boolean|enum)\\(`).test(src))
+    return true;
   // `foo,` shorthand for an atom of the same name, e.g. `expr,`
   if (
     CONSTRAINED_FIELDS.includes(field) &&
     new RegExp(`^\\s+${field},$`, "m").test(src)
   )
     return true;
-  return CONSTRAINED_SHAPES.some((shape) => src.includes(shape));
+  return Object.entries(CONSTRAINED_SHAPE_FIELDS).some(
+    ([shape, fields]) => src.includes(shape) && fields.includes(field),
+  );
 }
 
 async function wrapperSources(): Promise<[string, string][]> {
