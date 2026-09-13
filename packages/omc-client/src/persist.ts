@@ -144,11 +144,7 @@ export async function persistClass(
     const orderFile = path.join(baseDir, "package.order");
     if (!(await pathExists(orderFile))) {
       const nextSegment = parts[i + 1];
-      const base = await diskBackedMembers(
-        client,
-        parentName,
-        await safeGetClassNames(client, parentName),
-      );
+      const base = await diskBackedClassNames(client, parentName);
       const children =
         nextSegment !== undefined && !base.includes(nextSegment)
           ? [...base, nextSegment]
@@ -179,11 +175,7 @@ export async function persistClass(
     if (!(await pathExists(orderFile))) {
       // Written even when the package has no members yet: it is what the next
       // class created inside gets appended to.
-      const children = await diskBackedMembers(
-        client,
-        qualifiedName,
-        await safeGetClassNames(client, qualifiedName),
-      );
+      const children = await diskBackedClassNames(client, qualifiedName);
       await writer.write(
         orderFile,
         children.length === 0 ? "" : children.join("\n") + "\n",
@@ -263,22 +255,27 @@ async function onDiskParent(
 }
 
 /**
- * `members` (local names under `parentName`) filtered down to those OMC
- * reports a real on-disk file for. A `package.order` written from scratch
- * must list only names a file backs — a name with no file behind it is
- * dropped with a warning on every load of the package, the same hazard
+ * `parentName`'s current members (per `getClassNames`), filtered down to
+ * those OMC reports a real on-disk file for. A `package.order` written from
+ * scratch must list only names a file backs — a name with no file behind it
+ * is dropped with a warning on every load of the package, the same hazard
  * {@link addToPackageOrder}'s append path avoids by only ever adding the
  * member just written rather than consulting `getClassNames`.
  *
  * A member declared inline in the parent's own `package.mo` reports that
  * file as its `fileName` (not a `<runtime:…>` placeholder), so it survives
  * this filter same as a member with its own file does.
+ *
+ * A `getClassInformation` failure for one member — not just "class unknown
+ * to OMC" — is also read as not disk-backed: the caller is about to write a
+ * `package.order` that the class-loading side will trust verbatim, so an
+ * uncertain member is excluded rather than risked.
  */
-async function diskBackedMembers(
+async function diskBackedClassNames(
   client: PersistClient,
   parentName: string,
-  members: string[],
 ): Promise<string[]> {
+  const members = await safeGetClassNames(client, parentName);
   const kept: string[] = [];
   for (const member of members) {
     try {
@@ -287,7 +284,7 @@ async function diskBackedMembers(
       });
       if (isLikelyDiskPath(fileName)) kept.push(member);
     } catch {
-      /* unknown to OMC — treat as not disk-backed */
+      /* unknown to OMC, or the lookup itself failed — either way, unproven */
     }
   }
   return kept;
