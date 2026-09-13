@@ -298,6 +298,23 @@ describe("alignOwnSourceToSharedFile", () => {
     ).toEqual([]);
   });
 
+  it("refuses to load an empty listing of the class over the file", async () => {
+    // Same guard `alignToSharedFile` applies to the owner's listing: loading
+    // an empty string over `package.mo` would drop every class in it from
+    // OMC, so nothing is loaded and no position is trusted.
+    const client = makeClient({
+      listFile: vi.fn(async () => ({ contents: "  \n" })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual(bufferOwnCoords(0));
+    expect(client.loadString).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the client throws", async () => {
     const client = makeClient({
       listFile: vi.fn(async () => {
@@ -340,6 +357,34 @@ describe("alignOwnSourceToSharedFile", () => {
     expect(coords).toEqual(bufferOwnCoords(0));
     expect(client.loadString).toHaveBeenLastCalledWith({
       data: PACKAGE_SOURCE,
+      filename: PACKAGE_MO,
+      merge: false,
+    });
+  });
+
+  it("leaves the file alone rather than restoring it from an empty listing", async () => {
+    // The recovery path is a reload too: putting an empty owner listing back
+    // over `filename` would compound the damage it is trying to undo.
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : "",
+      })),
+      loadString: vi.fn(async ({ data }: { data: string }) => {
+        if (data === BUFFER_TEXT) throw new Error("omc gone");
+        return { success: true };
+      }),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual(bufferOwnCoords(0));
+    // Only the standalone reload that threw; the restore never loaded "".
+    expect(client.loadString).toHaveBeenCalledTimes(1);
+    expect(client.loadString).toHaveBeenLastCalledWith({
+      data: BUFFER_TEXT,
       filename: PACKAGE_MO,
       merge: false,
     });

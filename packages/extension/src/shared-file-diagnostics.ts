@@ -83,25 +83,15 @@ export async function alignToSharedFile(
     return undefined;
   }
 
-  const { contents } = await client.listFile({ typeName: owner });
-  // Loading an empty listing would drop the file's classes from OMC rather
-  // than renumber them.
-  if (contents.trim() === "") {
-    log.warn("sharedFile", `listFile(${owner}) came back empty`);
-    return undefined;
-  }
-  let success: boolean;
+  let loaded: LoadedListing | undefined;
   try {
-    ({ success } = await client.loadString({
-      data: contents,
-      filename,
-      merge: false,
-    }));
+    loaded = await loadListingIfNonEmpty(client, { typeName: owner, filename });
   } catch (err) {
     await restoreBuffer(client, filename, text);
     throw err;
   }
-  if (!success) {
+  if (loaded === undefined) return undefined;
+  if (!loaded.success) {
     log.warn("sharedFile", `reloading ${filename} failed`);
     return undefined;
   }
@@ -129,6 +119,43 @@ export async function alignToSharedFile(
     lineShift: inFile.lineNumberStart - inBuffer.lineNumberStart,
     columnShift: inFile.columnNumberStart - inBuffer.columnNumberStart,
   };
+}
+
+/** A listing that reached OMC, and whether OMC accepted it. */
+interface LoadedListing {
+  contents: string;
+  success: boolean;
+}
+
+/**
+ * `listFile(typeName)` and load the listing back over `filename`, refusing an
+ * empty listing: loading an empty string drops the file's classes from OMC
+ * rather than renumbering them, so an empty `package.mo` loaded over the real
+ * one would remove every class in that file from the session. Every reload of
+ * a listing in this module goes through here so the guard cannot be kept at
+ * one site and skipped at another.
+ *
+ * Returns `undefined` (after a warning) for an empty listing — OMC was not
+ * touched. Otherwise the listing and whether OMC accepted it. A throw from
+ * either OMC call propagates; the caller cannot tell whether the reload landed
+ * and decides what to put back.
+ */
+async function loadListingIfNonEmpty(
+  client: SharedFileClient,
+  input: { typeName: string; filename: string },
+): Promise<LoadedListing | undefined> {
+  const { typeName, filename } = input;
+  const { contents } = await client.listFile({ typeName });
+  if (contents.trim() === "") {
+    log.warn("sharedFile", `listFile(${typeName}) came back empty`);
+    return undefined;
+  }
+  const { success } = await client.loadString({
+    data: contents,
+    filename,
+    merge: false,
+  });
+  return { contents, success };
 }
 
 /**
@@ -198,7 +225,8 @@ const NOTHING_IN_BOUNDS: BufferCoords = bufferOwnCoords(0);
  * leave messages unbounded.
  *
  * A failure before or during the standalone reload (`fileOwnerClass`,
- * `listFile`, `loadString`) returns {@link NOTHING_IN_BOUNDS} — dropping
+ * `listFile`, `loadString`), or an empty listing that must not be loaded,
+ * returns {@link NOTHING_IN_BOUNDS} — dropping
  * every located message rather than publishing a sibling's diagnostic under
  * a class it doesn't belong to. A throw from the reload itself additionally
  * triggers a best-effort restore ({@link restoreSharedFile}): unlike a clean
@@ -228,15 +256,9 @@ export async function alignOwnSourceToSharedFile(
   }
   if (owner === typeName) return undefined;
 
-  let contents: string;
-  let success: boolean;
+  let loaded: LoadedListing | undefined;
   try {
-    ({ contents } = await client.listFile({ typeName }));
-    ({ success } = await client.loadString({
-      data: contents,
-      filename,
-      merge: false,
-    }));
+    loaded = await loadListingIfNonEmpty(client, { typeName, filename });
   } catch (err) {
     log.warn(
       "sharedFile",
@@ -249,6 +271,10 @@ export async function alignOwnSourceToSharedFile(
     await restoreSharedFile(client, owner, filename);
     return NOTHING_IN_BOUNDS;
   }
+  // An empty listing was refused before anything reached OMC (warned by the
+  // helper), so there is nothing to restore — but also no position to trust.
+  if (loaded === undefined) return NOTHING_IN_BOUNDS;
+  const { contents, success } = loaded;
   if (!success) {
     log.warn(
       "sharedFile",
@@ -280,7 +306,9 @@ export async function alignOwnSourceToSharedFile(
 /**
  * Best-effort recovery when a reload under `filename` throws: it's unknown
  * whether the reload actually landed, so reload `owner`'s current listing
- * back over `filename` rather than leave OMC's state to chance.
+ * back over `filename` rather than leave OMC's state to chance. An empty
+ * listing is left alone rather than loaded: that would compound a damaged
+ * session by emptying `filename` outright.
  */
 async function restoreSharedFile(
   client: SharedFileClient,
@@ -288,8 +316,16 @@ async function restoreSharedFile(
   filename: string,
 ): Promise<void> {
   try {
-    const { contents } = await client.listFile({ typeName: owner });
-    await client.loadString({ data: contents, filename, merge: false });
+    const loaded = await loadListingIfNonEmpty(client, {
+      typeName: owner,
+      filename,
+    });
+    if (loaded === undefined) {
+      log.warn(
+        "sharedFile",
+        `leaving ${filename} as is after a failed reload: listFile(${owner}) came back empty`,
+      );
+    }
   } catch (err) {
     log.error(
       "sharedFile",
