@@ -18,6 +18,9 @@ describe("the name a field is held to", () => {
       "ports[i]",
       "values[end]",
       "v[1:n]",
+      "pins[i + 1]",
+      "pins[2*n-1]",
+      "a[b.c]",
       "'a class'.p",
       "'has.a.dot'",
       "'quoted )'",
@@ -37,6 +40,9 @@ describe("the name a field is held to", () => {
       "a.'unterminated",
       "a[1)].p",
       "a['x'].p",
+      'a["x"].p',
+      "a[x;y].p",
+      "a[b[1]].p",
     ]) {
       expect(modelicaName.safeParse(s).success).toBe(false);
     }

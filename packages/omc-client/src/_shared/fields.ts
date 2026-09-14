@@ -40,17 +40,18 @@ import { z } from "zod";
  * optionally subscripted.
  *
  * A Q-IDENT lexes as one token, so a `.` or a `)` inside one is inert and the
- * pattern admits it. A subscript admits integers, identifiers, `end`, ranges
- * and the dimension separator (`pins[3].p`, `ports[i]`, `a[1, 2]`,
- * `v[1:n]`) — none of which can carry a bracket, a quote or a separator that
- * would end the argument.
+ * pattern admits it. A subscript admits what an index expression is made of —
+ * integers, identifiers, `end`, ranges, the dimension separator and
+ * arithmetic (`pins[3].p`, `ports[i]`, `a[1, 2]`, `v[1:n]`, `pins[i + 1]`).
+ * None of those can carry a bracket, a quote or a separator that would end the
+ * argument; a nested subscript can, so it is not admitted.
  */
 const IDENT = "[A-Za-z_][A-Za-z0-9_]*";
 
 /** One unquoted Modelica identifier, whole — no dots, no subscript. */
 export const MODELICA_IDENT = new RegExp(`^${IDENT}$`);
 const QIDENT = "'(?:[^'\\\\]|\\\\.)+'";
-const SUBSCRIPT = "(?:\\[[A-Za-z0-9_,:\\s]+\\])?";
+const SUBSCRIPT = "(?:\\[[A-Za-z0-9_,:\\s+*/.-]+\\])?";
 const SEGMENT = `(?:${IDENT}|${QIDENT})${SUBSCRIPT}`;
 const MODELICA_NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
 const NAME_BODY = `${SEGMENT}(?:\\.${SEGMENT})*`;
