@@ -100,10 +100,10 @@ interface OnDiskParent {
  *
  * The enclosing package's `package.order` gains the new member, so a fresh
  * OMC `loadFile` finds it. A `package.order` written from scratch alongside a
- * new `package.mo` lists the children OMC reports; an existing one is only
- * appended to, never rewritten — see {@link addToPackageOrder}. A directory
- * package this never created, and that has no `package.order`, keeps having
- * none.
+ * new `package.mo` lists the disk-backed subset of the children OMC reports
+ * — see {@link diskBackedClassNames}; an existing one is only appended to,
+ * never rewritten — see {@link addToPackageOrder}. A directory package this
+ * never created, and that has no `package.order`, keeps having none.
  *
  * A `package` is written as `<baseDir>/<leafName>/package.mo` so its own
  * directory becomes the parent for subsequent children; every other
@@ -268,13 +268,11 @@ async function onDiskParent(
  *
  * A member declared inline in `parentName`'s own `package.mo` reports that
  * file as its `fileName` (not a `<runtime:…>` placeholder), so it survives
- * this filter same as a member with its own file does — provided that file
- * already exists on disk when this runs. It does at this function's
- * parent-loop call site, where the check is resolved before that
- * `package.mo` is written; at the package-leaf call site the leaf's own
- * `package.mo` doesn't exist yet either, so an inline member there is
- * correctly dropped rather than kept on the strength of a file about to be
- * written.
+ * this filter exactly when that `package.mo` is already on disk. Both call
+ * sites resolve this before writing their own `package.mo` for that reason:
+ * a member kept only because of a write this same call is about to make
+ * would be the same orphan the filter exists to keep out, arrived at by a
+ * different route.
  */
 async function diskBackedClassNames(
   client: PersistClient,

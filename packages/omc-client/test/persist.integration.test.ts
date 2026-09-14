@@ -239,8 +239,6 @@ describeIf("persist + OMC roundtrip", () => {
       path.join(ws, "RoundtripGhostPkg", "package.order"),
       "utf8",
     );
-    // Ghost has no file, so naming it would make OMC drop it with a warning
-    // on every subsequent load of the package.
     expect(
       order
         .split("\n")
