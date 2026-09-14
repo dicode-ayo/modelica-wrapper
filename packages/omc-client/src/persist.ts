@@ -266,9 +266,15 @@ async function onDiskParent(
  * scratch must list only names a file backs, the same hazard
  * {@link addToPackageOrder} documents for the append path.
  *
- * A member declared inline in the parent's own `package.mo` reports that
+ * A member declared inline in `parentName`'s own `package.mo` reports that
  * file as its `fileName` (not a `<runtime:…>` placeholder), so it survives
- * this filter same as a member with its own file does.
+ * this filter same as a member with its own file does — provided that file
+ * already exists on disk when this runs. It does at this function's
+ * parent-loop call site, where the check is resolved before that
+ * `package.mo` is written; at the package-leaf call site the leaf's own
+ * `package.mo` doesn't exist yet either, so an inline member there is
+ * correctly dropped rather than kept on the strength of a file about to be
+ * written.
  */
 async function diskBackedClassNames(
   client: PersistClient,
