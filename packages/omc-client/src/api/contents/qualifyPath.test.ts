@@ -2,7 +2,7 @@
  * Unit tests for the `qualifyPath` wrapper's response parsing — no OMC
  * contact. The integration test (`test/omedit-utilities.integration.test.ts`)
  * exercises a live qualification; these pin the TypeName decoding and the
- * command string (both TypeName args emitted bare, see audit.md §2.6).
+ * command string (both TypeName args emitted to OMC unquoted, see audit.md §2.6).
  */
 
 import { describe, expect, it, vi } from "vitest";

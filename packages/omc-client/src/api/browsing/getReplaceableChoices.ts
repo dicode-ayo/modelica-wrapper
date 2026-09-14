@@ -25,21 +25,18 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectList, expectStringList, parse } from "../../parse.js";
 
 export const GetReplaceableChoicesInputSchema = z.strictObject({
-  baseClass: z
-    .string()
-    .describe(
-      "TypeName of the replaceable's base class (e.g. `Modelica.Media.Interfaces.PartialMedium`).",
-    ),
-  parentClass: z
-    .string()
-    .describe(
-      "TypeName of the model containing the `replaceable …` declaration site (e.g. `Modelica.Fluid.System`).",
-    ),
+  baseClass: modelicaName.describe(
+    "TypeName of the replaceable's base class (e.g. `Modelica.Media.Interfaces.PartialMedium`).",
+  ),
+  parentClass: modelicaName.describe(
+    "TypeName of the model containing the `replaceable …` declaration site (e.g. `Modelica.Fluid.System`).",
+  ),
   includePartial: z
     .boolean()
     .optional()

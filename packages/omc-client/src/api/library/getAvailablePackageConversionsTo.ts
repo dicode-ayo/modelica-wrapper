@@ -20,16 +20,15 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const GetAvailablePackageConversionsToInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Package name to query (OMC `pkg`, mapped to `typeName` per the package convention).",
-    ),
+  typeName: modelicaName.describe(
+    "Package name to query (OMC `pkg`, mapped to `typeName` per the package convention).",
+  ),
   version: z
     .string()
     .describe(

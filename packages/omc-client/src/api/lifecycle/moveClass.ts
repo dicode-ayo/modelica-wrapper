@@ -24,12 +24,13 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const MoveClassInputSchema = z.strictObject({
-  typeName: z.string().describe("Class to move."),
+  typeName: modelicaName.describe("Class to move."),
   offset: z
     .number()
     .int()

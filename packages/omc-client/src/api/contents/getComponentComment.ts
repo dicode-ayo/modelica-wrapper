@@ -9,7 +9,7 @@
  * end getComponentComment;
  * ```
  *
- * `componentName` is a dotted path TypeName emitted bare.
+ * `componentName` is a dotted path TypeName emitted to OMC unquoted.
  */
 
 import { z } from "zod";

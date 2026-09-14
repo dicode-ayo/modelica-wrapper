@@ -49,7 +49,7 @@
  */
 
 import type { DiagramLayout, ParameterDef } from "@dicode/omc-client";
-import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
+import type { ConvertUnitsOutput } from "@dicode/omc-client";
 
 /**
  * Apply an already-fetched `convertUnits` result to a source-unit numeric

@@ -10,7 +10,7 @@
  * end val;
  * ```
  *
- * `var` is a Modelica variable identifier (dotted path) emitted bare. The
+ * `var` is a Modelica variable identifier (dotted path) emitted to OMC unquoted. The
  * default `fileName` `"<default>"` reads from `currentSimulationResult`.
  *
  * Note: input field is `var` (verbatim from OMC). JS keyword; safe as a property
@@ -20,16 +20,15 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { resultVariable } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectFloat, parse } from "../../parse.js";
 
 export const ValInputSchema = z.strictObject({
-  var: z
-    .string()
-    .describe(
-      "Variable identifier (dotted path) emitted bare; field name `var` is OMC verbatim.",
-    ),
+  var: resultVariable.describe(
+    "Variable identifier (dotted path) emitted to OMC unquoted; field name `var` is OMC verbatim.",
+  ),
   timePoint: z
     .number()
     .optional()

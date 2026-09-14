@@ -21,15 +21,14 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const GetNthImportInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"); emitted bare to OMC.',
-    ),
+  typeName: modelicaName.describe(
+    'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"); emitted to OMC unquoted.',
+  ),
   index: z
     .number()
     .int()

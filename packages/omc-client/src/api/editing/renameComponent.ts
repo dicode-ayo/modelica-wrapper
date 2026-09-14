@@ -7,13 +7,14 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const RenameComponentInputSchema = z.strictObject({
-  typeName: z.string().describe("Class containing the component to rename."),
-  oldName: z.string().describe("Current local name of the component."),
-  newName: z.string().describe("New local name to give the component."),
+  typeName: modelicaName.describe("Class containing the component to rename."),
+  oldName: modelicaName.describe("Current local name of the component."),
+  newName: modelicaName.describe("New local name to give the component."),
 });
 export type RenameComponentInput = z.input<typeof RenameComponentInputSchema>;
 

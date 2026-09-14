@@ -17,21 +17,18 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetElementTypeInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Dotted element path within the class (OMC `elementName`, mapped to `typeName` per the package convention).",
-    ),
-  newTypeName: z
-    .string()
-    .describe(
-      "New type to assign to the element (OMC `typeName`, renamed to avoid collision with the package-wide TypeName-rename).",
-    ),
+  typeName: modelicaName.describe(
+    "Dotted element path within the class (OMC `elementName`, mapped to `typeName` per the package convention).",
+  ),
+  newTypeName: modelicaName.describe(
+    "New type to assign to the element (OMC `typeName`, renamed to avoid collision with the package-wide TypeName-rename).",
+  ),
 });
 export type SetElementTypeInput = z.input<typeof SetElementTypeInputSchema>;
 

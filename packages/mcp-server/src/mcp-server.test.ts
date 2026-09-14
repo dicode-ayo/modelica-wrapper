@@ -370,6 +370,51 @@ describe("the shape tools", () => {
     expect(fields("addRectangle")).not.toContain("points");
     expect(fields("addText")).not.toContain("fillColor");
   });
+
+  /**
+   * A grammar the model only learns by failing a call teaches it nothing in
+   * time. It reaches the model as the field's JSON-Schema `pattern` instead —
+   * which depends on the SDK's zod conversion carrying `pattern` through.
+   */
+  it("advertise the grammar an unquoted argument is held to", async () => {
+    const mcp = await connect();
+
+    const { tools } = await mcp.listTools();
+    const property = (
+      name: string,
+      field: string,
+    ): { pattern?: string } | undefined =>
+      (
+        tools.find((t) => t.name === name)?.inputSchema.properties as
+          Record<string, { pattern?: string }> | undefined
+      )?.[field];
+
+    for (const [tool, field] of [
+      ["addConnection", "from"],
+      ["addConnection", "to"],
+      ["addConnection", "typeName"],
+      ["addComponent", "componentName"],
+    ] as const) {
+      expect(property(tool, field)?.pattern).toBeTypeOf("string");
+    }
+  });
+
+  it("refuse an argument that would close the command, naming the field", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "addConnection",
+      arguments: {
+        from: "a.p",
+        to: 'b.p); loadString("model Injected end Injected;"); addConnection(a.p, b.p, Demo.MSD',
+        typeName: "Demo.MSD",
+      },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("to");
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("the escape hatch", () => {

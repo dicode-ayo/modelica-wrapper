@@ -20,6 +20,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import {
@@ -31,7 +32,7 @@ import {
 } from "../../parse.js";
 
 export const GetComponentsInputSchema = z.strictObject({
-  typeName: z.string().describe("Class to inspect."),
+  typeName: modelicaName.describe("Class to inspect."),
   useQuotes: z
     .boolean()
     .optional()

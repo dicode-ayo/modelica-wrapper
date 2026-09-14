@@ -36,6 +36,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaOrOmittedName } from "../../_shared/fields.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
@@ -77,12 +78,11 @@ export const ImportFMUInputSchema = z.strictObject({
     .optional()
     .default(true)
     .describe("Expose FMU outputs as Modelica output connectors."),
-  modelName: z
-    .string()
+  modelName: modelicaOrOmittedName
     .optional()
     .default("")
     .describe(
-      "Override name for the generated wrapper class (Modelica TypeName, emitted bare); empty defers to the OMC default (derives the name from the FMU).",
+      "Override name for the generated wrapper class (Modelica TypeName, emitted to OMC unquoted); empty defers to the OMC default (derives the name from the FMU).",
     ),
 });
 export type ImportFMUInput = z.input<typeof ImportFMUInputSchema>;

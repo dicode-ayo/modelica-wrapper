@@ -5,10 +5,11 @@
  * with both compile-time type-checking (via TypeScript indexed access on the
  * registry) and runtime input validation (via the per-function Zod schema).
  *
- * Direct method calls on `OmcClient` (e.g. `client.getClassInformation({...})`)
- * skip the runtime input validation step — TypeScript already catches misuse
- * at the call site. Use `invoke()` when input comes from an untrusted source
- * (RPC, JSON config, REPL, plugin sandbox).
+ * Every `OmcClient` method delegates through `invoke()`, so the schema is the
+ * one validation boundary and no caller reaches a wrapper around it. A type
+ * answers whether `typeName` is a string; it cannot answer whether that string
+ * is a Modelica name, and an argument OMC receives unquoted becomes command
+ * text either way.
  *
  * Adding a new function:
  *   1. Create the per-function file under `src/api/<category>/<fn>.ts`

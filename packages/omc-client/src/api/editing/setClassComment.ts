@@ -17,6 +17,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
@@ -25,7 +26,7 @@ import {
 } from "../../_shared/parseOutput.js";
 
 export const SetClassCommentInputSchema = z.strictObject({
-  typeName: z.string().describe("Class to update."),
+  typeName: modelicaName.describe("Class to update."),
   filename: z
     .string()
     .describe(

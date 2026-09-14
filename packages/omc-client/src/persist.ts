@@ -12,6 +12,8 @@
 import { mkdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 
+import { MODELICA_IDENT } from "./_shared/fields.js";
+
 import { pathExists } from "./fs-util.js";
 
 /** Where the bytes go. */
@@ -251,8 +253,6 @@ async function onDiskParent(
   }
   return undefined;
 }
-
-const MODELICA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 async function safeGetClassNames(
   client: PersistClient,

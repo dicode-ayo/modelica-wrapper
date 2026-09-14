@@ -14,7 +14,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { OmcClient } from "@dicode/omc-client";
-import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
+import type { ConvertUnitsOutput } from "@dicode/omc-client";
 
 import type { ParameterModel } from "@dicode/omc-client";
 

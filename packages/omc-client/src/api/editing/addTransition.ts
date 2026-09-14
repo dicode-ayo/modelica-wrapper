@@ -13,14 +13,14 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { connectionAnnotation } from "../../_shared/fields.js";
+import { connectionAnnotation, modelicaName } from "../../_shared/fields.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const AddTransitionInputSchema = z.strictObject({
-  typeName: z.string().describe("Class containing the state machine."),
+  typeName: modelicaName.describe("Class containing the state machine."),
   from: z.string().describe("Source state of the new transition."),
   to: z.string().describe("Target state of the new transition."),
   /** Modelica boolean expression (raw). */

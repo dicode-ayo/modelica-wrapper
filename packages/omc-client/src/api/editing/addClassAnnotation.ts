@@ -9,17 +9,16 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaExpr, modelicaName } from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const AddClassAnnotationInputSchema = z.strictObject({
-  typeName: z.string().describe("Class to annotate."),
-  annotation: z
-    .string()
-    .describe(
-      "Raw Modelica annotation expression (no `annotate=` prefix), e.g. `experiment(StopTime=4)`.",
-    ),
+  typeName: modelicaName.describe("Class to annotate."),
+  annotation: modelicaExpr.describe(
+    "Raw Modelica annotation expression (no `annotate=` prefix), e.g. `experiment(StopTime=4)`.",
+  ),
 });
 export type AddClassAnnotationInput = z.input<
   typeof AddClassAnnotationInputSchema

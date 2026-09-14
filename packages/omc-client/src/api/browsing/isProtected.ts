@@ -11,7 +11,7 @@
  * end isProtected;
  * ```
  *
- * Both arguments are TypeNames (emitted bare). Per audit.md §2.3 the primary
+ * Both arguments are TypeNames (emitted to OMC unquoted). Per audit.md §2.3 the primary
  * class TypeName (`className`) is exposed as `typeName`; the secondary TypeName
  * (`componentName`) keeps its OMC name. OMC's argument order is
  * `(componentName, className)`. Distinct from `isProtectedClass`, which tests a

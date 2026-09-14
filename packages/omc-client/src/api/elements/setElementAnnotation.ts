@@ -37,21 +37,18 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaExpr, modelicaName } from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetElementAnnotationInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Dotted element name within the class (OMC `elementName`, mapped to `typeName` per the package convention).",
-    ),
-  annotationMod: z
-    .string()
-    .describe(
-      'Raw annotation body — what would appear inside `annotation(...)`, e.g. `Dialog(group="Tuning")`. The wrapper wraps it in `$Code((…))` (OMEdit-canonical shape) before sending to OMC. Empty string clears the annotation.',
-    ),
+  typeName: modelicaName.describe(
+    "Dotted element name within the class (OMC `elementName`, mapped to `typeName` per the package convention).",
+  ),
+  annotationMod: modelicaExpr.describe(
+    'Raw annotation body — what would appear inside `annotation(...)`, e.g. `Dialog(group="Tuning")`. The wrapper wraps it in `$Code((…))` (OMEdit-canonical shape) before sending to OMC. Empty string clears the annotation.',
+  ),
 });
 export type SetElementAnnotationInput = z.input<
   typeof SetElementAnnotationInputSchema

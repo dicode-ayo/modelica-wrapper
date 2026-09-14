@@ -18,16 +18,16 @@ import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
 import { SerialQueue } from "./queue.js";
 
-import * as browsing from "./api/browsing/index.js";
-import * as contents from "./api/contents/index.js";
-import * as editing from "./api/editing/index.js";
-import * as elements from "./api/elements/index.js";
-import * as execution from "./api/execution/index.js";
-import * as library from "./api/library/index.js";
-import * as lifecycle from "./api/lifecycle/index.js";
-import * as parameters from "./api/parameters/index.js";
-import * as results from "./api/results/index.js";
-import * as solver from "./api/solver/index.js";
+import type * as browsing from "./api/browsing/index.js";
+import type * as contents from "./api/contents/index.js";
+import type * as editing from "./api/editing/index.js";
+import type * as elements from "./api/elements/index.js";
+import type * as execution from "./api/execution/index.js";
+import type * as library from "./api/library/index.js";
+import type * as lifecycle from "./api/lifecycle/index.js";
+import type * as parameters from "./api/parameters/index.js";
+import type * as results from "./api/results/index.js";
+import type * as solver from "./api/solver/index.js";
 import {
   REGISTRY,
   type OmcFnName,
@@ -119,10 +119,10 @@ export class OmcClient implements CallContext {
    *   schema (throws ZodError if it doesn't match), and the output is
    *   validated by the same `parseOutput` path the per-function methods use.
    *
-   * Use this when input comes from an untrusted boundary — JSON-RPC, a
-   * config file, a CLI, a plugin, a REPL. For trusted call sites where TS
-   * already verifies the shape, prefer the dedicated method (e.g.
-   * `client.getClassInformation(...)`) — it skips the redundant input parse.
+   * Every dedicated method delegates here, so this is the one place an input
+   * is checked and `client.getClassInformation(...)` is a named spelling of
+   * the same call rather than a way around it. Call it directly when the
+   * function name is itself data — a JSON-RPC dispatch, a REPL, a plugin.
    *
    * @example
    *   const { version } = await client.invoke("getVersion", {});
@@ -224,241 +224,241 @@ export class OmcClient implements CallContext {
   getVersion(
     input: browsing.GetVersionInput = {},
   ): Promise<browsing.GetVersionOutput> {
-    return browsing.getVersion(this, input);
+    return this.invoke("getVersion", input);
   }
 
   getModelicaPath(): Promise<browsing.GetModelicaPathOutput> {
-    return browsing.getModelicaPath(this);
+    return this.invoke("getModelicaPath", {});
   }
 
   getClassNames(
     input: browsing.GetClassNamesInput = {},
   ): Promise<browsing.GetClassNamesOutput> {
-    return browsing.getClassNames(this, input);
+    return this.invoke("getClassNames", input);
   }
 
   searchClassNames(
     input: browsing.SearchClassNamesInput,
   ): Promise<browsing.SearchClassNamesOutput> {
-    return browsing.searchClassNames(this, input);
+    return this.invoke("searchClassNames", input);
   }
 
   getClassInformation(
     input: browsing.GetClassInformationInput,
   ): Promise<browsing.GetClassInformationOutput> {
-    return browsing.getClassInformation(this, input);
+    return this.invoke("getClassInformation", input);
   }
 
   isPackage(input: browsing.IsPackageInput): Promise<browsing.IsPackageOutput> {
-    return browsing.isPackage(this, input);
+    return this.invoke("isPackage", input);
   }
 
   getInheritanceCount(
     input: browsing.GetInheritanceCountInput,
   ): Promise<browsing.GetInheritanceCountOutput> {
-    return browsing.getInheritanceCount(this, input);
+    return this.invoke("getInheritanceCount", input);
   }
 
   getInheritedClasses(
     input: browsing.GetInheritedClassesInput,
   ): Promise<browsing.GetInheritedClassesOutput> {
-    return browsing.getInheritedClasses(this, input);
+    return this.invoke("getInheritedClasses", input);
   }
 
   getUses(input: browsing.GetUsesInput): Promise<browsing.GetUsesOutput> {
-    return browsing.getUses(this, input);
+    return this.invoke("getUses", input);
   }
 
   existClass(
     input: browsing.ExistClassInput,
   ): Promise<browsing.ExistClassOutput> {
-    return browsing.existClass(this, input);
+    return this.invoke("existClass", input);
   }
 
   getErrorString(
     input: browsing.GetErrorStringInput = {},
   ): Promise<browsing.GetErrorStringOutput> {
-    return browsing.getErrorString(this, input);
+    return this.invoke("getErrorString", input);
   }
 
   getMessagesStringInternal(
     input: browsing.GetMessagesStringInternalInput = {},
   ): Promise<browsing.GetMessagesStringInternalOutput> {
-    return browsing.getMessagesStringInternal(this, input);
+    return this.invoke("getMessagesStringInternal", input);
   }
 
   existModel(
     input: browsing.ExistModelInput,
   ): Promise<browsing.ExistModelOutput> {
-    return browsing.existModel(this, input);
+    return this.invoke("existModel", input);
   }
 
   existPackage(
     input: browsing.ExistPackageInput,
   ): Promise<browsing.ExistPackageOutput> {
-    return browsing.existPackage(this, input);
+    return this.invoke("existPackage", input);
   }
 
   getClassRestriction(
     input: browsing.GetClassRestrictionInput,
   ): Promise<browsing.GetClassRestrictionOutput> {
-    return browsing.getClassRestriction(this, input);
+    return this.invoke("getClassRestriction", input);
   }
 
   getClassComment(
     input: browsing.GetClassCommentInput,
   ): Promise<browsing.GetClassCommentOutput> {
-    return browsing.getClassComment(this, input);
+    return this.invoke("getClassComment", input);
   }
 
   isType(input: browsing.IsTypeInput): Promise<browsing.IsTypeOutput> {
-    return browsing.isType(this, input);
+    return this.invoke("isType", input);
   }
 
   isClass(input: browsing.IsClassInput): Promise<browsing.IsClassOutput> {
-    return browsing.isClass(this, input);
+    return this.invoke("isClass", input);
   }
 
   isRecord(input: browsing.IsRecordInput): Promise<browsing.IsRecordOutput> {
-    return browsing.isRecord(this, input);
+    return this.invoke("isRecord", input);
   }
 
   isBlock(input: browsing.IsBlockInput): Promise<browsing.IsBlockOutput> {
-    return browsing.isBlock(this, input);
+    return this.invoke("isBlock", input);
   }
 
   isFunction(
     input: browsing.IsFunctionInput,
   ): Promise<browsing.IsFunctionOutput> {
-    return browsing.isFunction(this, input);
+    return this.invoke("isFunction", input);
   }
 
   isModel(input: browsing.IsModelInput): Promise<browsing.IsModelOutput> {
-    return browsing.isModel(this, input);
+    return this.invoke("isModel", input);
   }
 
   isConnector(
     input: browsing.IsConnectorInput,
   ): Promise<browsing.IsConnectorOutput> {
-    return browsing.isConnector(this, input);
+    return this.invoke("isConnector", input);
   }
 
   isPartial(input: browsing.IsPartialInput): Promise<browsing.IsPartialOutput> {
-    return browsing.isPartial(this, input);
+    return this.invoke("isPartial", input);
   }
 
   isReplaceable(
     input: browsing.IsReplaceableInput,
   ): Promise<browsing.IsReplaceableOutput> {
-    return browsing.isReplaceable(this, input);
+    return this.invoke("isReplaceable", input);
   }
 
   isProtectedClass(
     input: browsing.IsProtectedClassInput,
   ): Promise<browsing.IsProtectedClassOutput> {
-    return browsing.isProtectedClass(this, input);
+    return this.invoke("isProtectedClass", input);
   }
 
   isEnumeration(
     input: browsing.IsEnumerationInput,
   ): Promise<browsing.IsEnumerationOutput> {
-    return browsing.isEnumeration(this, input);
+    return this.invoke("isEnumeration", input);
   }
 
   isConstant(
     input: browsing.IsConstantInput,
   ): Promise<browsing.IsConstantOutput> {
-    return browsing.isConstant(this, input);
+    return this.invoke("isConstant", input);
   }
 
   isParameter(
     input: browsing.IsParameterInput,
   ): Promise<browsing.IsParameterOutput> {
-    return browsing.isParameter(this, input);
+    return this.invoke("isParameter", input);
   }
 
   isProtected(
     input: browsing.IsProtectedInput,
   ): Promise<browsing.IsProtectedOutput> {
-    return browsing.isProtected(this, input);
+    return this.invoke("isProtected", input);
   }
 
   isRedeclare(
     input: browsing.IsRedeclareInput,
   ): Promise<browsing.IsRedeclareOutput> {
-    return browsing.isRedeclare(this, input);
+    return this.invoke("isRedeclare", input);
   }
 
   isPrimitive(
     input: browsing.IsPrimitiveInput,
   ): Promise<browsing.IsPrimitiveOutput> {
-    return browsing.isPrimitive(this, input);
+    return this.invoke("isPrimitive", input);
   }
 
   isOperator(
     input: browsing.IsOperatorInput,
   ): Promise<browsing.IsOperatorOutput> {
-    return browsing.isOperator(this, input);
+    return this.invoke("isOperator", input);
   }
 
   isOperatorFunction(
     input: browsing.IsOperatorFunctionInput,
   ): Promise<browsing.IsOperatorFunctionOutput> {
-    return browsing.isOperatorFunction(this, input);
+    return this.invoke("isOperatorFunction", input);
   }
 
   isOperatorRecord(
     input: browsing.IsOperatorRecordInput,
   ): Promise<browsing.IsOperatorRecordOutput> {
-    return browsing.isOperatorRecord(this, input);
+    return this.invoke("isOperatorRecord", input);
   }
 
   isOptimization(
     input: browsing.IsOptimizationInput,
   ): Promise<browsing.IsOptimizationOutput> {
-    return browsing.isOptimization(this, input);
+    return this.invoke("isOptimization", input);
   }
 
   getEnumerationLiterals(
     input: browsing.GetEnumerationLiteralsInput,
   ): Promise<browsing.GetEnumerationLiteralsOutput> {
-    return browsing.getEnumerationLiterals(this, input);
+    return this.invoke("getEnumerationLiterals", input);
   }
 
   getReplaceableChoices(
     input: browsing.GetReplaceableChoicesInput,
   ): Promise<browsing.GetReplaceableChoicesOutput> {
-    return browsing.getReplaceableChoices(this, input);
+    return this.invoke("getReplaceableChoices", input);
   }
 
   extendsFrom(
     input: browsing.ExtendsFromInput,
   ): Promise<browsing.ExtendsFromOutput> {
-    return browsing.extendsFrom(this, input);
+    return this.invoke("extendsFrom", input);
   }
 
   getAllSubtypeOf(
     input: browsing.GetAllSubtypeOfInput,
   ): Promise<browsing.GetAllSubtypeOfOutput> {
-    return browsing.getAllSubtypeOf(this, input);
+    return this.invoke("getAllSubtypeOf", input);
   }
 
   classAnnotationExists(
     input: browsing.ClassAnnotationExistsInput,
   ): Promise<browsing.ClassAnnotationExistsOutput> {
-    return browsing.classAnnotationExists(this, input);
+    return this.invoke("classAnnotationExists", input);
   }
 
   getNthInheritedClass(
     input: browsing.GetNthInheritedClassInput,
   ): Promise<browsing.GetNthInheritedClassOutput> {
-    return browsing.getNthInheritedClass(this, input);
+    return this.invoke("getNthInheritedClass", input);
   }
 
   isShortDefinition(
     input: browsing.IsShortDefinitionInput,
   ): Promise<browsing.IsShortDefinitionOutput> {
-    return browsing.isShortDefinition(this, input);
+    return this.invoke("isShortDefinition", input);
   }
 
   // === Reading model contents =========================================
@@ -466,425 +466,425 @@ export class OmcClient implements CallContext {
   getComponents(
     input: contents.GetComponentsInput,
   ): Promise<contents.GetComponentsOutput> {
-    return contents.getComponents(this, input);
+    return this.invoke("getComponents", input);
   }
 
   getComponentAnnotations(
     input: contents.GetComponentAnnotationsInput,
   ): Promise<contents.GetComponentAnnotationsOutput> {
-    return contents.getComponentAnnotations(this, input);
+    return this.invoke("getComponentAnnotations", input);
   }
 
   getConnectionCount(
     input: contents.GetConnectionCountInput,
   ): Promise<contents.GetConnectionCountOutput> {
-    return contents.getConnectionCount(this, input);
+    return this.invoke("getConnectionCount", input);
   }
 
   getNthConnection(
     input: contents.GetNthConnectionInput,
   ): Promise<contents.GetNthConnectionOutput> {
-    return contents.getNthConnection(this, input);
+    return this.invoke("getNthConnection", input);
   }
 
   getNthConnectionAnnotation(
     input: contents.GetNthConnectionAnnotationInput,
   ): Promise<contents.GetNthConnectionAnnotationOutput> {
-    return contents.getNthConnectionAnnotation(this, input);
+    return this.invoke("getNthConnectionAnnotation", input);
   }
 
   getTransitions(
     input: contents.GetTransitionsInput,
   ): Promise<contents.GetTransitionsOutput> {
-    return contents.getTransitions(this, input);
+    return this.invoke("getTransitions", input);
   }
 
   getInitialStates(
     input: contents.GetInitialStatesInput,
   ): Promise<contents.GetInitialStatesOutput> {
-    return contents.getInitialStates(this, input);
+    return this.invoke("getInitialStates", input);
   }
 
   getIconAnnotation(
     input: contents.GetIconAnnotationInput,
   ): Promise<contents.GetIconAnnotationOutput> {
-    return contents.getIconAnnotation(this, input);
+    return this.invoke("getIconAnnotation", input);
   }
 
   getDiagramAnnotation(
     input: contents.GetDiagramAnnotationInput,
   ): Promise<contents.GetDiagramAnnotationOutput> {
-    return contents.getDiagramAnnotation(this, input);
+    return this.invoke("getDiagramAnnotation", input);
   }
 
   getDocumentationAnnotation(
     input: contents.GetDocumentationAnnotationInput,
   ): Promise<contents.GetDocumentationAnnotationOutput> {
-    return contents.getDocumentationAnnotation(this, input);
+    return this.invoke("getDocumentationAnnotation", input);
   }
 
   listFile(input: contents.ListFileInput): Promise<contents.ListFileOutput> {
-    return contents.listFile(this, input);
+    return this.invoke("listFile", input);
   }
 
   instantiateModel(
     input: contents.InstantiateModelInput,
   ): Promise<contents.InstantiateModelOutput> {
-    return contents.instantiateModel(this, input);
+    return this.invoke("instantiateModel", input);
   }
 
   getModelInstance(
     input: contents.GetModelInstanceInput,
   ): Promise<contents.GetModelInstanceOutput> {
-    return contents.getModelInstance(this, input);
+    return this.invoke("getModelInstance", input);
   }
 
   getModelInstanceAnnotation(
     input: contents.GetModelInstanceAnnotationInput,
   ): Promise<contents.GetModelInstanceAnnotationOutput> {
-    return contents.getModelInstanceAnnotation(this, input);
+    return this.invoke("getModelInstanceAnnotation", input);
   }
 
   modifierToJSON(
     input: contents.ModifierToJSONInput,
   ): Promise<contents.ModifierToJSONOutput> {
-    return contents.modifierToJSON(this, input);
+    return this.invoke("modifierToJSON", input);
   }
 
   getConnectionList(
     input: contents.GetConnectionListInput,
   ): Promise<contents.GetConnectionListOutput> {
-    return contents.getConnectionList(this, input);
+    return this.invoke("getConnectionList", input);
   }
 
   getNthConnector(
     input: contents.GetNthConnectorInput,
   ): Promise<contents.GetNthConnectorOutput> {
-    return contents.getNthConnector(this, input);
+    return this.invoke("getNthConnector", input);
   }
 
   getNthConnectorIconAnnotation(
     input: contents.GetNthConnectorIconAnnotationInput,
   ): Promise<contents.GetNthConnectorIconAnnotationOutput> {
-    return contents.getNthConnectorIconAnnotation(this, input);
+    return this.invoke("getNthConnectorIconAnnotation", input);
   }
 
   getConnectorCount(
     input: contents.GetConnectorCountInput,
   ): Promise<contents.GetConnectorCountOutput> {
-    return contents.getConnectorCount(this, input);
+    return this.invoke("getConnectorCount", input);
   }
 
   getNthInheritedClassIconMapAnnotation(
     input: contents.GetNthInheritedClassIconMapAnnotationInput,
   ): Promise<contents.GetNthInheritedClassIconMapAnnotationOutput> {
-    return contents.getNthInheritedClassIconMapAnnotation(this, input);
+    return this.invoke("getNthInheritedClassIconMapAnnotation", input);
   }
 
   getNthInheritedClassDiagramMapAnnotation(
     input: contents.GetNthInheritedClassDiagramMapAnnotationInput,
   ): Promise<contents.GetNthInheritedClassDiagramMapAnnotationOutput> {
-    return contents.getNthInheritedClassDiagramMapAnnotation(this, input);
+    return this.invoke("getNthInheritedClassDiagramMapAnnotation", input);
   }
 
   getDefaultComponentName(
     input: contents.GetDefaultComponentNameInput,
   ): Promise<contents.GetDefaultComponentNameOutput> {
-    return contents.getDefaultComponentName(this, input);
+    return this.invoke("getDefaultComponentName", input);
   }
 
   getDefaultComponentPrefixes(
     input: contents.GetDefaultComponentPrefixesInput,
   ): Promise<contents.GetDefaultComponentPrefixesOutput> {
-    return contents.getDefaultComponentPrefixes(this, input);
+    return this.invoke("getDefaultComponentPrefixes", input);
   }
 
   getComponentComment(
     input: contents.GetComponentCommentInput,
   ): Promise<contents.GetComponentCommentOutput> {
-    return contents.getComponentComment(this, input);
+    return this.invoke("getComponentComment", input);
   }
 
   getInstantiatedParametersAndValues(
     input: contents.GetInstantiatedParametersAndValuesInput,
   ): Promise<contents.GetInstantiatedParametersAndValuesOutput> {
-    return contents.getInstantiatedParametersAndValues(this, input);
+    return this.invoke("getInstantiatedParametersAndValues", input);
   }
 
   getAnnotationNamedModifiers(
     input: contents.GetAnnotationNamedModifiersInput,
   ): Promise<contents.GetAnnotationNamedModifiersOutput> {
-    return contents.getAnnotationNamedModifiers(this, input);
+    return this.invoke("getAnnotationNamedModifiers", input);
   }
 
   getAnnotationModifierValue(
     input: contents.GetAnnotationModifierValueInput,
   ): Promise<contents.GetAnnotationModifierValueOutput> {
-    return contents.getAnnotationModifierValue(this, input);
+    return this.invoke("getAnnotationModifierValue", input);
   }
 
   getComponentCount(
     input: contents.GetComponentCountInput,
   ): Promise<contents.GetComponentCountOutput> {
-    return contents.getComponentCount(this, input);
+    return this.invoke("getComponentCount", input);
   }
 
   getNthComponent(
     input: contents.GetNthComponentInput,
   ): Promise<contents.GetNthComponentOutput> {
-    return contents.getNthComponent(this, input);
+    return this.invoke("getNthComponent", input);
   }
 
   getNthComponentAnnotation(
     input: contents.GetNthComponentAnnotationInput,
   ): Promise<contents.GetNthComponentAnnotationOutput> {
-    return contents.getNthComponentAnnotation(this, input);
+    return this.invoke("getNthComponentAnnotation", input);
   }
 
   getNthComponentCondition(
     input: contents.GetNthComponentConditionInput,
   ): Promise<contents.GetNthComponentConditionOutput> {
-    return contents.getNthComponentCondition(this, input);
+    return this.invoke("getNthComponentCondition", input);
   }
 
   getNthComponentModification(
     input: contents.GetNthComponentModificationInput,
   ): Promise<contents.GetNthComponentModificationOutput> {
-    return contents.getNthComponentModification(this, input);
+    return this.invoke("getNthComponentModification", input);
   }
 
   getAnnotationCount(
     input: contents.GetAnnotationCountInput,
   ): Promise<contents.GetAnnotationCountOutput> {
-    return contents.getAnnotationCount(this, input);
+    return this.invoke("getAnnotationCount", input);
   }
 
   getNthAnnotationString(
     input: contents.GetNthAnnotationStringInput,
   ): Promise<contents.GetNthAnnotationStringOutput> {
-    return contents.getNthAnnotationString(this, input);
+    return this.invoke("getNthAnnotationString", input);
   }
 
   getAlgorithmCount(
     input: contents.GetAlgorithmCountInput,
   ): Promise<contents.GetAlgorithmCountOutput> {
-    return contents.getAlgorithmCount(this, input);
+    return this.invoke("getAlgorithmCount", input);
   }
 
   getNthAlgorithm(
     input: contents.GetNthAlgorithmInput,
   ): Promise<contents.GetNthAlgorithmOutput> {
-    return contents.getNthAlgorithm(this, input);
+    return this.invoke("getNthAlgorithm", input);
   }
 
   getAlgorithmItemsCount(
     input: contents.GetAlgorithmItemsCountInput,
   ): Promise<contents.GetAlgorithmItemsCountOutput> {
-    return contents.getAlgorithmItemsCount(this, input);
+    return this.invoke("getAlgorithmItemsCount", input);
   }
 
   getNthAlgorithmItem(
     input: contents.GetNthAlgorithmItemInput,
   ): Promise<contents.GetNthAlgorithmItemOutput> {
-    return contents.getNthAlgorithmItem(this, input);
+    return this.invoke("getNthAlgorithmItem", input);
   }
 
   getInitialAlgorithmCount(
     input: contents.GetInitialAlgorithmCountInput,
   ): Promise<contents.GetInitialAlgorithmCountOutput> {
-    return contents.getInitialAlgorithmCount(this, input);
+    return this.invoke("getInitialAlgorithmCount", input);
   }
 
   getNthInitialAlgorithm(
     input: contents.GetNthInitialAlgorithmInput,
   ): Promise<contents.GetNthInitialAlgorithmOutput> {
-    return contents.getNthInitialAlgorithm(this, input);
+    return this.invoke("getNthInitialAlgorithm", input);
   }
 
   getInitialAlgorithmItemsCount(
     input: contents.GetInitialAlgorithmItemsCountInput,
   ): Promise<contents.GetInitialAlgorithmItemsCountOutput> {
-    return contents.getInitialAlgorithmItemsCount(this, input);
+    return this.invoke("getInitialAlgorithmItemsCount", input);
   }
 
   getNthInitialAlgorithmItem(
     input: contents.GetNthInitialAlgorithmItemInput,
   ): Promise<contents.GetNthInitialAlgorithmItemOutput> {
-    return contents.getNthInitialAlgorithmItem(this, input);
+    return this.invoke("getNthInitialAlgorithmItem", input);
   }
 
   getNthEquation(
     input: contents.GetNthEquationInput,
   ): Promise<contents.GetNthEquationOutput> {
-    return contents.getNthEquation(this, input);
+    return this.invoke("getNthEquation", input);
   }
 
   getNthEquationItem(
     input: contents.GetNthEquationItemInput,
   ): Promise<contents.GetNthEquationItemOutput> {
-    return contents.getNthEquationItem(this, input);
+    return this.invoke("getNthEquationItem", input);
   }
 
   getInitialEquationCount(
     input: contents.GetInitialEquationCountInput,
   ): Promise<contents.GetInitialEquationCountOutput> {
-    return contents.getInitialEquationCount(this, input);
+    return this.invoke("getInitialEquationCount", input);
   }
 
   getNthInitialEquation(
     input: contents.GetNthInitialEquationInput,
   ): Promise<contents.GetNthInitialEquationOutput> {
-    return contents.getNthInitialEquation(this, input);
+    return this.invoke("getNthInitialEquation", input);
   }
 
   getInitialEquationItemsCount(
     input: contents.GetInitialEquationItemsCountInput,
   ): Promise<contents.GetInitialEquationItemsCountOutput> {
-    return contents.getInitialEquationItemsCount(this, input);
+    return this.invoke("getInitialEquationItemsCount", input);
   }
 
   getNthInitialEquationItem(
     input: contents.GetNthInitialEquationItemInput,
   ): Promise<contents.GetNthInitialEquationItemOutput> {
-    return contents.getNthInitialEquationItem(this, input);
+    return this.invoke("getNthInitialEquationItem", input);
   }
 
   getImportCount(
     input: contents.GetImportCountInput,
   ): Promise<contents.GetImportCountOutput> {
-    return contents.getImportCount(this, input);
+    return this.invoke("getImportCount", input);
   }
 
   getNthImport(
     input: contents.GetNthImportInput,
   ): Promise<contents.GetNthImportOutput> {
-    return contents.getNthImport(this, input);
+    return this.invoke("getNthImport", input);
   }
 
   convertUnits(
     input: contents.ConvertUnitsInput,
   ): Promise<contents.ConvertUnitsOutput> {
-    return contents.convertUnits(this, input);
+    return this.invoke("convertUnits", input);
   }
 
   getDerivedUnits(
     input: contents.GetDerivedUnitsInput,
   ): Promise<contents.GetDerivedUnitsOutput> {
-    return contents.getDerivedUnits(this, input);
+    return this.invoke("getDerivedUnits", input);
   }
 
   uriToFilename(
     input: contents.UriToFilenameInput,
   ): Promise<contents.UriToFilenameOutput> {
-    return contents.uriToFilename(this, input);
+    return this.invoke("uriToFilename", input);
   }
 
   qualifyPath(
     input: contents.QualifyPathInput,
   ): Promise<contents.QualifyPathOutput> {
-    return contents.qualifyPath(this, input);
+    return this.invoke("qualifyPath", input);
   }
 
   // === Lifecycle =======================================================
 
   loadFile(input: lifecycle.LoadFileInput): Promise<lifecycle.LoadFileOutput> {
-    return lifecycle.loadFile(this, input);
+    return this.invoke("loadFile", input);
   }
 
   loadString(
     input: lifecycle.LoadStringInput,
   ): Promise<lifecycle.LoadStringOutput> {
-    return lifecycle.loadString(this, input);
+    return this.invoke("loadString", input);
   }
 
   loadModel(
     input: lifecycle.LoadModelInput,
   ): Promise<lifecycle.LoadModelOutput> {
-    return lifecycle.loadModel(this, input);
+    return this.invoke("loadModel", input);
   }
 
   parseFile(
     input: lifecycle.ParseFileInput,
   ): Promise<lifecycle.ParseFileOutput> {
-    return lifecycle.parseFile(this, input);
+    return this.invoke("parseFile", input);
   }
 
   parseString(
     input: lifecycle.ParseStringInput,
   ): Promise<lifecycle.ParseStringOutput> {
-    return lifecycle.parseString(this, input);
+    return this.invoke("parseString", input);
   }
 
   newModel(input: lifecycle.NewModelInput): Promise<lifecycle.NewModelOutput> {
-    return lifecycle.newModel(this, input);
+    return this.invoke("newModel", input);
   }
 
   renameClass(
     input: lifecycle.RenameClassInput,
   ): Promise<lifecycle.RenameClassOutput> {
-    return lifecycle.renameClass(this, input);
+    return this.invoke("renameClass", input);
   }
 
   deleteClass(
     input: lifecycle.DeleteClassInput,
   ): Promise<lifecycle.DeleteClassOutput> {
-    return lifecycle.deleteClass(this, input);
+    return this.invoke("deleteClass", input);
   }
 
   copyClass(
     input: lifecycle.CopyClassInput,
   ): Promise<lifecycle.CopyClassOutput> {
-    return lifecycle.copyClass(this, input);
+    return this.invoke("copyClass", input);
   }
 
   moveClass(
     input: lifecycle.MoveClassInput,
   ): Promise<lifecycle.MoveClassOutput> {
-    return lifecycle.moveClass(this, input);
+    return this.invoke("moveClass", input);
   }
 
   moveClassToTop(
     input: lifecycle.MoveClassToTopInput,
   ): Promise<lifecycle.MoveClassToTopOutput> {
-    return lifecycle.moveClassToTop(this, input);
+    return this.invoke("moveClassToTop", input);
   }
 
   moveClassToBottom(
     input: lifecycle.MoveClassToBottomInput,
   ): Promise<lifecycle.MoveClassToBottomOutput> {
-    return lifecycle.moveClassToBottom(this, input);
+    return this.invoke("moveClassToBottom", input);
   }
 
   getSourceFile(
     input: lifecycle.GetSourceFileInput,
   ): Promise<lifecycle.GetSourceFileOutput> {
-    return lifecycle.getSourceFile(this, input);
+    return this.invoke("getSourceFile", input);
   }
 
   setSourceFile(
     input: lifecycle.SetSourceFileInput,
   ): Promise<lifecycle.SetSourceFileOutput> {
-    return lifecycle.setSourceFile(this, input);
+    return this.invoke("setSourceFile", input);
   }
 
   diffModelicaFileListings(
     input: lifecycle.DiffModelicaFileListingsInput,
   ): Promise<lifecycle.DiffModelicaFileListingsOutput> {
-    return lifecycle.diffModelicaFileListings(this, input);
+    return this.invoke("diffModelicaFileListings", input);
   }
 
   save(input: lifecycle.SaveInput): Promise<lifecycle.SaveOutput> {
-    return lifecycle.save(this, input);
+    return this.invoke("save", input);
   }
 
   cd(input: lifecycle.CdInput = {}): Promise<lifecycle.CdOutput> {
-    return lifecycle.cd(this, input);
+    return this.invoke("cd", input);
   }
 
   loadClassContentString(
     input: lifecycle.LoadClassContentStringInput,
   ): Promise<lifecycle.LoadClassContentStringOutput> {
-    return lifecycle.loadClassContentString(this, input);
+    return this.invoke("loadClassContentString", input);
   }
 
   // === Parameters & modifiers ==========================================
@@ -892,97 +892,97 @@ export class OmcClient implements CallContext {
   getParameterValue(
     input: parameters.GetParameterValueInput,
   ): Promise<parameters.GetParameterValueOutput> {
-    return parameters.getParameterValue(this, input);
+    return this.invoke("getParameterValue", input);
   }
 
   getComponentModifierNames(
     input: parameters.GetComponentModifierNamesInput,
   ): Promise<parameters.GetComponentModifierNamesOutput> {
-    return parameters.getComponentModifierNames(this, input);
+    return this.invoke("getComponentModifierNames", input);
   }
 
   getComponentModifierValue(
     input: parameters.GetComponentModifierValueInput,
   ): Promise<parameters.GetComponentModifierValueOutput> {
-    return parameters.getComponentModifierValue(this, input);
+    return this.invoke("getComponentModifierValue", input);
   }
 
   getComponentModifierValues(
     input: parameters.GetComponentModifierValuesInput,
   ): Promise<parameters.GetComponentModifierValuesOutput> {
-    return parameters.getComponentModifierValues(this, input);
+    return this.invoke("getComponentModifierValues", input);
   }
 
   setComponentModifierValue(
     input: parameters.SetComponentModifierValueInput,
   ): Promise<parameters.SetComponentModifierValueOutput> {
-    return parameters.setComponentModifierValue(this, input);
+    return this.invoke("setComponentModifierValue", input);
   }
 
   removeComponentModifiers(
     input: parameters.RemoveComponentModifiersInput,
   ): Promise<parameters.RemoveComponentModifiersOutput> {
-    return parameters.removeComponentModifiers(this, input);
+    return this.invoke("removeComponentModifiers", input);
   }
 
   getExtendsModifierNames(
     input: parameters.GetExtendsModifierNamesInput,
   ): Promise<parameters.GetExtendsModifierNamesOutput> {
-    return parameters.getExtendsModifierNames(this, input);
+    return this.invoke("getExtendsModifierNames", input);
   }
 
   getExtendsModifierValue(
     input: parameters.GetExtendsModifierValueInput,
   ): Promise<parameters.GetExtendsModifierValueOutput> {
-    return parameters.getExtendsModifierValue(this, input);
+    return this.invoke("getExtendsModifierValue", input);
   }
 
   setExtendsModifierValue(
     input: parameters.SetExtendsModifierValueInput,
   ): Promise<parameters.SetExtendsModifierValueOutput> {
-    return parameters.setExtendsModifierValue(this, input);
+    return this.invoke("setExtendsModifierValue", input);
   }
 
   getParameterNames(
     input: parameters.GetParameterNamesInput,
   ): Promise<parameters.GetParameterNamesOutput> {
-    return parameters.getParameterNames(this, input);
+    return this.invoke("getParameterNames", input);
   }
 
   setParameterValue(
     input: parameters.SetParameterValueInput,
   ): Promise<parameters.SetParameterValueOutput> {
-    return parameters.setParameterValue(this, input);
+    return this.invoke("setParameterValue", input);
   }
 
   removeExtendsModifiers(
     input: parameters.RemoveExtendsModifiersInput,
   ): Promise<parameters.RemoveExtendsModifiersOutput> {
-    return parameters.removeExtendsModifiers(this, input);
+    return this.invoke("removeExtendsModifiers", input);
   }
 
   getDerivedClassModifierNames(
     input: parameters.GetDerivedClassModifierNamesInput,
   ): Promise<parameters.GetDerivedClassModifierNamesOutput> {
-    return parameters.getDerivedClassModifierNames(this, input);
+    return this.invoke("getDerivedClassModifierNames", input);
   }
 
   getDerivedClassModifierValue(
     input: parameters.GetDerivedClassModifierValueInput,
   ): Promise<parameters.GetDerivedClassModifierValueOutput> {
-    return parameters.getDerivedClassModifierValue(this, input);
+    return this.invoke("getDerivedClassModifierValue", input);
   }
 
   isExtendsModifierFinal(
     input: parameters.IsExtendsModifierFinalInput,
   ): Promise<parameters.IsExtendsModifierFinalOutput> {
-    return parameters.isExtendsModifierFinal(this, input);
+    return this.invoke("isExtendsModifierFinal", input);
   }
 
   setExtendsModifier(
     input: parameters.SetExtendsModifierInput,
   ): Promise<parameters.SetExtendsModifierOutput> {
-    return parameters.setExtendsModifier(this, input);
+    return this.invoke("setExtendsModifier", input);
   }
 
   // === Elements ========================================================
@@ -990,67 +990,67 @@ export class OmcClient implements CallContext {
   getElements(
     input: elements.GetElementsInput,
   ): Promise<elements.GetElementsOutput> {
-    return elements.getElements(this, input);
+    return this.invoke("getElements", input);
   }
 
   getElementsInfo(
     input: elements.GetElementsInfoInput,
   ): Promise<elements.GetElementsInfoOutput> {
-    return elements.getElementsInfo(this, input);
+    return this.invoke("getElementsInfo", input);
   }
 
   getElementAnnotation(
     input: elements.GetElementAnnotationInput,
   ): Promise<elements.GetElementAnnotationOutput> {
-    return elements.getElementAnnotation(this, input);
+    return this.invoke("getElementAnnotation", input);
   }
 
   getElementAnnotations(
     input: elements.GetElementAnnotationsInput,
   ): Promise<elements.GetElementAnnotationsOutput> {
-    return elements.getElementAnnotations(this, input);
+    return this.invoke("getElementAnnotations", input);
   }
 
   getElementModifierNames(
     input: elements.GetElementModifierNamesInput,
   ): Promise<elements.GetElementModifierNamesOutput> {
-    return elements.getElementModifierNames(this, input);
+    return this.invoke("getElementModifierNames", input);
   }
 
   getElementModifierValue(
     input: elements.GetElementModifierValueInput,
   ): Promise<elements.GetElementModifierValueOutput> {
-    return elements.getElementModifierValue(this, input);
+    return this.invoke("getElementModifierValue", input);
   }
 
   getElementModifierValues(
     input: elements.GetElementModifierValuesInput,
   ): Promise<elements.GetElementModifierValuesOutput> {
-    return elements.getElementModifierValues(this, input);
+    return this.invoke("getElementModifierValues", input);
   }
 
   setElementModifierValue(
     input: elements.SetElementModifierValueInput,
   ): Promise<elements.SetElementModifierValueOutput> {
-    return elements.setElementModifierValue(this, input);
+    return this.invoke("setElementModifierValue", input);
   }
 
   setElementAnnotation(
     input: elements.SetElementAnnotationInput,
   ): Promise<elements.SetElementAnnotationOutput> {
-    return elements.setElementAnnotation(this, input);
+    return this.invoke("setElementAnnotation", input);
   }
 
   setElementType(
     input: elements.SetElementTypeInput,
   ): Promise<elements.SetElementTypeOutput> {
-    return elements.setElementType(this, input);
+    return this.invoke("setElementType", input);
   }
 
   removeElementModifiers(
     input: elements.RemoveElementModifiersInput,
   ): Promise<elements.RemoveElementModifiersOutput> {
-    return elements.removeElementModifiers(this, input);
+    return this.invoke("removeElementModifiers", input);
   }
 
   // === Library / package management ===================================
@@ -1058,71 +1058,71 @@ export class OmcClient implements CallContext {
   getAvailableLibraries(
     input: library.GetAvailableLibrariesInput = {},
   ): Promise<library.GetAvailableLibrariesOutput> {
-    return library.getAvailableLibraries(this, input);
+    return this.invoke("getAvailableLibraries", input);
   }
 
   getAvailableLibraryVersions(
     input: library.GetAvailableLibraryVersionsInput,
   ): Promise<library.GetAvailableLibraryVersionsOutput> {
-    return library.getAvailableLibraryVersions(this, input);
+    return this.invoke("getAvailableLibraryVersions", input);
   }
 
   getAvailablePackageVersions(
     input: library.GetAvailablePackageVersionsInput,
   ): Promise<library.GetAvailablePackageVersionsOutput> {
-    return library.getAvailablePackageVersions(this, input);
+    return this.invoke("getAvailablePackageVersions", input);
   }
 
   getAvailablePackageConversionsFrom(
     input: library.GetAvailablePackageConversionsFromInput,
   ): Promise<library.GetAvailablePackageConversionsFromOutput> {
-    return library.getAvailablePackageConversionsFrom(this, input);
+    return this.invoke("getAvailablePackageConversionsFrom", input);
   }
 
   getAvailablePackageConversionsTo(
     input: library.GetAvailablePackageConversionsToInput,
   ): Promise<library.GetAvailablePackageConversionsToOutput> {
-    return library.getAvailablePackageConversionsTo(this, input);
+    return this.invoke("getAvailablePackageConversionsTo", input);
   }
 
   getConversionsFromVersions(
     input: library.GetConversionsFromVersionsInput,
   ): Promise<library.GetConversionsFromVersionsOutput> {
-    return library.getConversionsFromVersions(this, input);
+    return this.invoke("getConversionsFromVersions", input);
   }
 
   installPackage(
     input: library.InstallPackageInput,
   ): Promise<library.InstallPackageOutput> {
-    return library.installPackage(this, input);
+    return this.invoke("installPackage", input);
   }
 
   updatePackageIndex(
     input: library.UpdatePackageIndexInput = {},
   ): Promise<library.UpdatePackageIndexOutput> {
-    return library.updatePackageIndex(this, input);
+    return this.invoke("updatePackageIndex", input);
   }
 
   upgradeInstalledPackages(
     input: library.UpgradeInstalledPackagesInput = {},
   ): Promise<library.UpgradeInstalledPackagesOutput> {
-    return library.upgradeInstalledPackages(this, input);
+    return this.invoke("upgradeInstalledPackages", input);
   }
 
   getLoadedLibraries(
     input: library.GetLoadedLibrariesInput = {},
   ): Promise<library.GetLoadedLibrariesOutput> {
-    return library.getLoadedLibraries(this, input);
+    return this.invoke("getLoadedLibraries", input);
   }
 
   getPackages(
     input: library.GetPackagesInput = {},
   ): Promise<library.GetPackagesOutput> {
-    return library.getPackages(this, input);
+    return this.invoke("getPackages", input);
   }
 
   loadFiles(input: library.LoadFilesInput): Promise<library.LoadFilesOutput> {
-    return library.loadFiles(this, input);
+    return this.invoke("loadFiles", input);
   }
 
   // === Solver / runtime config =========================================
@@ -1130,49 +1130,49 @@ export class OmcClient implements CallContext {
   setMatchingAlgorithm(
     input: solver.SetMatchingAlgorithmInput,
   ): Promise<solver.SetMatchingAlgorithmOutput> {
-    return solver.setMatchingAlgorithm(this, input);
+    return this.invoke("setMatchingAlgorithm", input);
   }
 
   setIndexReductionMethod(
     input: solver.SetIndexReductionMethodInput,
   ): Promise<solver.SetIndexReductionMethodOutput> {
-    return solver.setIndexReductionMethod(this, input);
+    return this.invoke("setIndexReductionMethod", input);
   }
 
   setCommandLineOptions(
     input: solver.SetCommandLineOptionsInput,
   ): Promise<solver.SetCommandLineOptionsOutput> {
-    return solver.setCommandLineOptions(this, input);
+    return this.invoke("setCommandLineOptions", input);
   }
 
   getMatchingAlgorithm(
     input: solver.GetMatchingAlgorithmInput = {},
   ): Promise<solver.GetMatchingAlgorithmOutput> {
-    return solver.getMatchingAlgorithm(this, input);
+    return this.invoke("getMatchingAlgorithm", input);
   }
 
   getAvailableMatchingAlgorithms(
     input: solver.GetAvailableMatchingAlgorithmsInput = {},
   ): Promise<solver.GetAvailableMatchingAlgorithmsOutput> {
-    return solver.getAvailableMatchingAlgorithms(this, input);
+    return this.invoke("getAvailableMatchingAlgorithms", input);
   }
 
   getIndexReductionMethod(
     input: solver.GetIndexReductionMethodInput = {},
   ): Promise<solver.GetIndexReductionMethodOutput> {
-    return solver.getIndexReductionMethod(this, input);
+    return this.invoke("getIndexReductionMethod", input);
   }
 
   getAvailableIndexReductionMethods(
     input: solver.GetAvailableIndexReductionMethodsInput = {},
   ): Promise<solver.GetAvailableIndexReductionMethodsOutput> {
-    return solver.getAvailableIndexReductionMethods(this, input);
+    return this.invoke("getAvailableIndexReductionMethods", input);
   }
 
   getAvailableTearingMethods(
     input: solver.GetAvailableTearingMethodsInput = {},
   ): Promise<solver.GetAvailableTearingMethodsOutput> {
-    return solver.getAvailableTearingMethods(this, input);
+    return this.invoke("getAvailableTearingMethods", input);
   }
 
   // === Editing =========================================================
@@ -1180,139 +1180,139 @@ export class OmcClient implements CallContext {
   addComponent(
     input: editing.AddComponentInput,
   ): Promise<editing.AddComponentOutput> {
-    return editing.addComponent(this, input);
+    return this.invoke("addComponent", input);
   }
 
   deleteComponent(
     input: editing.DeleteComponentInput,
   ): Promise<editing.DeleteComponentOutput> {
-    return editing.deleteComponent(this, input);
+    return this.invoke("deleteComponent", input);
   }
 
   renameComponent(
     input: editing.RenameComponentInput,
   ): Promise<editing.RenameComponentOutput> {
-    return editing.renameComponent(this, input);
+    return this.invoke("renameComponent", input);
   }
 
   updateComponent(
     input: editing.UpdateComponentInput,
   ): Promise<editing.UpdateComponentOutput> {
-    return editing.updateComponent(this, input);
+    return this.invoke("updateComponent", input);
   }
 
   addConnection(
     input: editing.AddConnectionInput,
   ): Promise<editing.AddConnectionOutput> {
-    return editing.addConnection(this, input);
+    return this.invoke("addConnection", input);
   }
 
   deleteConnection(
     input: editing.DeleteConnectionInput,
   ): Promise<editing.DeleteConnectionOutput> {
-    return editing.deleteConnection(this, input);
+    return this.invoke("deleteConnection", input);
   }
 
   updateConnection(
     input: editing.UpdateConnectionInput,
   ): Promise<editing.UpdateConnectionOutput> {
-    return editing.updateConnection(this, input);
+    return this.invoke("updateConnection", input);
   }
 
   updateConnectionNames(
     input: editing.UpdateConnectionNamesInput,
   ): Promise<editing.UpdateConnectionNamesOutput> {
-    return editing.updateConnectionNames(this, input);
+    return this.invoke("updateConnectionNames", input);
   }
 
   addTransition(
     input: editing.AddTransitionInput,
   ): Promise<editing.AddTransitionOutput> {
-    return editing.addTransition(this, input);
+    return this.invoke("addTransition", input);
   }
 
   deleteTransition(
     input: editing.DeleteTransitionInput,
   ): Promise<editing.DeleteTransitionOutput> {
-    return editing.deleteTransition(this, input);
+    return this.invoke("deleteTransition", input);
   }
 
   updateTransition(
     input: editing.UpdateTransitionInput,
   ): Promise<editing.UpdateTransitionOutput> {
-    return editing.updateTransition(this, input);
+    return this.invoke("updateTransition", input);
   }
 
   addClassAnnotation(
     input: editing.AddClassAnnotationInput,
   ): Promise<editing.AddClassAnnotationOutput> {
-    return editing.addClassAnnotation(this, input);
+    return this.invoke("addClassAnnotation", input);
   }
 
   writeClassGraphics(
     input: editing.WriteClassGraphicsInput,
   ): Promise<editing.WriteClassGraphicsOutput> {
-    return editing.writeClassGraphics(this, input);
+    return this.invoke("writeClassGraphics", input);
   }
 
   setComponentProperties(
     input: editing.SetComponentPropertiesInput,
   ): Promise<editing.SetComponentPropertiesOutput> {
-    return editing.setComponentProperties(this, input);
+    return this.invoke("setComponentProperties", input);
   }
 
   setComponentDimensions(
     input: editing.SetComponentDimensionsInput,
   ): Promise<editing.SetComponentDimensionsOutput> {
-    return editing.setComponentDimensions(this, input);
+    return this.invoke("setComponentDimensions", input);
   }
 
   setComponentComment(
     input: editing.SetComponentCommentInput,
   ): Promise<editing.SetComponentCommentOutput> {
-    return editing.setComponentComment(this, input);
+    return this.invoke("setComponentComment", input);
   }
 
   setClassComment(
     input: editing.SetClassCommentInput,
   ): Promise<editing.SetClassCommentOutput> {
-    return editing.setClassComment(this, input);
+    return this.invoke("setClassComment", input);
   }
 
   setDocumentationAnnotation(
     input: editing.SetDocumentationAnnotationInput,
   ): Promise<editing.SetDocumentationAnnotationOutput> {
-    return editing.setDocumentationAnnotation(this, input);
+    return this.invoke("setDocumentationAnnotation", input);
   }
 
   setFullDocumentationAnnotation(
     input: editing.SetFullDocumentationAnnotationInput,
   ): Promise<editing.SetFullDocumentationAnnotationOutput> {
-    return editing.setFullDocumentationAnnotation(this, input);
+    return this.invoke("setFullDocumentationAnnotation", input);
   }
 
   addInitialState(
     input: editing.AddInitialStateInput,
   ): Promise<editing.AddInitialStateOutput> {
-    return editing.addInitialState(this, input);
+    return this.invoke("addInitialState", input);
   }
 
   deleteInitialState(
     input: editing.DeleteInitialStateInput,
   ): Promise<editing.DeleteInitialStateOutput> {
-    return editing.deleteInitialState(this, input);
+    return this.invoke("deleteInitialState", input);
   }
 
   updateInitialState(
     input: editing.UpdateInitialStateInput,
   ): Promise<editing.UpdateInitialStateOutput> {
-    return editing.updateInitialState(this, input);
+    return this.invoke("updateInitialState", input);
   }
 
   renameComponentInClass(
     input: editing.RenameComponentInClassInput,
   ): Promise<editing.RenameComponentInClassOutput> {
-    return editing.renameComponentInClass(this, input);
+    return this.invoke("renameComponentInClass", input);
   }
 
   // === Execution =======================================================
@@ -1320,53 +1320,53 @@ export class OmcClient implements CallContext {
   checkModel(
     input: execution.CheckModelInput,
   ): Promise<execution.CheckModelOutput> {
-    return execution.checkModel(this, input);
+    return this.invoke("checkModel", input);
   }
 
   translateModel(
     input: execution.TranslateModelInput,
   ): Promise<execution.TranslateModelOutput> {
-    return execution.translateModel(this, input);
+    return this.invoke("translateModel", input);
   }
 
   buildModel(
     input: execution.BuildModelInput,
   ): Promise<execution.BuildModelOutput> {
-    return execution.buildModel(this, input);
+    return this.invoke("buildModel", input);
   }
 
   simulate(input: execution.SimulateInput): Promise<execution.SimulateOutput> {
-    return execution.simulate(this, input);
+    return this.invoke("simulate", input);
   }
 
   buildModelFMU(
     input: execution.BuildModelFMUInput,
   ): Promise<execution.BuildModelFMUOutput> {
-    return execution.buildModelFMU(this, input);
+    return this.invoke("buildModelFMU", input);
   }
 
   translateModelXML(
     input: execution.TranslateModelXMLInput,
   ): Promise<execution.TranslateModelXMLOutput> {
-    return execution.translateModelXML(this, input);
+    return this.invoke("translateModelXML", input);
   }
 
   importFMU(
     input: execution.ImportFMUInput,
   ): Promise<execution.ImportFMUOutput> {
-    return execution.importFMU(this, input);
+    return this.invoke("importFMU", input);
   }
 
   getSimulationOptions(
     input: execution.GetSimulationOptionsInput,
   ): Promise<execution.GetSimulationOptionsOutput> {
-    return execution.getSimulationOptions(this, input);
+    return this.invoke("getSimulationOptions", input);
   }
 
   isExperiment(
     input: execution.IsExperimentInput,
   ): Promise<execution.IsExperimentOutput> {
-    return execution.isExperiment(this, input);
+    return this.invoke("isExperiment", input);
   }
 
   // === Results =========================================================
@@ -1374,46 +1374,46 @@ export class OmcClient implements CallContext {
   readSimulationResultSize(
     input: results.ReadSimulationResultSizeInput,
   ): Promise<results.ReadSimulationResultSizeOutput> {
-    return results.readSimulationResultSize(this, input);
+    return this.invoke("readSimulationResultSize", input);
   }
 
   readSimulationResultVars(
     input: results.ReadSimulationResultVarsInput,
   ): Promise<results.ReadSimulationResultVarsOutput> {
-    return results.readSimulationResultVars(this, input);
+    return this.invoke("readSimulationResultVars", input);
   }
 
   closeSimulationResultFile(
     input: results.CloseSimulationResultFileInput = {},
   ): Promise<results.CloseSimulationResultFileOutput> {
-    return results.closeSimulationResultFile(this, input);
+    return this.invoke("closeSimulationResultFile", input);
   }
 
   readSimulationResult(
     input: results.ReadSimulationResultInput,
   ): Promise<results.ReadSimulationResultOutput> {
-    return results.readSimulationResult(this, input);
+    return this.invoke("readSimulationResult", input);
   }
 
   val(input: results.ValInput): Promise<results.ValOutput> {
-    return results.val(this, input);
+    return this.invoke("val", input);
   }
 
   filterSimulationResults(
     input: results.FilterSimulationResultsInput,
   ): Promise<results.FilterSimulationResultsOutput> {
-    return results.filterSimulationResults(this, input);
+    return this.invoke("filterSimulationResults", input);
   }
 
   deltaSimulationResults(
     input: results.DeltaSimulationResultsInput,
   ): Promise<results.DeltaSimulationResultsOutput> {
-    return results.deltaSimulationResults(this, input);
+    return this.invoke("deltaSimulationResults", input);
   }
 
   diffSimulationResults(
     input: results.DiffSimulationResultsInput,
   ): Promise<results.DiffSimulationResultsOutput> {
-    return results.diffSimulationResults(this, input);
+    return this.invoke("diffSimulationResults", input);
   }
 }

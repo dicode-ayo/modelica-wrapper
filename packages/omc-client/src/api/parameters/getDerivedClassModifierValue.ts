@@ -18,23 +18,20 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
 export const GetDerivedClassModifierValueInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "Fully qualified TypeName of the derived class; emitted bare to OMC.",
-    ),
+  typeName: modelicaName.describe(
+    "Fully qualified TypeName of the derived class; emitted to OMC unquoted.",
+  ),
   // OMC's `modifierName` is a secondary TypeName arg (a member path), so it
   // keeps the OMC docs name verbatim rather than the package-wide `typeName`
   // rename, which only applies to the primary class arg (audit.md §2.3).
-  modifierName: z
-    .string()
-    .describe(
-      "Name of the modifier on the base type to read; emitted bare to OMC.",
-    ),
+  modifierName: modelicaName.describe(
+    "Name of the modifier on the base type to read; emitted to OMC unquoted.",
+  ),
 });
 export type GetDerivedClassModifierValueInput = z.input<
   typeof GetDerivedClassModifierValueInputSchema

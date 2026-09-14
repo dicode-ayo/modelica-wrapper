@@ -1,6 +1,10 @@
 /**
  * Modelica command-string formatting helpers used by API functions to build
  * the `OmcCommand` strings sent over the ZMQ transport.
+ *
+ * `quote` defends a string argument by escaping it. An argument OMC wants
+ * unquoted cannot be defended that way; the grammar those must satisfy lives
+ * in `_shared/fields.ts`, beside the schema atoms that enforce it.
  */
 
 /** Wrap s as a Modelica string literal, escaping the necessary characters. */

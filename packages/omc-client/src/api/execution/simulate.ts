@@ -34,13 +34,14 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
 export const SimulateInputSchema = z.strictObject({
-  typeName: z.string().describe("Class to simulate."),
+  typeName: modelicaName.describe("Class to simulate."),
   startTime: z
     .number()
     .optional()

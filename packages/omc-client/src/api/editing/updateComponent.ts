@@ -8,6 +8,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaExpr, modelicaName } from "../../_shared/fields.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -15,17 +16,14 @@ import {
 } from "../../_shared/parseOutput.js";
 
 export const UpdateComponentInputSchema = z.strictObject({
-  componentName: z
-    .string()
-    .describe("Local instance name of the component to update."),
-  componentClass: z
-    .string()
-    .describe(
-      "Type of the component (preserved when updating annotation only).",
-    ),
-  intoTypeName: z.string().describe("Class containing the component."),
-  annotation: z
-    .string()
+  componentName: modelicaName.describe(
+    "Local instance name of the component to update.",
+  ),
+  componentClass: modelicaName.describe(
+    "Type of the component (preserved when updating annotation only).",
+  ),
+  intoTypeName: modelicaName.describe("Class containing the component."),
+  annotation: modelicaExpr
     .optional()
     .default("")
     .describe(

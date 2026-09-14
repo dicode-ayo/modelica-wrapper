@@ -20,30 +20,28 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import type { OmcCommand } from "../../commands.js";
+import { modelicaName, modelicaOrOmittedName } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
+import type { OmcCommand } from "../../commands.js";
 import {
   parseMutationSuccess,
   parseOutput,
 } from "../../_shared/parseOutput.js";
 
 export const CopyClassInputSchema = z.strictObject({
-  source: z
-    .string()
-    .describe(
-      "TypeName of the existing class to copy (OMC `className`, emitted bare).",
-    ),
+  source: modelicaName.describe(
+    "TypeName of the existing class to copy (OMC `className`, emitted to OMC unquoted).",
+  ),
   destination: z
     .string()
     .describe(
       "New name for the copied class (OMC `newClassName`, emitted as a String).",
     ),
-  within: z
-    .string()
+  within: modelicaOrOmittedName
     .optional()
     .default("")
     .describe(
-      'TypeName of the parent under which the copy is placed; "" places it at the top level.',
+      'TypeName of the parent under which the copy is placed, emitted to OMC unquoted; "" places it at the top level.',
     ),
 });
 export type CopyClassInput = z.input<typeof CopyClassInputSchema>;

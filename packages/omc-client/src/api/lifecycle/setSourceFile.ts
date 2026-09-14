@@ -8,13 +8,14 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetSourceFileInputSchema = z.strictObject({
-  typeName: z.string().describe("Class whose source filename is being set."),
+  typeName: modelicaName.describe("Class whose source filename is being set."),
   fileName: z
     .string()
     .describe(

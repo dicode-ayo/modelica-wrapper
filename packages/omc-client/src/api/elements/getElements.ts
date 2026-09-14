@@ -16,13 +16,14 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
 export const GetElementsInputSchema = z.strictObject({
-  typeName: z.string().describe("Class whose elements should be enumerated."),
+  typeName: modelicaName.describe("Class whose elements should be enumerated."),
   useQuotes: z
     .boolean()
     .optional()

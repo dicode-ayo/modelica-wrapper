@@ -35,6 +35,132 @@
 import { z } from "zod";
 
 /**
+ * Modelica name grammar, as OMC's scripting parser reads an argument emitted
+ * without quotes: dot-separated segments, each an IDENT or a Q-IDENT, each
+ * optionally subscripted.
+ *
+ * A Q-IDENT lexes as one token, so a `.` or a `)` inside one is inert and the
+ * pattern admits it. A subscript admits what an index expression is made of —
+ * integers, identifiers, `end`, ranges, the dimension separator and
+ * arithmetic (`pins[3].p`, `ports[i]`, `a[1, 2]`, `v[1:n]`, `pins[i + 1]`).
+ * None of those can carry a bracket, a quote or a separator that would end the
+ * argument; a nested subscript can, so it is not admitted.
+ */
+const IDENT = "[A-Za-z_][A-Za-z0-9_]*";
+
+/** One unquoted Modelica identifier, whole — no dots, no subscript. */
+export const MODELICA_IDENT = new RegExp(`^${IDENT}$`);
+const QIDENT = "'(?:[^'\\\\]|\\\\.)+'";
+const SUBSCRIPT = "(?:\\[[A-Za-z0-9_,:\\s+*/.-]+\\])?";
+const SEGMENT = `(?:${IDENT}|${QIDENT})${SUBSCRIPT}`;
+const MODELICA_NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
+const NAME_BODY = `${SEGMENT}(?:\\.${SEGMENT})*`;
+const RESULT_VARIABLE = new RegExp(`^(?:${NAME_BODY}|der\\(${NAME_BODY}\\))$`);
+
+/** Bracket kind opened, keyed by the character that closes it. */
+const OPENER: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+
+/**
+ * Why `s` would leave the argument position it is interpolated into, or
+ * `undefined` if it stays put.
+ *
+ * An annotation or modifier value is an arbitrary expression, so no pattern as
+ * narrow as {@link MODELICA_NAME} fits it. What it must not do is leave the
+ * argument position it is interpolated into: brackets stay balanced, and a
+ * separator or comment marker that would end the argument or the call cannot
+ * appear outside a string literal.
+ */
+export function expressionFault(s: string): string | undefined {
+  let fault: string | undefined;
+  const reject = (why: string): void => {
+    fault ??= why;
+  };
+  const stack: string[] = [];
+  let inString = false;
+  // A Q-IDENT is one token to OMC's lexer, so a comma or bracket inside one is
+  // inert and must not be read as structure.
+  let inQident = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charAt(i);
+    if (inString || inQident) {
+      if (c === "\\") i++;
+      else if (inString && c === '"') inString = false;
+      else if (inQident && c === "'") inQident = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === "'") inQident = true;
+    else if (c === "(" || c === "[" || c === "{") stack.push(c);
+    else if (c === ")" || c === "]" || c === "}") {
+      if (stack.pop() !== OPENER[c]) reject("closes a bracket it did not open");
+    } else if (c === "," || c === ";") {
+      if (stack.length === 0) reject("separates arguments at the top level");
+    } else if (
+      c === "/" &&
+      (s.charAt(i + 1) === "/" || s.charAt(i + 1) === "*")
+    ) {
+      reject("comments out the rest of the command");
+    }
+  }
+  if (inString) reject("leaves a string literal open");
+  if (inQident) reject("leaves a quoted identifier open");
+  if (stack.length > 0) reject("leaves a bracket open");
+  return fault;
+}
+
+/**
+ * A name OMC receives unquoted — a TypeName, a component reference, a modifier
+ * path. Consumers override the description at the use site, not the pattern:
+ * it is the command grammar rather than a preference.
+ *
+ * The pattern crosses into the field's JSON Schema, so an MCP client sees the
+ * shape before it calls rather than after.
+ */
+export const modelicaName = z
+  .string()
+  .describe(
+    "A Modelica name, emitted to OMC unquoted: a value carrying a bracket, a separator or a quote is refused, not escaped.",
+  )
+  .regex(
+    MODELICA_NAME,
+    'must be a Modelica name — dot-separated identifiers, each optionally subscripted (e.g. "Modelica.Blocks.Math.Gain", "pins[3].p"), or a single-quoted Q-IDENT',
+  );
+
+/**
+ * A variable as it is named in a simulation result: a cref, or a cref under
+ * `der(...)`, which is how OMC names a state derivative in the result file.
+ * `val` and `readSimulationResult` emit these unquoted, and a plot of a
+ * derivative asks for one by that name.
+ */
+export const resultVariable = z
+  .string()
+  .regex(
+    RESULT_VARIABLE,
+    'must be a result variable — a Modelica name, optionally wrapped in `der(...)` (e.g. "body.r[1]", "der(x)")',
+  );
+
+/**
+ * {@link modelicaName} for the wrappers that also read `""` as "argument
+ * omitted", so the sentinel does not have to be smuggled past the pattern.
+ */
+export const modelicaOrOmittedName = z.union([modelicaName, z.literal("")]);
+
+/**
+ * A raw Modelica expression OMC receives unquoted — an annotation, a modifier
+ * value. No pattern describes these, so the constraint is a refinement and only
+ * the description crosses into JSON Schema.
+ */
+export const modelicaExpr = z.string().superRefine((s, ctx) => {
+  const fault = expressionFault(s);
+  if (fault !== undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message: `must be one self-contained Modelica expression; this one ${fault}`,
+    });
+  }
+});
+
+/**
  * `prettyPrint` flag — used by JSON-emitting calls (`getModelInstance`,
  * `getModelInstanceAnnotation`, `modifierToJSON`).
  */
@@ -58,29 +184,28 @@ export const requireExactVersion = z
  * `typeName` specialized for connection-targeted calls (`getNthConnection`,
  * `getNthConnectionAnnotation`, `deleteConnection`, `updateConnection`).
  */
-export const typeNameOfConnection = z
-  .string()
-  .describe("Class containing the connection.");
+export const typeNameOfConnection = modelicaName.describe(
+  "Class containing the connection; emitted to OMC unquoted.",
+);
 
 /**
  * `typeName` specialized for `extends`-clause-targeted calls
  * (`getExtendsModifierNames`, `getExtendsModifierValue`,
  * `setExtendsModifierValue`).
  */
-export const typeNameOfExtends = z
-  .string()
-  .describe("Class containing the `extends` clause.");
+export const typeNameOfExtends = modelicaName.describe(
+  "Class containing the `extends` clause; emitted to OMC unquoted.",
+);
 
 /**
  * Optional `Line(...)` annotation argument used by connection / transition
  * mutators (`addConnection`, `addTransition`, `updateConnection`).
  */
-export const connectionAnnotation = z
-  .string()
+export const connectionAnnotation = modelicaExpr
   .optional()
   .default("")
   .describe(
-    'Raw Modelica `Line(...)` annotation (no `annotate=` prefix); "" yields the default Line.',
+    'Raw Modelica `Line(...)` annotation (no `annotate=` prefix); "" yields the default Line. Emitted to OMC unquoted, so it must be one self-contained expression.',
   );
 
 /**
@@ -89,9 +214,9 @@ export const connectionAnnotation = z
  * `getExtendsModifierValue`, `setExtendsModifierValue`. Setters override
  * with "...to mutate." at the use site.
  */
-export const extendsBase = z
-  .string()
-  .describe("TypeName of the base class on the `extends` clause to inspect.");
+export const extendsBase = modelicaName.describe(
+  "TypeName of the base class on the `extends` clause to inspect; emitted to OMC unquoted.",
+);
 
 /**
  * `expr` — raw Modelica expression for a modifier value, wrapped in
@@ -100,8 +225,6 @@ export const extendsBase = z
  * `setElementModifierValue`. Variants override at the use site for slightly
  * different OMC docs phrasing.
  */
-export const expr = z
-  .string()
-  .describe(
-    "Raw Modelica expression for the new modifier value (wrapped in `$Code(=…)` for OMC); empty removes the modifier.",
-  );
+export const expr = modelicaExpr.describe(
+  "Raw Modelica expression for the new modifier value (wrapped in `$Code(=…)` for OMC); empty removes the modifier. Emitted unquoted, so it must be one self-contained expression.",
+);

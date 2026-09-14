@@ -34,7 +34,7 @@ import type {
   UnitTable,
 } from "@dicode/omc-client";
 import { collectBaseUnits } from "@dicode/omc-client";
-import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
+import type { ConvertUnitsOutput } from "@dicode/omc-client";
 
 /** Logger seam — the extension passes `log.warn`; tests pass a noop. */
 export type WarnFn = (topic: string, message: string, data?: unknown) => void;

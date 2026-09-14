@@ -25,11 +25,12 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, asInt, expectList, parse, type Value } from "../../parse.js";
 
 export const GetSimulationOptionsInputSchema = z.strictObject({
-  typeName: z.string().describe("Class whose experiment annotation is read."),
+  typeName: modelicaName.describe("Class whose experiment annotation is read."),
   defaultStartTime: z
     .number()
     .optional()

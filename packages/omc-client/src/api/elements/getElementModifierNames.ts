@@ -15,12 +15,13 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const GetElementModifierNamesInputSchema = z.strictObject({
-  typeName: z.string().describe("Class containing the element."),
+  typeName: modelicaName.describe("Class containing the element."),
   elementName: z
     .string()
     .describe("Element name (dotted path within the class)."),

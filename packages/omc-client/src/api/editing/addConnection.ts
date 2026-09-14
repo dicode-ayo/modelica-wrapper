@@ -7,7 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { connectionAnnotation } from "../../_shared/fields.js";
+import { connectionAnnotation, modelicaName } from "../../_shared/fields.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
 import {
   parseMutationDiagnostic,
@@ -15,13 +15,13 @@ import {
 } from "../../_shared/parseOutput.js";
 
 export const AddConnectionInputSchema = z.strictObject({
-  from: z
-    .string()
-    .describe("Left-hand-side connector reference for the new connection."),
-  to: z
-    .string()
-    .describe("Right-hand-side connector reference for the new connection."),
-  typeName: z.string().describe("Class to which the connection is added."),
+  from: modelicaName.describe(
+    "Left-hand-side connector reference for the new connection.",
+  ),
+  to: modelicaName.describe(
+    "Right-hand-side connector reference for the new connection.",
+  ),
+  typeName: modelicaName.describe("Class to which the connection is added."),
   annotation: connectionAnnotation,
 });
 export type AddConnectionInput = z.input<typeof AddConnectionInputSchema>;

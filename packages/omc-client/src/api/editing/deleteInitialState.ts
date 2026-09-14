@@ -21,13 +21,14 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const DeleteInitialStateInputSchema = z.strictObject({
-  typeName: z.string().describe("Class containing the state machine."),
+  typeName: modelicaName.describe("Class containing the state machine."),
   state: z
     .string()
     .describe("Name of the state to clear the initial marker from."),

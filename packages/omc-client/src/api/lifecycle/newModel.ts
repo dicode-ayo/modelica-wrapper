@@ -34,6 +34,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { modelicaName } from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
   parseMutationSuccess,
@@ -41,16 +42,12 @@ import {
 } from "../../_shared/parseOutput.js";
 
 export const NewModelInputSchema = z.strictObject({
-  typeName: z
-    .string()
-    .describe(
-      "TypeName of the new model to create (OMC parameter `className`); emitted bare to OMC.",
-    ),
-  withinPath: z
-    .string()
-    .describe(
-      "TypeName of the existing package to create the model inside (OMC parameter `withinPath`); emitted bare to OMC. Required — OMC has no top-level creation form, so the package must already be loaded.",
-    ),
+  typeName: modelicaName.describe(
+    "TypeName of the new model to create (OMC parameter `className`); emitted to OMC unquoted.",
+  ),
+  withinPath: modelicaName.describe(
+    "TypeName of the existing package to create the model inside (OMC parameter `withinPath`); emitted to OMC unquoted. Required — OMC has no top-level creation form, so the package must already be loaded.",
+  ),
 });
 export type NewModelInput = z.input<typeof NewModelInputSchema>;
 
