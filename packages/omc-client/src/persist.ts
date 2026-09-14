@@ -100,10 +100,10 @@ interface OnDiskParent {
  *
  * The enclosing package's `package.order` gains the new member, so a fresh
  * OMC `loadFile` finds it. A `package.order` written from scratch alongside a
- * new `package.mo` lists the children OMC reports; an existing one is only
- * appended to, never rewritten — see {@link addToPackageOrder}. A directory
- * package this never created, and that has no `package.order`, keeps having
- * none.
+ * new `package.mo` lists the disk-backed subset of the children OMC reports
+ * — see {@link diskBackedClassNames}; an existing one is only appended to,
+ * never rewritten — see {@link addToPackageOrder}. A directory package this
+ * never created, and that has no `package.order`, keeps having none.
  *
  * A `package` is written as `<baseDir>/<leafName>/package.mo` so its own
  * directory becomes the parent for subsequent children; every other
@@ -134,15 +134,23 @@ export async function persistClass(
     baseDir = path.join(baseDir, part);
     await mkdir(baseDir, { recursive: true });
     const pkgFile = path.join(baseDir, "package.mo");
+    const orderFile = path.join(baseDir, "package.order");
+    const orderFileMissing = !(await pathExists(orderFile));
+    // Resolved before package.mo is written: once that write lands, a
+    // sibling whose fileName OMC happens to report as this exact path would
+    // pass the disk-backed check purely because of this write, whether or
+    // not it is really declared inside the (still memberless) file we just
+    // created.
+    const base = orderFileMissing
+      ? await diskBackedClassNames(client, parentName)
+      : [];
     if (!(await pathExists(pkgFile))) {
       const within = parts.slice(0, i).join(".");
       const header = within ? `within ${within};\n` : "";
       await writer.write(pkgFile, `${header}package ${part}\nend ${part};\n`);
     }
-    const orderFile = path.join(baseDir, "package.order");
-    if (!(await pathExists(orderFile))) {
+    if (orderFileMissing) {
       const nextSegment = parts[i + 1];
-      const base = await safeGetClassNames(client, parentName);
       const children =
         nextSegment !== undefined && !base.includes(nextSegment)
           ? [...base, nextSegment]
@@ -173,7 +181,7 @@ export async function persistClass(
     if (!(await pathExists(orderFile))) {
       // Written even when the package has no members yet: it is what the next
       // class created inside gets appended to.
-      const children = await safeGetClassNames(client, qualifiedName);
+      const children = await diskBackedClassNames(client, qualifiedName);
       await writer.write(
         orderFile,
         children.length === 0 ? "" : children.join("\n") + "\n",
@@ -250,6 +258,41 @@ async function onDiskParent(
     /* parent not in OMC — caller will create it */
   }
   return undefined;
+}
+
+/**
+ * `parentName`'s current members (per `getClassNames`), filtered down to
+ * those OMC reports a real on-disk file for. A `package.order` written from
+ * scratch must list only names a file backs, the same hazard
+ * {@link addToPackageOrder} documents for the append path.
+ *
+ * A member declared inline in `parentName`'s own `package.mo` reports that
+ * file as its `fileName` (not a `<runtime:…>` placeholder), so it survives
+ * this filter exactly when that `package.mo` is already on disk. Both call
+ * sites resolve this before writing their own `package.mo` for that reason:
+ * a member kept only because of a write this same call is about to make
+ * would be the same orphan the filter exists to keep out, arrived at by a
+ * different route.
+ */
+async function diskBackedClassNames(
+  client: PersistClient,
+  parentName: string,
+): Promise<string[]> {
+  const members = await safeGetClassNames(client, parentName);
+  const backed = await Promise.all(
+    members.map(async (member) => {
+      try {
+        const { fileName } = await client.getClassInformation({
+          typeName: `${parentName}.${member}`,
+        });
+        return isLikelyDiskPath(fileName) && (await pathExists(fileName));
+      } catch {
+        /* unknown to OMC, or the lookup itself failed — either way, unproven */
+        return false;
+      }
+    }),
+  );
+  return members.filter((_, index) => backed[index] === true);
 }
 
 const MODELICA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
