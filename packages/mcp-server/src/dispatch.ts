@@ -30,7 +30,7 @@ import type {
 import {
   refusalFor,
   refusalForClass,
-  type SourceParseClient,
+  type WriteTargetClient,
 } from "./write-gate.js";
 
 /**
@@ -44,13 +44,12 @@ import {
 export interface McpToolClient
   extends
     WriteVerdictClient,
-    SourceParseClient,
+    WriteTargetClient,
     PersistClient,
     RootPackageClient,
     DeclareClient {
   invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
-  existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
   /** Narrows the bases, which disagree on which fields they need. */
   getClassInformation(input: { typeName: string }): Promise<{
     fileReadOnly: boolean;

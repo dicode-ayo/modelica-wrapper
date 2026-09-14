@@ -505,6 +505,7 @@ describe("the escape hatch", () => {
 
   it("refuses loadString on the class its text names, which no argument does", async () => {
     declaredClasses = [SYSTEM_LIBRARY];
+    loaded.add(SYSTEM_LIBRARY);
     const mcp = await connect();
 
     const result = (await mcp.callTool({
@@ -881,6 +882,7 @@ describe("setSourceCode", () => {
 
   it("judges the class its code declares, not the one it was handed", async () => {
     declaredClasses = [SYSTEM_LIBRARY];
+    loaded.add(SYSTEM_LIBRARY);
     const mcp = await connect();
 
     const result = (await mcp.callTool({

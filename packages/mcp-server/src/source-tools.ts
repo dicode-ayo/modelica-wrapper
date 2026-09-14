@@ -8,9 +8,9 @@
  * class OMC cannot place — one being created here for the first time — has no
  * path to preserve.
  *
- * `className` does not decide the verdict. The code's own `within` clause does,
- * and the gate reads it; `className` is gated on top of that because the file
- * the reload takes over is its file, whether or not the code says so.
+ * Two classes are gated, because two are at stake: the ones `code` declares,
+ * which the gate derives from its `within` clause, and `className`, whose file
+ * the reload takes over whatever the code says.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
