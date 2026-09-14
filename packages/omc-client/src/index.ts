@@ -79,6 +79,7 @@ export {
   type RootPackageClient,
 } from "./declare-class.js";
 export { pathExists } from "./fs-util.js";
+export { boundedArray } from "./_shared/boundedArray.js";
 export { fileOwnerClass, type FileOwnerClient } from "./file-owner.js";
 export {
   isLikelyDiskPath,

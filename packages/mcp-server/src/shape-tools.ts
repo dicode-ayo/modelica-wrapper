@@ -17,6 +17,7 @@
  */
 
 import {
+  boundedArray,
   ShapeIndexSchema,
   WriteClassGraphicsInputSchema,
   WriteCoordinateSystemSchema,
@@ -30,16 +31,29 @@ import { z } from "zod";
 
 import { dispatch, type McpToolDeps } from "./dispatch.js";
 
-const FlatExtent = z
-  .tuple([z.number(), z.number(), z.number(), z.number()])
-  .describe("Bounding box as [x1, y1, x2, y2] in diagram coordinates.");
+const FlatExtent = boundedArray(
+  z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  "number",
+  4,
+  "Bounding box as [x1, y1, x2, y2] in diagram coordinates.",
+);
 
-const Color = z
-  .tuple([z.number(), z.number(), z.number()])
-  .describe("RGB components, each 0-255.");
+const Color = boundedArray(
+  z.tuple([z.number(), z.number(), z.number()]),
+  "number",
+  3,
+  "RGB components, each 0-255.",
+);
 
 const Points = z
-  .array(z.tuple([z.number(), z.number()]))
+  .array(
+    boundedArray(
+      z.tuple([z.number(), z.number()]),
+      "number",
+      2,
+      "An [x, y] vertex.",
+    ),
+  )
   .describe("Vertices as [x, y] pairs in diagram coordinates.");
 
 /** What every one of these tools reads to find the layer it edits. */
@@ -94,10 +108,12 @@ const LineSchema = z.object({
   color: Color.optional(),
   thickness: z.number().optional(),
   pattern: z.string().optional().describe("Line pattern, e.g. Solid, Dash."),
-  arrow: z
-    .tuple([z.string(), z.string()])
-    .optional()
-    .describe("Start and end arrow heads, e.g. [None, Filled]."),
+  arrow: boundedArray(
+    z.tuple([z.string(), z.string()]),
+    "string",
+    2,
+    "Start and end arrow heads, e.g. [None, Filled].",
+  ).optional(),
 });
 
 const PolygonSchema = z.object({

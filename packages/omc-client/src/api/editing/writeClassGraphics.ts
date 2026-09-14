@@ -36,6 +36,7 @@ import { getDiagramAnnotation } from "../contents/getDiagramAnnotation.js";
 import { getIconAnnotation } from "../contents/getIconAnnotation.js";
 import { shapeToRecord } from "../diagram/shape-serialize.js";
 import { decodeAnnotationShape } from "../diagram/shapes.js";
+import { boundedArray } from "../../_shared/boundedArray.js";
 import { addClassAnnotation } from "./addClassAnnotation.js";
 
 export const ShapeIndexSchema = z.number().int().nonnegative();
@@ -47,13 +48,20 @@ export const ShapeIndexSchema = z.number().int().nonnegative();
  * a field the caller never mentioned.
  */
 export const WriteCoordinateSystemSchema = z.object({
-  extent: z
-    .tuple([z.number(), z.number(), z.number(), z.number()])
-    .optional()
-    .describe("Layer extent as [x1, y1, x2, y2]."),
+  extent: boundedArray(
+    z.tuple([z.number(), z.number(), z.number(), z.number()]),
+    "number",
+    4,
+    "Layer extent as [x1, y1, x2, y2].",
+  ).optional(),
   preserveAspectRatio: z.boolean().optional(),
   initialScale: z.number().optional(),
-  grid: z.tuple([z.number(), z.number()]).optional(),
+  grid: boundedArray(
+    z.tuple([z.number(), z.number()]),
+    "number",
+    2,
+    "Grid spacing as [x, y].",
+  ).optional(),
 });
 
 export type WriteCoordinateSystemInput = z.infer<
