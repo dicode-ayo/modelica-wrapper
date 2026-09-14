@@ -211,7 +211,6 @@ describeIf("persist + OMC roundtrip", () => {
     // Ghost is loaded but never persisted, so OMC reports its fileName as
     // the `<runtime:…>` placeholder from loadString — the live-OMC shape
     // the disk-backed filter (persist.ts) has to recognize as not disk-backed.
-    // Only Reloaded gets persisted here.
     await loadStepwise(client, [
       [
         "RoundtripGhostPkg",

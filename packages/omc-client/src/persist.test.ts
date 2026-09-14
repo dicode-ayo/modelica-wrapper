@@ -484,11 +484,9 @@ describe("persistClass", () => {
 
   it("keeps a member declared inline in the parent's package.mo", async () => {
     const { client, seedChildren, seedClass } = makeClientStub();
-    // The file genuinely exists with Inline already in it — unlike the
-    // fresh package.mo persistClass itself would write, so the disk-backed
-    // check has real content behind it rather than a coincidence of write
-    // order. "MyLib" itself is deliberately left unseeded so onDiskParent
-    // still reports it as memory-only and the from-scratch path still runs.
+    // The file exists on disk with Inline already in it, so the disk-backed
+    // check has real content behind it. "MyLib" itself is left unseeded so
+    // onDiskParent reports it as memory-only and the from-scratch path runs.
     const libDir = path.join(tmp, "MyLib");
     await fsp.mkdir(libDir, { recursive: true });
     await fsp.writeFile(
@@ -513,7 +511,7 @@ describe("persistClass", () => {
   it("does not name a sibling whose recorded path only exists because persistClass is about to create it", async () => {
     const { client, seedChildren, seedClass } = makeClientStub();
     // "Coincidence" is recorded against the exact package.mo persistClass is
-    // about to write fresh, empty, for MyLib itself. If the disk-backed
+    // about to write, memberless, for MyLib itself. If the disk-backed
     // check ran after that write, pathExists on this path would trivially
     // pass — the check must resolve while the path still doesn't exist.
     seedChildren("MyLib", ["Coincidence"]);
