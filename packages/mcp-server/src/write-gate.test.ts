@@ -41,6 +41,21 @@ function declaring(
   };
 }
 
+/**
+ * {@link declaring}'s file-shaped twin: `classNames` is what `parseFile`
+ * reports a file declares, rather than what `parseString` reports for text.
+ */
+function declaringFile(
+  classNames: string[],
+  loaded: string[] = [],
+): WriteVerdictClient & WriteTargetClient {
+  return {
+    ...client,
+    parseFile: async () => ({ classNames }),
+    existClass: async ({ typeName }) => ({ exists: loaded.includes(typeName) }),
+  };
+}
+
 describe("refusalFor", () => {
   it("refuses a mutating call on a read-only class, carrying its reason", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
@@ -280,6 +295,108 @@ describe("a call carrying Modelica source", () => {
 
     const refusal = await refusalFor(source, declaring([]), "loadString", {
       data: "this is not Modelica",
+    });
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
+});
+
+describe("a call carrying a path to a Modelica file", () => {
+  it("refuses a file that redefines a class of a read-only library (#676)", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Modelica.Blocks.Math.Sin"], ["Modelica.Blocks.Math.Sin"]),
+      "loadFile",
+      { fileName: "/tmp/pwned.mo" },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+  });
+
+  it("lets a library file the caller owns through, judged as the edit it is", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Demo.RLC"], ["Demo.RLC"]),
+      "loadFile",
+      { fileName: "/workspace/Demo/RLC.mo" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
+  });
+
+  it("lets a first load of a system library through: its within scope already exists", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Modelica.Blocks.Math.Sneaky"], ["Modelica.Blocks.Math"]),
+      "loadFile",
+      { fileName: "/opt/modelica/Modelica/Blocks/Math/Sneaky.mo" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([
+      { className: "Modelica.Blocks.Math", action: "createInside" },
+    ]);
+  });
+
+  it("refuses when OMC cannot be asked what the file declares", async () => {
+    const source = verdicts();
+    const unreachable = {
+      ...client,
+      parseFile: async () => {
+        throw new Error("omc: no such file");
+      },
+    };
+
+    const refusal = await refusalFor(source, unreachable, "loadFile", {
+      fileName: "/tmp/missing.mo",
+    });
+
+    expect(refusal).toContain("omc: no such file");
+    expect(source.asked).toEqual([]);
+  });
+});
+
+describe("a call carrying paths to several Modelica files", () => {
+  it("judges every file in the array, not only the first", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Modelica.Blocks.Math.Sin"], ["Modelica.Blocks.Math.Sin"]),
+      "loadFiles",
+      { fileNames: ["/workspace/Demo/RLC.mo", "/tmp/pwned.mo"] },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+  });
+
+  it("lets an array of files the caller owns through", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Demo.RLC"], ["Demo.RLC"]),
+      "loadFiles",
+      { fileNames: ["/workspace/Demo/RLC.mo"] },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
+  });
+
+  it("lets a non-array fileNames value through: nothing the gate can judge", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(source, client, "loadFiles", {
+      fileNames: "not-an-array",
     });
 
     expect(refusal).toBeUndefined();
