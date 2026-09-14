@@ -18,6 +18,7 @@ export {
   StringValueOutput,
 } from "./outputs.js";
 export {
+  classNameToFilePrefix,
   prettyPrint,
   requireExactVersion,
   typeNameOfConnection,

@@ -34,7 +34,11 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { modelicaName } from "../../_shared/fields.js";
+import {
+  fileNamePrefix,
+  modelicaName,
+  shellFlags,
+} from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
@@ -65,15 +69,13 @@ export const SimulateInputSchema = z.strictObject({
     .optional()
     .default("<default>")
     .describe('Solver method name; "<default>" lets OMC pick.'),
-  fileNamePrefix: z
-    .string()
+  fileNamePrefix: fileNamePrefix
     .optional()
     .default("<default>")
     .describe(
       'Prefix for generated artifact filenames; "<default>" lets OMC pick.',
     ),
-  options: z
-    .string()
+  options: shellFlags
     .optional()
     .default("<default>")
     .describe(
@@ -89,13 +91,11 @@ export const SimulateInputSchema = z.strictObject({
     .optional()
     .default(".*")
     .describe("Regex selecting which variables get stored in the result file."),
-  cflags: z
-    .string()
+  cflags: shellFlags
     .optional()
     .default("<default>")
     .describe('Extra C compiler flags; "<default>" leaves them unset.'),
-  simflags: z
-    .string()
+  simflags: shellFlags
     .optional()
     .default("<default>")
     .describe('Extra runtime simulator flags; "<default>" leaves them unset.'),
@@ -129,7 +129,7 @@ export async function simulate(
   // with the default value `"<default>"`. When OMC sees that exact
   // string on the call site it substitutes whatever it considers a
   // sane default at runtime. But for `fileNamePrefix` / `cflags` /
-  // `simflags` / `options`, OMC currently treats the literal `<default>`
+  // `simflags` / `options`, OMC treats the literal `<default>`
   // as a real string — splat into filenames and compiler flags, which
   // then crashes `/bin/sh` at compile time (the `<` / `>` are parsed as
   // redirection operators). The matching `val.ts` wrapper uses the same

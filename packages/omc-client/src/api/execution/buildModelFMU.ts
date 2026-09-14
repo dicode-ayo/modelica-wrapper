@@ -21,7 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { modelicaName } from "../../_shared/fields.js";
+import { fileNamePrefix, modelicaName } from "../../_shared/fields.js";
 import { mlBool, quote, quoteList } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
@@ -40,8 +40,7 @@ export const BuildModelFMUInputSchema = z.strictObject({
     .describe(
       "FMU kind: model exchange (`me`), co-simulation (`cs`), or both (`me_cs`).",
     ),
-  fileNamePrefix: z
-    .string()
+  fileNamePrefix: fileNamePrefix
     .optional()
     .default("<default>")
     .describe('Prefix for generated FMU filename; "<default>" lets OMC pick.'),

@@ -115,6 +115,7 @@ export {
   ValueSchema,
   TypeNameInput,
   OptionalTypeNameInput,
+  classNameToFilePrefix,
   ModelInstanceSchema,
   ModelInstanceAnnotationSchema,
   ModelInstanceNotFullyLoadedError,
