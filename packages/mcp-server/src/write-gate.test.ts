@@ -56,6 +56,21 @@ function declaringFile(
   };
 }
 
+/**
+ * {@link declaringFile}, keyed by path: each file reports its own classes, so
+ * a batch can hold a benign entry ahead of one that earns a refusal.
+ */
+function declaringPerFile(
+  byFile: Record<string, string[]>,
+  loaded: string[] = [],
+): WriteVerdictClient & WriteTargetClient {
+  return {
+    ...client,
+    parseFile: async ({ fileName }) => ({ classNames: byFile[fileName] ?? [] }),
+    existClass: async ({ typeName }) => ({ exists: loaded.includes(typeName) }),
+  };
+}
+
 describe("refusalFor", () => {
   it("refuses a mutating call on a read-only class, carrying its reason", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
@@ -368,14 +383,41 @@ describe("a call carrying paths to several Modelica files", () => {
   it("judges every file in the array, not only the first", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
 
+    // Each path declares a different class, so a gate that stopped reading
+    // after the first (benign) file would let this through.
     const refusal = await refusalFor(
       source,
-      declaringFile(["Modelica.Blocks.Math.Sin"], ["Modelica.Blocks.Math.Sin"]),
+      declaringPerFile(
+        {
+          "/workspace/Demo/RLC.mo": ["Demo.RLC"],
+          "/tmp/pwned.mo": ["Modelica.Blocks.Math.Sin"],
+        },
+        ["Demo.RLC", "Modelica.Blocks.Math.Sin"],
+      ),
       "loadFiles",
       { fileNames: ["/workspace/Demo/RLC.mo", "/tmp/pwned.mo"] },
     );
 
     expect(refusal).toBe(REFUSAL);
+  });
+
+  it("asks once about a scope more than one file in the batch declares into", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      declaringPerFile({
+        "/workspace/Demo/A.mo": ["Demo.A"],
+        "/workspace/Demo/B.mo": ["Demo.B"],
+      }),
+      "loadFiles",
+      { fileNames: ["/workspace/Demo/A.mo", "/workspace/Demo/B.mo"] },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([
+      { className: "Demo", action: "createInside" },
+    ]);
   });
 
   it("lets an array of files the caller owns through", async () => {
@@ -401,5 +443,20 @@ describe("a call carrying paths to several Modelica files", () => {
 
     expect(refusal).toBeUndefined();
     expect(source.asked).toEqual([]);
+  });
+
+  it("skips entries that are not usable paths, still judging the real ones", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaringPerFile({ "/tmp/pwned.mo": ["Modelica.Blocks.Math.Sin"] }, [
+        "Modelica.Blocks.Math.Sin",
+      ]),
+      "loadFiles",
+      { fileNames: ["", 42, "/tmp/pwned.mo"] },
+    );
+
+    expect(refusal).toBe(REFUSAL);
   });
 });

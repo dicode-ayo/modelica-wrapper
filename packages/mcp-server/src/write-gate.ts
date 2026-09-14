@@ -46,8 +46,8 @@ import type {
 
 /**
  * The OMC the gate calls on its own account, to find what a call writes before
- * asking whether it may. Neither loads anything, so both can run ahead of the
- * write they screen. `OmcClient` satisfies it.
+ * asking whether it may. None of them loads anything, so all three can run
+ * ahead of the write they screen. `OmcClient` satisfies it.
  */
 export interface WriteTargetClient {
   parseString(input: { data: string }): Promise<{ classNames: string[] }>;
@@ -194,7 +194,8 @@ const BY_NAME: Readonly<
  * The refusal `fn` earns for `input`, or `undefined` when the call may proceed.
  *
  * Read-only functions, and mutating ones whose input neither names a class nor
- * carries Modelica text, return `undefined` without asking OMC anything.
+ * carries Modelica text or a path to it, return `undefined` without asking
+ * OMC anything.
  */
 export async function refusalFor(
   verdicts: WriteVerdictSource,
@@ -216,21 +217,35 @@ export async function refusalFor(
 
   if (argument.as === "sourceFiles") {
     if (!Array.isArray(raw)) return undefined;
-    const fileNames = raw.filter(
-      (entry): entry is string => typeof entry === "string" && entry !== "",
-    );
-    const refusals = await Promise.all(
-      fileNames.map((fileName) =>
-        refusalForSourceFile(verdicts, client, fileName),
-      ),
-    );
-    return refusals.find((refusal) => refusal !== undefined);
+    // Shared across every file in the batch so a `within` scope several of
+    // them declare into is asked about once, the same as within one file.
+    const passed = new Set<string>();
+    for (const fileName of raw) {
+      if (typeof fileName !== "string" || fileName === "") continue;
+      const refusal = await refusalForSourceFile(
+        verdicts,
+        client,
+        fileName,
+        passed,
+      );
+      if (refusal !== undefined) return refusal;
+    }
+    return undefined;
   }
 
   if (typeof raw !== "string" || raw === "") return undefined;
-  return argument.as === "source"
-    ? refusalForSource(verdicts, client, raw)
-    : refusalForSourceFile(verdicts, client, raw);
+  switch (argument.as) {
+    case "source":
+      return refusalForSource(verdicts, client, raw);
+    case "sourceFile":
+      return refusalForSourceFile(verdicts, client, raw);
+    default: {
+      const unreachable: never = argument.as;
+      throw new Error(
+        `write-gate: unhandled argument shape ${String(unreachable)}`,
+      );
+    }
+  }
 }
 
 /**
@@ -248,6 +263,7 @@ async function refusalForSource(
   verdicts: WriteVerdictSource,
   client: WriteVerdictClient & WriteTargetClient,
   code: string,
+  passed = new Set<string>(),
 ): Promise<string | undefined> {
   let classNames: string[];
   try {
@@ -255,17 +271,22 @@ async function refusalForSource(
   } catch (err) {
     return `Cannot tell which class this would write — OMC could not read the source: ${errorDetail(err)}.`;
   }
-  return refusalForDeclaredClasses(verdicts, client, classNames);
+  return refusalForDeclaredClasses(verdicts, client, classNames, passed);
 }
 
 /**
  * {@link refusalForSource}'s file-shaped twin: `fileName` is read through
  * `parseFile` instead of `data` through `parseString`, and judged the same way.
+ *
+ * `passed` defaults to a fresh set for a lone file, and is shared across a
+ * `loadFiles` batch by its caller so a scope named from more than one file is
+ * still asked about once.
  */
 async function refusalForSourceFile(
   verdicts: WriteVerdictSource,
   client: WriteVerdictClient & WriteTargetClient,
   fileName: string,
+  passed = new Set<string>(),
 ): Promise<string | undefined> {
   let classNames: string[];
   try {
@@ -273,7 +294,7 @@ async function refusalForSourceFile(
   } catch (err) {
     return `Cannot tell which class this would write — OMC could not read ${fileName}: ${errorDetail(err)}.`;
   }
-  return refusalForDeclaredClasses(verdicts, client, classNames);
+  return refusalForDeclaredClasses(verdicts, client, classNames, passed);
 }
 
 /**
@@ -287,16 +308,17 @@ async function refusalForSourceFile(
  * can reach is one that already exists. A bare name has no scope at all, which
  * is a top-level class the gate has no verdict for.
  *
- * A target that has already passed is not asked about twice — several classes
- * in one `within` clause share a scope, and {@link WriteVerdictSource} answers
- * by class, with `action` selecting only the wording of a refusal.
+ * A target in `passed` is not asked about twice — several classes (in one
+ * `within` clause, or in different files of one `loadFiles` batch) can share a
+ * scope, and {@link WriteVerdictSource} answers by class, with `action`
+ * selecting only the wording of a refusal.
  */
 async function refusalForDeclaredClasses(
   verdicts: WriteVerdictSource,
   client: WriteVerdictClient & WriteTargetClient,
   classNames: string[],
+  passed: Set<string>,
 ): Promise<string | undefined> {
-  const passed = new Set<string>();
   for (const className of classNames) {
     const { exists } = await client.existClass({ typeName: className });
     const target = exists ? className : enclosingScope(className);
