@@ -231,6 +231,24 @@ describe("a call carrying Modelica source", () => {
     expect(source.asked).toEqual([]);
   });
 
+  it("refuses when OMC cannot be asked what the text declares", async () => {
+    const source = verdicts();
+    const unreachable = {
+      ...client,
+      parseString: async () => {
+        throw new Error("omc: call timed out");
+      },
+    };
+
+    const refusal = await refusalFor(source, unreachable, "loadString", {
+      data: "within Demo;\nmodel RLC end RLC;\n",
+    });
+
+    // Nothing judged the write, so nothing may permit it either.
+    expect(refusal).toContain("omc: call timed out");
+    expect(source.asked).toEqual([]);
+  });
+
   it("lets text that declares nothing through: the load reports the parse failure", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
 

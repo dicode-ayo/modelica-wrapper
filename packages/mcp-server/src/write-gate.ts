@@ -28,6 +28,8 @@
 import { enclosingScope } from "@dicode/modelica-lang-core";
 import type { MutatingFnName, OmcFnName, OmcInput } from "@dicode/omc-client";
 
+import { errorDetail } from "./error-detail.js";
+
 import type {
   WriteAction,
   WriteVerdictClient,
@@ -191,9 +193,10 @@ export async function refusalFor(
  *
  * Text OMC cannot parse declares nothing, so there is nothing to judge and the
  * load that follows surfaces the parse failure. A `parseString` that fails
- * outright leaves the gate unable to ask, and it fails open for the reason a
- * verdict lookup does — a transient OMC error must not lock a user out of a
- * model that is theirs to edit.
+ * outright is the other thing entirely: the gate never learned what the call
+ * writes, so it refuses. A verdict lookup fails open because refusing there
+ * would lock a user out of a model that is theirs to edit; refusing here costs
+ * one retry, and allowing would be a write nothing judged.
  *
  * A name already in the symbol table is being replaced, so the class itself is
  * judged; one that is not is being created, so its `within` scope is judged
@@ -214,8 +217,8 @@ async function refusalForSource(
   let classNames: string[];
   try {
     ({ classNames } = await client.parseString({ data: code }));
-  } catch {
-    return undefined;
+  } catch (err) {
+    return `Cannot tell which class this would write — OMC could not read the source: ${errorDetail(err)}.`;
   }
 
   const passed = new Set<string>();
