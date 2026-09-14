@@ -92,8 +92,8 @@ const read = (...segments: string[]): Promise<string> =>
 
 describe("saveClass", () => {
   it("gives a class OMC holds in memory a file, and points OMC at it", async () => {
-    // The whole of #655: every edit after createClass leaves the class here,
-    // bound to a `<runtime:…>` placeholder that `save` would write literally.
+    // Every edit after a class is created leaves it here, bound to a
+    // `<runtime:…>` placeholder that `save` would write out literally.
     stub.seed("Demo", { restriction: "package", members: ["RLC"] });
     stub.seed("Demo.RLC", {
       contents: "within Demo;\nmodel RLC\n  Real v;\nend RLC;",
@@ -183,6 +183,38 @@ describe("saveClass", () => {
 
     expect(saved.map((s) => s.className)).toEqual(["Single", "Single.Fresh"]);
     expect(warnings).toEqual([expect.stringContaining("single file")]);
+  });
+
+  it("leaves a member the caller may not write alone, and says which", async () => {
+    // A package reaches members nobody named. Judging only the class the
+    // caller asked for would write a member's file on a verdict that never
+    // saw it — skipping writes nothing, so nothing lands half-done.
+    const pkgFile = path.join(root, "Demo", "package.mo");
+    const ownFile = path.join(root, "Demo", "Own.mo");
+    stub.seed("Demo", {
+      fileName: pkgFile,
+      restriction: "package",
+      members: ["Own", "Locked"],
+      contents: "package Demo\nend Demo;",
+    });
+    stub.seed("Demo.Own", {
+      fileName: ownFile,
+      contents: "model Own\nend Own;",
+    });
+    stub.seed("Demo.Locked", { fileName: path.join(root, "Locked.mo") });
+
+    const { saved, skipped } = await saveClass(stub.client, tree, "Demo", {
+      authorize: async (className) =>
+        className === "Demo.Locked" ? "Locked belongs elsewhere." : undefined,
+    });
+
+    expect(saved.map((s) => s.className)).toEqual(["Demo", "Demo.Own"]);
+    expect(skipped).toEqual([
+      { className: "Demo.Locked", reason: "Locked belongs elsewhere." },
+    ]);
+    expect(stub.writes.map((w) => w.fsPath)).not.toContain(
+      path.join(root, "Locked.mo"),
+    );
   });
 
   it("refuses to write a listing OMC returned empty", async () => {

@@ -92,8 +92,10 @@ export {
 export {
   saveClass,
   type SaveClient,
+  type SaveOptions,
   type SaveResult,
   type SavedClass,
+  type SkippedClass,
 } from "./save-class.js";
 
 // --- Supported OMC version pin (see docs/audit.md) ---

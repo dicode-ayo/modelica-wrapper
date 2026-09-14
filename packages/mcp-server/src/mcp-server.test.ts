@@ -225,8 +225,8 @@ describe("the server's instructions", () => {
     // A tool description reaches a model once it is already reading that tool;
     // this reaches it while it is still deciding what to do.
     expect(instructions).toContain("createClass declares it");
-    // The rule #655 is about: an assistant that never learns it builds a whole
-    // model in OMC's memory and leaves a stub on disk.
+    // An assistant that never learns this builds a whole model in OMC's
+    // memory and leaves a stub on disk.
     expect(instructions).toContain(
       "lives in OMC's memory until saveClass runs",
     );

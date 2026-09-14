@@ -254,7 +254,13 @@ async function onDiskParent(
   return undefined;
 }
 
-async function safeGetClassNames(
+/**
+ * `typeName`'s members as OMC reports them, or none when it will not answer.
+ *
+ * A name that is not an identifier cannot be qualified onto its parent and
+ * would corrupt a `package.order` line, so it is dropped rather than written.
+ */
+export async function safeGetClassNames(
   client: PersistClient,
   typeName: string,
 ): Promise<string[]> {

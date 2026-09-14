@@ -12,10 +12,10 @@
  * `createClass` composes, so the two agree on where bytes go and on what
  * `package.order` should say.
  *
- * OMC's own `save` is published only through `omc_invoke`, and is not this:
- * it writes to whatever path the symbol table already holds — a `<runtime:…>`
- * placeholder for a class created here — leaves `package.order` alone, and on
- * a package writes the `package.mo` without its children.
+ * OMC's own `save`, reachable through `omc_invoke`, is not this: it writes to
+ * whatever path the symbol table already holds — a `<runtime:…>` placeholder
+ * for a class created here — leaves `package.order` alone, and on a package
+ * writes the `package.mo` without its children.
  */
 
 import { saveClass } from "@dicode/omc-client";
@@ -67,15 +67,22 @@ export function registerSaveTools(server: McpServer, deps: McpToolDeps): void {
           );
         }
 
-        const { saved, warnings } = await saveClass(
+        const { saved, skipped, warnings } = await saveClass(
           client,
           workspace,
           className,
+          {
+            // Every member a package reaches is a write of its own, and the
+            // verdict above judged only the class the caller named.
+            authorize: (member) =>
+              refusalForClass(deps.verdicts, client, member, "save"),
+          },
         );
         return textResult(
           JSON.stringify({
             className,
             saved,
+            ...(skipped.length === 0 ? {} : { skipped }),
             ...(warnings.length === 0 ? {} : { warnings }),
           }),
         );

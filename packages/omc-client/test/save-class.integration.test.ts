@@ -1,10 +1,9 @@
 /**
- * Integration test: the scenario #655 reports, end to end against live OMC.
+ * Integration test: a class edited after creation, end to end against live OMC.
  *
- * An agent built a model through the published tools — components, a
- * connection, a parameter — simulated it, and got correct results while the
- * file on disk was still the stub `createClass` had written. Everything it did
- * after creating the class lived in OMC's memory.
+ * A model built through the mutating calls — components, connections,
+ * parameters — simulates correctly while the file on disk is still the stub it
+ * was created as, because none of those calls writes anything.
  *
  * What matters here is not that `saveClass` returns a path: it is that a
  * *fresh* OMC, which has never seen the edits, loads the tree and finds them.

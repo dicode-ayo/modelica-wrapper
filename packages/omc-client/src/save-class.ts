@@ -1,21 +1,10 @@
 /**
- * Writing a class OMC already holds out to the source tree it belongs in.
- *
- * `createClass` writes a file once, at creation. Every edit after it —
- * `addComponent`, `addConnection`, `setElementModifierValue`, a reload through
- * `loadString` — changes OMC's symbol table and stops there, so a model built
- * through those calls lives in memory until something writes it back.
- *
- * OMC's own `save` is not that something. It writes only to the path already
- * recorded in the symbol table, which for a class created here is still a
- * `<runtime:…>` placeholder; it never touches `package.order`; and on a package
- * it writes the `package.mo` and none of the children. This composes the same
- * persistence {@link persistClass} gives `createClass` instead.
+ * Writing a class OMC already holds out to the source tree it belongs in,
+ * over the persistence in {@link persistClass}.
  *
  * `listFile` is the text. OMC re-derives it from its AST rather than echoing
- * the bytes on disk, so a save reflows the file the way `save` does — the
- * class's formatting is gone the moment OMC parses it, and nothing on this
- * path can bring it back.
+ * the bytes on disk, so a save reflows the file — the class's formatting is
+ * gone the moment OMC parses it, and nothing on this path can bring it back.
  */
 
 import { fileOwnerClass, type FileOwnerClient } from "./file-owner.js";
@@ -23,10 +12,10 @@ import {
   isLikelyDiskPath,
   linkPersistedClass,
   persistClass,
+  safeGetClassNames,
   type PersistClient,
   type SourceTree,
 } from "./persist.js";
-import { MODELICA_IDENT } from "./_shared/fields.js";
 
 /** The OMC surface a save is derived from. `OmcClient` satisfies it. */
 export interface SaveClient extends PersistClient, FileOwnerClient {
@@ -43,17 +32,44 @@ export interface SavedClass {
   readonly fileName: string;
 }
 
+/** One class left unwritten, and why. */
+export interface SkippedClass {
+  readonly className: string;
+  readonly reason: string;
+}
+
 export interface SaveResult {
   /** Every file written, in the order it was written. */
   readonly saved: SavedClass[];
+  /** Classes {@link SaveOptions.authorize} refused, which nothing wrote. */
+  readonly skipped: SkippedClass[];
   /** What was written but is not reachable from the tree it was written into. */
   readonly warnings: string[];
 }
 
-/** What a save accumulates as it walks. */
-interface Run {
+export interface SaveOptions {
+  /**
+   * Asked before each class is written; a string is the reason it may not be,
+   * and that class and its members are left alone.
+   *
+   * A package reaches members the caller never named, and each of those is a
+   * write in its own right — judging only the class the caller asked for would
+   * let a member whose file sits outside the tree be written by a verdict that
+   * never saw it. Skipping writes nothing, so a refusal mid-walk leaves no
+   * half-written class behind.
+   */
+  readonly authorize?: (className: string) => Promise<string | undefined>;
+}
+
+/** The one walk, and what it accumulates. */
+interface Walk {
+  readonly client: SaveClient;
+  readonly tree: SourceTree;
+  readonly authorize: SaveOptions["authorize"];
   readonly saved: SavedClass[];
+  readonly skipped: SkippedClass[];
   readonly warnings: string[];
+  readonly seen: Set<string>;
 }
 
 /**
@@ -67,41 +83,50 @@ interface Run {
  *
  * A member stored inline in its package's own file is skipped: writing the
  * package wrote it. One with a file of its own, and one OMC holds in memory
- * only, are each saved in turn — the second is the case `save` cannot reach and
- * the reason a package recurses at all.
+ * only, are each saved in turn.
  */
 export async function saveClass(
   client: SaveClient,
   tree: SourceTree,
   className: string,
+  options: SaveOptions = {},
 ): Promise<SaveResult> {
-  const run: Run = { saved: [], warnings: [] };
-  await saveSubtree(client, tree, className, run, new Set());
-  return run;
+  const walk: Walk = {
+    client,
+    tree,
+    authorize: options.authorize,
+    saved: [],
+    skipped: [],
+    warnings: [],
+    seen: new Set(),
+  };
+  await saveSubtree(walk, className);
+  const { saved, skipped, warnings } = walk;
+  return { saved, skipped, warnings };
 }
 
-async function saveSubtree(
-  client: SaveClient,
-  tree: SourceTree,
-  className: string,
-  run: Run,
-  seen: Set<string>,
-): Promise<void> {
-  if (seen.has(className)) return;
-  seen.add(className);
+async function saveSubtree(walk: Walk, className: string): Promise<void> {
+  if (walk.seen.has(className)) return;
+  walk.seen.add(className);
 
-  const { restriction } = await client.getClassInformation({
+  const refusal = await walk.authorize?.(className);
+  if (refusal !== undefined) {
+    walk.skipped.push({ className, reason: refusal });
+    return;
+  }
+
+  const { restriction } = await walk.client.getClassInformation({
     typeName: className,
   });
-  const file = await writeOne(client, tree, className, restriction, run);
+  const file = await writeOne(walk, className, restriction);
   if (restriction !== "package") return;
 
-  for (const member of await memberNames(client, className)) {
+  for (const member of await safeGetClassNames(walk.client, className)) {
     const memberName = `${className}.${member}`;
     // A member OMC reports in the file just written is inside it, so writing
     // it again would give one class two homes.
-    if ((await sourceFileOf(client, memberName)) === file) continue;
-    await saveSubtree(client, tree, memberName, run, seen);
+    if ((await sourceFileOf(walk.client, memberName)) === file) continue;
+    await saveSubtree(walk, memberName);
   }
 }
 
@@ -112,12 +137,11 @@ async function saveSubtree(
  * is the path OMC records after the write rather than the one it held before.
  */
 async function writeOne(
-  client: SaveClient,
-  tree: SourceTree,
+  walk: Walk,
   className: string,
   restriction: string,
-  run: Run,
 ): Promise<string> {
+  const { client, tree } = walk;
   const { fileName } = await client.getSourceFile({ typeName: className });
   if (!isLikelyDiskPath(fileName)) {
     const result = await persistClass(
@@ -128,9 +152,9 @@ async function writeOne(
       restriction,
     );
     await linkPersistedClass(client, className, result);
-    run.saved.push({ className, fileName: result.leafPath });
+    walk.saved.push({ className, fileName: result.leafPath });
     if (result.enclosingPackage === "file") {
-      run.warnings.push(inlineParentWarning(className, result.leafPath));
+      walk.warnings.push(inlineParentWarning(className, result.leafPath));
     }
     return result.leafPath;
   }
@@ -140,7 +164,7 @@ async function writeOne(
   // beside it, so the outermost class sharing the file supplies the text.
   const owner = await fileOwnerClass(client, className);
   await tree.writer.write(fileName, await sourceText(client, owner));
-  run.saved.push({ className: owner, fileName });
+  walk.saved.push({ className: owner, fileName });
   return fileName;
 }
 
@@ -187,22 +211,5 @@ async function sourceFileOf(
     return fileName;
   } catch {
     return undefined;
-  }
-}
-
-/**
- * The member names of `className`, as OMC reports them. A name that is not an
- * identifier is not a class this can qualify, so it is dropped rather than
- * concatenated into one OMC would reject.
- */
-async function memberNames(
-  client: SaveClient,
-  className: string,
-): Promise<string[]> {
-  try {
-    const { classNames } = await client.getClassNames({ typeName: className });
-    return classNames.filter((n) => MODELICA_IDENT.test(n));
-  } catch {
-    return [];
   }
 }
