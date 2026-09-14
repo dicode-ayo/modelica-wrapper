@@ -11,6 +11,7 @@ import {
   type ProcessRequest,
   type RunProcess,
 } from "./install.js";
+import { LOCKFILE_OMC_VERSION } from "./lockfile.generated.js";
 
 // The audited digest is committed data, so no test can produce bytes matching
 // it. This stands in a digest the fake download's own bytes satisfy.
@@ -39,7 +40,11 @@ const PREVIOUS = `${ROOT}/previous`;
 const TOOL = `${ROOT}/micromamba`;
 const CACHE = `${ROOT}/cache`;
 const LOCK = `${CACHE}/lock.txt`;
-const VERSION = "1.27.0";
+// The installer refuses any version the lockfile does not carry, so the
+// fixture has to track the lockfile rather than restate a version that
+// goes stale the next time the pin moves.
+const VERSION = LOCKFILE_OMC_VERSION;
+const REPORTED = `OpenModelica ${VERSION}`;
 
 const ENOUGH_SPACE = 9_000_000_000;
 
@@ -116,7 +121,7 @@ function harness(options: HarnessOptions = {}) {
     }
     return Promise.resolve({
       exitCode: 0,
-      stdout: "OpenModelica 1.27.0\n",
+      stdout: `${REPORTED}\n`,
       stderr: "",
     });
   };
@@ -167,7 +172,7 @@ describe("installManagedOmc", () => {
 
     expect(result).toEqual({
       omcPath: `${CURRENT}/bin/omc`,
-      version: "OpenModelica 1.27.0",
+      version: REPORTED,
     });
     expect(h.ops).toEqual([
       `mkdir ${ROOT}`,
@@ -224,7 +229,7 @@ describe("installManagedOmc", () => {
         Promise.resolve(
           request.command === TOOL
             ? { exitCode: 1, stdout: "", stderr: "solve failed" }
-            : { exitCode: 0, stdout: "OpenModelica 1.27.0", stderr: "" },
+            : { exitCode: 0, stdout: REPORTED, stderr: "" },
         ),
     });
 
@@ -272,7 +277,7 @@ describe("installManagedOmc", () => {
         Promise.resolve(
           request.command === TOOL
             ? { exitCode: 1, stdout: "", stderr: "solve failed" }
-            : { exitCode: 0, stdout: "OpenModelica 1.27.0", stderr: "" },
+            : { exitCode: 0, stdout: REPORTED, stderr: "" },
         ),
     });
 
@@ -333,7 +338,7 @@ describe("installManagedOmc", () => {
       run: (request) =>
         request.command === TOOL
           ? Promise.reject(new Error("ENOENT"))
-          : Promise.resolve({ exitCode: 0, stdout: "1.27.0", stderr: "" }),
+          : Promise.resolve({ exitCode: 0, stdout: VERSION, stderr: "" }),
     });
 
     const err = await failure(installManagedOmc(input(), h.deps));
