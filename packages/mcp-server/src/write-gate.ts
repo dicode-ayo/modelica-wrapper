@@ -216,12 +216,15 @@ export async function refusalFor(
 
   if (argument.as === "sourceFiles") {
     if (!Array.isArray(raw)) return undefined;
-    for (const fileName of raw) {
-      if (typeof fileName !== "string" || fileName === "") continue;
-      const refusal = await refusalForSourceFile(verdicts, client, fileName);
-      if (refusal !== undefined) return refusal;
-    }
-    return undefined;
+    const fileNames = raw.filter(
+      (entry): entry is string => typeof entry === "string" && entry !== "",
+    );
+    const refusals = await Promise.all(
+      fileNames.map((fileName) =>
+        refusalForSourceFile(verdicts, client, fileName),
+      ),
+    );
+    return refusals.find((refusal) => refusal !== undefined);
   }
 
   if (typeof raw !== "string" || raw === "") return undefined;
