@@ -4,7 +4,7 @@
  * the VSCode extension uses:
  *
  *   pidController.modelInstance.json  (real OMC capture, 1.3 MB)
- *     → diagram.produceDiagramLayout(mi, 'diagram')   (typed layout)
+ *     → produceDiagramLayout(mi, 'diagram')   (typed layout)
  *
  * The heaviest fixture in the suite — every layer (icon provider + texture
  * cache, component placement, nested connectors via class.connectors
