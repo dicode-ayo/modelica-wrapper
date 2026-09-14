@@ -1,21 +1,15 @@
 /**
  * Submit-side helpers for the simulate parameter panel.
  *
- * The simulate panel is now built from omc-client's pure
- * `produceSimulationModel` (seeded by `getSimulationOptions` + the documented
- * `SOLVER_METHODS` constant) and rendered directly as a `ParameterModel` — the
- * old curated `SIMULATE_FORM_SCHEMA` + `buildSimulateForm` were removed (see
- * `docs/parameter-model-design.md`, Revision 2026-05-21). What stays here is the
- * SUBMIT mapping: translating the panel's flat `values` map into a
- * `simulate(...)` input. Keeping it in one place means a future field tweak
- * only touches the submit translator.
+ * The panel itself is a `ParameterModel` from omc-client's
+ * `produceSimulationModel` (see `docs/parameter-model-design.md`). What lives
+ * here is the submit mapping: the panel's flat `values` map to a
+ * `simulate(...)` input.
  *
  * Pure of vscode / dom imports — tested with a stub value map.
  */
 
 import { classNameToFilePrefix } from "@dicode/omc-client";
-
-export { classNameToFilePrefix };
 
 /**
  * The simulate input shape the host passes to `OmcClient.simulate`. A subset of
@@ -44,9 +38,7 @@ export type SimulateFormSubmit = {
  *
  * `fileNamePrefix` is always derived from the class name — never left at the
  * wrapper's `"<default>"` sentinel, which OMC takes as a literal prefix and
- * turns into filenames carrying `<` and `>`. The derivation is
- * `classNameToFilePrefix`, which lives beside the schema that judges its
- * output.
+ * turns into filenames carrying `<` and `>`.
  *
  * `method` carries the panel's `SOLVER_METHODS` selection through unchanged,
  * including the `"<default>"` sentinel — which `OmcClient.simulate` omits from

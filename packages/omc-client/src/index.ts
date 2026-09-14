@@ -116,8 +116,6 @@ export {
   TypeNameInput,
   OptionalTypeNameInput,
   classNameToFilePrefix,
-  fileNamePrefix,
-  shellFlags,
   ModelInstanceSchema,
   ModelInstanceAnnotationSchema,
   ModelInstanceNotFullyLoadedError,

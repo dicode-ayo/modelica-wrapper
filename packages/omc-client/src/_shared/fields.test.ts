@@ -181,6 +181,7 @@ describe("the flags a compiler field is held to", () => {
       "-lv=LOG_STATS,LOG_INIT",
       "-s dassl -r out.mat",
       "-noEquidistantTimeGrid",
+      "-override=x[1]=2",
     ]) {
       expect(shellFlags.safeParse(s).success).toBe(true);
     }
@@ -198,6 +199,7 @@ describe("the flags a compiler field is held to", () => {
       "-O2 # rest",
       '-DV="1.0"',
       "-O2 | tee x",
+      "-I~/include",
     ]) {
       expect(shellFlags.safeParse(s).success).toBe(false);
     }

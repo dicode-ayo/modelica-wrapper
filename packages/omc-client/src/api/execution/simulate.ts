@@ -129,7 +129,7 @@ export async function simulate(
   // with the default value `"<default>"`. When OMC sees that exact
   // string on the call site it substitutes whatever it considers a
   // sane default at runtime. But for `fileNamePrefix` / `cflags` /
-  // `simflags` / `options`, OMC currently treats the literal `<default>`
+  // `simflags` / `options`, OMC treats the literal `<default>`
   // as a real string — splat into filenames and compiler flags, which
   // then crashes `/bin/sh` at compile time (the `<` / `>` are parsed as
   // redirection operators). The matching `val.ts` wrapper uses the same

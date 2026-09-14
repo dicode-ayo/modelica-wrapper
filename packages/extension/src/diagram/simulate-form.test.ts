@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  classNameToFilePrefix,
-  simulateInputFromFormValues,
-} from "./simulate-form.js";
+import { simulateInputFromFormValues } from "./simulate-form.js";
 
 describe("simulateInputFromFormValues", () => {
   it("maps the panel's flat values onto a simulate() input", () => {
@@ -56,9 +53,6 @@ describe("simulateInputFromFormValues", () => {
   });
 
   it("always derives a shell-safe fileNamePrefix from the class name", () => {
-    expect(
-      classNameToFilePrefix("Modelica.Blocks.Examples.PID_Controller"),
-    ).toBe("Modelica_Blocks_Examples_PID_Controller");
     expect(simulateInputFromFormValues("A.B.C", {}).fileNamePrefix).toBe(
       "A_B_C",
     );

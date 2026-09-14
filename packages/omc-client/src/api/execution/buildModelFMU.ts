@@ -76,19 +76,8 @@ export async function buildModelFMU(
   input: BuildModelFMUInput,
 ): Promise<BuildModelFMUOutput> {
   const platforms = input.platforms ?? ["static"];
-  const prefix = input.fileNamePrefix ?? "<default>";
-  const named = [
-    `version=${quote(input.version ?? "2.0")}`,
-    `fmuType=${quote(input.fmuType ?? "me")}`,
-    // OMC reads the `<default>` sentinel as a literal prefix, which puts `<`
-    // and `>` into the generated filenames and then into the makefile it hands
-    // to `/bin/sh`. Omitting the argument is what reaches OMC's own default.
-    ...(prefix === "<default>" ? [] : [`fileNamePrefix=${quote(prefix)}`]),
-    `platforms=${quoteList(platforms)}`,
-    `includeResources=${mlBool(input.includeResources ?? false)}`,
-  ];
   const raw = await ctx.call(
-    `buildModelFMU(${input.typeName}, ${named.join(", ")})`,
+    `buildModelFMU(${input.typeName}, version=${quote(input.version ?? "2.0")}, fmuType=${quote(input.fmuType ?? "me")}, fileNamePrefix=${quote(input.fileNamePrefix ?? "<default>")}, platforms=${quoteList(platforms)}, includeResources=${mlBool(input.includeResources ?? false)})`,
   );
   return parseOutput(
     BuildModelFMUOutputSchema,

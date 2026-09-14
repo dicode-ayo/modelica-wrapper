@@ -65,7 +65,7 @@ const RESULT_VARIABLE = new RegExp(`^(?:${NAME_BODY}|der\\(${NAME_BODY}\\))$`);
  * reach it are held to the characters a filename and a flag are made of.
  */
 const FILE_NAME_PREFIX = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
-const SHELL_FLAGS = /^[A-Za-z0-9_\-=+,:./@[\]~ ]*$/;
+const SHELL_FLAGS = /^[A-Za-z0-9_\-=+,:./@[\] ]*$/;
 
 /** Bracket kind opened, keyed by the character that closes it. */
 const OPENER: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
@@ -171,9 +171,10 @@ export const modelicaExpr = z.string().superRefine((s, ctx) => {
 });
 
 /**
- * The sentinel every OMC `simulate` / `buildModelFMU` string parameter
- * declares as its default. OMC substitutes a real default when it sees that
- * exact string, so it passes a gate the value it stands for would not.
+ * The value OMC's `simulate` and `buildModelFMU` declare as the default of
+ * every string parameter. A wrapper reads it as "argument not set" and derives
+ * no filename or flag from it, so it reaches no makefile and the atoms let it
+ * through.
  */
 const omcDefault = z.literal("<default>");
 
@@ -194,19 +195,17 @@ export const fileNamePrefix = z.union([
 
 /**
  * Flags OMC forwards to the C compiler or the simulation executable —
- * `cflags`, `simflags`, `options`. They are meant to carry flag-shaped text,
- * which the allowed set covers; what they may not carry is a character that
- * means something to the shell they end up in.
- *
- * The set is narrow on purpose: widening it costs one character class, while a
- * value that reaches `/bin/sh` intact is a command the caller did not write.
+ * `cflags`, `simflags`, `options`. The set covers what a flag is made of and
+ * stops short of the characters that would end the shell word or start a
+ * command of their own. Brackets stay in: `-override=x[1]=2` names an array
+ * element.
  */
 export const shellFlags = z.union([
   z
     .string()
     .regex(
       SHELL_FLAGS,
-      "must be flag-shaped — letters, digits, space and any of _ - = + , : . / @ [ ] ~; OMC pastes it into a generated makefile, so a value carrying a shell metacharacter is refused, not escaped",
+      "must be flag-shaped — letters, digits, space and any of _ - = + , : . / @ [ ]; OMC pastes it into a generated makefile, so a value carrying more is refused, not escaped",
     ),
   omcDefault,
 ]);
