@@ -16,9 +16,10 @@
  * reads a result through its own plot widget, and without it a caller samples
  * one variable at one time per `val` call.
  *
- * `loadString` is absent for a different reason: its arguments never name a
- * class, so the write gate would have nothing to judge. `source-tools.ts`
- * publishes it as OMEdit's `setSourceCode`, which does name one.
+ * `loadString` is absent for a different reason: it binds every class in its
+ * text to the `filename` it is given, and the default evicts a class from the
+ * file it was stored in. `source-tools.ts` publishes it as OMEdit's
+ * `setSourceCode`, which preserves that file.
  *
  * `newModel` is absent for a third: it registers a class in OMC's symbol table
  * and writes nothing, so a caller who stops there loses the class at the next

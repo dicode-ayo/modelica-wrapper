@@ -40,6 +40,8 @@ let rootPackageClasses: string[];
 let classFiles: Map<string, string>;
 /** Overrides the restriction `getClassInformation` reports for one class. */
 let restrictions: Map<string, string>;
+/** What `parseString` reports a source string declares, as OMC's does. */
+let declaredClasses: string[];
 let workspace: SourceTree | undefined;
 
 /**
@@ -65,6 +67,7 @@ const client: McpToolClient = {
       restrictions.get(typeName) ?? (loaded.has(typeName) ? "package" : ""),
   }),
   parseFile: async () => ({ classNames: rootPackageClasses }),
+  parseString: async () => ({ classNames: declaredClasses }),
   getClassNames: async () => ({ classNames: [] }),
   getErrorString: async () => ({ errorString: loadFails ?? "" }),
   loadString: async (input) => {
@@ -119,6 +122,7 @@ beforeEach(() => {
   rootPackageClasses = [];
   classFiles = new Map();
   restrictions = new Map();
+  declaredClasses = [];
   workspace = undefined;
 });
 
@@ -498,6 +502,26 @@ describe("the escape hatch", () => {
       { fn: "deleteClass", input: { typeName: "Demo.Circuit" } },
     ]);
   });
+
+  it("refuses loadString on the class its text names, which no argument does", async () => {
+    declaredClasses = [SYSTEM_LIBRARY];
+    loaded.add(SYSTEM_LIBRARY);
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: {
+        fn: "loadString",
+        input: {
+          data: `within Modelica.Blocks.Math;\nmodel Sin\n parameter Real pwned = 2;\nend Sin;\n`,
+        },
+      },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("createClass", () => {
@@ -825,8 +849,8 @@ describe("setSourceCode", () => {
       arguments: { className: SYSTEM_LIBRARY, code: "model Sin end Sin;" },
     })) as CallToolResult;
 
-    // The gate is the whole reason this tool exists rather than `loadString`,
-    // whose arguments name no class for a verdict to be derived from.
+    // `className` names the file the reload takes over, so it is judged even
+    // when the code says nothing about it.
     expect(result.isError).toBe(true);
     expect(text(result)).toBe(REFUSAL);
     expect(calls).toEqual([]);
@@ -851,6 +875,49 @@ describe("setSourceCode", () => {
         input: expect.objectContaining({
           data: "model Circuit end Circuit;",
           filename: "/w/Demo.mo",
+        }),
+      },
+    ]);
+  });
+
+  it("judges the class its code declares, not the one it was handed", async () => {
+    declaredClasses = [SYSTEM_LIBRARY];
+    loaded.add(SYSTEM_LIBRARY);
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "setSourceCode",
+      arguments: {
+        className: "Demo.RLC",
+        code: `within Modelica.Blocks.Math;\nmodel Sin\nend Sin;\n`,
+      },
+    })) as CallToolResult;
+
+    // `className` chooses the file the reload takes over; the code chooses what
+    // is written, and they need not agree.
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+    expect(calls).toEqual([]);
+  });
+
+  it("reaches OMC once the code's own class is the caller's to write", async () => {
+    declaredClasses = ["Demo.Circuit"];
+    loaded.add("Demo.Circuit");
+    const mcp = await connect();
+
+    await mcp.callTool({
+      name: "setSourceCode",
+      arguments: {
+        className: "Demo.Circuit",
+        code: "within Demo;\nmodel Circuit end Circuit;\n",
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        fn: "loadString",
+        input: expect.objectContaining({
+          data: "within Demo;\nmodel Circuit end Circuit;\n",
         }),
       },
     ]);

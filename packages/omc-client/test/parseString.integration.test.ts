@@ -11,6 +11,9 @@
  *      This is the whole point of using parseString over loadString in the
  *      live-check pipeline: live-check fires on every keystroke and must
  *      not pollute the registry.
+ *   4. A `within` clause qualifies the reported name. The MCP write gate
+ *      derives what a `loadString` would write from this, so a bare answer
+ *      there would let a write into an installed library through unjudged.
  */
 
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -43,6 +46,14 @@ describeIf("parseString against real OMC", () => {
     // And the error buffer should be empty after a clean parse.
     const { errorString } = await client.getErrorString();
     expect(errorString).toBe("");
+  });
+
+  it("qualifies the reported name by the source's own within clause", async () => {
+    const { classNames } = await client.parseString({
+      data: "within A.B;\nmodel C end C;\n",
+    });
+
+    expect(classNames).toEqual(["A.B.C"]);
   });
 
   it("does not throw on malformed source; surfaces diagnostics via getErrorString", async () => {

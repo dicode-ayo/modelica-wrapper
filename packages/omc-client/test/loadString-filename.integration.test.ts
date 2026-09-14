@@ -7,6 +7,10 @@
  *      path updates it in place and leaves its siblings loaded.
  *   2. Reloading the same member under a per-class pseudo-filename evicts it
  *      from the package, which is what drops siblings on the next save.
+ *   3. A `within` clause naming a package OMC has not loaded is refused. The
+ *      MCP write gate derives its verdict from the enclosing scope of a class
+ *      the text introduces, which is only sound because that scope must
+ *      already exist for the load to land at all.
  *
  * Gating mirrors the other integration tests: `OMC_INTEGRATION=0` forces skip,
  * `OMC_INTEGRATION=1` forces run.
@@ -275,5 +279,21 @@ describeIf("loadString filename binding (live OMC)", () => {
     expect(
       fileDiagnostic.info.columnStart - bufferDiagnostic.info.columnStart,
     ).toBe(inFile.columnNumberStart - inBuffer.columnNumberStart);
+  });
+  it("refuses a within clause naming a package it has not loaded", async () => {
+    const scope = `MwWithinProbe_${randomBytes(4).toString("hex")}`;
+
+    const { success } = await client.loadString({
+      data: `within ${scope}.Deep;\nmodel Thing\nend Thing;\n`,
+      filename: `${scope}.mo`,
+      merge: false,
+    });
+    await client.getErrorString();
+
+    expect(success).toBe(false);
+    const { exists } = await client.existClass({
+      typeName: `${scope}.Deep.Thing`,
+    });
+    expect(exists).toBe(false);
   });
 });

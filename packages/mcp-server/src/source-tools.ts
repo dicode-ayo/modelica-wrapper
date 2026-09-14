@@ -1,17 +1,16 @@
 /**
  * Replacing a class's source, the way OMEdit's `setSourceCode` does.
  *
- * `loadString` is the wrapper underneath, and publishing it raw would leave the
- * write gate with nothing to judge: its arguments carry source text and a file
- * path, never a class name, so an assistant could redefine
- * `Modelica.Electrical.Analog.Basic.Resistor` unrefused. Naming the class in
- * the tool is what lets the verdict be derived, and it is the shape OMEdit
- * publishes anyway.
+ * `loadString` is the wrapper underneath, and it is the file binding rather
+ * than the class name that this tool adds: the current source path is resolved
+ * first because `loadString` binds the class to whatever `filename` it is
+ * given, and the default evicts the class from the file it was stored in. A
+ * class OMC cannot place — one being created here for the first time — has no
+ * path to preserve.
  *
- * The current source path is resolved first because `loadString` binds the
- * class to whatever `filename` it is given, and the default evicts the class
- * from the file it was stored in. A class OMC cannot place — one being created
- * here for the first time — has no path to preserve.
+ * Two things are gated, because two are at stake: whatever `code` declares,
+ * which the gate derives from its `within` clause, and `className`, whose file
+ * the reload takes over whatever the code says.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
