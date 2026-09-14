@@ -26,7 +26,10 @@ import * as vscode from "vscode";
 
 import type { ErrorMessage } from "@dicode/omc-client";
 
-import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
+import {
+  buildSourceUriResolver,
+  mapOmcMessagesToDiagnostics,
+} from "../diagnostics/from-omc.js";
 import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
 import {
@@ -45,7 +48,6 @@ import {
   MODELICA_SOURCE_SCHEME,
   omcFilenameForDocument,
   qualifiedNameFromUri,
-  sourceUriFromOmcFilename,
 } from "../source-provider.js";
 
 import { liveCheckLock } from "./check-lock.js";
@@ -333,8 +335,10 @@ async function runCheck(
     // Per-file replace. Map every OMC filename back to THIS uri when it
     // matches the name we checked under, so squiggles land in the user's
     // buffer rather than the file it happens to be stored in.
-    const resolver = (name: string): vscode.Uri | undefined =>
-      name === filename ? uri : sourceUriFromOmcFilename(name);
+    const resolver = buildSourceUriResolver({
+      omcFilename: filename,
+      virtualUri: uri,
+    });
     // A message naming the URI reaches the buffer through the branch above
     // rather than the filename the stages bounded, so bound it too — nothing
     // published against this document escapes its line range.
