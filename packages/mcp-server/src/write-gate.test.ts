@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { WriteAction, WriteVerdictClient } from "./write-verdict.js";
-import { refusalFor } from "./write-gate.js";
+import { refusalFor, type SourceParseClient } from "./write-gate.js";
 import type { WriteVerdictSource } from "./write-verdict.js";
 
 const REFUSAL =
@@ -24,7 +24,17 @@ function verdicts(...readOnly: string[]): WriteVerdictSource & {
 }
 
 /** A client no test reaches: the gate decides before OMC is consulted. */
-const client = {} as WriteVerdictClient;
+const client = {} as WriteVerdictClient & SourceParseClient;
+
+/** A client whose `parseString` reports `classNames`, as OMC's does. */
+function declaring(
+  ...classNames: string[]
+): WriteVerdictClient & SourceParseClient {
+  return {
+    ...client,
+    parseString: async () => ({ classNames }),
+  };
+}
 
 describe("refusalFor", () => {
   it("refuses a mutating call on a read-only class, carrying its reason", async () => {
@@ -117,5 +127,63 @@ describe("refusalFor", () => {
     });
 
     expect(refusal).toBe(REFUSAL);
+  });
+});
+
+describe("a call carrying Modelica source", () => {
+  it("refuses text whose within clause lands on a read-only class", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaring("Modelica.Blocks.Math.Sin"),
+      "loadString",
+      {
+        data: "within Modelica.Blocks.Math;\nmodel Sin\nend Sin;\n",
+      },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+  });
+
+  it("judges the within scope too, for a class that does not exist yet", async () => {
+    const source = verdicts();
+
+    await refusalFor(source, declaring("Demo.Sub.Fresh"), "loadString", {
+      data: "within Demo.Sub;\nmodel Fresh\nend Fresh;\n",
+    });
+
+    // The class lookup fails open for a name OMC cannot resolve, so the scope
+    // it would be created in is the only thing left to judge.
+    expect(source.asked).toEqual([
+      { className: "Demo.Sub.Fresh", action: "edit" },
+      { className: "Demo.Sub", action: "createInside" },
+    ]);
+  });
+
+  it("judges every class the text declares, not only the first", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaring("Modelica.Blocks.Math.Cos", "Modelica.Blocks.Math.Sin"),
+      "loadString",
+      {
+        data: "within Modelica.Blocks.Math;\nmodel Cos end Cos;\nmodel Sin end Sin;\n",
+      },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+  });
+
+  it("lets text OMC cannot parse through: the load that follows reports it", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(source, declaring(), "loadString", {
+      data: "this is not Modelica",
+    });
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
   });
 });

@@ -27,7 +27,11 @@ import type {
   WriteVerdictClient,
   WriteVerdictSource,
 } from "./write-verdict.js";
-import { refusalFor, refusalForClass } from "./write-gate.js";
+import {
+  refusalFor,
+  refusalForClass,
+  type SourceParseClient,
+} from "./write-gate.js";
 
 /**
  * The subset of `OmcClient` the MCP tools call.
@@ -38,7 +42,12 @@ import { refusalFor, refusalForClass } from "./write-gate.js";
  * reaching a model.
  */
 export interface McpToolClient
-  extends WriteVerdictClient, PersistClient, RootPackageClient, DeclareClient {
+  extends
+    WriteVerdictClient,
+    SourceParseClient,
+    PersistClient,
+    RootPackageClient,
+    DeclareClient {
   invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
   existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
@@ -63,7 +72,7 @@ export interface McpToolDeps {
   workspace?: SourceTree | undefined;
 }
 
-/** The class a tool writes, when its wrapper's arguments do not name one. */
+/** A class a tool writes that nothing in its wrapper's arguments names. */
 export interface GatedClass {
   readonly className: string;
   readonly action: WriteAction;
@@ -101,9 +110,10 @@ export async function dispatch<K extends OmcFnName>(
  * {@link dispatch} for a function named by the caller rather than by the code:
  * the parity tools, which loop over their own list, and `omc_invoke`.
  *
- * `gateOn` is for a tool that knows the class it writes when the wrapper it
- * dispatches does not carry one in its arguments — `setSourceCode` over
- * `loadString` is the case that needs it.
+ * `gateOn` adds a class the tool knows it writes to the ones the gate derives
+ * from the arguments themselves. `setSourceCode` needs it: the gate judges the
+ * classes its code declares, and `className` names a further one — the class
+ * whose file the reload takes over, which the code need not declare.
  *
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
@@ -118,14 +128,15 @@ export async function dispatchByName(
   try {
     const client = await deps.ensureClient();
     const refusal =
-      gateOn === undefined
-        ? await refusalFor(deps.verdicts, client, fn, input)
+      (await refusalFor(deps.verdicts, client, fn, input)) ??
+      (gateOn === undefined
+        ? undefined
         : await refusalForClass(
             deps.verdicts,
             client,
             gateOn.className,
             gateOn.action,
-          );
+          ));
     if (refusal !== undefined) return errorResult(refusal);
 
     const output = await client.invoke(fn, input);
