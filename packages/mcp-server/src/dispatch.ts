@@ -41,7 +41,8 @@ import {
  * the ones `createClass` composes by hand, and they are declared for the same
  * reason {@link dispatch} is: a renamed argument fails the build rather than
  * reaching a model. `existClass` arrives through `WriteTargetClient`, where the
- * gate needs it; `createClass` and `saveClass` call it too.
+ * gate needs it; `createClass` and `saveClass` call it too. `cd` is the host's,
+ * called once per client to park OMC's working directory.
  */
 export interface McpToolClient
   extends
@@ -52,6 +53,9 @@ export interface McpToolClient
     SaveClient,
     DeclareClient {
   invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
+  cd(input: {
+    newWorkingDirectory: string;
+  }): Promise<{ workingDirectory: string }>;
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
   /** Narrows the bases, which disagree on which fields they need. */
   getClassInformation(input: { typeName: string }): Promise<{

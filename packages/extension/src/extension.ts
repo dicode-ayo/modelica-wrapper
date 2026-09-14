@@ -14,7 +14,11 @@
 
 import * as vscode from "vscode";
 
-import { OmcClient, reapOrphanedOmcSessions } from "@dicode/omc-client";
+import {
+  OmcClient,
+  parkWorkingDirectory,
+  reapOrphanedOmcSessions,
+} from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
 import { errorDetail } from "./error-detail.js";
@@ -55,7 +59,6 @@ import { ClassInvalidationRegistry } from "./invalidation.js";
 import { publishOmcMutations } from "./omc-mutation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
-import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { WriteVerdicts } from "./write-verdict.js";
 import { multiEntityBatchToast } from "./single-entity-file.js";
 import {
@@ -363,39 +366,19 @@ async function reapStrandedOmc(): Promise<void> {
 }
 
 /**
- * Park OMC's working directory in `<workspace>/.modelica/` so all the
- * build artifacts (C files, object files, the simulate executable, the
- * `.mat` result file, …) land in one tidy spot the user can `.gitignore`
- * with a single entry — and DOESN'T pollute their workspace root.
+ * Park OMC's working directory under the open workspace folder, so a
+ * simulation's build artifacts land somewhere one `.gitignore` entry covers.
  *
- * Mkdir-recursive the cache dir first so OMC's `cd(...)` doesn't fail
- * with "directory does not exist" on a freshly-opened project. Errors
- * here are non-fatal: we log and let OMC keep its default cwd.
+ * A window with no folder open has nowhere to park; OMC keeps the working
+ * directory it started with.
  */
 async function cdIntoWorkspaceCacheDir(c: OmcClient): Promise<void> {
   const ws = vscode.workspace.workspaceFolders?.[0];
   if (!ws) return;
-  const path = await import("node:path");
-  const fsp = await import("node:fs/promises");
-  const cacheDir = path.join(ws.uri.fsPath, WORKSPACE_CACHE_DIRNAME);
   try {
-    await fsp.mkdir(cacheDir, { recursive: true });
+    const directory = await parkWorkingDirectory(c, ws.uri.fsPath);
+    log.info("ensureClient", `OMC cwd → ${directory}`);
   } catch (err) {
-    log.warn(
-      "ensureClient",
-      `mkdir ${cacheDir} failed: ${(err as Error).message}`,
-    );
-    return;
-  }
-  try {
-    const { workingDirectory } = await c.cd({
-      newWorkingDirectory: cacheDir,
-    });
-    log.info("ensureClient", `OMC cwd → ${workingDirectory}`);
-  } catch (err) {
-    log.warn(
-      "ensureClient",
-      `cd ${cacheDir} failed: ${(err as Error).message}`,
-    );
+    log.warn("ensureClient", `parking OMC's cwd failed: ${errorDetail(err)}`);
   }
 }

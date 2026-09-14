@@ -6,8 +6,9 @@
 
 import * as vscode from "vscode";
 
-/** Cache/working directory name, under the first workspace folder. */
-export const WORKSPACE_CACHE_DIRNAME = ".modelica";
+import { WORKSPACE_CACHE_DIRNAME } from "@dicode/omc-client";
+
+export { WORKSPACE_CACHE_DIRNAME };
 
 /** The cache directory of the first workspace folder, or `undefined` when no
  * folder is open. */
