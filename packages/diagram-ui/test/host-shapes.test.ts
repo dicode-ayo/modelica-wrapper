@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Container } from "pixi.js";
-import { diagram, ModelInstanceSchema } from "@dicode/omc-client";
+import { produceDiagramLayout } from "@dicode/omc-client/api/diagram";
+import { ModelInstanceSchema } from "@dicode/omc-client";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
@@ -132,7 +133,7 @@ describe("<om-graphical-layout> host shapes", () => {
       ),
     );
     const instance = ModelInstanceSchema.parse(raw);
-    const layout = diagram.produceDiagramLayout(instance, "diagram");
+    const layout = produceDiagramLayout(instance, "diagram");
     // Sanity: the fixture must actually contain the 6 host shapes the
     // OMEdit screenshot promises — 2 rectangles, 3 texts, 1 line.
     const shapes = layout.diagramLayers.flatMap((l) => l.shapes);

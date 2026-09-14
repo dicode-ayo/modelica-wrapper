@@ -4,7 +4,7 @@
  * the VSCode extension uses:
  *
  *   pidController.modelInstance.json  (real OMC capture, 1.3 MB)
- *     → diagram.diagram.produceDiagramLayout(mi, 'diagram')   (typed layout)
+ *     → diagram.produceDiagramLayout(mi, 'diagram')   (typed layout)
  *
  * The heaviest fixture in the suite — every layer (icon provider + texture
  * cache, component placement, nested connectors via class.connectors
@@ -17,7 +17,7 @@
 // placement helpers). Importing from the package root would bring in
 // `OmcClient` + `spawnOmc` which depend on `zeromq` / `node:fs` and
 // can't bundle for the browser.
-import { diagram } from "@dicode/omc-client";
+import { produceDiagramLayout } from "@dicode/omc-client/api/diagram";
 import type { DiagramLayout, ModelInstance } from "@dicode/omc-client";
 
 import pidFixture from "./pidController.modelInstance.json";
@@ -27,7 +27,7 @@ import pidFixture from "./pidController.modelInstance.json";
 // ModelInstanceSchema.parse here to keep the story bundle browser-only —
 // the schema module itself is browser-safe, but re-exporting it from the
 // omc-client barrel forces the OmcClient class import too.
-export const pidLayout: DiagramLayout = diagram.produceDiagramLayout(
+export const pidLayout: DiagramLayout = produceDiagramLayout(
   pidFixture as unknown as ModelInstance,
   "diagram",
 );
