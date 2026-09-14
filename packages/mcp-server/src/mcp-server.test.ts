@@ -521,6 +521,19 @@ describe("the escape hatch", () => {
     ]);
   });
 
+  it("refuses save, which writes a file without mutating OMC's memory", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "save", input: { typeName: SYSTEM_LIBRARY } },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+    expect(calls).toEqual([]);
+  });
+
   it("refuses loadString on the class its text names, which no argument does", async () => {
     declaredClasses = [SYSTEM_LIBRARY];
     loaded.add(SYSTEM_LIBRARY);

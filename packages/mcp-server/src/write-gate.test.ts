@@ -134,10 +134,6 @@ describe("refusalFor", () => {
     expect(refusal).toBe(REFUSAL);
   });
 
-  // `save` is classified "readOnly" in `@dicode/omc-client`'s `MUTATIONS` (it
-  // touches no cache), but it still writes a class's file to disk and reaches
-  // OMC through the same `omc_invoke` path as every gated wrapper (issue
-  // #654) — it must earn the same refusal a mutating call does.
   it("refuses save on a read-only class, the same as an editing call", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
 

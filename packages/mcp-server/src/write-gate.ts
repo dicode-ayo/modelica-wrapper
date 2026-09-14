@@ -27,9 +27,9 @@
  * `save` rewrites a class's own source file without touching OMC's symbol
  * table, so `MUTATIONS` in `@dicode/omc-client` classifies it `"readOnly"` and
  * it is not a `MutatingFnName` — yet it reaches OMC through the same
- * `omc_invoke` path as every gated wrapper (issue #654). It gets its own entry
- * below rather than folding into `MutatingFnName`, so the cache-invalidation
- * table keeps meaning "changes the model".
+ * `omc_invoke` path as every gated wrapper, and is gated by its own entry
+ * below. That classification is what lets `MUTATIONS` keep meaning "changes
+ * the model in memory", which is what cache invalidation reads it for.
  */
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
@@ -158,11 +158,8 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
 };
 
 /**
- * `save`'s row, outside `CLASS_ARGUMENTS` because `save` is not a
- * `MutatingFnName`. The literal is `ClassArgument`'s type argument rather than
- * a key of a derived set: the `K extends OmcFnName` constraint is checked
- * here, where a mapped type over `Extract` would collapse to `{}` and take the
- * field check with it.
+ * Naming `save` as `ClassArgument`'s own type argument is what fails the build
+ * if it ever leaves the OMC function registry or renames `typeName`.
  */
 const SAVE_ARGUMENT: ClassArgument<"save"> = {
   field: "typeName",
