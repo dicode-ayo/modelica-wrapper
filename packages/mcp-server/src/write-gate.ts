@@ -58,22 +58,21 @@ export interface WriteTargetClient {
  *
  * `null` means the input says nothing the gate judges: a library or an FMU
  * named rather than written (`loadModel`, `installPackage`, `importFMU`), or
- * OMC's own state (`setCommandLineOptions`). `loadFile` and `loadFiles` are
- * `null` for a weaker reason — the path they carry leads to Modelica whose
- * `within` clause chooses a target exactly as `loadString`'s does, and the gate
- * does not read it.
+ * OMC's own state (`setCommandLineOptions`). `loadFile` and `loadFiles` carry a
+ * path to Modelica whose `within` clause chooses a target the same way
+ * `loadString`'s `data` does; the gate does not open the file (#676).
  */
-type ClassArgument<K extends OmcFnName> =
+type Argument<Field extends string> =
   | {
-      readonly field: Extract<keyof OmcInput<K>, string>;
+      readonly field: Field;
       readonly as: "class" | "element";
       readonly action: WriteAction;
     }
-  | {
-      readonly field: Extract<keyof OmcInput<K>, string>;
-      readonly as: "source";
-    }
-  | null;
+  | { readonly field: Field; readonly as: "source" };
+
+type ClassArgument<K extends OmcFnName> = Argument<
+  Extract<keyof OmcInput<K>, string>
+> | null;
 
 const edits = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
@@ -153,13 +152,7 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
  * The table read by a name only known at runtime, which erases the
  * per-function field-name literals the declaration above is checked against.
  */
-type ResolvedClassArgument =
-  | {
-      readonly field: string;
-      readonly as: "class" | "element";
-      readonly action: WriteAction;
-    }
-  | { readonly field: string; readonly as: "source" };
+type ResolvedClassArgument = Argument<string>;
 
 const BY_NAME: Readonly<
   Record<string, ResolvedClassArgument | null | undefined>
@@ -196,14 +189,22 @@ export async function refusalFor(
  * The refusal `code` earns for the classes it declares, or `undefined` when
  * every one of them is the caller's to write.
  *
- * Text OMC cannot parse declares nothing, and the load that follows reports the
- * parse failure with more context than a refusal here could.
+ * Text OMC cannot parse declares nothing, so there is nothing to judge and the
+ * load that follows surfaces the parse failure. A `parseString` that fails
+ * outright leaves the gate unable to ask, and it fails open for the reason a
+ * verdict lookup does — a transient OMC error must not lock a user out of a
+ * model that is theirs to edit.
  *
  * A name already in the symbol table is being replaced, so the class itself is
- * judged; one that is not is being added to its `within` scope, so the scope is
- * judged instead — and a bare name has no scope, which is a top-level class the
- * gate has no verdict for. A target that has already passed is not asked about
- * twice: a file declaring many classes shares one scope between them.
+ * judged; one that is not is being created, so its `within` scope is judged
+ * instead. That scope is always a class OMC knows: `loadString` refuses a
+ * `within` clause naming a package it cannot find, so the only scope a write
+ * can reach is one that already exists. A bare name has no scope at all, which
+ * is a top-level class the gate has no verdict for.
+ *
+ * A target that has already passed is not asked about twice — several classes
+ * in one `within` clause share a scope, and {@link WriteVerdictSource} answers
+ * by class, with `action` selecting only the wording of a refusal.
  */
 async function refusalForSource(
   verdicts: WriteVerdictSource,

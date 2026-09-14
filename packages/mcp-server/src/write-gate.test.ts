@@ -186,7 +186,7 @@ describe("a call carrying Modelica source", () => {
   it("asks once about a scope several declared classes share", async () => {
     const source = verdicts();
 
-    await refusalFor(
+    const refusal = await refusalFor(
       source,
       declaring(["Demo.A", "Demo.B", "Demo.C"]),
       "loadString",
@@ -195,9 +195,24 @@ describe("a call carrying Modelica source", () => {
       },
     );
 
+    expect(refusal).toBeUndefined();
     expect(source.asked).toEqual([
       { className: "Demo", action: "createInside" },
     ]);
+  });
+
+  it("lets a class of the caller's own through, judged as the edit it is", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaring(["Demo.RLC"], ["Demo.RLC"]),
+      "loadString",
+      { data: "within Demo;\nmodel RLC end RLC;\n" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
   });
 
   it("lets a top-level class through: a bare name has no scope to judge", async () => {

@@ -8,7 +8,7 @@
  * class OMC cannot place — one being created here for the first time — has no
  * path to preserve.
  *
- * Two classes are gated, because two are at stake: the ones `code` declares,
+ * Two things are gated, because two are at stake: whatever `code` declares,
  * which the gate derives from its `within` clause, and `className`, whose file
  * the reload takes over whatever the code says.
  */

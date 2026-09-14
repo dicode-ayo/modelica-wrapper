@@ -39,7 +39,8 @@ import {
  * `invoke` carries every published wrapper. The typed methods beside it are
  * the ones `createClass` composes by hand, and they are declared for the same
  * reason {@link dispatch} is: a renamed argument fails the build rather than
- * reaching a model.
+ * reaching a model. `existClass` arrives through `WriteTargetClient`, which the
+ * gate needs it for, and `createClass` calls it too.
  */
 export interface McpToolClient
   extends

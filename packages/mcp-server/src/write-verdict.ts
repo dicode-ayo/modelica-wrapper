@@ -24,7 +24,13 @@ export interface WriteVerdictClient {
   }): Promise<{ fileReadOnly: boolean }>;
 }
 
-/** Answers "may this class be written?" for one class at a time. */
+/**
+ * Answers "may this class be written?" for one class at a time.
+ *
+ * `action` selects the wording of a refusal and must not change whether there
+ * is one: the write gate asks about a target once, under whichever action
+ * reaches it first.
+ */
 export interface WriteVerdictSource {
   forClass(
     client: WriteVerdictClient,

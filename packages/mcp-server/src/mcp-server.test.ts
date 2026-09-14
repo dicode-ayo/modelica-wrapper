@@ -900,6 +900,29 @@ describe("setSourceCode", () => {
     expect(calls).toEqual([]);
   });
 
+  it("reaches OMC once the code's own class is the caller's to write", async () => {
+    declaredClasses = ["Demo.Circuit"];
+    loaded.add("Demo.Circuit");
+    const mcp = await connect();
+
+    await mcp.callTool({
+      name: "setSourceCode",
+      arguments: {
+        className: "Demo.Circuit",
+        code: "within Demo;\nmodel Circuit end Circuit;\n",
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        fn: "loadString",
+        input: expect.objectContaining({
+          data: "within Demo;\nmodel Circuit end Circuit;\n",
+        }),
+      },
+    ]);
+  });
+
   it("omits the filename for a class OMC cannot place", async () => {
     const mcp = await connect();
     sourceFile = "<interactive>";
