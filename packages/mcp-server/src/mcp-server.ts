@@ -14,6 +14,7 @@ import { registerDiscoveryTools } from "./discovery-tools.js";
 import { SERVER_INSTRUCTIONS } from "./instructions.js";
 import type { McpToolDeps } from "./dispatch.js";
 import { registerParityTools } from "./parity-tools.js";
+import { registerSaveTools } from "./save-tools.js";
 import { registerShapeTools } from "./shape-tools.js";
 import { registerSourceTools } from "./source-tools.js";
 
@@ -26,6 +27,7 @@ export function buildMcpServer(deps: McpToolDeps, version: string): McpServer {
   );
   registerParityTools(server, deps);
   registerClassTools(server, deps);
+  registerSaveTools(server, deps);
   registerSourceTools(server, deps);
   registerShapeTools(server, deps);
   registerDiscoveryTools(server, deps);

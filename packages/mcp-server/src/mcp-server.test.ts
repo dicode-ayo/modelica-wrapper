@@ -42,6 +42,8 @@ let classFiles: Map<string, string>;
 let restrictions: Map<string, string>;
 /** What `parseString` reports a source string declares, as OMC's does. */
 let declaredClasses: string[];
+/** What `listFile` returns per class, as OMC's unparser would. */
+let listings: Map<string, string>;
 let workspace: SourceTree | undefined;
 
 /**
@@ -78,7 +80,12 @@ const client: McpToolClient = {
     calls.push({ fn: "setSourceFile", input });
     return { success: true };
   },
-  getSourceFile: async () => ({ fileName: sourceFile }),
+  getSourceFile: async ({ typeName }) => ({
+    fileName: classFiles.get(typeName) ?? sourceFile,
+  }),
+  listFile: async ({ typeName }) => ({
+    contents: listings.get(typeName) ?? `model ${typeName}\nend ${typeName};`,
+  }),
   getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
 };
 
@@ -123,6 +130,7 @@ beforeEach(() => {
   classFiles = new Map();
   restrictions = new Map();
   declaredClasses = [];
+  listings = new Map();
   workspace = undefined;
 });
 
@@ -133,7 +141,7 @@ describe("the published tool set", () => {
     const { tools } = await mcp.listTools();
     const names = tools.map((t) => t.name);
 
-    expect(names).toHaveLength(PARITY_TOOLS.length + 2 + 7 + 3);
+    expect(names).toHaveLength(PARITY_TOOLS.length + 3 + 7 + 3);
     expect(names).toContain("readSimulationResult");
     expect(names).toEqual(expect.arrayContaining([...PARITY_TOOLS]));
     expect(names).toEqual(
@@ -150,6 +158,7 @@ describe("the published tool set", () => {
         "omc_invoke",
         "setSourceCode",
         "createClass",
+        "saveClass",
       ]),
     );
     // `writeClassGraphics` is what the seven shape tools replace, and
@@ -160,6 +169,10 @@ describe("the published tool set", () => {
     // `newModel` is what `createClass` replaces: it registers a class and
     // writes nothing, so a caller who stops there loses it at the next restart.
     expect(names).not.toContain("newModel");
+    // `save` is what `saveClass` replaces: it writes to whatever path the
+    // symbol table already holds, and for a class created here that is a
+    // `<runtime:…>` placeholder rather than a file.
+    expect(names).not.toContain("save");
   });
 
   it("hints read-only exactly where the mutation table says nothing changes", async () => {
@@ -212,6 +225,11 @@ describe("the server's instructions", () => {
     // A tool description reaches a model once it is already reading that tool;
     // this reaches it while it is still deciding what to do.
     expect(instructions).toContain("createClass declares it");
+    // An assistant that never learns this builds a whole model in OMC's
+    // memory and leaves a stub on disk.
+    expect(instructions).toContain(
+      "lives in OMC's memory until saveClass runs",
+    );
     expect(instructions).toContain("readSimulationResult returns whole series");
     expect(instructions).toContain("typeName rather than cl");
   });
@@ -521,6 +539,89 @@ describe("the escape hatch", () => {
     expect(result.isError).toBe(true);
     expect(text(result)).toBe(REFUSAL);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("saveClass", () => {
+  it("refuses a class that is not the user's to write", async () => {
+    loaded.add(SYSTEM_LIBRARY);
+    workspace = { root: "/w", writer: { write: () => Promise.resolve() } };
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "saveClass",
+      arguments: { className: SYSTEM_LIBRARY },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+  });
+
+  it("refuses rather than claiming a save a host with no source tree cannot make", async () => {
+    loaded.add("Demo.RLC");
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "saveClass",
+      arguments: { className: "Demo.RLC" },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("no source tree");
+  });
+
+  it("refuses a class OMC does not have", async () => {
+    workspace = { root: "/w", writer: { write: () => Promise.resolve() } };
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "saveClass",
+      arguments: { className: "Demo.Typo" },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("nothing to save");
+  });
+
+  it("writes a class OMC holds in memory into the workspace", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-saveclass-"));
+    loaded.add("Demo.RLC");
+    // What every edit after createClass leaves behind: a class bound to a
+    // placeholder rather than a file.
+    classFiles.set("Demo.RLC", "<runtime:Demo.RLC>");
+    restrictions.set("Demo.RLC", "model");
+    listings.set("Demo.RLC", "within Demo;\nmodel RLC\n  Real v;\nend RLC;");
+    workspace = {
+      root,
+      writer: {
+        write: (fsPath, textContent) =>
+          fsp.writeFile(fsPath, textContent, "utf8"),
+      },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "saveClass",
+        arguments: { className: "Demo.RLC" },
+      })) as CallToolResult;
+
+      const leaf = path.join(root, "Demo", "RLC.mo");
+      expect(JSON.parse(text(result))).toEqual({
+        className: "Demo.RLC",
+        saved: [{ className: "Demo.RLC", fileName: leaf }],
+      });
+      expect(await fsp.readFile(leaf, "utf8")).toBe(
+        "within Demo;\nmodel RLC\n  Real v;\nend RLC;\n",
+      );
+      // OMC now knows where the class lives, so a later save writes there too.
+      expect(calls).toContainEqual({
+        fn: "setSourceFile",
+        input: { typeName: "Demo.RLC", fileName: leaf },
+      });
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
   });
 });
 

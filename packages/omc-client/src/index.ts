@@ -79,6 +79,7 @@ export {
   type RootPackageClient,
 } from "./declare-class.js";
 export { pathExists } from "./fs-util.js";
+export { fileOwnerClass, type FileOwnerClient } from "./file-owner.js";
 export {
   isLikelyDiskPath,
   linkPersistedClass,
@@ -88,6 +89,14 @@ export {
   type SourceTree,
   type SourceWriter,
 } from "./persist.js";
+export {
+  saveClass,
+  type SaveClient,
+  type SaveOptions,
+  type SaveResult,
+  type SavedClass,
+  type SkippedClass,
+} from "./save-class.js";
 
 // --- Supported OMC version pin (see docs/audit.md) ---
 export {

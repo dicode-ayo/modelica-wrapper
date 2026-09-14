@@ -91,6 +91,16 @@ export interface ResolveClient {
   Splitting a dotted class name at the trailing segment, skipping over a
   quoted identifier (Q-IDENT) that itself contains a `.`. Don't roll a fourth
   `name.slice(name.lastIndexOf(".") + 1)`; use this.
+  `packages/omc-client` is the one exception: it carries its own
+  `enclosingScope` in `src/qualified-name.ts`, because importing lang-core's
+  means inheriting the tree-sitter runtime behind that package's barrel, and
+  every consumer of omc-client would inherit the parser. Inside that package
+  use the local copy; everywhere else use lang-core's.
+- `fileOwnerClass` lives in `packages/omc-client/src/file-owner.ts` — the
+  outermost class still sharing a file, which is the one whose `listFile`
+  rewrites that file without dropping its inline siblings.
+  `packages/extension/src/file-owner.ts` re-exports it, the way `fs-util.ts`
+  re-exports `pathExists`.
 
 ### OMC coordinate conventions diverge per API
 
