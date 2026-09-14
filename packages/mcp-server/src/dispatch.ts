@@ -17,6 +17,7 @@ import type {
   OmcInput,
   PersistClient,
   RootPackageClient,
+  SaveClient,
   SourceTree,
 } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -40,7 +41,7 @@ import {
  * the ones `createClass` composes by hand, and they are declared for the same
  * reason {@link dispatch} is: a renamed argument fails the build rather than
  * reaching a model. `existClass` arrives through `WriteTargetClient`, where the
- * gate needs it; `createClass` calls it too.
+ * gate needs it; `createClass` and `saveClass` call it too.
  */
 export interface McpToolClient
   extends
@@ -48,6 +49,7 @@ export interface McpToolClient
     WriteTargetClient,
     PersistClient,
     RootPackageClient,
+    SaveClient,
     DeclareClient {
   invoke(fn: OmcFnName, input: unknown): Promise<unknown>;
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;

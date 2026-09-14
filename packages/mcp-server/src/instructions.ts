@@ -15,6 +15,13 @@ Creating a class:
   package's package.order. newModel, reachable through omc_invoke, does only
   the first of those, so a class made with it is gone at the next restart.
 
+Saving:
+- createClass is the only call that writes a file on its own. Every edit after
+  it lives in OMC's memory until saveClass runs, so a model built and simulated
+  entirely through these tools is still whatever was last written to disk.
+  Call saveClass on the class you edited once you are done editing it; on a
+  package it saves the members too.
+
 Building a model — two ways, pick by what the user needs to see:
 - setSourceCode writes a whole class at once, and is far fewer calls.
 - addComponent / addConnection / setElementModifierValue edit an existing one

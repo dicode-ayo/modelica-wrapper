@@ -58,7 +58,7 @@ export function registerSourceTools(
     "setSourceCode",
     {
       description:
-        "Replace a class's Modelica source and reload it into OMC, keeping it bound to the file it came from.",
+        "Replace a class's Modelica source and reload it into OMC, keeping it bound to the file it came from. The file itself is not written — call saveClass to persist the change.",
       inputSchema: SetSourceCodeSchema,
       annotations: { readOnlyHint: false },
     },
