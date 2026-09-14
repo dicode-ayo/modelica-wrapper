@@ -33,9 +33,9 @@ Reading results:
   check.
 
 Arguments are this API's names, not the ones in the OMC scripting docs: it is
-typeName rather than cl, fileName rather than filename, save rather than
-saveModel. omc_describe_function gives the exact shape for anything, and
-omc_list_functions finds what is not published as its own tool.
+typeName rather than cl, fileName rather than filename. omc_describe_function
+gives the exact shape for anything, and omc_list_functions finds what is not
+published as its own tool.
 
 Class names, component references and modifier paths reach OMC unquoted, so
 they are held to the Modelica name grammar: dotted identifiers, optionally
@@ -45,4 +45,4 @@ outside a string. Anything else is refused rather than escaped, because it
 would otherwise run as part of the command. A refusal here names the field and
 means the value was malformed, not that the operation was forbidden.
 
-Editing a class from an installed library is refused, with the reason.`;
+Writing to a class from an installed library is refused, with the reason.`;

@@ -23,6 +23,13 @@
  * `within` clause inside it chooses the target that no argument of the call
  * does. OMC parses the text to say what it declares, and each declared class is
  * judged like any other.
+ *
+ * `save` rewrites a class's own source file without touching OMC's symbol
+ * table, so `MUTATIONS` in `@dicode/omc-client` classifies it `"readOnly"` and
+ * it is not a `MutatingFnName` — yet it reaches OMC through the same
+ * `omc_invoke` path as every gated wrapper, and is gated by its own entry
+ * below. That classification is what lets `MUTATIONS` keep meaning "changes
+ * the model in memory", which is what cache invalidation reads it for.
  */
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
@@ -151,14 +158,24 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
 };
 
 /**
- * The table read by a name only known at runtime, which erases the
- * per-function field-name literals the declaration above is checked against.
+ * Naming `save` as `ClassArgument`'s own type argument is what fails the build
+ * if it ever leaves the OMC function registry or renames `typeName`.
+ */
+const SAVE_ARGUMENT: ClassArgument<"save"> = {
+  field: "typeName",
+  as: "class",
+  action: "save",
+};
+
+/**
+ * `CLASS_ARGUMENTS` and `SAVE_ARGUMENT` with their per-function field-name
+ * literals erased, which is all a lookup by a runtime name can preserve.
  */
 type ResolvedClassArgument = Argument<string>;
 
 const BY_NAME: Readonly<
   Record<string, ResolvedClassArgument | null | undefined>
-> = CLASS_ARGUMENTS;
+> = { save: SAVE_ARGUMENT, ...CLASS_ARGUMENTS };
 
 /**
  * The refusal `fn` earns for `input`, or `undefined` when the call may proceed.
