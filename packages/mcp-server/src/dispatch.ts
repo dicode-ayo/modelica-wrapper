@@ -63,6 +63,11 @@ export interface McpToolClient
     fileName: string;
     restriction: string;
   }>;
+  /** Narrows the bases, which disagree on whether `parseFile` takes an encoding. */
+  parseFile(input: {
+    fileName: string;
+    encoding?: string;
+  }): Promise<{ classNames: string[] }>;
 }
 
 export interface McpToolDeps {
