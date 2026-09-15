@@ -345,6 +345,28 @@ describe("a call carrying a path to a Modelica file", () => {
     expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
   });
 
+  it("reads the file with the same encoding the real load will use", async () => {
+    const source = verdicts();
+    const seen: { fileName: string; encoding?: string }[] = [];
+    const encodingAware: WriteVerdictClient & WriteTargetClient = {
+      ...client,
+      parseFile: async (input) => {
+        seen.push(input);
+        return { classNames: ["Demo.RLC"] };
+      },
+      existClass: async () => ({ exists: true }),
+    };
+
+    await refusalFor(source, encodingAware, "loadFile", {
+      fileName: "/workspace/Demo/RLC.mo",
+      encoding: "ISO-8859-1",
+    });
+
+    expect(seen).toEqual([
+      { fileName: "/workspace/Demo/RLC.mo", encoding: "ISO-8859-1" },
+    ]);
+  });
+
   it("lets a first load of a system library through: its within scope already exists", async () => {
     const source = verdicts();
 
@@ -417,6 +439,29 @@ describe("a call carrying paths to several Modelica files", () => {
     expect(refusal).toBeUndefined();
     expect(source.asked).toEqual([
       { className: "Demo", action: "createInside" },
+    ]);
+  });
+
+  it("reads every file in the batch with the same encoding the real load will use", async () => {
+    const source = verdicts();
+    const seen: { fileName: string; encoding?: string }[] = [];
+    const encodingAware: WriteVerdictClient & WriteTargetClient = {
+      ...client,
+      parseFile: async (input) => {
+        seen.push(input);
+        return { classNames: [] };
+      },
+      existClass: async () => ({ exists: false }),
+    };
+
+    await refusalFor(source, encodingAware, "loadFiles", {
+      fileNames: ["/workspace/Demo/A.mo", "/workspace/Demo/B.mo"],
+      encoding: "ISO-8859-1",
+    });
+
+    expect(seen).toEqual([
+      { fileName: "/workspace/Demo/A.mo", encoding: "ISO-8859-1" },
+      { fileName: "/workspace/Demo/B.mo", encoding: "ISO-8859-1" },
     ]);
   });
 

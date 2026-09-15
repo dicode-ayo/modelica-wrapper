@@ -51,7 +51,10 @@ import type {
  */
 export interface WriteTargetClient {
   parseString(input: { data: string }): Promise<{ classNames: string[] }>;
-  parseFile(input: { fileName: string }): Promise<{ classNames: string[] }>;
+  parseFile(input: {
+    fileName: string;
+    encoding?: string;
+  }): Promise<{ classNames: string[] }>;
   existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
 }
 
@@ -64,10 +67,12 @@ export interface WriteTargetClient {
  *
  * `as: "source"` marks an argument holding Modelica text the call brings in,
  * and `as: "sourceFile"` / `"sourceFiles"` a path (or array of paths) to a file
- * holding it. In every case the target is not the argument itself: its own
- * `within` clause chooses it, so no sibling argument names one and OMC parses
- * the text or the file to say what it declares; the action follows per
- * declared class rather than being fixed here.
+ * holding it — `encodingField`, when given, names the sibling argument the
+ * call reads the file with, so the gate decodes it the same way the load will.
+ * In every case the target is not the argument itself: its own `within`
+ * clause chooses it, so no sibling argument names one and OMC parses the text
+ * or the file to say what it declares; the action follows per declared class
+ * rather than being fixed here.
  *
  * `null` means the input says nothing the gate judges: a library or an FMU
  * named rather than written (`loadModel`, `installPackage`, `importFMU`), or
@@ -82,6 +87,7 @@ type Argument<Field extends string> =
   | {
       readonly field: Field;
       readonly as: "source" | "sourceFile" | "sourceFiles";
+      readonly encodingField?: Field;
     };
 
 type ClassArgument<K extends OmcFnName> = Argument<
@@ -106,11 +112,19 @@ const declaresInSource = <K extends OmcFnName>(
 
 const declaresInFile = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
-): ClassArgument<K> => ({ field, as: "sourceFile" });
+  encodingField?: Extract<keyof OmcInput<K>, string>,
+): ClassArgument<K> =>
+  encodingField === undefined
+    ? { field, as: "sourceFile" }
+    : { field, as: "sourceFile", encodingField };
 
 const declaresInFiles = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
-): ClassArgument<K> => ({ field, as: "sourceFiles" });
+  encodingField?: Extract<keyof OmcInput<K>, string>,
+): ClassArgument<K> =>
+  encodingField === undefined
+    ? { field, as: "sourceFiles" }
+    : { field, as: "sourceFiles", encodingField };
 
 /**
  * `copyClass`'s `within` and `newModel`'s `withinPath` are empty for a
@@ -132,8 +146,8 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
   importFMU: null,
   installPackage: null,
   loadClassContentString: createsInside("typeName"),
-  loadFile: declaresInFile("fileName"),
-  loadFiles: declaresInFiles("fileNames"),
+  loadFile: declaresInFile("fileName", "encoding"),
+  loadFiles: declaresInFiles("fileNames", "encoding"),
   loadModel: null,
   loadString: declaresInSource("data"),
   moveClass: edits("typeName"),
@@ -209,43 +223,68 @@ export async function refusalFor(
 
   const raw: unknown = (input as Record<string, unknown>)[argument.field];
 
-  if (argument.as === "class" || argument.as === "element") {
-    if (typeof raw !== "string" || raw === "") return undefined;
-    const className = argument.as === "element" ? enclosingScope(raw) : raw;
-    return refusalForClass(verdicts, client, className, argument.action);
-  }
-
-  if (argument.as === "sourceFiles") {
-    if (!Array.isArray(raw)) return undefined;
-    // Shared across every file in the batch so a `within` scope several of
-    // them declare into is asked about once, the same as within one file.
-    const passed = new Set<string>();
-    for (const fileName of raw) {
-      if (typeof fileName !== "string" || fileName === "") continue;
-      const refusal = await refusalForSourceFile(
-        verdicts,
-        client,
-        fileName,
-        passed,
-      );
-      if (refusal !== undefined) return refusal;
-    }
-    return undefined;
-  }
-
-  if (typeof raw !== "string" || raw === "") return undefined;
+  // One switch, not a chain of `if`s narrowing `argument.as` away by
+  // elimination: TypeScript's flow analysis only narrows a discriminated
+  // union's *structural* member (here, whether `encodingField` exists) per
+  // `case`, not across several `if (argument.as === …) return …` checks that
+  // together rule the other member out.
   switch (argument.as) {
+    case "class":
+    case "element": {
+      if (typeof raw !== "string" || raw === "") return undefined;
+      const className = argument.as === "element" ? enclosingScope(raw) : raw;
+      return refusalForClass(verdicts, client, className, argument.action);
+    }
     case "source":
-      return refusalForSource(verdicts, client, raw);
-    case "sourceFile":
-      return refusalForSourceFile(verdicts, client, raw);
+    case "sourceFile": {
+      if (typeof raw !== "string" || raw === "") return undefined;
+      const encoding = readEncoding(input, argument.encodingField);
+      return argument.as === "source"
+        ? refusalForSource(verdicts, client, raw)
+        : refusalForSourceFile(verdicts, client, raw, encoding);
+    }
+    case "sourceFiles": {
+      if (!Array.isArray(raw)) return undefined;
+      const encoding = readEncoding(input, argument.encodingField);
+      // Shared across every file in the batch so a `within` scope several of
+      // them declare into is asked about once, the same as within one file.
+      const passed = new Set<string>();
+      for (const fileName of raw) {
+        if (typeof fileName !== "string" || fileName === "") continue;
+        const refusal = await refusalForSourceFile(
+          verdicts,
+          client,
+          fileName,
+          encoding,
+          passed,
+        );
+        if (refusal !== undefined) return refusal;
+      }
+      return undefined;
+    }
     default: {
-      const unreachable: never = argument.as;
+      const unreachable: never = argument;
       throw new Error(
-        `write-gate: unhandled argument shape ${String(unreachable)}`,
+        `write-gate: unhandled argument shape ${JSON.stringify(unreachable)}`,
       );
     }
   }
+}
+
+/**
+ * `field`'s value in `input` when it names one and reads as a string, so
+ * `parseFile` decodes a file the same way `loadFile`/`loadFiles`' own
+ * `encoding` argument will. `undefined` — no such field, or a non-string
+ * value — leaves `parseFile` to its own UTF-8 default, which is also
+ * `loadFile`/`loadFiles`' default.
+ */
+function readEncoding(
+  input: object,
+  field: string | undefined,
+): string | undefined {
+  if (field === undefined) return undefined;
+  const raw: unknown = (input as Record<string, unknown>)[field];
+  return typeof raw === "string" ? raw : undefined;
 }
 
 /**
@@ -277,6 +316,8 @@ async function refusalForSource(
 /**
  * {@link refusalForSource}'s file-shaped twin: `fileName` is read through
  * `parseFile` instead of `data` through `parseString`, and judged the same way.
+ * `encoding` is read the same way the real `loadFile`/`loadFiles` call will,
+ * so the gate never decodes the file differently than the load that follows.
  *
  * `passed` defaults to a fresh set for a lone file, and is shared across a
  * `loadFiles` batch by its caller so a scope named from more than one file is
@@ -286,11 +327,14 @@ async function refusalForSourceFile(
   verdicts: WriteVerdictSource,
   client: WriteVerdictClient & WriteTargetClient,
   fileName: string,
+  encoding: string | undefined,
   passed = new Set<string>(),
 ): Promise<string | undefined> {
   let classNames: string[];
   try {
-    ({ classNames } = await client.parseFile({ fileName }));
+    ({ classNames } = await client.parseFile(
+      encoding === undefined ? { fileName } : { fileName, encoding },
+    ));
   } catch (err) {
     return `Cannot tell which class this would write — OMC could not read ${fileName}: ${errorDetail(err)}.`;
   }

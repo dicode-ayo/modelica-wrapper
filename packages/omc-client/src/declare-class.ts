@@ -96,7 +96,10 @@ export async function declareClass(
 
 /** OMC surface {@link resolveRootPackageParent} needs. `OmcClient` satisfies it. */
 export interface RootPackageClient {
-  parseFile(input: { fileName: string }): Promise<{ classNames: string[] }>;
+  parseFile(input: {
+    fileName: string;
+    encoding?: string;
+  }): Promise<{ classNames: string[] }>;
   getClassInformation(input: {
     typeName: string;
   }): Promise<{ restriction: string }>;
