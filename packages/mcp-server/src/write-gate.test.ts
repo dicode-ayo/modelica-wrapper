@@ -58,15 +58,22 @@ function declaringFile(
 
 /**
  * {@link declaringFile}, keyed by path: each file reports its own classes, so
- * a batch can hold a benign entry ahead of one that earns a refusal.
+ * a batch can hold a benign entry ahead of one that earns a refusal. `parsed`
+ * records every path actually sent to `parseFile`, so a test can pin which
+ * entries a batch skips without asking OMC anything.
  */
 function declaringPerFile(
   byFile: Record<string, string[]>,
   loaded: string[] = [],
-): WriteVerdictClient & WriteTargetClient {
+): WriteVerdictClient & WriteTargetClient & { parsed: string[] } {
+  const parsed: string[] = [];
   return {
     ...client,
-    parseFile: async ({ fileName }) => ({ classNames: byFile[fileName] ?? [] }),
+    parsed,
+    parseFile: async ({ fileName }) => {
+      parsed.push(fileName);
+      return { classNames: byFile[fileName] ?? [] };
+    },
     existClass: async ({ typeName }) => ({ exists: loaded.includes(typeName) }),
   };
 }
@@ -399,6 +406,20 @@ describe("a call carrying a path to a Modelica file", () => {
     expect(refusal).toContain("omc: no such file");
     expect(source.asked).toEqual([]);
   });
+
+  it("lets an empty or non-string fileName through: nothing the gate can judge", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+    const files = declaringPerFile({});
+
+    expect(
+      await refusalFor(source, files, "loadFile", { fileName: "" }),
+    ).toBeUndefined();
+    expect(
+      await refusalFor(source, files, "loadFile", { fileName: 42 }),
+    ).toBeUndefined();
+    expect(files.parsed).toEqual([]);
+    expect(source.asked).toEqual([]);
+  });
 });
 
 describe("a call carrying paths to several Modelica files", () => {
@@ -492,16 +513,19 @@ describe("a call carrying paths to several Modelica files", () => {
 
   it("skips entries that are not usable paths, still judging the real ones", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
-
-    const refusal = await refusalFor(
-      source,
-      declaringPerFile({ "/tmp/pwned.mo": ["Modelica.Blocks.Math.Sin"] }, [
-        "Modelica.Blocks.Math.Sin",
-      ]),
-      "loadFiles",
-      { fileNames: ["", 42, "/tmp/pwned.mo"] },
+    const files = declaringPerFile(
+      { "/tmp/pwned.mo": ["Modelica.Blocks.Math.Sin"] },
+      ["Modelica.Blocks.Math.Sin"],
     );
 
+    const refusal = await refusalFor(source, files, "loadFiles", {
+      fileNames: ["", 42, "/tmp/pwned.mo"],
+    });
+
     expect(refusal).toBe(REFUSAL);
+    // Pins that "", not just 42, never reaches parseFile — real OMC throws on
+    // an empty fileName, which would otherwise turn one junk entry into a
+    // refusal of the whole batch instead of skipping past it.
+    expect(files.parsed).toEqual(["/tmp/pwned.mo"]);
   });
 });

@@ -239,10 +239,14 @@ export async function refusalFor(
     case "source":
     case "sourceFile": {
       if (typeof raw !== "string" || raw === "") return undefined;
-      const encoding = readEncoding(input, argument.encodingField);
       return argument.as === "source"
         ? refusalForSource(verdicts, client, raw)
-        : refusalForSourceFile(verdicts, client, raw, encoding);
+        : refusalForSourceFile(
+            verdicts,
+            client,
+            raw,
+            readEncoding(input, argument.encodingField),
+          );
     }
     case "sourceFiles": {
       if (!Array.isArray(raw)) return undefined;
@@ -303,7 +307,6 @@ async function refusalForSource(
   verdicts: WriteVerdictSource,
   client: WriteVerdictClient & WriteTargetClient,
   code: string,
-  passed = new Set<string>(),
 ): Promise<string | undefined> {
   let classNames: string[];
   try {
@@ -311,7 +314,7 @@ async function refusalForSource(
   } catch (err) {
     return `Cannot tell which class this would write — OMC could not read the source: ${errorDetail(err)}.`;
   }
-  return refusalForDeclaredClasses(verdicts, client, classNames, passed);
+  return refusalForDeclaredClasses(verdicts, client, classNames, new Set());
 }
 
 /**
