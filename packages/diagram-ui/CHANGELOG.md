@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-ui-v0.0.5...@dicode/diagram-ui-v0.0.6) (2026-09-15)
+
+
+### Bug Fixes
+
+* **omc-client:** validate command arguments before interpolating them ([#664](https://github.com/dicode-ayo/modelica-wrapper/issues/664)) ([1546a49](https://github.com/dicode-ayo/modelica-wrapper/commit/1546a495a3f981bf6020a53607b11d43f19c2268)), closes [#656](https://github.com/dicode-ayo/modelica-wrapper/issues/656)
+
 ## [0.0.5](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-ui-v0.0.4...@dicode/diagram-ui-v0.0.5) (2026-09-11)
 
 

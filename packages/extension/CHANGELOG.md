@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.6...modelica-wrapper-v0.0.7) (2026-09-15)
+
+
+### Features
+
+* **mcp:** publish saveClass so an edit outlives OMC's memory ([#682](https://github.com/dicode-ayo/modelica-wrapper/issues/682)) ([9385299](https://github.com/dicode-ayo/modelica-wrapper/commit/9385299fb668287490e2a294d43953e4f2b85799))
+
+
+### Bug Fixes
+
+* **omc-client:** refuse a simulate argument that will not survive the shell ([#689](https://github.com/dicode-ayo/modelica-wrapper/issues/689)) ([4a77738](https://github.com/dicode-ayo/modelica-wrapper/commit/4a7773807c38ff26c5c56decaad1dfdc6a2072ae))
+* **omc-client:** validate command arguments before interpolating them ([#664](https://github.com/dicode-ayo/modelica-wrapper/issues/664)) ([1546a49](https://github.com/dicode-ayo/modelica-wrapper/commit/1546a495a3f981bf6020a53607b11d43f19c2268)), closes [#656](https://github.com/dicode-ayo/modelica-wrapper/issues/656)
+
+
+### Code Refactoring
+
+* **omc-client:** share the working directory OMC builds into ([#690](https://github.com/dicode-ayo/modelica-wrapper/issues/690)) ([c303055](https://github.com/dicode-ayo/modelica-wrapper/commit/c3030556d192f153602e7c59bee56ff96fe7e443))
+
 ## [0.0.6](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.5...modelica-wrapper-v0.0.6) (2026-09-12)
 
 
