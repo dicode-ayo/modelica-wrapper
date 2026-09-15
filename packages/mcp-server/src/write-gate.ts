@@ -110,21 +110,22 @@ const declaresInSource = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
 ): ClassArgument<K> => ({ field, as: "source" });
 
-const declaresInFile = <K extends OmcFnName>(
+const fileArgument = <K extends OmcFnName>(
+  as: "sourceFile" | "sourceFiles",
   field: Extract<keyof OmcInput<K>, string>,
   encodingField?: Extract<keyof OmcInput<K>, string>,
 ): ClassArgument<K> =>
-  encodingField === undefined
-    ? { field, as: "sourceFile" }
-    : { field, as: "sourceFile", encodingField };
+  encodingField === undefined ? { field, as } : { field, as, encodingField };
+
+const declaresInFile = <K extends OmcFnName>(
+  field: Extract<keyof OmcInput<K>, string>,
+  encodingField?: Extract<keyof OmcInput<K>, string>,
+): ClassArgument<K> => fileArgument("sourceFile", field, encodingField);
 
 const declaresInFiles = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
   encodingField?: Extract<keyof OmcInput<K>, string>,
-): ClassArgument<K> =>
-  encodingField === undefined
-    ? { field, as: "sourceFiles" }
-    : { field, as: "sourceFiles", encodingField };
+): ClassArgument<K> => fileArgument("sourceFiles", field, encodingField);
 
 /**
  * `copyClass`'s `within` and `newModel`'s `withinPath` are empty for a
