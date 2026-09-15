@@ -35,7 +35,7 @@ export const SUPPORTED_OMC = {
    * merge. A hand bump is fine when it ships together with the drift fixes and
    * a `coverage.md` re-probe record; `auditedOn` only moves for a full §3 audit.
    */
-  primary: "1.27.0",
+  primary: "1.27.1",
   /** Same major.minor is treated as compatible without warning. */
   compatibleMinor: { major: 1, minor: 27 },
   /**
