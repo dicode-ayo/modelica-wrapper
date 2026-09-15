@@ -351,10 +351,10 @@ async function refusalForSourceFile(
  *
  * A name already in the symbol table is being replaced, so the class itself is
  * judged; one that is not is being created, so its `within` scope is judged
- * instead. That scope is always a class OMC knows: `loadString` refuses a
- * `within` clause naming a package it cannot find, so the only scope a write
- * can reach is one that already exists. A bare name has no scope at all, which
- * is a top-level class the gate has no verdict for.
+ * instead. That scope is always a class OMC knows: a load refuses a `within`
+ * clause naming a package it cannot find, so the only scope a write can reach
+ * is one that already exists. A bare name has no scope at all, which is a
+ * top-level class the gate has no verdict for.
  *
  * A target in `passed` is not asked about twice — several classes (in one
  * `within` clause, or in different files of one `loadFiles` batch) can share a
