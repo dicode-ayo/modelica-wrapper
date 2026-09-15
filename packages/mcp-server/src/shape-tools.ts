@@ -87,14 +87,14 @@ function extentOf(flat: [number, number, number, number]): Extent {
   ];
 }
 
-const RectangleSchema = z.object({
+const RectangleSchema = z.strictObject({
   ...placedFields,
   extent: FlatExtent,
   radius: z.number().optional().describe("Corner radius."),
   ...filledFields,
 });
 
-const EllipseSchema = z.object({
+const EllipseSchema = z.strictObject({
   ...placedFields,
   extent: FlatExtent,
   startAngle: z.number().optional().describe("Arc start in degrees."),
@@ -102,7 +102,7 @@ const EllipseSchema = z.object({
   ...filledFields,
 });
 
-const LineSchema = z.object({
+const LineSchema = z.strictObject({
   ...placedFields,
   points: Points,
   color: Color.optional(),
@@ -116,13 +116,13 @@ const LineSchema = z.object({
   ).optional(),
 });
 
-const PolygonSchema = z.object({
+const PolygonSchema = z.strictObject({
   ...placedFields,
   points: Points,
   ...filledFields,
 });
 
-const TextSchema = z.object({
+const TextSchema = z.strictObject({
   ...placedFields,
   extent: FlatExtent,
   textString: z
@@ -133,7 +133,7 @@ const TextSchema = z.object({
   textColor: Color.optional(),
 });
 
-const RemoveShapeSchema = z.object({
+const RemoveShapeSchema = z.strictObject({
   ...placedFields,
   index: ShapeIndexSchema.describe(
     "Position in the layer's graphics list, in the order getIconAnnotation / getDiagramAnnotation return.",
@@ -145,7 +145,8 @@ const RemoveShapeSchema = z.object({
  * fail when a field is added there and silently dropped by the rest spread this
  * tool forwards.
  */
-const CoordinateSystemSchema = WriteCoordinateSystemSchema.extend(placedFields);
+const CoordinateSystemSchema =
+  WriteCoordinateSystemSchema.extend(placedFields).strict();
 
 export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
   /**

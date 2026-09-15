@@ -35,7 +35,7 @@ import {
   type McpToolDeps,
 } from "./dispatch.js";
 
-const ListFunctionsSchema = z.object({
+const ListFunctionsSchema = z.strictObject({
   category: z
     .string()
     .optional()
@@ -44,13 +44,13 @@ const ListFunctionsSchema = z.object({
     ),
 });
 
-const DescribeFunctionSchema = z.object({
+const DescribeFunctionSchema = z.strictObject({
   name: z
     .string()
     .describe("OMC function name, as omc_list_functions spells it."),
 });
 
-const InvokeSchema = z.object({
+const InvokeSchema = z.strictObject({
   fn: z
     .string()
     .describe("OMC function name, as omc_list_functions spells it."),

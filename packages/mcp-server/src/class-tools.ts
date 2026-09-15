@@ -46,7 +46,7 @@ import {
 import { errorDetail } from "./error-detail.js";
 import { refusalForClass } from "./write-gate.js";
 
-const CreateClassSchema = z.object({
+const CreateClassSchema = z.strictObject({
   name: z
     .string()
     .describe("Name of the new class on its own, not the dotted path."),
