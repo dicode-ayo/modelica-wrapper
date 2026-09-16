@@ -34,7 +34,7 @@ describe("simulateInputFromFormValues", () => {
     expect(input.method).toBe("<default>");
   });
 
-  it("omits undefined / blank fields so the wrapper defaults apply", () => {
+  it("omits undefined / blank fields from the call", () => {
     const input = simulateInputFromFormValues("M", {
       startTime: undefined,
       method: "",

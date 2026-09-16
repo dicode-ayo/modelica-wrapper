@@ -48,7 +48,7 @@ import { parse } from "../../parse.js";
  * OMC resolves an omitted `stopTime` / `numberOfIntervals` / `tolerance` from
  * the class's `experiment` annotation and only uses the defaults in its
  * signature when there is none. A schema default here would send the value
- * explicitly and override the annotation, so the group stays optional.
+ * explicitly and override the annotation, so all three stay optional.
  */
 export const SimulateInputSchema = z.strictObject({
   typeName: modelicaName.describe("Class to simulate."),

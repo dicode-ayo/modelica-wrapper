@@ -33,7 +33,7 @@ export type SimulateFormSubmit = {
  *
  * We *omit* fields with `undefined` rather than assigning them so that
  * `exactOptionalPropertyTypes` is happy and an empty input reaches OMC as an
- * omitted argument, which for the `experiment`-annotation group defers to the
+ * omitted argument, which for the `experiment`-annotation values defers to the
  * class's own simulation window. `Object.fromEntries(Object.entries(…).filter)`
  * is the most legible form of "drop nullable keys" in TypeScript.
  *

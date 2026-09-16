@@ -1,5 +1,5 @@
 /**
- * Pins that no schema default for the `experiment`-annotation group reaches
+ * Pins that no schema default for the `experiment`-annotation values reaches
  * the `simulate(...)` command string; see `SimulateInputSchema`.
  */
 
@@ -31,7 +31,7 @@ async function commandFor(input: SimulateInput): Promise<string | undefined> {
   return sent[0];
 }
 
-describe("simulate: the experiment-annotation group", () => {
+describe("simulate: the experiment-annotation values", () => {
   it("omits every annotation-backed argument the caller left out, and method's sentinel", async () => {
     expect(await commandFor({ typeName: "M" })).toBe(
       'simulate(M, outputFormat="mat", variableFilter=".*")',
@@ -54,8 +54,8 @@ describe("simulate: the experiment-annotation group", () => {
       numberOfIntervals: 1000,
       tolerance: 1e-8,
     });
-    expect(command).toContain(
-      "simulate(M, startTime=0, stopTime=0.1, numberOfIntervals=1000, tolerance=1e-8",
+    expect(command).toBe(
+      'simulate(M, startTime=0, stopTime=0.1, numberOfIntervals=1000, tolerance=1e-8, outputFormat="mat", variableFilter=".*")',
     );
   });
 });
