@@ -79,25 +79,17 @@ function declaringPerFile(
 }
 
 /**
- * {@link declaring} with files behind it: `classNames` is what the text
- * declares, `byFile` what each path on disk holds. `parsed` records the paths
- * the gate read, so a test can pin one it must not touch.
+ * {@link declaringPerFile} with text in front of it: `classNames` is what the
+ * source string declares, `byFile` what each path on disk holds.
  */
 function declaringIntoFile(
   classNames: string[],
   byFile: Record<string, string[]>,
   loaded: string[] = [],
 ): WriteVerdictClient & WriteTargetClient & { parsed: string[] } {
-  const parsed: string[] = [];
   return {
-    ...client,
-    parsed,
+    ...declaringPerFile(byFile, loaded),
     parseString: async () => ({ classNames }),
-    parseFile: async ({ fileName }) => {
-      parsed.push(fileName);
-      return { classNames: byFile[fileName] ?? [] };
-    },
-    existClass: async ({ typeName }) => ({ exists: loaded.includes(typeName) }),
   };
 }
 

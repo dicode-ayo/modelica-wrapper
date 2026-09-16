@@ -35,7 +35,8 @@ let sourceFile = "/w/Demo.mo";
 let loaded: Set<string>;
 let loadFails: string | undefined;
 let unloadFails: string | undefined;
-let rootPackageClasses: string[];
+/** What `parseFile` reports a path declares, as OMC's does. */
+let parsedFileClasses: string[];
 /** What `getClassInformation` reports as a class's file, as OMC would. */
 let classFiles: Map<string, string>;
 /** Overrides the restriction `getClassInformation` reports for one class. */
@@ -68,7 +69,7 @@ const client: McpToolClient = {
     restriction:
       restrictions.get(typeName) ?? (loaded.has(typeName) ? "package" : ""),
   }),
-  parseFile: async () => ({ classNames: rootPackageClasses }),
+  parseFile: async () => ({ classNames: parsedFileClasses }),
   parseString: async () => ({ classNames: declaredClasses }),
   getClassNames: async () => ({ classNames: [] }),
   getErrorString: async () => ({ errorString: loadFails ?? "" }),
@@ -126,7 +127,7 @@ beforeEach(() => {
   loaded = new Set();
   loadFails = undefined;
   unloadFails = undefined;
-  rootPackageClasses = [];
+  parsedFileClasses = [];
   classFiles = new Map();
   restrictions = new Map();
   declaredClasses = [];
@@ -553,6 +554,43 @@ describe("the escape hatch", () => {
     expect(text(result)).toBe(REFUSAL);
     expect(calls).toEqual([]);
   });
+
+  it("refuses loadString binding its text to a file a system library is stored in", async () => {
+    // A bare name leaves the `within` clause nothing to judge, so the file the
+    // call binds to is the whole of the write.
+    declaredClasses = ["Mine"];
+    parsedFileClasses = [SYSTEM_LIBRARY];
+    loaded.add(SYSTEM_LIBRARY);
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: {
+        fn: "loadString",
+        input: {
+          data: "model Mine\n Real x;\nend Mine;\n",
+          filename: "/lib/Modelica 4.1.0+maint.om/Blocks/Math.mo",
+        },
+      },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+    expect(calls).toEqual([]);
+  });
+
+  it("lets loadString bind a class to a file the caller owns", async () => {
+    declaredClasses = ["Mine"];
+    const mcp = await connect();
+
+    const input = { data: "model Mine end Mine;\n", filename: "/w/Mine.mo" };
+    await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "loadString", input },
+    });
+
+    expect(calls).toEqual([{ fn: "loadString", input }]);
+  });
 });
 
 describe("saveClass", () => {
@@ -786,7 +824,7 @@ describe("createClass", () => {
       "utf8",
     );
     await fsp.writeFile(path.join(root, "package.order"), "", "utf8");
-    rootPackageClasses = ["Demo"];
+    parsedFileClasses = ["Demo"];
     loaded.add("Demo");
     classFiles.set("Demo", path.join(root, "package.mo"));
     workspace = {
@@ -824,7 +862,7 @@ describe("createClass", () => {
   it("refuses when the tree's root package cannot be named", async () => {
     const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
     await fsp.writeFile(path.join(root, "package.mo"), "", "utf8");
-    rootPackageClasses = ["A", "B"];
+    parsedFileClasses = ["A", "B"];
     workspace = {
       root,
       writer: { write: () => Promise.resolve() },

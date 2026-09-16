@@ -83,9 +83,9 @@ export interface WriteTargetClient {
  * rather than being fixed here.
  *
  * `bindingField` names the sibling argument a `"source"` call binds its loaded
- * classes to. Nothing reads that path into the call, so none of the call's
- * encodings applies to it; what it holds on disk is what the binding takes
- * over, and that is what gets judged.
+ * classes to — every call that brings text in has one. Nothing reads that path
+ * into the call, so none of the call's encodings applies to it; what it holds
+ * on disk is what the binding takes over, and that is what gets judged.
  *
  * `null` means the input says nothing the gate judges: a library or an FMU
  * named rather than written (`loadModel`, `installPackage`, `importFMU`), or
@@ -100,7 +100,7 @@ type Argument<Field extends string> =
   | {
       readonly field: Field;
       readonly as: "source";
-      readonly bindingField?: Field;
+      readonly bindingField: Field;
     }
   | {
       readonly field: Field;
@@ -126,11 +126,8 @@ const editsElement = <K extends OmcFnName>(
 
 const declaresInSource = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
-  bindingField?: Extract<keyof OmcInput<K>, string>,
-): ClassArgument<K> =>
-  bindingField === undefined
-    ? { field, as: "source" }
-    : { field, as: "source", bindingField };
+  bindingField: Extract<keyof OmcInput<K>, string>,
+): ClassArgument<K> => ({ field, as: "source", bindingField });
 
 const fileArgument = <K extends OmcFnName>(
   as: "sourceFile" | "sourceFiles",
@@ -277,6 +274,7 @@ export async function refusalFor(
         client,
         raw,
         readEncoding(input, argument.encodingField),
+        new Set(),
       );
     }
     case "sourceFiles": {
@@ -331,11 +329,7 @@ function readEncoding(
  * memory carries a `<runtime:…>` pseudo-path. Neither is a file anything is
  * stored in, so neither has anything for a binding to evict.
  */
-function readBinding(
-  input: object,
-  field: string | undefined,
-): string | undefined {
-  if (field === undefined) return undefined;
+function readBinding(input: object, field: string): string | undefined {
   const raw: unknown = (input as Record<string, unknown>)[field];
   return typeof raw === "string" && isLikelyDiskPath(raw) ? raw : undefined;
 }
@@ -377,8 +371,8 @@ async function refusalForSource(
  * binding path is read by no call, so it has no encoding to match and leaves
  * `parseFile` its UTF-8 default.
  *
- * `passed` defaults to a fresh set for a lone file, and is shared by its
- * caller — across a `loadFiles` batch, or between a source string and the path
+ * `passed` comes from the caller, which shares one set wherever a target can
+ * repeat — across a `loadFiles` batch, or between a source string and the path
  * it binds to — so a target named twice is still asked about once.
  */
 async function refusalForSourceFile(
@@ -386,7 +380,7 @@ async function refusalForSourceFile(
   client: WriteVerdictClient & WriteTargetClient,
   fileName: string,
   encoding: string | undefined,
-  passed = new Set<string>(),
+  passed: Set<string>,
 ): Promise<string | undefined> {
   let classNames: string[];
   try {
