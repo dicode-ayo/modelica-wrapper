@@ -25,7 +25,7 @@ export type ListFileOutput = z.infer<typeof ListFileOutputSchema>;
 
 export const ListFileDescription =
   "Returns OMC's in-memory pretty-printed Modelica source for a class, not the file on disk. " +
-  "Mutating tools change that memory only, until saveClass writes it out — call saveClass " +
+  "Edits from the other mutating tools change that memory only, until saveClass writes it out — call saveClass " +
   "first if you need this to match what a restart would load.";
 
 export async function listFile(
