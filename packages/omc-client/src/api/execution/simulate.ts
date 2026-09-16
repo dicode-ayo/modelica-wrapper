@@ -45,12 +45,10 @@ import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
 /**
- * OMC's signature documents numeric defaults for `stopTime`,
- * `numberOfIntervals` and `tolerance`, but passing one is not the same as
- * omitting it: an omitted argument is resolved from the class's `experiment`
- * annotation, and only a class without one falls back to the documented value.
- * Defaulting them here would override the annotation with no way to ask for it
- * back, so the whole annotation-backed group stays optional.
+ * OMC resolves an omitted `stopTime` / `numberOfIntervals` / `tolerance` from
+ * the class's `experiment` annotation and only uses the defaults in its
+ * signature when there is none. A schema default here would send the value
+ * explicitly and override the annotation, so the group stays optional.
  */
 export const SimulateInputSchema = z.strictObject({
   typeName: modelicaName.describe("Class to simulate."),
