@@ -1,9 +1,9 @@
 /**
  * The run summary must report the window OMC ran, not the one submitted.
  *
- * A blank stop-time field is omitted from the call, which leaves the class's
- * `experiment` annotation to decide the window — so reading the bounds back
- * off the submitted input would report a run that never happened.
+ * `simulateInputFromFormValues` drops a non-finite bound rather than sending
+ * it, and OMC resolves an absent bound from the class's `experiment`
+ * annotation, so the submitted input is not a record of what ran.
  */
 
 import { describe, expect, it } from "vitest";
