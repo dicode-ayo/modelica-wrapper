@@ -43,6 +43,7 @@ import { diffLayouts, TRUSTED_ON_STALE_BASE } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
 import { LibrarySource, SearchAbortedError } from "./library-source.js";
+import { runWindow } from "./run-window.js";
 import { simulateInputFromFormValues } from "./simulate-form.js";
 
 /**
@@ -263,8 +264,6 @@ export async function runSimulate(
   values: Record<string, unknown>,
 ): Promise<void> {
   const input = simulateInputFromFormValues(className, values);
-  const start = input.startTime ?? 0;
-  const stop = input.stopTime ?? 1;
   // Placeholder label — replaced with `client.lastCall` after the
   // invocation, so the REPL transcript shows the exact OMC command
   // we sent (matches what `simulate(...)` typed in the REPL would
@@ -308,8 +307,14 @@ export async function runSimulate(
           return;
         }
 
+        const bounds = runWindow(
+          readRecordString(simulationResult, "simulationOptions"),
+          input,
+        );
         const summaryLines = [
-          `t ∈ [${start}, ${stop}] in ${elapsedMs} ms`,
+          bounds === undefined
+            ? `completed in ${elapsedMs} ms`
+            : `t ∈ [${bounds.start}, ${bounds.stop}] in ${elapsedMs} ms`,
           `result: ${resultFile}`,
         ];
         if (errorString.length > 0 && /warning/i.test(errorString)) {

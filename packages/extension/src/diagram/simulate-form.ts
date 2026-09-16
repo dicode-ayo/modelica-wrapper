@@ -32,8 +32,9 @@ export type SimulateFormSubmit = {
  * Translate the panel's submitted values into a `simulate(...)` input.
  *
  * We *omit* fields with `undefined` rather than assigning them so that
- * `exactOptionalPropertyTypes` is happy and OMC sees the wrapper's own
- * defaults take over for empty inputs. `Object.fromEntries(Object.entries(…).filter)`
+ * `exactOptionalPropertyTypes` is happy and an empty input reaches OMC as an
+ * omitted argument, which for the `experiment`-annotation values defers to the
+ * class's own simulation window. `Object.fromEntries(Object.entries(…).filter)`
  * is the most legible form of "drop nullable keys" in TypeScript.
  *
  * `fileNamePrefix` is always derived from the class name — never left at the

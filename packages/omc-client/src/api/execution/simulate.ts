@@ -44,26 +44,39 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
+/**
+ * OMC resolves an omitted `stopTime` / `numberOfIntervals` / `tolerance` from
+ * the class's `experiment` annotation and only uses the defaults in its
+ * signature when there is none. A schema default here would send the value
+ * explicitly and override the annotation, so all three stay optional.
+ */
 export const SimulateInputSchema = z.strictObject({
   typeName: modelicaName.describe("Class to simulate."),
   startTime: z
     .number()
     .optional()
     .describe(
-      "Simulation start time; omit to fall back to OMC's `<default>` (i.e. the experiment annotation).",
+      "Simulation start time; omit to defer to the class's `experiment` annotation.",
     ),
   stopTime: z
     .number()
     .optional()
-    .default(1.0)
-    .describe("Simulation stop time."),
+    .describe(
+      "Simulation stop time; omit to defer to the class's `experiment` annotation.",
+    ),
   numberOfIntervals: z
     .number()
     .int()
     .optional()
-    .default(500)
-    .describe("Number of output intervals."),
-  tolerance: z.number().optional().default(1e-6).describe("Solver tolerance."),
+    .describe(
+      "Number of output intervals; omit to defer to the class's `experiment` annotation.",
+    ),
+  tolerance: z
+    .number()
+    .optional()
+    .describe(
+      "Solver tolerance; omit to defer to the class's `experiment` annotation.",
+    ),
   method: z
     .string()
     .optional()
