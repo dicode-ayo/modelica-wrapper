@@ -639,6 +639,22 @@ describe("saveClass", () => {
 });
 
 describe("createClass", () => {
+  it("refuses a misspelled withinPath rather than dropping it and creating at the wrong scope", async () => {
+    const mcp = await connect();
+
+    // A dropped `withinPth` would leave `withinPath` undefined, and the
+    // handler falls back to `enclosingPackage()` — the class lands at the
+    // tree's root instead of where this caller actually named.
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "Circuit", kind: "model", withinPth: "Demo" },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("withinPth");
+    expect(calls).toEqual([]);
+  });
+
   it("refuses a package that is not the user's to write into", async () => {
     const mcp = await connect();
 
@@ -1049,5 +1065,151 @@ describe("setSourceCode", () => {
     const [only] = calls;
     expect(only?.fn).toBe("loadString");
     expect(only?.input).not.toHaveProperty("filename");
+  });
+});
+
+/**
+ * The 13 tools whose input schema is hand-written in this package rather than
+ * projected from the registry — every other tool's schema comes from
+ * `packages/omc-client/src/`, already `z.strictObject`. Each case is a
+ * minimal valid argument set for that tool plus one key it does not have;
+ * a plain `z.object` schema drops the extra key and runs the handler anyway.
+ */
+const STRICT_SCHEMA_CASES: Array<{
+  name: string;
+  args: Record<string, unknown>;
+}> = [
+  { name: "createClass", args: { name: "X", kind: "model", bogusKey: true } },
+  { name: "saveClass", args: { className: "Demo.RLC", bogusKey: true } },
+  {
+    name: "setSourceCode",
+    args: {
+      className: "Demo.Circuit",
+      code: "model X end X;",
+      bogusKey: true,
+    },
+  },
+  {
+    name: "addRectangle",
+    args: {
+      typeName: "Demo.Circuit",
+      layer: "icon",
+      extent: [0, 0, 1, 1],
+      bogusKey: true,
+    },
+  },
+  {
+    name: "addEllipse",
+    args: {
+      typeName: "Demo.Circuit",
+      layer: "icon",
+      extent: [0, 0, 1, 1],
+      bogusKey: true,
+    },
+  },
+  {
+    name: "addLine",
+    args: {
+      typeName: "Demo.Circuit",
+      layer: "icon",
+      points: [
+        [0, 0],
+        [1, 1],
+      ],
+      bogusKey: true,
+    },
+  },
+  {
+    name: "addPolygon",
+    args: {
+      typeName: "Demo.Circuit",
+      layer: "icon",
+      points: [
+        [0, 0],
+        [1, 1],
+        [2, 2],
+      ],
+      bogusKey: true,
+    },
+  },
+  {
+    name: "addText",
+    args: {
+      typeName: "Demo.Circuit",
+      layer: "icon",
+      extent: [0, 0, 1, 1],
+      textString: "hi",
+      bogusKey: true,
+    },
+  },
+  {
+    name: "removeShape",
+    args: { typeName: "Demo.Circuit", layer: "icon", index: 0, bogusKey: true },
+  },
+  {
+    name: "setCoordinateSystem",
+    args: {
+      typeName: "Demo.Circuit",
+      layer: "icon",
+      extent: [0, 0, 1, 1],
+      bogusKey: true,
+    },
+  },
+  {
+    name: "omc_list_functions",
+    args: { category: "solver", bogusKey: true },
+  },
+  {
+    name: "omc_describe_function",
+    args: { name: "getModelInstance", bogusKey: true },
+  },
+  {
+    name: "omc_invoke",
+    args: { fn: "getClassNames", input: { typeName: "Demo" }, bogusKey: true },
+  },
+];
+
+describe("every hand-written tool schema", () => {
+  it.each(STRICT_SCHEMA_CASES)(
+    "refuses an unknown argument to $name rather than dropping it",
+    async ({ name, args }) => {
+      loaded.add("Demo.Circuit");
+      loaded.add("Demo.RLC");
+      const mcp = await connect();
+
+      const result = (await mcp.callTool({
+        name,
+        arguments: args,
+      })) as CallToolResult;
+
+      // Naming `bogusKey` back is what only a schema-level rejection does;
+      // a domain error from the handler running anyway (e.g. saveClass with
+      // no workspace) would also set isError without ever mentioning it, so
+      // asserting isError alone would pass for the wrong reason.
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("bogusKey");
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it("refuses an unknown key in setCoordinateSystem specifically, the one built with .extend() rather than a schema swap", async () => {
+    const mcp = await connect();
+
+    // `WriteCoordinateSystemSchema` (the `.extend()` base, from
+    // `@dicode/omc-client`) is itself a plain `z.object`; only the `.strict()`
+    // appended in shape-tools.ts closes this one.
+    const result = (await mcp.callTool({
+      name: "setCoordinateSystem",
+      arguments: {
+        typeName: "Demo.Circuit",
+        layer: "icon",
+        extent: [0, 0, 1, 1],
+        bogusKey: true,
+      },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("bogusKey");
+    expect(calls).toEqual([]);
   });
 });

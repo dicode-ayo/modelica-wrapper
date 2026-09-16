@@ -22,7 +22,7 @@ import {
   type McpToolDeps,
 } from "./dispatch.js";
 
-const SetSourceCodeSchema = z.object({
+const SetSourceCodeSchema = z.strictObject({
   className: z
     .string()
     .describe("Class whose source is replaced, fully qualified."),

@@ -26,7 +26,7 @@ import { errorResult, textResult, type McpToolDeps } from "./dispatch.js";
 import { errorDetail } from "./error-detail.js";
 import { refusalForClass } from "./write-gate.js";
 
-const SaveClassSchema = z.object({
+const SaveClassSchema = z.strictObject({
   className: z
     .string()
     .min(1)
