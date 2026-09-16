@@ -38,7 +38,7 @@ export function registerSaveTools(server: McpServer, deps: McpToolDeps): void {
     "saveClass",
     {
       description:
-        "Write a class to its source file, creating one under the workspace when it has none and keeping the enclosing package's package.order current. Every mutating tool changes OMC's memory only — call this to persist those edits. On a package it saves the members too.",
+        "Write a class to its source file, creating one under the workspace when it has none and keeping the enclosing package's package.order current. Edits from the other mutating tools change OMC's memory only — call this to persist them. On a package it saves the members too.",
       inputSchema: SaveClassSchema,
       annotations: { readOnlyHint: false },
     },
