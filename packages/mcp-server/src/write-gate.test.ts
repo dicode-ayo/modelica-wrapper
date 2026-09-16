@@ -7,6 +7,9 @@ import type { WriteVerdictSource } from "./write-verdict.js";
 const REFUSAL =
   "Cannot edit Modelica.Blocks.Math.Sin — it belongs to a read-only system library.";
 
+const LIBRARY_FILE =
+  "/home/me/.openmodelica/libraries/Modelica 4.1.0+maint.om/Blocks/Math.mo";
+
 /** Records every class a verdict was asked about, refusing the named ones. */
 function verdicts(...readOnly: string[]): WriteVerdictSource & {
   asked: { className: string; action: WriteAction }[];
@@ -340,9 +343,6 @@ describe("a call carrying Modelica source", () => {
 });
 
 describe("a call binding the source it carries to a file", () => {
-  const LIBRARY_FILE =
-    "/home/me/.openmodelica/libraries/Modelica 4.1.0+maint.om/Blocks/Math.mo";
-
   it("refuses a class bound to a file a read-only library is stored in (#679)", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
 
@@ -408,6 +408,84 @@ describe("a call binding the source it carries to a file", () => {
     const refusal = await refusalFor(source, files, "loadString", {
       data: "model Mine end Mine;\n",
       filename: "<interactive>",
+    });
+
+    expect(refusal).toBeUndefined();
+    expect(files.parsed).toEqual([]);
+  });
+});
+
+describe("a call repointing a class at a file", () => {
+  it("refuses a class repointed at a file a read-only library is stored in (#700)", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    // `Mine` is the caller's own class, so judging it alone says nothing: the
+    // write is where the call sends it, and a `save` afterwards rewrites the
+    // library file from `Mine` alone.
+    const refusal = await refusalFor(
+      source,
+      declaringPerFile({ [LIBRARY_FILE]: ["Modelica.Blocks.Math.Sin"] }, [
+        "Modelica.Blocks.Math.Sin",
+      ]),
+      "setSourceFile",
+      { typeName: "Mine", fileName: LIBRARY_FILE },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+  });
+
+  it("judges the class before reading what the destination holds", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+    const files = declaringPerFile({});
+
+    const refusal = await refusalFor(source, files, "setSourceFile", {
+      typeName: "Modelica.Blocks.Math.Sin",
+      fileName: "/workspace/Demo/Sin.mo",
+    });
+
+    expect(refusal).toBe(REFUSAL);
+    expect(files.parsed).toEqual([]);
+  });
+
+  it("lets a class the caller owns move to the file it is already stored in", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaringPerFile({ "/workspace/Demo/RLC.mo": ["Demo.RLC"] }, [
+        "Demo.RLC",
+      ]),
+      "setSourceFile",
+      { typeName: "Demo.RLC", fileName: "/workspace/Demo/RLC.mo" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
+  });
+
+  it("lets a class move to a path nothing is stored in", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      declaringPerFile({}),
+      "setSourceFile",
+      { typeName: "Demo.RLC", fileName: "/workspace/Demo/Renamed.mo" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
+  });
+
+  it("reads nothing for a destination that names no file on disk", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+    const files = declaringPerFile({});
+
+    // The placeholder a class created in memory carries until a save gives it
+    // a real path.
+    const refusal = await refusalFor(source, files, "setSourceFile", {
+      typeName: "Demo.RLC",
+      fileName: "<runtime:Demo.RLC>",
     });
 
     expect(refusal).toBeUndefined();

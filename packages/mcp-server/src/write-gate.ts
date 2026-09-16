@@ -25,12 +25,13 @@
  * the call does. OMC parses the text or the file to say what it declares, and
  * each declared class is judged like any other.
  *
- * `loadString` writes through a second argument as well: `filename` binds what
- * the text declares to that path, evicting whatever the path already holds, so
- * a later `save` rewrites the file from the loaded class alone. The classes the
- * path holds now are judged too — which is the only way a top-level class,
- * whose bare name gives the text nothing to judge, is stopped from taking over
- * a library file.
+ * Two rows judge a second argument as well, because the class a call names is
+ * not the whole of what it writes. `loadString`'s `filename` binds what the
+ * text declares to that path and `setSourceFile`'s `fileName` repoints a class
+ * at one; either way the path's own classes are evicted, and a later `save`
+ * rewrites the file from the bound class alone. The classes the path holds now
+ * are judged too — which is the only way a class the caller owns, whose own
+ * verdict has no reason to refuse, is stopped from taking over a library file.
  *
  * `save` rewrites a class's own source file without touching OMC's symbol
  * table, so `MUTATIONS` in `@dicode/omc-client` classifies it `"readOnly"` and
@@ -73,6 +74,9 @@ export interface WriteTargetClient {
  * `as: "element"` marks an argument holding a dotted path to an element *inside*
  * a class; its enclosing scope is what gets written.
  *
+ * `bindingField` on a `"class"` argument names the sibling holding the path the
+ * call binds that class to; only a call that repoints one carries it.
+ *
  * `as: "source"` marks an argument holding Modelica text the call brings in,
  * and `as: "sourceFile"` / `"sourceFiles"` a path (or array of paths) to a file
  * holding it — `encodingField`, when given, names the sibling argument the
@@ -82,10 +86,11 @@ export interface WriteTargetClient {
  * or the file to say what it declares; the action follows per declared class
  * rather than being fixed here.
  *
- * `bindingField` names the sibling argument a `"source"` call binds its loaded
- * classes to — every call that brings text in has one. Nothing reads that path
- * into the call, so none of the call's encodings applies to it; what it holds
- * on disk is what the binding takes over, and that is what gets judged.
+ * `bindingField` on a `"source"` argument names the sibling the call binds its
+ * loaded classes to — every call that brings text in has one. Nothing reads a
+ * binding path into the call, whichever argument shape carries it, so none of
+ * the call's encodings applies to it; what it holds on disk is what the binding
+ * takes over, and that is what gets judged.
  *
  * `null` means the input says nothing the gate judges: a library or an FMU
  * named rather than written (`loadModel`, `installPackage`, `importFMU`), or
@@ -94,7 +99,13 @@ export interface WriteTargetClient {
 type Argument<Field extends string> =
   | {
       readonly field: Field;
-      readonly as: "class" | "element";
+      readonly as: "class";
+      readonly action: WriteAction;
+      readonly bindingField?: Field;
+    }
+  | {
+      readonly field: Field;
+      readonly as: "element";
       readonly action: WriteAction;
     }
   | {
@@ -119,6 +130,11 @@ const edits = <K extends OmcFnName>(
 const createsInside = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
 ): ClassArgument<K> => ({ field, as: "class", action: "createInside" });
+
+const repoints = <K extends OmcFnName>(
+  field: Extract<keyof OmcInput<K>, string>,
+  bindingField: Extract<keyof OmcInput<K>, string>,
+): ClassArgument<K> => ({ field, as: "class", action: "edit", bindingField });
 
 const editsElement = <K extends OmcFnName>(
   field: Extract<keyof OmcInput<K>, string>,
@@ -194,7 +210,7 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
   setExtendsModifierValue: edits("typeName"),
   setFullDocumentationAnnotation: edits("typeName"),
   setParameterValue: edits("typeName"),
-  setSourceFile: edits("typeName"),
+  setSourceFile: repoints("typeName", "fileName"),
   updateComponent: edits("intoTypeName"),
   updateConnection: edits("typeName"),
   updateConnectionNames: edits("typeName"),
@@ -249,11 +265,33 @@ export async function refusalFor(
   // carries) per `case`, not across several `if (argument.as === …) return …`
   // checks that together rule the other members out.
   switch (argument.as) {
-    case "class":
     case "element": {
       if (typeof raw !== "string" || raw === "") return undefined;
-      const className = argument.as === "element" ? enclosingScope(raw) : raw;
-      return refusalForClass(verdicts, client, className, argument.action);
+      return refusalForClass(
+        verdicts,
+        client,
+        enclosingScope(raw),
+        argument.action,
+      );
+    }
+    case "class": {
+      if (typeof raw !== "string" || raw === "") return undefined;
+      const refusal = await refusalForClass(
+        verdicts,
+        client,
+        raw,
+        argument.action,
+      );
+      if (refusal !== undefined) return refusal;
+      // Seeded with the class just judged, so a destination whose own
+      // contents name it again is not asked about twice.
+      return refusalForBinding(
+        verdicts,
+        client,
+        input,
+        argument.bindingField,
+        new Set([raw]),
+      );
     }
     case "source": {
       if (typeof raw !== "string" || raw === "") return undefined;
@@ -262,10 +300,13 @@ export async function refusalFor(
       const passed = new Set<string>();
       const refusal = await refusalForSource(verdicts, client, raw, passed);
       if (refusal !== undefined) return refusal;
-      const binding = readBinding(input, argument.bindingField);
-      return binding === undefined
-        ? undefined
-        : refusalForSourceFile(verdicts, client, binding, undefined, passed);
+      return refusalForBinding(
+        verdicts,
+        client,
+        input,
+        argument.bindingField,
+        passed,
+      );
     }
     case "sourceFile": {
       if (typeof raw !== "string" || raw === "") return undefined;
@@ -322,12 +363,35 @@ function readEncoding(
 }
 
 /**
+ * The refusal the path in `field` earns for what it holds on disk, or
+ * `undefined` when the call binds its target to nothing a file is stored in.
+ *
+ * `passed` carries whatever the call's own argument was already judged
+ * against, so a target the binding repeats is asked about once. A binding path
+ * is read by no call, so it has no encoding to match.
+ */
+async function refusalForBinding(
+  verdicts: WriteVerdictSource,
+  client: WriteVerdictClient & WriteTargetClient,
+  input: object,
+  field: string | undefined,
+  passed: Set<string>,
+): Promise<string | undefined> {
+  if (field === undefined) return undefined;
+  const binding = readBinding(input, field);
+  return binding === undefined
+    ? undefined
+    : refusalForSourceFile(verdicts, client, binding, undefined, passed);
+}
+
+/**
  * `field`'s value in `input` when it names a path on disk, so the gate judges
  * only a binding that can take a real file over.
  *
  * `loadString`'s `filename` defaults to `<interactive>`, and a class created in
- * memory carries a `<runtime:…>` pseudo-path. Neither is a file anything is
- * stored in, so neither has anything for a binding to evict.
+ * memory carries the `<runtime:…>` pseudo-path that `setSourceFile` replaces
+ * once it reaches disk. Neither is a file anything is stored in, so neither has
+ * anything for a binding to evict.
  */
 function readBinding(input: object, field: string): string | undefined {
   const raw: unknown = (input as Record<string, unknown>)[field];
@@ -363,8 +427,8 @@ async function refusalForSource(
 /**
  * {@link refusalForSource}'s file-shaped twin: `fileName` is read through
  * `parseFile` instead of `data` through `parseString`, and judged the same way.
- * It answers for both a file a call loads and a path a call binds its loaded
- * classes to — what the file holds is what the call takes over, either way.
+ * It answers for both a file a call loads and a path a call binds a class to —
+ * what the file holds is what the call takes over, either way.
  *
  * `encoding` is read the same way the real `loadFile`/`loadFiles` call will, so
  * the gate never decodes the file differently than the load that follows. A
@@ -372,8 +436,8 @@ async function refusalForSource(
  * `parseFile` its UTF-8 default.
  *
  * `passed` comes from the caller, which shares one set wherever a target can
- * repeat — across a `loadFiles` batch, or between a source string and the path
- * it binds to — so a target named twice is still asked about once.
+ * repeat — across a `loadFiles` batch, or between a binding path and whatever
+ * was judged before it — so a target named twice is still asked about once.
  */
 async function refusalForSourceFile(
   verdicts: WriteVerdictSource,

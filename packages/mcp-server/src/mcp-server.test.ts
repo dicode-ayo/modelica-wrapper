@@ -591,6 +591,41 @@ describe("the escape hatch", () => {
 
     expect(calls).toEqual([{ fn: "loadString", input }]);
   });
+
+  it("refuses setSourceFile repointing a class at a file a system library is stored in", async () => {
+    // `Mine` is the caller's own class, so its own verdict allows the call and
+    // the file it is sent to is the whole of the write.
+    parsedFileClasses = [SYSTEM_LIBRARY];
+    loaded.add(SYSTEM_LIBRARY);
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: {
+        fn: "setSourceFile",
+        input: {
+          typeName: "Mine",
+          fileName: "/lib/Modelica 4.1.0+maint.om/Blocks/Math.mo",
+        },
+      },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(REFUSAL);
+    expect(calls).toEqual([]);
+  });
+
+  it("lets setSourceFile repoint a class at a file the caller owns", async () => {
+    const mcp = await connect();
+
+    const input = { typeName: "Mine", fileName: "/w/Mine.mo" };
+    await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "setSourceFile", input },
+    });
+
+    expect(calls).toEqual([{ fn: "setSourceFile", input }]);
+  });
 });
 
 describe("saveClass", () => {
