@@ -358,8 +358,8 @@ function stripBlanks(xs: Array<string | undefined>): string[] {
  * An omitted `startTime` / `stopTime` is resolved by OMC from the class's
  * `experiment` annotation, so the submitted input cannot say what ran. OMC
  * echoes the resolved options back on the result; the input is the fallback for
- * a version that does not, and a bound neither source knows is left out of the
- * summary rather than guessed.
+ * a version that does not, and a bound neither source knows leaves the window
+ * out of the summary.
  */
 export function runWindow(
   simulationResult: Value,
