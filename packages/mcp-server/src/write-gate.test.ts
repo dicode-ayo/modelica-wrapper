@@ -78,6 +78,21 @@ function declaringPerFile(
   };
 }
 
+/**
+ * {@link declaringPerFile} with text in front of it: `classNames` is what the
+ * source string declares, `byFile` what each path on disk holds.
+ */
+function declaringIntoFile(
+  classNames: string[],
+  byFile: Record<string, string[]>,
+  loaded: string[] = [],
+): WriteVerdictClient & WriteTargetClient & { parsed: string[] } {
+  return {
+    ...declaringPerFile(byFile, loaded),
+    parseString: async () => ({ classNames }),
+  };
+}
+
 describe("refusalFor", () => {
   it("refuses a mutating call on a read-only class, carrying its reason", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
@@ -321,6 +336,82 @@ describe("a call carrying Modelica source", () => {
 
     expect(refusal).toBeUndefined();
     expect(source.asked).toEqual([]);
+  });
+});
+
+describe("a call binding the source it carries to a file", () => {
+  const LIBRARY_FILE =
+    "/home/me/.openmodelica/libraries/Modelica 4.1.0+maint.om/Blocks/Math.mo";
+
+  it("refuses a class bound to a file a read-only library is stored in (#679)", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    // The text declares a bare name, so the `within` clause chooses nothing and
+    // the binding is the whole of the write: `save` on `Mine` afterwards
+    // rewrites the library file from `Mine` alone.
+    const refusal = await refusalFor(
+      source,
+      declaringIntoFile(
+        ["Mine"],
+        { [LIBRARY_FILE]: ["Modelica.Blocks.Math.Sin"] },
+        ["Modelica.Blocks.Math.Sin"],
+      ),
+      "loadString",
+      { data: "model Mine\n Real x;\nend Mine;\n", filename: LIBRARY_FILE },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+  });
+
+  it("lets a class the caller owns bind to the file it is stored in", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaringIntoFile(
+        ["Demo.RLC"],
+        { "/workspace/Demo/RLC.mo": ["Demo.RLC"] },
+        ["Demo.RLC"],
+      ),
+      "loadString",
+      {
+        data: "within Demo;\nmodel RLC end RLC;\n",
+        filename: "/workspace/Demo/RLC.mo",
+      },
+    );
+
+    expect(refusal).toBeUndefined();
+    // Text and binding name the same class, and it is asked about once.
+    expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
+  });
+
+  it("lets a binding to a path nothing is stored in through", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      declaringIntoFile(["Mine"], {}),
+      "loadString",
+      { data: "model Mine end Mine;\n", filename: "/workspace/Mine.mo" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
+
+  it("reads nothing for a filename that names no file on disk", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+    const files = declaringIntoFile(["Mine"], {});
+
+    // `<interactive>` is `loadString`'s own default, and the create flows pass
+    // pseudo-paths of the same shape.
+    const refusal = await refusalFor(source, files, "loadString", {
+      data: "model Mine end Mine;\n",
+      filename: "<interactive>",
+    });
+
+    expect(refusal).toBeUndefined();
+    expect(files.parsed).toEqual([]);
   });
 });
 
