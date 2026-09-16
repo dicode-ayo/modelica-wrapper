@@ -195,8 +195,7 @@ describe("the published tool set", () => {
   it("tells listFile's caller the source comes from OMC's memory, not disk", async () => {
     // listFile unparses whatever the symbol table currently holds — the same
     // memory saveClass persists — so a caller checking whether an edit
-    // survived a restart must be pointed at saveClass, not told this reads
-    // the file.
+    // survived a restart must be pointed at saveClass.
     const mcp = await connect();
 
     const { tools } = await mcp.listTools();
