@@ -41,6 +41,43 @@ function declaring(
   };
 }
 
+/**
+ * {@link declaring}'s file-shaped twin: `classNames` is what `parseFile`
+ * reports a file declares, rather than what `parseString` reports for text.
+ */
+function declaringFile(
+  classNames: string[],
+  loaded: string[] = [],
+): WriteVerdictClient & WriteTargetClient {
+  return {
+    ...client,
+    parseFile: async () => ({ classNames }),
+    existClass: async ({ typeName }) => ({ exists: loaded.includes(typeName) }),
+  };
+}
+
+/**
+ * {@link declaringFile}, keyed by path: each file reports its own classes, so
+ * a batch can hold a benign entry ahead of one that earns a refusal. `parsed`
+ * records every path actually sent to `parseFile`, so a test can pin which
+ * entries a batch skips without asking OMC anything.
+ */
+function declaringPerFile(
+  byFile: Record<string, string[]>,
+  loaded: string[] = [],
+): WriteVerdictClient & WriteTargetClient & { parsed: string[] } {
+  const parsed: string[] = [];
+  return {
+    ...client,
+    parsed,
+    parseFile: async ({ fileName }) => {
+      parsed.push(fileName);
+      return { classNames: byFile[fileName] ?? [] };
+    },
+    existClass: async ({ typeName }) => ({ exists: loaded.includes(typeName) }),
+  };
+}
+
 describe("refusalFor", () => {
   it("refuses a mutating call on a read-only class, carrying its reason", async () => {
     const source = verdicts("Modelica.Blocks.Math.Sin");
@@ -284,5 +321,211 @@ describe("a call carrying Modelica source", () => {
 
     expect(refusal).toBeUndefined();
     expect(source.asked).toEqual([]);
+  });
+});
+
+describe("a call carrying a path to a Modelica file", () => {
+  it("refuses a file that redefines a class of a read-only library (#676)", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Modelica.Blocks.Math.Sin"], ["Modelica.Blocks.Math.Sin"]),
+      "loadFile",
+      { fileName: "/tmp/pwned.mo" },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+  });
+
+  it("lets a library file the caller owns through, judged as the edit it is", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Demo.RLC"], ["Demo.RLC"]),
+      "loadFile",
+      { fileName: "/workspace/Demo/RLC.mo" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
+  });
+
+  it("reads the file with the same encoding the real load will use", async () => {
+    const source = verdicts();
+    const seen: { fileName: string; encoding?: string }[] = [];
+    const encodingAware: WriteVerdictClient & WriteTargetClient = {
+      ...client,
+      parseFile: async (input) => {
+        seen.push(input);
+        return { classNames: ["Demo.RLC"] };
+      },
+      existClass: async () => ({ exists: true }),
+    };
+
+    await refusalFor(source, encodingAware, "loadFile", {
+      fileName: "/workspace/Demo/RLC.mo",
+      encoding: "ISO-8859-1",
+    });
+
+    expect(seen).toEqual([
+      { fileName: "/workspace/Demo/RLC.mo", encoding: "ISO-8859-1" },
+    ]);
+  });
+
+  it("lets a first load of a system library through: its within scope already exists", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Modelica.Blocks.Math.Sneaky"], ["Modelica.Blocks.Math"]),
+      "loadFile",
+      { fileName: "/opt/modelica/Modelica/Blocks/Math/Sneaky.mo" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([
+      { className: "Modelica.Blocks.Math", action: "createInside" },
+    ]);
+  });
+
+  it("refuses when OMC cannot be asked what the file declares", async () => {
+    const source = verdicts();
+    const unreachable = {
+      ...client,
+      parseFile: async () => {
+        throw new Error("omc: no such file");
+      },
+    };
+
+    const refusal = await refusalFor(source, unreachable, "loadFile", {
+      fileName: "/tmp/missing.mo",
+    });
+
+    expect(refusal).toContain("omc: no such file");
+    expect(source.asked).toEqual([]);
+  });
+
+  it("lets an empty or non-string fileName through: nothing the gate can judge", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+    const files = declaringPerFile({});
+
+    expect(
+      await refusalFor(source, files, "loadFile", { fileName: "" }),
+    ).toBeUndefined();
+    expect(
+      await refusalFor(source, files, "loadFile", { fileName: 42 }),
+    ).toBeUndefined();
+    expect(files.parsed).toEqual([]);
+    expect(source.asked).toEqual([]);
+  });
+});
+
+describe("a call carrying paths to several Modelica files", () => {
+  it("judges every file in the array, not only the first", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    // Each path declares a different class, so a gate that stopped reading
+    // after the first (benign) file would let this through.
+    const refusal = await refusalFor(
+      source,
+      declaringPerFile(
+        {
+          "/workspace/Demo/RLC.mo": ["Demo.RLC"],
+          "/tmp/pwned.mo": ["Modelica.Blocks.Math.Sin"],
+        },
+        ["Demo.RLC", "Modelica.Blocks.Math.Sin"],
+      ),
+      "loadFiles",
+      { fileNames: ["/workspace/Demo/RLC.mo", "/tmp/pwned.mo"] },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+  });
+
+  it("asks once about a scope more than one file in the batch declares into", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      declaringPerFile({
+        "/workspace/Demo/A.mo": ["Demo.A"],
+        "/workspace/Demo/B.mo": ["Demo.B"],
+      }),
+      "loadFiles",
+      { fileNames: ["/workspace/Demo/A.mo", "/workspace/Demo/B.mo"] },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([
+      { className: "Demo", action: "createInside" },
+    ]);
+  });
+
+  it("reads every file in the batch with the same encoding the real load will use", async () => {
+    const source = verdicts();
+    const seen: { fileName: string; encoding?: string }[] = [];
+    const encodingAware: WriteVerdictClient & WriteTargetClient = {
+      ...client,
+      parseFile: async (input) => {
+        seen.push(input);
+        return { classNames: [] };
+      },
+      existClass: async () => ({ exists: false }),
+    };
+
+    await refusalFor(source, encodingAware, "loadFiles", {
+      fileNames: ["/workspace/Demo/A.mo", "/workspace/Demo/B.mo"],
+      encoding: "ISO-8859-1",
+    });
+
+    expect(seen).toEqual([
+      { fileName: "/workspace/Demo/A.mo", encoding: "ISO-8859-1" },
+      { fileName: "/workspace/Demo/B.mo", encoding: "ISO-8859-1" },
+    ]);
+  });
+
+  it("lets an array of files the caller owns through", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      declaringFile(["Demo.RLC"], ["Demo.RLC"]),
+      "loadFiles",
+      { fileNames: ["/workspace/Demo/RLC.mo"] },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
+  });
+
+  it("lets a non-array fileNames value through: nothing the gate can judge", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(source, client, "loadFiles", {
+      fileNames: "not-an-array",
+    });
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
+
+  it("skips entries that are not usable paths, still judging the real ones", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+    const files = declaringPerFile(
+      { "/tmp/pwned.mo": ["Modelica.Blocks.Math.Sin"] },
+      ["Modelica.Blocks.Math.Sin"],
+    );
+
+    const refusal = await refusalFor(source, files, "loadFiles", {
+      fileNames: ["", 42, "/tmp/pwned.mo"],
+    });
+
+    expect(refusal).toBe(REFUSAL);
+    // Pins that "", not just 42, never reaches parseFile — real OMC throws on
+    // an empty fileName, which would otherwise turn one junk entry into a
+    // refusal of the whole batch instead of skipping past it.
+    expect(files.parsed).toEqual(["/tmp/pwned.mo"]);
   });
 });
