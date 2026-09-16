@@ -201,8 +201,12 @@ describe("the published tool set", () => {
     const { tools } = await mcp.listTools();
     const description = tools.find((t) => t.name === "listFile")?.description;
 
-    expect(description).toMatch(/memory/i);
-    expect(description).toMatch(/saveClass/);
+    expect(description).toMatch(/in-memory/i);
+    expect(description).toMatch(/not the file on disk/i);
+    // Ties saveClass to restart-surviving persistence specifically, so a
+    // description that merely mentions both concepts without connecting
+    // them still fails.
+    expect(description).toMatch(/call saveClass\b[^.]*\brestart\b/i);
   });
 
   it("leaves room for the prefix VSCode puts in front of every name", async () => {
