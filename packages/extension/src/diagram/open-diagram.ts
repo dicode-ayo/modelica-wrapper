@@ -263,8 +263,6 @@ export async function runSimulate(
   values: Record<string, unknown>,
 ): Promise<void> {
   const input = simulateInputFromFormValues(className, values);
-  const start = input.startTime ?? 0;
-  const stop = input.stopTime ?? 1;
   // Placeholder label — replaced with `client.lastCall` after the
   // invocation, so the REPL transcript shows the exact OMC command
   // we sent (matches what `simulate(...)` typed in the REPL would
@@ -308,8 +306,11 @@ export async function runSimulate(
           return;
         }
 
+        const window = runWindow(simulationResult, input);
         const summaryLines = [
-          `t ∈ [${start}, ${stop}] in ${elapsedMs} ms`,
+          window === undefined
+            ? `completed in ${elapsedMs} ms`
+            : `t ∈ [${window.start}, ${window.stop}] in ${elapsedMs} ms`,
           `result: ${resultFile}`,
         ];
         if (errorString.length > 0 && /warning/i.test(errorString)) {
@@ -351,6 +352,34 @@ function stripBlanks(xs: Array<string | undefined>): string[] {
  * for the fields simulate() returns at the top level (resultFile,
  * messages, …).
  */
+/**
+ * The simulated time window, as OMC reports having run it.
+ *
+ * An omitted `startTime` / `stopTime` is resolved by OMC from the class's
+ * `experiment` annotation, so the submitted input cannot say what ran. OMC
+ * echoes the resolved options back on the result; the input is the fallback for
+ * a version that does not, and a bound neither source knows is left out of the
+ * summary rather than guessed.
+ */
+export function runWindow(
+  simulationResult: Value,
+  input: { startTime?: number; stopTime?: number },
+): { start: string | number; stop: string | number } | undefined {
+  const options = readRecordString(simulationResult, "simulationOptions");
+  const start = readSimulationOption(options, "startTime") ?? input.startTime;
+  const stop = readSimulationOption(options, "stopTime") ?? input.stopTime;
+  if (start === undefined || stop === undefined) return undefined;
+  return { start, stop };
+}
+
+function readSimulationOption(
+  options: string,
+  name: string,
+): string | undefined {
+  const match = new RegExp(`\\b${name} = ([^,]+)`).exec(options);
+  return match?.[1]?.trim();
+}
+
 function readRecordString(record: Value, fieldName: string): string {
   if (record.kind !== "call" || !Array.isArray(record.args)) return "";
   for (const arg of record.args) {
