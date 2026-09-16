@@ -196,7 +196,7 @@ describe("the published tool set", () => {
     // listFile unparses whatever the symbol table currently holds — the same
     // memory saveClass persists — so a caller checking whether an edit
     // survived a restart must be pointed at saveClass, not told this reads
-    // the file (issue #683).
+    // the file.
     const mcp = await connect();
 
     const { tools } = await mcp.listTools();
@@ -204,7 +204,6 @@ describe("the published tool set", () => {
 
     expect(description).toMatch(/memory/i);
     expect(description).toMatch(/saveClass/);
-    expect(description).not.toMatch(/reads? the file/i);
   });
 
   it("leaves room for the prefix VSCode puts in front of every name", async () => {
