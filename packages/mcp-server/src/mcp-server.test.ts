@@ -26,6 +26,7 @@ interface Call {
 }
 
 const SYSTEM_LIBRARY = "Modelica.Blocks.Math.Sin";
+const SYSTEM_LIBRARY_FILE = "/lib/Modelica 4.1.0+maint.om/Blocks/Math.mo";
 const REFUSAL = `Cannot edit ${SYSTEM_LIBRARY} — it belongs to a read-only system library.`;
 
 const calls: Call[] = [];
@@ -569,7 +570,7 @@ describe("the escape hatch", () => {
         fn: "loadString",
         input: {
           data: "model Mine\n Real x;\nend Mine;\n",
-          filename: "/lib/Modelica 4.1.0+maint.om/Blocks/Math.mo",
+          filename: SYSTEM_LIBRARY_FILE,
         },
       },
     })) as CallToolResult;
@@ -605,7 +606,7 @@ describe("the escape hatch", () => {
         fn: "setSourceFile",
         input: {
           typeName: "Mine",
-          fileName: "/lib/Modelica 4.1.0+maint.om/Blocks/Math.mo",
+          fileName: SYSTEM_LIBRARY_FILE,
         },
       },
     })) as CallToolResult;

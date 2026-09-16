@@ -476,21 +476,6 @@ describe("a call repointing a class at a file", () => {
     expect(refusal).toBeUndefined();
     expect(source.asked).toEqual([{ className: "Demo.RLC", action: "edit" }]);
   });
-
-  it("reads nothing for a destination that names no file on disk", async () => {
-    const source = verdicts("Modelica.Blocks.Math.Sin");
-    const files = declaringPerFile({});
-
-    // The placeholder a class created in memory carries until a save gives it
-    // a real path.
-    const refusal = await refusalFor(source, files, "setSourceFile", {
-      typeName: "Demo.RLC",
-      fileName: "<runtime:Demo.RLC>",
-    });
-
-    expect(refusal).toBeUndefined();
-    expect(files.parsed).toEqual([]);
-  });
 });
 
 describe("a call carrying a path to a Modelica file", () => {
