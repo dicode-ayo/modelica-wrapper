@@ -23,7 +23,10 @@ export const ListFileOutputSchema = z.object({
 export type ListFileOutput = z.infer<typeof ListFileOutputSchema>;
 
 export const ListFileDescription =
-  "List the contents of the file backing a class — returns the pretty-printed Modelica source.";
+  "Returns OMC's in-memory pretty-printed Modelica source for a class, not the file on disk. " +
+  "Edits from addComponent, addConnection, setElementModifierValue, setSourceCode and the shape " +
+  "tools live only in this memory until saveClass writes them — call saveClass first if you need " +
+  "this to match what a restart would load.";
 
 export async function listFile(
   ctx: CallContext,
