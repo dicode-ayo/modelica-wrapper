@@ -50,12 +50,14 @@ async function currentSourceFile(
   }
 }
 
+/** Tool names this module registers, for the discovery tools' own index. */
 export function registerSourceTools(
   server: McpServer,
   deps: McpToolDeps,
-): void {
+): readonly string[] {
+  const TOOL_NAME = "setSourceCode";
   server.registerTool(
-    "setSourceCode",
+    TOOL_NAME,
     {
       description:
         "Replace a class's Modelica source and reload it into OMC, keeping it bound to the file it came from. The file itself is not written — call saveClass to persist the change.",
@@ -73,4 +75,5 @@ export function registerSourceTools(
       );
     },
   );
+  return [TOOL_NAME];
 }

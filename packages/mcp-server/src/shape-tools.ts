@@ -148,7 +148,13 @@ const RemoveShapeSchema = z.strictObject({
 const CoordinateSystemSchema =
   WriteCoordinateSystemSchema.extend(placedFields).strict();
 
-export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
+/** Tool names this module registers, for the discovery tools' own index. */
+export function registerShapeTools(
+  server: McpServer,
+  deps: McpToolDeps,
+): readonly string[] {
+  const names: string[] = [];
+
   /**
    * `ToolCallback` is a conditional type on the schema, and nothing is
    * assignable to one that is still generic — so the schema widens here and
@@ -169,6 +175,7 @@ export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
       },
       async (input: unknown) => handle(input as z.infer<S>),
     );
+    names.push(name);
   };
 
   const draws = <S extends z.ZodType<Placed>>(
@@ -273,6 +280,8 @@ export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
         op: { kind: "setCoordinateSystem", coordinateSystem },
       }),
   );
+
+  return names;
 }
 
 function style(input: FilledShape): FilledShape {

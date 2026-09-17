@@ -66,9 +66,14 @@ const CreateClassSchema = z.strictObject({
     .describe("Fully qualified class the new one extends."),
 });
 
-export function registerClassTools(server: McpServer, deps: McpToolDeps): void {
+/** Tool names this module registers, for the discovery tools' own index. */
+export function registerClassTools(
+  server: McpServer,
+  deps: McpToolDeps,
+): readonly string[] {
+  const TOOL_NAME = "createClass";
   server.registerTool(
-    "createClass",
+    TOOL_NAME,
     {
       description:
         "Create a Modelica class and write it to disk, adding it to the enclosing package's package.order. Use this rather than newModel, which leaves the class in OMC's memory with no file behind it.",
@@ -104,6 +109,7 @@ export function registerClassTools(server: McpServer, deps: McpToolDeps): void {
       }
     },
   );
+  return [TOOL_NAME];
 }
 
 async function declareAndPersist(

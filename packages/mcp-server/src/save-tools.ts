@@ -33,9 +33,14 @@ const SaveClassSchema = z.strictObject({
     .describe("Fully qualified class to write to disk."),
 });
 
-export function registerSaveTools(server: McpServer, deps: McpToolDeps): void {
+/** Tool names this module registers, for the discovery tools' own index. */
+export function registerSaveTools(
+  server: McpServer,
+  deps: McpToolDeps,
+): readonly string[] {
+  const TOOL_NAME = "saveClass";
   server.registerTool(
-    "saveClass",
+    TOOL_NAME,
     {
       description:
         "Write a class to its source file, creating one under the workspace when it has none and keeping the enclosing package's package.order current. Edits from the other mutating tools change OMC's memory only — call this to persist them. On a package it saves the members too.",
@@ -93,4 +98,5 @@ export function registerSaveTools(server: McpServer, deps: McpToolDeps): void {
       }
     },
   );
+  return [TOOL_NAME];
 }
