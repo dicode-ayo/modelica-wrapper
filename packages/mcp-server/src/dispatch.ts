@@ -153,6 +153,6 @@ export async function dispatchByName(
     const output = await client.invoke(fn, input);
     return textResult(JSON.stringify(output));
   } catch (err) {
-    return errorResult(errorDetail(err));
+    return errorResult(errorDetail(err, fn));
   }
 }
