@@ -338,7 +338,7 @@ describe("calling a tool", () => {
 
   it("reports a call OMC left a diagnostic for as an error, not the success it returned", async () => {
     const mcp = await connect();
-    invokeLeavesError = "An element with name R is already declared";
+    invokeLeavesError = "Error: An element with name R is already declared";
 
     const result = (await mcp.callTool({
       name: "addComponent",
@@ -350,12 +350,31 @@ describe("calling a tool", () => {
     })) as CallToolResult;
 
     expect(result.isError).toBe(true);
-    expect(text(result)).toBe("An element with name R is already declared");
+    expect(text(result)).toBe(
+      "Error: An element with name R is already declared",
+    );
+  });
+
+  it("leaves a call's success alone when the buffer only holds a warning", async () => {
+    const mcp = await connect();
+    invokeLeavesError = "Warning: der(x) is not defined; assuming 0";
+
+    const result = (await mcp.callTool({
+      name: "addComponent",
+      arguments: {
+        componentName: "r1",
+        componentClass: "Modelica.Electrical.Analog.Basic.Resistor",
+        intoTypeName: "Demo.Circuit",
+      },
+    })) as CallToolResult;
+
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).not.toContain("Warning");
   });
 
   it("does not let a diagnostic left by an earlier call taint a later one's success", async () => {
     const mcp = await connect();
-    errorBuffer = "leftover from an earlier call";
+    errorBuffer = "Error: leftover from an earlier call";
 
     const result = (await mcp.callTool({
       name: "getClassNames",
@@ -370,7 +389,7 @@ describe("calling a tool", () => {
     // The drain that makes the previous two tests pass must not itself
     // clear the buffer out from under a caller asking for it on purpose.
     const mcp = await connect();
-    errorBuffer = "An element with name R is already declared";
+    errorBuffer = "Error: An element with name R is already declared";
 
     const result = (await mcp.callTool({
       name: "omc_invoke",
@@ -379,7 +398,7 @@ describe("calling a tool", () => {
 
     expect(result.isError).toBeFalsy();
     expect(text(result)).toContain(
-      "An element with name R is already declared",
+      "Error: An element with name R is already declared",
     );
   });
 });

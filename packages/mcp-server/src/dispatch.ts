@@ -112,6 +112,40 @@ const READS_ERROR_BUFFER = new Set<OmcFnName>([
 ]);
 
 /**
+ * Whether a drained error buffer reports a failure rather than a warning or
+ * notification left behind by a call that otherwise succeeded — `simulate`
+ * and `checkModel` routinely leave one of those on a model that built fine.
+ * Mirrors the heuristic `packages/extension/src/repl/repl-eval.ts` already
+ * uses on the same buffer: OMC's diagnostic-level marker is the literal word
+ * "Error".
+ */
+function looksLikeError(errorString: string): boolean {
+  return /\bError\b/.test(errorString);
+}
+
+/**
+ * Serializes {@link dispatchByName}'s clear-invoke-read sequence so two
+ * calls racing each other never interleave it.
+ *
+ * OMC is one process per window (`http-host.ts`), and its error buffer is
+ * one bit of shared, ungated state on it — the MCP SDK dispatches concurrent
+ * tool calls without waiting for one to finish, so without this a second
+ * call's clear can erase the first's diagnostic before the first reads it
+ * back, or a second call's read can pick up the first's diagnostic as its
+ * own.
+ */
+let errorBufferTurn: Promise<unknown> = Promise.resolve();
+
+async function withErrorBuffer<T>(run: () => Promise<T>): Promise<T> {
+  const turn = errorBufferTurn.then(run, run);
+  errorBufferTurn = turn.then(
+    () => undefined,
+    () => undefined,
+  );
+  return turn;
+}
+
+/**
  * Run `fn` with `input`, refusing first if the class it would write is not the
  * user's to change.
  *
@@ -147,8 +181,10 @@ export async function dispatch<K extends OmcFnName>(
  * error buffer instead of the return value — `addComponent` of a duplicate
  * name is one. The buffer is drained around every call not itself reading
  * it: cleared before, so a stale message from an earlier call cannot be
- * mistaken for this one's, and read again after, so a non-empty result
- * becomes this call's error rather than a silently accepted success.
+ * mistaken for this one's, and read again after, so a message OMC marks as
+ * an error becomes this call's error rather than a silently accepted
+ * success. A warning or notification left in the same buffer does not —
+ * {@link looksLikeError} is what tells the two apart.
  */
 export async function dispatchByName(
   deps: McpToolDeps,
@@ -170,13 +206,15 @@ export async function dispatchByName(
           ));
     if (refusal !== undefined) return errorResult(refusal);
 
-    const drainErrorBuffer = !READS_ERROR_BUFFER.has(fn);
-    if (drainErrorBuffer) await client.getErrorString();
-    const output = await client.invoke(fn, input);
-    if (drainErrorBuffer) {
-      const { errorString } = await client.getErrorString();
-      if (errorString !== "") return errorResult(errorString);
-    }
+    const output = READS_ERROR_BUFFER.has(fn)
+      ? await client.invoke(fn, input)
+      : await withErrorBuffer(async () => {
+          await client.getErrorString();
+          const result = await client.invoke(fn, input);
+          const { errorString } = await client.getErrorString();
+          if (looksLikeError(errorString)) throw new Error(errorString);
+          return result;
+        });
     return textResult(JSON.stringify(output));
   } catch (err) {
     return errorResult(errorDetail(err, fn));
