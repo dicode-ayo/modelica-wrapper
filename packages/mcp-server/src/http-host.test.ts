@@ -24,6 +24,7 @@ const client: McpToolClient = {
   getClassInformation: async () => ({ fileReadOnly: false }),
   getSourceFile: async () => ({ fileName: "/w/Demo.mo" }),
   getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
+  getErrorString: async () => ({ errorString: "" }),
 };
 
 const deps = {

@@ -37,6 +37,14 @@ let sourceFile = "/w/Demo.mo";
 let loaded: Set<string>;
 let loadFails: string | undefined;
 let unloadFails: string | undefined;
+/** OMC's own error buffer: read and cleared by `getErrorString`. */
+let errorBuffer: string;
+/**
+ * What `invoke` stashes in `errorBuffer` once it answers, simulating a call
+ * OMC reports a diagnostic for without saying so in the return value —
+ * `addComponent` on a duplicate name and friends actually take this shape.
+ */
+let invokeLeavesError: string | undefined;
 /** What `parseFile` reports a path declares, as OMC's does. */
 let parsedFileClasses: string[];
 /** What `getClassInformation` reports as a class's file, as OMC would. */
@@ -59,6 +67,8 @@ const client: McpToolClient = {
     if (failWith !== undefined) {
       throw failWith instanceof Error ? failWith : new Error(failWith);
     }
+    if (fn === "getErrorString") return drainErrorBuffer();
+    if (invokeLeavesError !== undefined) errorBuffer = invokeLeavesError;
     return { ok: true };
   },
   deleteClass: async (input) => {
@@ -76,7 +86,8 @@ const client: McpToolClient = {
   parseFile: async () => ({ classNames: parsedFileClasses }),
   parseString: async () => ({ classNames: declaredClasses }),
   getClassNames: async () => ({ classNames: [] }),
-  getErrorString: async () => ({ errorString: loadFails ?? "" }),
+  getErrorString: async () =>
+    loadFails === undefined ? drainErrorBuffer() : { errorString: loadFails },
   loadString: async (input) => {
     calls.push({ fn: "loadString", input });
     return { success: loadFails === undefined };
@@ -93,6 +104,13 @@ const client: McpToolClient = {
   }),
   getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
 };
+
+/** Reads and clears `errorBuffer`, the way OMC's own `getErrorString` does. */
+function drainErrorBuffer(): { errorString: string } {
+  const errorString = errorBuffer;
+  errorBuffer = "";
+  return { errorString };
+}
 
 const verdicts: WriteVerdictSource = {
   forClass: async (_c: WriteVerdictClient, className: string) =>
@@ -131,6 +149,8 @@ beforeEach(() => {
   loaded = new Set();
   loadFails = undefined;
   unloadFails = undefined;
+  errorBuffer = "";
+  invokeLeavesError = undefined;
   parsedFileClasses = [];
   classFiles = new Map();
   restrictions = new Map();
@@ -314,6 +334,53 @@ describe("calling a tool", () => {
 
     expect(result.isError).toBe(true);
     expect(calls).toEqual([]);
+  });
+
+  it("reports a call OMC left a diagnostic for as an error, not the success it returned", async () => {
+    const mcp = await connect();
+    invokeLeavesError = "An element with name R is already declared";
+
+    const result = (await mcp.callTool({
+      name: "addComponent",
+      arguments: {
+        componentName: "r1",
+        componentClass: "Modelica.Electrical.Analog.Basic.Resistor",
+        intoTypeName: "Demo.Circuit",
+      },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe("An element with name R is already declared");
+  });
+
+  it("does not let a diagnostic left by an earlier call taint a later one's success", async () => {
+    const mcp = await connect();
+    errorBuffer = "leftover from an earlier call";
+
+    const result = (await mcp.callTool({
+      name: "getClassNames",
+      arguments: { typeName: "Demo" },
+    })) as CallToolResult;
+
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).not.toContain("leftover");
+  });
+
+  it("omc_invoke reading getErrorString still sees what an earlier call left", async () => {
+    // The drain that makes the previous two tests pass must not itself
+    // clear the buffer out from under a caller asking for it on purpose.
+    const mcp = await connect();
+    errorBuffer = "An element with name R is already declared";
+
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "getErrorString", input: {} },
+    })) as CallToolResult;
+
+    expect(result.isError).toBeFalsy();
+    expect(text(result)).toContain(
+      "An element with name R is already declared",
+    );
   });
 });
 

@@ -100,6 +100,18 @@ export function errorResult(message: string): CallToolResult {
 }
 
 /**
+ * Functions that read OMC's own error buffer rather than mutate a model.
+ *
+ * {@link dispatchByName}'s drain would defeat either of these: clearing the
+ * buffer immediately before the call empties out the very thing the caller
+ * asked to read.
+ */
+const READS_ERROR_BUFFER = new Set<OmcFnName>([
+  "getErrorString",
+  "getMessagesStringInternal",
+]);
+
+/**
  * Run `fn` with `input`, refusing first if the class it would write is not the
  * user's to change.
  *
@@ -129,6 +141,14 @@ export async function dispatch<K extends OmcFnName>(
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
  * fault.
+ *
+ * Many OMC mutations answer `success: true` (or nothing distinguishing at
+ * all) for a call that did nothing, and stash the actual reason in OMC's own
+ * error buffer instead of the return value — `addComponent` of a duplicate
+ * name is one. The buffer is drained around every call not itself reading
+ * it: cleared before, so a stale message from an earlier call cannot be
+ * mistaken for this one's, and read again after, so a non-empty result
+ * becomes this call's error rather than a silently accepted success.
  */
 export async function dispatchByName(
   deps: McpToolDeps,
@@ -150,7 +170,13 @@ export async function dispatchByName(
           ));
     if (refusal !== undefined) return errorResult(refusal);
 
+    const drainErrorBuffer = !READS_ERROR_BUFFER.has(fn);
+    if (drainErrorBuffer) await client.getErrorString();
     const output = await client.invoke(fn, input);
+    if (drainErrorBuffer) {
+      const { errorString } = await client.getErrorString();
+      if (errorString !== "") return errorResult(errorString);
+    }
     return textResult(JSON.stringify(output));
   } catch (err) {
     return errorResult(errorDetail(err, fn));
