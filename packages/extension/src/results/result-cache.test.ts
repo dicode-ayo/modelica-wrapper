@@ -93,6 +93,25 @@ describe("ResultCache.trajectory", () => {
     expect(reader.seriesCalls).toBe(2);
   });
 
+  it("returns undefined without reading rows when the file's resolved size is 0", async () => {
+    const reader = fakeReader({
+      readSimulationResultSize: async function (this: Counting) {
+        this.sizeCalls++;
+        return { size: 0 };
+      },
+    });
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+    expect(await cache.trajectory("empty.mat", "motor.w")).toBeUndefined();
+    expect(await cache.trajectory("empty.mat", "motor.i")).toBeUndefined();
+    // Cached per file, and never falls through to a readSimulationResult
+    // call that would re-trigger its own size:0 resolution.
+    expect(reader.sizeCalls).toBe(1);
+    expect(reader.seriesCalls).toBe(0);
+  });
+
   it("undefined when the file is missing", async () => {
     const reader = fakeReader();
     const cache = new ResultCache(

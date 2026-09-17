@@ -115,12 +115,16 @@ export class ResultCache {
     const reader = await this.resolveReader();
     // readSimulationResult's own size:0 resolves via a readSimulationResultSize
     // round trip per call; cache that trip once per file instead of paying it
-    // again for every variable a chart plots from the same result.
+    // again for every variable a chart plots from the same result. A resolved
+    // size of 0 means the file holds no rows — return early rather than
+    // passing the literal 0 through, which would read as "please resolve
+    // again" to readSimulationResult and defeat the cache.
     if (entry.size === undefined) {
       entry.size = (
         await reader.readSimulationResultSize({ fileName: path })
       ).size;
     }
+    if (entry.size === 0) return undefined;
     const { result } = await reader.readSimulationResult({
       filename: path,
       variables: ["time", variable],

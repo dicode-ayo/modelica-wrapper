@@ -174,11 +174,15 @@ either: on `.csv` it silently returns an empty matrix instead.
 [results/readSimulationResult.ts](../packages/omc-client/src/api/results/readSimulationResult.ts)
 works around both by resolving `size` through `readSimulationResultSize`
 first whenever the caller passes `0` or omits it, so neither the OMC-side bug
-nor the exact-count guesswork reaches the caller. `ResultCache` in
+nor the exact-count guesswork reaches the caller. Passing an explicit `size`
+of `0` reads as "resolve it for me" too — there is no way to tell OMC "this
+literal `0` is already resolved" — so `ResultCache` in
 [extension/src/results/result-cache.ts](../packages/extension/src/results/result-cache.ts)
-resolves that size once per result file and passes it explicitly on every
-subsequent `readSimulationResult` call for the same file, rather than paying
-the extra `readSimulationResultSize` round trip per variable.
+resolves that size once per result file and either passes the resolved
+non-zero size explicitly on every subsequent `readSimulationResult` call for
+the same file, or, when the resolved size is genuinely `0`, returns early
+without a `readSimulationResult` call at all — both avoid paying the
+`readSimulationResultSize` round trip again per variable.
 
 ### The model-instance read path
 
