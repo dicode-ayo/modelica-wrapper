@@ -505,6 +505,26 @@ describe("the escape hatch", () => {
     expect(calls).toEqual([]);
   });
 
+  it("points a published tool name at its own schema instead of omc_list_functions", async () => {
+    const mcp = await connect();
+
+    const described = (await mcp.callTool({
+      name: "omc_describe_function",
+      arguments: { name: "createClass" },
+    })) as CallToolResult;
+    const invoked = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "createClass", input: {} },
+    })) as CallToolResult;
+
+    for (const result of [described, invoked]) {
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain("tools/list");
+      expect(text(result)).not.toContain("omc_list_functions");
+    }
+    expect(calls).toEqual([]);
+  });
+
   it("refuses an argument the function does not have, rather than dropping it", async () => {
     const mcp = await connect();
 

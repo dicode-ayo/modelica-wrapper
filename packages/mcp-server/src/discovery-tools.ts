@@ -67,6 +67,26 @@ const CATEGORY_HELP = new Map<string, string | undefined>();
 const INPUT_KEYS = new Map<OmcFnName, ReadonlySet<string>>();
 
 /**
+ * Published MCP tools that are not OMC registry functions: the composites
+ * `class-tools.ts`, `save-tools.ts` and `source-tools.ts` build from one or
+ * more registry calls, plus the seven `shape-tools.ts` spends on
+ * `writeClassGraphics`. This index structurally cannot hold them, so a lookup
+ * miss here should not read as "undocumented" — their schema is in `tools/list`.
+ */
+const PUBLISHED_NON_REGISTRY_TOOLS: ReadonlySet<string> = new Set([
+  "createClass",
+  "setSourceCode",
+  "saveClass",
+  "addRectangle",
+  "addEllipse",
+  "addLine",
+  "addPolygon",
+  "addText",
+  "removeShape",
+  "setCoordinateSystem",
+]);
+
+/**
  * The argument names `fn` accepts. Memoized: the registry is frozen, so the
  * projection is a constant.
  */
@@ -96,6 +116,9 @@ function unknownArguments(
 
 /** The refusal for a name the registry does not hold, naming its neighbors. */
 function unknownFunction(name: string): string {
+  if (PUBLISHED_NON_REGISTRY_TOOLS.has(name)) {
+    return `${name} is a tool this server publishes, not an OMC scripting function. Its arguments are in its own tools/list entry.`;
+  }
   const needle = name.toLowerCase();
   const close = omcFunctionNames
     .filter((n) => n.toLowerCase().includes(needle))
