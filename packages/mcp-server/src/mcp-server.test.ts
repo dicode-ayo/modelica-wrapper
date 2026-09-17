@@ -192,6 +192,23 @@ describe("the published tool set", () => {
     expect(hint("omc_invoke")).toBe(false);
   });
 
+  it("tells listFile's caller the source comes from OMC's memory, not disk", async () => {
+    // listFile unparses whatever the symbol table currently holds — the same
+    // memory saveClass persists — so a caller checking whether an edit
+    // survived a restart must be pointed at saveClass.
+    const mcp = await connect();
+
+    const { tools } = await mcp.listTools();
+    const description = tools.find((t) => t.name === "listFile")?.description;
+
+    expect(description).toMatch(/in-memory/i);
+    expect(description).toMatch(/not the file on disk/i);
+    // Ties saveClass to restart-surviving persistence specifically, so a
+    // description that merely mentions both concepts without connecting
+    // them still fails.
+    expect(description).toMatch(/call saveClass\b[^.]*\brestart\b/i);
+  });
+
   it("leaves room for the prefix VSCode puts in front of every name", async () => {
     // `McpToolName` in VSCode's `contrib/mcp/common/mcpTypes.ts`: a tool is
     // presented as `mcp_<server>_<tool>`, the prefix is capped at

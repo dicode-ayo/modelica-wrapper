@@ -1,8 +1,9 @@
 /**
  * OMC: `function listFile`
  *
- * Returns the pretty-printed Modelica source for `cl`. Used by Option B
- * persistence: get the source, write it ourselves, then SetSourceFile.
+ * Unparses the class from OMC's symbol table — the same memory `saveClass`
+ * persists, not the file on disk. Used by Option B persistence: get the
+ * source, write it ourselves, then SetSourceFile.
  */
 
 import { z } from "zod";
@@ -23,7 +24,9 @@ export const ListFileOutputSchema = z.object({
 export type ListFileOutput = z.infer<typeof ListFileOutputSchema>;
 
 export const ListFileDescription =
-  "List the contents of the file backing a class — returns the pretty-printed Modelica source.";
+  "Returns OMC's in-memory pretty-printed Modelica source for a class, not the file on disk. " +
+  "Edits from mutating tools change that memory only, until saveClass writes it out — call saveClass " +
+  "first if you need this to match what a restart would load.";
 
 export async function listFile(
   ctx: CallContext,
