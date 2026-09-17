@@ -32,12 +32,23 @@ function mockClient(opts: MockOptions = {}): {
   remove: ReturnType<typeof vi.fn>;
   getErrorString: ReturnType<typeof vi.fn>;
 } {
+  // `errorString` is enqueued by `removeElementModifiers` itself, as OMC's
+  // own buffer would be populated as a side effect of the call — not
+  // returned unconditionally by every `getErrorString` read. A pre-call
+  // clear that didn't actually clear anything, or a read that ran before
+  // the call, would otherwise be indistinguishable from a correct one here.
+  let pending: string | undefined;
   const remove = opts.removeThrows
     ? vi.fn().mockRejectedValue(opts.removeThrows)
-    : vi.fn().mockResolvedValue(opts.removeResult ?? { success: true });
-  const getErrorString = vi
-    .fn()
-    .mockResolvedValue({ errorString: opts.errorString ?? "" });
+    : vi.fn(async () => {
+        if (opts.errorString !== undefined) pending = opts.errorString;
+        return opts.removeResult ?? { success: true };
+      });
+  const getErrorString = vi.fn(async () => {
+    const errorString = pending ?? "";
+    pending = undefined;
+    return { errorString };
+  });
   const client = {
     removeElementModifiers: remove,
     getErrorString,

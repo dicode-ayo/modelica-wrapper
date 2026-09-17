@@ -163,9 +163,14 @@ async function metaLoad(
   }
   try {
     const client = await deps.ensureClient();
-    const { success } = await client.loadFile({ fileName: arg });
-    if (!success) {
-      const { errorString } = await client.getErrorString();
+    // Through the same serialized clear/run/drain as the plain-command path
+    // above, so a concurrent diagram edit or MCP tool call sharing this
+    // client can't leave a diagnostic here that belongs to it, or steal
+    // this one before we read it back.
+    const { result, errorString } = await withErrorBuffer(client, () =>
+      client.loadFile({ fileName: arg }),
+    );
+    if (!result.success || looksLikeError(errorString)) {
       return {
         output: `error: loadFile failed${errorString ? `: ${errorString}` : ""}`,
         isError: true,
@@ -194,11 +199,11 @@ async function metaCd(
     // OMC returns an empty string on failure on some versions; on
     // 1.26.x a bad path is a silent no-op that returns the prior cwd.
     // We treat empty-string output as the only "failed" signal here.
-    const { workingDirectory } = await client.cd({
-      newWorkingDirectory: arg,
-    });
-    if (workingDirectory.length === 0) {
-      const { errorString } = await client.getErrorString();
+    const { result, errorString } = await withErrorBuffer(client, () =>
+      client.cd({ newWorkingDirectory: arg }),
+    );
+    const { workingDirectory } = result;
+    if (workingDirectory.length === 0 || looksLikeError(errorString)) {
       return {
         output: `error: cd failed${errorString ? `: ${errorString}` : ""}`,
         isError: true,

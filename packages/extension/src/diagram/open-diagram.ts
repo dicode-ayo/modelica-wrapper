@@ -295,17 +295,21 @@ export async function runSimulate(
 
         // OMC's simulate() returns success at the API level even when
         // the C compile / link step fails — the failure surfaces as
-        // an empty `resultFile`. Detect that and treat it as an error.
+        // an empty `resultFile`, or (issue #657's shape, once more) a
+        // real Error left in the buffer alongside a resultFile from a
+        // stale or partial run. Detect either and treat it as an error.
         const resultFile = readRecordString(simulationResult, "resultFile");
         const messagesRaw = readRecordString(simulationResult, "messages");
-        if (resultFile.length === 0) {
+        if (resultFile.length === 0 || looksLikeError(errorString)) {
           const detail = stripBlanks([errorString, messagesRaw]).join("\n");
           replLog.error(
             `compile / run failed after ${elapsedMs} ms\n` +
               (detail.length > 0 ? detail : "OMC returned empty resultFile."),
           );
           void vscode.window.showErrorMessage(
-            `Modelica: simulate ${className} failed (no result file)`,
+            resultFile.length === 0
+              ? `Modelica: simulate ${className} failed (no result file)`
+              : `Modelica: simulate ${className} failed`,
           );
           return;
         }
