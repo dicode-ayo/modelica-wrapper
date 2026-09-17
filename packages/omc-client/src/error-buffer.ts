@@ -65,7 +65,18 @@ export function withErrorBuffer<T>(
 ): Promise<{ result: T; errorString: string }> {
   return turnQueue(client).run(async () => {
     await client.getErrorString();
-    const result = await run();
+    let result: T;
+    try {
+      result = await run();
+    } catch (error) {
+      // OMC can have executed the mutation and left a diagnostic before the
+      // call itself rejected, so still drain it — otherwise the next turn on
+      // this queue (a runQueued read especially, which skips its own clear)
+      // inherits a diagnostic that was never its own. The original rejection
+      // is what the caller needs to see, not a failure from this cleanup.
+      await client.getErrorString().catch(() => undefined);
+      throw error;
+    }
     const { errorString } = await client.getErrorString();
     return { result, errorString };
   });
