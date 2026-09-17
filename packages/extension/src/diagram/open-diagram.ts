@@ -3,7 +3,9 @@ import {
   OmcClient,
   asString,
   diagram,
+  looksLikeError,
   produceParameterModel,
+  withErrorBuffer,
   type ClassDef,
   type DiagramLayout,
   type ModelInstance,
@@ -281,14 +283,15 @@ export async function runSimulate(
     async () => {
       const startedAt = Date.now();
       try {
-        // Drain stale errors so anything we read after simulate() is
+        // Cleared before and drained after, so anything we read is
         // strictly attributable to this run.
-        await client.getErrorString();
-        const { simulationResult } = await client.simulate(input);
+        const { result, errorString } = await withErrorBuffer(client, () =>
+          client.simulate(input),
+        );
+        const { simulationResult } = result;
         refreshLabel();
         const replLog = createReplLog(label);
         const elapsedMs = Date.now() - startedAt;
-        const { errorString } = await client.getErrorString();
 
         // OMC's simulate() returns success at the API level even when
         // the C compile / link step fails — the failure surfaces as
@@ -747,29 +750,27 @@ export async function applyClassParameterEdits(
         ? `setExtendsModifierValue ${className} ${ref.inheritedFrom} ${name}`
         : `setElementModifierValue ${className} ${name}`;
     try {
-      // Drain stale errors so any errorString we read on failure is
-      // strictly attributable to this edit (mirrors addComponent /
-      // simulate).
-      await client.getErrorString();
-      const { success } =
+      // Cleared before and drained after, so any errorString we read is
+      // strictly attributable to this edit (mirrors addComponent / simulate).
+      const { result, errorString } = await withErrorBuffer(client, () =>
         ref.inheritedFrom !== undefined
-          ? await client.setExtendsModifierValue({
+          ? client.setExtendsModifierValue({
               typeName: className,
               extendsBase: ref.inheritedFrom,
               modifier: name,
               expr,
             })
-          : await client.setElementModifierValue({
+          : client.setElementModifierValue({
               typeName: className,
               elementName: name,
               expr,
-            });
+            }),
+      );
       if (client.lastCall) label = client.lastCall;
       const replLog = createReplLog(label);
-      if (success) {
+      if (result.success && !looksLikeError(errorString)) {
         replLog.success(expr === "" ? `cleared ${name}` : `${name} := ${expr}`);
       } else {
-        const { errorString } = await client.getErrorString();
         const reason = errorString.trim() || "OMC returned success=false.";
         replLog.error(reason);
         failures.push(`${name}: ${reason}`);
@@ -823,20 +824,20 @@ export async function applyComponentParameterEdits(
   for (const { elementName, expr } of plan) {
     let label = `setElementModifierValue ${className} ${elementName}`;
     try {
-      await client.getErrorString();
-      const { success } = await client.setElementModifierValue({
-        typeName: className,
-        elementName,
-        expr,
-      });
+      const { result, errorString } = await withErrorBuffer(client, () =>
+        client.setElementModifierValue({
+          typeName: className,
+          elementName,
+          expr,
+        }),
+      );
       if (client.lastCall) label = client.lastCall;
       const replLog = createReplLog(label);
-      if (success) {
+      if (result.success && !looksLikeError(errorString)) {
         replLog.success(
           expr === "" ? `cleared ${elementName}` : `${elementName} := ${expr}`,
         );
       } else {
-        const { errorString } = await client.getErrorString();
         const reason = errorString.trim() || "OMC returned success=false.";
         replLog.error(reason);
         failures.push(`${elementName}: ${reason}`);
@@ -864,9 +865,10 @@ export async function applyComponentParameterEdits(
  *
  * Returns OMC's `success` flag so the caller can decide whether to
  * refresh the modal. Mirrors `applyComponentParameterEdits`' fast-path
- * REPL-log + warning-toast policy: drain stale errors first, log the
- * exact `client.lastCall` on completion, and surface a `false`/throw via
- * both the REPL transcript and a single warning toast.
+ * REPL-log + warning-toast policy: `withErrorBuffer` (`@dicode/omc-client`)
+ * clears OMC's error buffer before and drains it after, log the exact
+ * `client.lastCall` on completion, and surface a `false`/throw via both the
+ * REPL transcript and a single warning toast.
  *
  * Pure of the panel object (takes only the client) so it's unit-testable
  * with a mock `OmcClient`; the handler below wires it to the re-fetch +
@@ -881,22 +883,20 @@ export async function resetComponentParameters(
 ): Promise<boolean> {
   let label = `removeElementModifiers ${className} ${componentName}`;
   try {
-    // Drain stale errors so any errorString we read on failure is
-    // strictly attributable to this reset (mirrors the submit path).
-    await client.getErrorString();
-    const success = await clearComponentModifiers(
-      client,
-      className,
-      componentName,
-      { keepRedeclares: true },
+    // Cleared before and drained after, so any errorString we read on
+    // failure is strictly attributable to this reset (mirrors the submit
+    // path).
+    const { result: success, errorString } = await withErrorBuffer(client, () =>
+      clearComponentModifiers(client, className, componentName, {
+        keepRedeclares: true,
+      }),
     );
     if (client.lastCall) label = client.lastCall;
     const replLog = createReplLog(label);
-    if (success) {
+    if (success && !looksLikeError(errorString)) {
       replLog.success(`reset ${componentName} (cleared all modifiers)`);
       return true;
     }
-    const { errorString } = await client.getErrorString();
     const reason = errorString.trim() || "OMC returned success=false.";
     replLog.error(reason);
     void vscode.window.showWarningMessage(

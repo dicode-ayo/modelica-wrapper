@@ -8,10 +8,15 @@ import type {
   Shape,
   SourceLocation,
 } from "@dicode/omc-client";
-import { produceSimulationModel } from "@dicode/omc-client";
+import {
+  looksLikeError,
+  produceSimulationModel,
+  withErrorBuffer,
+} from "@dicode/omc-client";
 
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 
+import { showInRepl } from "../commands/repl.js";
 import { pathExists } from "../fs-util.js";
 import { omcRangeToVscodeRange } from "../language/position.js";
 import { log } from "../logger.js";
@@ -905,15 +910,21 @@ export class DiagramEditController {
     if (guard.kind === "guard-failed") log.warn("diagramEditor", guard.message);
     const componentName = uniqueComponentName(this.prevLayout, componentClass);
     try {
-      const { success, diagnostic } = await client.addComponent({
-        componentName,
-        componentClass,
-        intoTypeName: className,
-        annotation: placementAt(position),
-      });
-      if (!success) {
+      const { result, errorString } = await withErrorBuffer(client, () =>
+        client.addComponent({
+          componentName,
+          componentClass,
+          intoTypeName: className,
+          annotation: placementAt(position),
+        }),
+      );
+      const { success, diagnostic } = result;
+      // `success: true` can still mean nothing happened — OMC leaves the
+      // real reason (e.g. a duplicate name) in its error buffer rather than
+      // the return value, same as `diagnostic`'s off-spec-reply case.
+      if (!success || looksLikeError(errorString)) {
         this.reportError(
-          `addComponent ${componentClass} failed: ${diagnostic ?? "OMC rejected it"}`,
+          `addComponent ${componentClass} failed: ${diagnostic || errorString || "OMC rejected it"}`,
         );
         return;
       }
@@ -1055,15 +1066,18 @@ export class DiagramEditController {
       return;
     }
     try {
-      const { success, diagnostic } = await client.addConnection({
-        from,
-        to,
-        typeName: className,
-        annotation: lineAnnotation(waypoints),
-      });
-      if (!success) {
+      const { result, errorString } = await withErrorBuffer(client, () =>
+        client.addConnection({
+          from,
+          to,
+          typeName: className,
+          annotation: lineAnnotation(waypoints),
+        }),
+      );
+      const { success, diagnostic } = result;
+      if (!success || looksLikeError(errorString)) {
         this.reportError(
-          `addConnection failed: ${diagnostic ?? "OMC rejected it"}`,
+          `addConnection failed: ${diagnostic || errorString || "OMC rejected it"}`,
         );
         return;
       }
@@ -1382,13 +1396,13 @@ export class DiagramEditController {
         this.prevLayout,
       );
       if (!newClass || newClass.trim() === currentClass.trim()) return;
-      await client.getErrorString();
-      const { success } = await client.setElementType({
-        typeName: `${className}.${componentName}`,
-        newTypeName: newClass.trim(),
-      });
-      if (!success) {
-        const { errorString } = await client.getErrorString();
+      const { result, errorString } = await withErrorBuffer(client, () =>
+        client.setElementType({
+          typeName: `${className}.${componentName}`,
+          newTypeName: newClass.trim(),
+        }),
+      );
+      if (!result.success || looksLikeError(errorString)) {
         this.reportError(
           `setElementType ${componentName} failed: ${errorString.trim() || "OMC returned success=false"}`,
         );
@@ -1504,6 +1518,10 @@ export class DiagramEditController {
   private reportError(message: string): void {
     this.deps.gate.send({ type: "error", message });
     log.warn("diagramEditor", message);
+    // Mirrors Check Model's own tee-in (`createReplLog`) so a user watching
+    // the REPL sees every OMC-backed error in one transcript, not just the
+    // ones they typed themselves.
+    showInRepl(`diagram ${this.deps.className}`, message, true);
     // The webview has nowhere to show this, and an edit that silently does not
     // land reads as the diagram losing the user's work for no reason.
     void vscode.window.showErrorMessage(`Diagram: ${message}`);

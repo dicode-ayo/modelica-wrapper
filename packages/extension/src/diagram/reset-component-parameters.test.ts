@@ -85,6 +85,27 @@ describe("resetComponentParameters", () => {
     expect(recordedMessages[0]?.message).toContain("no such component gain");
   });
 
+  it("returns false and warns when OMC reports success: true but leaves an Error in its buffer", async () => {
+    // Same silent-failure shape as addComponent/addConnection: OMC accepts
+    // the call yet leaves the real reason in its error buffer rather than
+    // the return value — `withErrorBuffer` (`@dicode/omc-client`) is what
+    // this function now routes the call through to catch it.
+    const { client } = mockClient({
+      removeResult: { success: true },
+      errorString: "Error: no such component gain",
+    });
+
+    const ok = await resetComponentParameters(client, "Sample", "gain");
+
+    expect(ok).toBe(false);
+    expect(recordedMessages).toHaveLength(1);
+    expect(recordedMessages[0]?.level).toBe("warning");
+    expect(recordedMessages[0]?.message).toContain("reset gain failed");
+    expect(recordedMessages[0]?.message).toContain(
+      "Error: no such component gain",
+    );
+  });
+
   it("returns false and warns when the RPC throws", async () => {
     const { client } = mockClient({
       removeThrows: new Error("transport closed"),

@@ -21,6 +21,15 @@ interface FakeClient {
   cdCalls: string[];
   /** Push a string here to make the next `getErrorString()` return non-empty. */
   errorQueue: string[];
+  /**
+   * Set before a `call()` this test expects to leave a diagnostic behind —
+   * `call()` pushes it onto `errorQueue` itself, the way OMC populates its
+   * real buffer as a side effect of running a command rather than before it.
+   * `evalLine` now clears the buffer ahead of every call (`withErrorBuffer`),
+   * so pre-seeding `errorQueue` directly would be wiped by that clear before
+   * `call()` ever runs.
+   */
+  pendingCallError?: string;
   /** Replies for `call()` keyed by command — falls back to "" if missing. */
   callReplies: Map<string, string>;
   /** Replies for `cd({ newWorkingDirectory })` keyed by input path. */
@@ -50,6 +59,10 @@ function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
   state.client = {
     async call(cmd: string) {
       calls.push(cmd);
+      if (state.pendingCallError !== undefined) {
+        errorQueue.push(state.pendingCallError);
+        delete state.pendingCallError;
+      }
       return callReplies.get(cmd) ?? "";
     },
     async getErrorString() {
@@ -112,9 +125,8 @@ describe("evalLine — plain OMC commands", () => {
   it("treats a non-empty error buffer after a call as an error result", async () => {
     const fake = makeClient();
     fake.callReplies.set("bogus", "");
-    fake.errorQueue.push(
-      "[<interactive>:1:1] Error: Lookup of class bogus failed.",
-    );
+    fake.pendingCallError =
+      "[<interactive>:1:1] Error: Lookup of class bogus failed.";
     const { deps } = makeDeps(fake.client);
     const result = await evalLine("bogus", deps);
     expect(result.isError).toBe(true);
@@ -131,9 +143,8 @@ describe("evalLine — plain OMC commands", () => {
     const call =
       'getElementAnnotation("Modelica.Blocks.Examples.PID_Controller")';
     fake.callReplies.set(call, "");
-    fake.errorQueue.push(
-      "[<interactive>:1:1-1:0:writable] Error: Class getElementAnnotation not found in scope <global scope> (looking for a function or record).",
-    );
+    fake.pendingCallError =
+      "[<interactive>:1:1-1:0:writable] Error: Class getElementAnnotation not found in scope <global scope> (looking for a function or record).";
     const { deps } = makeDeps(fake.client);
     const result = await evalLine(call, deps);
     expect(result.isError).toBe(true);
