@@ -283,8 +283,6 @@ export async function runSimulate(
     async () => {
       const startedAt = Date.now();
       try {
-        // Cleared before and drained after, so anything we read is
-        // strictly attributable to this run.
         const { result, errorString } = await withErrorBuffer(client, () =>
           client.simulate(input),
         );
@@ -295,9 +293,9 @@ export async function runSimulate(
 
         // OMC's simulate() returns success at the API level even when
         // the C compile / link step fails — the failure surfaces as
-        // an empty `resultFile`, or (issue #657's shape, once more) a
-        // real Error left in the buffer alongside a resultFile from a
-        // stale or partial run. Detect either and treat it as an error.
+        // an empty `resultFile`, or (issue #657) a real Error left in the
+        // buffer alongside a resultFile from a stale or partial run.
+        // Detect either and treat it as an error.
         const resultFile = readRecordString(simulationResult, "resultFile");
         const messagesRaw = readRecordString(simulationResult, "messages");
         if (resultFile.length === 0 || looksLikeError(errorString)) {
@@ -754,8 +752,6 @@ export async function applyClassParameterEdits(
         ? `setExtendsModifierValue ${className} ${ref.inheritedFrom} ${name}`
         : `setElementModifierValue ${className} ${name}`;
     try {
-      // Cleared before and drained after, so any errorString we read is
-      // strictly attributable to this edit (mirrors addComponent / simulate).
       const { result, errorString } = await withErrorBuffer(client, () =>
         ref.inheritedFrom !== undefined
           ? client.setExtendsModifierValue({
@@ -869,10 +865,9 @@ export async function applyComponentParameterEdits(
  *
  * Returns OMC's `success` flag so the caller can decide whether to
  * refresh the modal. Mirrors `applyComponentParameterEdits`' fast-path
- * REPL-log + warning-toast policy: `withErrorBuffer` (`@dicode/omc-client`)
- * clears OMC's error buffer before and drains it after, log the exact
- * `client.lastCall` on completion, and surface a `false`/throw via both the
- * REPL transcript and a single warning toast.
+ * REPL-log + warning-toast policy: drain OMC's error buffer around the call,
+ * log the exact `client.lastCall` on completion, and surface a `false`/throw
+ * via both the REPL transcript and a single warning toast.
  *
  * Pure of the panel object (takes only the client) so it's unit-testable
  * with a mock `OmcClient`; the handler below wires it to the re-fetch +
@@ -887,9 +882,6 @@ export async function resetComponentParameters(
 ): Promise<boolean> {
   let label = `removeElementModifiers ${className} ${componentName}`;
   try {
-    // Cleared before and drained after, so any errorString we read on
-    // failure is strictly attributable to this reset (mirrors the submit
-    // path).
     const { result: success, errorString } = await withErrorBuffer(client, () =>
       clearComponentModifiers(client, className, componentName, {
         keepRedeclares: true,

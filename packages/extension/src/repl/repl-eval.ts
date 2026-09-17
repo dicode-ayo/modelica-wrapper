@@ -7,14 +7,11 @@
  *
  * Meta-commands (lines starting with `:`) dispatch through `META_HANDLERS`,
  * one per verb in `repl-help.ts`'s `META_COMMANDS`. Everything else is
- * forwarded to `client.call()` through `withErrorBuffer` (`@dicode/omc-client`)
- * — cleared before, so a diagnostic left by an unrelated earlier call (a
- * concurrent diagram edit or MCP tool call on the same client) isn't
- * misread as this line's own, and drained again after so any non-empty
- * error buffer surfaces alongside the OMC reply — OMC can return a value
- * AND a diagnostic in the same step (e.g. typing a malformed expression).
- * We separately mark the result as `isError: true` so the terminal can pick
- * a color.
+ * forwarded to `client.call()` through `withErrorBuffer` (`@dicode/omc-client`),
+ * so any non-empty error buffer surfaces alongside the OMC reply — OMC can
+ * return a value AND a diagnostic in the same step (e.g. typing a malformed
+ * expression). We separately mark the result as `isError: true` so the
+ * terminal can pick a color.
  *
  * Project rule: every OMC call constructed by this module must go through
  * a typed wrapper on `OmcClient`. The bare `client.call(rawLine)` below is
@@ -163,10 +160,6 @@ async function metaLoad(
   }
   try {
     const client = await deps.ensureClient();
-    // Through the same serialized clear/run/drain as the plain-command path
-    // above, so a concurrent diagram edit or MCP tool call sharing this
-    // client can't leave a diagnostic here that belongs to it, or steal
-    // this one before we read it back.
     const { result, errorString } = await withErrorBuffer(client, () =>
       client.loadFile({ fileName: arg }),
     );

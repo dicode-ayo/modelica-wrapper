@@ -84,19 +84,17 @@ export interface McpToolDeps {
    */
   workspace?: SourceTree | undefined;
   /**
-   * Where every dispatched call, its outcome, and any refusal are logged —
-   * the extension wires this to its own output channel (`createMcpHttpHost`'s
-   * `parked`). Absent in a host with nowhere to log to, or a test that
-   * doesn't care; {@link dispatchByName} treats it as optional throughout.
+   * Where every dispatched call, its outcome, and any refusal are logged. An
+   * MCP tool call has no REPL transcript or webview of its own, so this is
+   * the only place a user watching the extension sees what an agent did.
+   * Absent in a host with nowhere to log to.
    */
   log?: McpLog | undefined;
   /**
    * Surfaces a refusal or a hard failure somewhere more visible than the log
-   * channel — the extension wires this to a VSCode error notification. An
-   * MCP tool call has no REPL transcript or webview of its own for a user to
-   * notice a failure in, unlike the extension's own diagram editor and REPL,
-   * so this is the surface that fills the same role there. Never called for
-   * a successful call.
+   * channel — the extension wires this to a VSCode error notification, the
+   * same visibility its own REPL and diagram editor get from their
+   * transcripts. Never called for a successful call.
    */
   notifyFailure?: ((message: string) => void) | undefined;
 }
@@ -119,15 +117,33 @@ export function errorResult(message: string): CallToolResult {
 
 /**
  * Functions that read OMC's own error buffer rather than mutate a model.
- *
- * {@link dispatchByName}'s drain would defeat either of these: clearing the
- * buffer immediately before the call empties out the very thing the caller
- * asked to read.
+ * Draining around either would clear the very thing the caller asked to read.
  */
 const READS_ERROR_BUFFER = new Set<OmcFnName>([
   "getErrorString",
   "getMessagesStringInternal",
 ]);
+
+/**
+ * Many OMC mutations answer `success: true` (or nothing distinguishing at
+ * all) for a call that did nothing, and stash the actual reason in OMC's own
+ * error buffer instead of the return value — `addComponent` of a duplicate
+ * name is one. The drain is serialized against every other caller sharing
+ * this same client: the extension embeds this server on the OmcClient its
+ * REPL and diagram editor use.
+ */
+async function invokeDrained(
+  client: McpToolClient,
+  fn: OmcFnName,
+  input: unknown,
+): Promise<unknown> {
+  if (READS_ERROR_BUFFER.has(fn)) return client.invoke(fn, input);
+  const { result, errorString } = await withErrorBuffer(client, () =>
+    client.invoke(fn, input),
+  );
+  if (looksLikeError(errorString)) throw new Error(errorString);
+  return result;
+}
 
 /**
  * Bounds a value logged to the output channel — a class dump or a full
@@ -177,23 +193,7 @@ export async function dispatch<K extends OmcFnName>(
  *
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
- * fault.
- *
- * Many OMC mutations answer `success: true` (or nothing distinguishing at
- * all) for a call that did nothing, and stash the actual reason in OMC's own
- * error buffer instead of the return value — `addComponent` of a duplicate
- * name is one. `withErrorBuffer` (`@dicode/omc-client`) drains the buffer
- * around every call not itself reading it, serialized against every other
- * caller sharing this same client — the extension's REPL and diagram editor
- * included, since the extension embeds this server on the same OmcClient
- * instance those use.
- *
- * Every call, its outcome, and any refusal are logged via `deps.log` — an MCP
- * tool call has no REPL transcript or webview of its own to show up in, so
- * the output channel is the only place a user watching the extension sees
- * what an agent actually did. A refusal or a hard failure additionally goes
- * to `deps.notifyFailure`, the same visibility the extension's own REPL and
- * diagram editor get from their transcripts.
+ * fault. A diagnostic OMC left in its error buffer counts as one too.
  */
 export async function dispatchByName(
   deps: McpToolDeps,
@@ -202,6 +202,7 @@ export async function dispatchByName(
   gateOn?: GatedClass,
 ): Promise<CallToolResult> {
   const { log, notifyFailure } = deps;
+  const action = `${fn} ${loggable(input)}`;
   try {
     const client = await deps.ensureClient();
     const refusal =
@@ -215,25 +216,17 @@ export async function dispatchByName(
             gateOn.action,
           ));
     if (refusal !== undefined) {
-      log?.warn(`${fn} ${loggable(input)} refused: ${refusal}`);
+      log?.warn(`${action} refused: ${refusal}`);
       notifyFailure?.(`${fn} refused: ${refusal}`);
       return errorResult(refusal);
     }
 
-    if (READS_ERROR_BUFFER.has(fn)) {
-      const output = await client.invoke(fn, input);
-      log?.info(`${fn} ${loggable(input)} -> ${loggable(output)}`);
-      return textResult(JSON.stringify(output));
-    }
-    const { result, errorString } = await withErrorBuffer(client, () =>
-      client.invoke(fn, input),
-    );
-    if (looksLikeError(errorString)) throw new Error(errorString);
-    log?.info(`${fn} ${loggable(input)} -> ${loggable(result)}`);
-    return textResult(JSON.stringify(result));
+    const output = await invokeDrained(client, fn, input);
+    log?.info(`${action} -> ${loggable(output)}`);
+    return textResult(JSON.stringify(output));
   } catch (err) {
     const message = errorDetail(err, fn);
-    log?.warn(`${fn} ${loggable(input)} failed: ${message}`);
+    log?.warn(`${action} failed: ${message}`);
     notifyFailure?.(`${fn} failed: ${message}`);
     return errorResult(message);
   }

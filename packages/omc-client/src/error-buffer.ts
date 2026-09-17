@@ -4,16 +4,12 @@
  * `success: true` reply, or one indistinguishable from a clean run, can
  * still mean nothing happened, with the real reason sitting undrained.
  *
- * Every surface that dispatches OMC calls used to drain this buffer its own
- * way: the MCP server's dispatcher, the extension's REPL, and one diagram-
- * editor call site each carried a slightly different clear/read/detect
- * copy, and most call sites didn't drain it at all. They share one
- * OmcClient instance (the extension embeds the MCP server on the same
- * client its diagram editor and REPL use), so two of those surfaces racing
- * each other could already clear or read one another's diagnostic — this
- * module is both the single implementation and the fix for that: the
- * queue below is keyed by client instance, so every caller sharing one
- * client serializes against the others.
+ * The MCP server's dispatcher, the extension's REPL and its diagram editor
+ * all drain that buffer on one shared OmcClient instance (the extension
+ * embeds the MCP server on the client the other two use), so two of them
+ * racing each other could clear or read one another's diagnostic. The queue
+ * below is keyed by client instance so every caller sharing one client
+ * serializes against the others.
  */
 
 export interface ErrorBufferClient {

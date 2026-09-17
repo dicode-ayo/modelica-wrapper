@@ -25,8 +25,8 @@ interface FakeClient {
    * Set before a `call()` this test expects to leave a diagnostic behind —
    * `call()` pushes it onto `errorQueue` itself, the way OMC populates its
    * real buffer as a side effect of running a command rather than before it.
-   * `evalLine` now clears the buffer ahead of every call (`withErrorBuffer`),
-   * so pre-seeding `errorQueue` directly would be wiped by that clear before
+   * `evalLine` clears the buffer ahead of every call (`withErrorBuffer`), so
+   * pre-seeding `errorQueue` directly would be wiped by that clear before
    * `call()` ever runs.
    */
   pendingCallError?: string;
