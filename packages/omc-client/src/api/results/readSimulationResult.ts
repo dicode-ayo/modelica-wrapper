@@ -85,11 +85,12 @@ export async function readSimulationResult(
 ): Promise<ReadSimulationResultOutput> {
   const size = await resolveSize(ctx, input);
   // A resolved size of 0 is the one value that would reach OMC's own
-  // `size = 0` path, which this function exists to avoid.
+  // `size = 0` path, which this function exists to avoid. There are no rows
+  // to read, but the output still owes one (empty) row per variable.
   if (size === 0) {
     return parseOutput(
       ReadSimulationResultOutputSchema,
-      { result: [] },
+      { result: input.variables.map(() => []) },
       "readSimulationResult",
     );
   }
