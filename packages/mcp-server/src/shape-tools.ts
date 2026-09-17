@@ -252,7 +252,7 @@ export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
 
   register(
     "removeShape",
-    "Remove one graphic primitive from a class's Icon or Diagram annotation by its position in that layer's graphics list.",
+    'Remove one graphic primitive from a class\'s Icon or Diagram annotation by its position in that layer\'s graphics list. `layer` is "icon" or "diagram" (lowercase).',
     RemoveShapeSchema,
     async ({ typeName, layer, index }) =>
       dispatch(deps, "writeClassGraphics", {
@@ -264,7 +264,7 @@ export function registerShapeTools(server: McpServer, deps: McpToolDeps): void {
 
   register(
     "setCoordinateSystem",
-    "Set a class's Icon or Diagram coordinate system. Fields left out keep their current value; the layer's shapes are untouched.",
+    'Set a class\'s Icon or Diagram coordinate system. `layer` is "icon" or "diagram" (lowercase). Fields left out keep their current value; the layer\'s shapes are untouched.',
     CoordinateSystemSchema,
     async ({ typeName, layer, ...coordinateSystem }) =>
       dispatch(deps, "writeClassGraphics", {
