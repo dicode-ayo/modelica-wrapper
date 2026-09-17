@@ -23,6 +23,19 @@ function ts(): string {
 }
 
 /**
+ * Bounds one channel line. A single OMC payload — a class dump, a full source
+ * string, `list(Modelica)` typed at the REPL — can run past 300 KB (issue
+ * #658), which would otherwise flood the channel for one call.
+ */
+const MAX_LINE_CHARS = 2000;
+
+function bounded(line: string): string {
+  return line.length > MAX_LINE_CHARS
+    ? `${line.slice(0, MAX_LINE_CHARS)}… (${line.length} chars total)`
+    : line;
+}
+
+/**
  * Coerce an env-var string to a boolean using the conventional set of "off"
  * tokens (empty, `0`, `false` — case-insensitive). Anything else (including
  * `1`, `true`, `yes`, …) reads as on. Pulled out as a helper so a second
@@ -62,15 +75,21 @@ export const log = {
   debug(topic: string, message: string, data?: unknown): void {
     if (!debugEnabled()) return;
     const payload = data === undefined ? "" : ` ${describe(data)}`;
-    ensureChannel().appendLine(`${ts()} [${topic}] DEBUG ${message}${payload}`);
+    ensureChannel().appendLine(
+      bounded(`${ts()} [${topic}] DEBUG ${message}${payload}`),
+    );
   },
   info(topic: string, message: string, data?: unknown): void {
     const payload = data === undefined ? "" : ` ${safeStringify(data)}`;
-    ensureChannel().appendLine(`${ts()} [${topic}] ${message}${payload}`);
+    ensureChannel().appendLine(
+      bounded(`${ts()} [${topic}] ${message}${payload}`),
+    );
   },
   warn(topic: string, message: string, data?: unknown): void {
     const payload = data === undefined ? "" : ` ${safeStringify(data)}`;
-    ensureChannel().appendLine(`${ts()} [${topic}] WARN ${message}${payload}`);
+    ensureChannel().appendLine(
+      bounded(`${ts()} [${topic}] WARN ${message}${payload}`),
+    );
   },
   error(topic: string, message: string, err: unknown): void {
     const detail =
@@ -78,7 +97,7 @@ export const log = {
         ? `${err.message}\n${err.stack ?? ""}`
         : safeStringify(err);
     ensureChannel().appendLine(
-      `${ts()} [${topic}] ERROR ${message}\n${detail}`,
+      bounded(`${ts()} [${topic}] ERROR ${message}\n${detail}`),
     );
   },
   /** Reveal the output panel so the user can see logs without hunting for it. */

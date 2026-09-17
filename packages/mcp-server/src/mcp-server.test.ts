@@ -386,8 +386,8 @@ describe("calling a tool", () => {
   });
 
   it("omc_invoke reading getErrorString still sees what an earlier call left", async () => {
-    // The drain that makes the previous two tests pass must not itself
-    // clear the buffer out from under a caller asking for it on purpose.
+    // The pre-call clear must not run for a call whose whole purpose is to
+    // read what the buffer holds.
     const mcp = await connect();
     errorBuffer = "Error: An element with name R is already declared";
 

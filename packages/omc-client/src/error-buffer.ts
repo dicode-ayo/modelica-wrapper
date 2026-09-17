@@ -8,9 +8,13 @@
  * all drain that buffer on one shared OmcClient instance (the extension
  * embeds the MCP server on the client the other two use), so two of them
  * racing each other could clear or read one another's diagnostic. The queue
- * below is keyed by client instance so every caller sharing one client
- * serializes against the others.
+ * below is keyed by client instance so every caller routed through this
+ * module serializes against the others. A `getErrorString` or
+ * `getMessagesStringInternal` call made directly on the client does not take
+ * a turn and can still land inside one.
  */
+
+import { SerialQueue } from "./queue.js";
 
 export interface ErrorBufferClient {
   getErrorString(): Promise<{ errorString: string }>;
@@ -27,29 +31,18 @@ export function looksLikeError(errorString: string): boolean {
 }
 
 /**
- * One pending transaction per client instance, chained so the next caller's
- * clear/read waits for the previous caller's to finish rather than
- * interleaving with it. Keyed by identity (a `WeakMap`) so unrelated
- * `OmcClient` instances — e.g. one per test — never share a queue.
+ * One turn queue per client instance, keyed by identity (a `WeakMap`) so
+ * unrelated `OmcClient` instances — e.g. one per test — never share a queue.
  */
-const turns = new WeakMap<ErrorBufferClient, Promise<unknown>>();
+const turns = new WeakMap<ErrorBufferClient, SerialQueue>();
 
-function enqueue<T>(
-  client: ErrorBufferClient,
-  run: () => Promise<T>,
-): Promise<T> {
-  const previous = turns.get(client) ?? Promise.resolve();
-  const turn = previous.then(run);
-  // Chained regardless of outcome — a rejected turn must not leave the next
-  // caller waiting on a promise that will never settle for them.
-  turns.set(
-    client,
-    turn.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  return turn;
+function turnQueue(client: ErrorBufferClient): SerialQueue {
+  let queue = turns.get(client);
+  if (queue === undefined) {
+    queue = new SerialQueue();
+    turns.set(client, queue);
+  }
+  return queue;
 }
 
 /**
@@ -70,7 +63,7 @@ export function withErrorBuffer<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<{ result: T; errorString: string }> {
-  return enqueue(client, async () => {
+  return turnQueue(client).run(async () => {
     await client.getErrorString();
     const result = await run();
     const { errorString } = await client.getErrorString();
@@ -89,5 +82,5 @@ export function runQueued<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<T> {
-  return enqueue(client, run);
+  return turnQueue(client).run(run);
 }

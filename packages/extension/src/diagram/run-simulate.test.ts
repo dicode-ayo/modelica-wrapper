@@ -55,7 +55,7 @@ function makeClient(opts: {
 }
 
 describe("runSimulate", () => {
-  it("reports success and adds the result to view when the buffer is clean", async () => {
+  it("reports no failure when the buffer is clean", async () => {
     const client = makeClient({});
 
     await runSimulate(client, "Demo", {});

@@ -20,7 +20,12 @@ import type {
   SaveClient,
   SourceTree,
 } from "@dicode/omc-client";
-import { looksLikeError, runQueued, withErrorBuffer } from "@dicode/omc-client";
+import {
+  isReadOnlyFunction,
+  looksLikeError,
+  runQueued,
+  withErrorBuffer,
+} from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { errorDetail } from "./error-detail.js";
@@ -128,14 +133,8 @@ const READS_ERROR_BUFFER = new Set<OmcFnName>([
  * Many OMC mutations answer `success: true` (or nothing distinguishing at
  * all) for a call that did nothing, and stash the actual reason in OMC's own
  * error buffer instead of the return value — `addComponent` of a duplicate
- * name is one. The drain is serialized against every other caller sharing
- * this same client: the extension embeds this server on the OmcClient its
- * REPL and diagram editor use.
- *
- * A `READS_ERROR_BUFFER` call still goes through `runQueued` rather than a
- * bare `client.invoke` — without that, it could land between some other
- * queued mutation's own run and its final drain, and read the diagnostic
- * that mutation is waiting to read back.
+ * name is one. A `READS_ERROR_BUFFER` call skips the drain but still takes a
+ * turn, see {@link runQueued}.
  */
 async function invokeDrained(
   client: McpToolClient,
@@ -153,9 +152,9 @@ async function invokeDrained(
 }
 
 /**
- * Bounds a value logged to the output channel — a class dump or a full
- * source string can run past 300 KB (issue #658), which would otherwise
- * flood the channel for one call.
+ * Bounds each logged value on its own, so a 300 KB class dump (issue #658)
+ * cannot push the other half of the line past whatever bound the host's own
+ * log sink applies.
  */
 const MAX_LOGGED_CHARS = 2000;
 
@@ -200,7 +199,9 @@ export async function dispatch<K extends OmcFnName>(
  *
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
- * fault. A diagnostic OMC left in its error buffer counts as one too.
+ * fault. A diagnostic OMC left in its error buffer counts as one too. Only a
+ * refusal or a failed write reaches `notifyFailure`: a model probing names
+ * fails a read per miss, and a toast apiece would bury the user.
  */
 export async function dispatchByName(
   deps: McpToolDeps,
@@ -234,7 +235,7 @@ export async function dispatchByName(
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);
-    notifyFailure?.(`${fn} failed: ${message}`);
+    if (!isReadOnlyFunction(fn)) notifyFailure?.(`${fn} failed: ${message}`);
     return errorResult(message);
   }
 }

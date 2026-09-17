@@ -11,6 +11,8 @@
  * a file nothing has written. {@link persistClass} is the other half.
  */
 
+import { looksLikeError, withErrorBuffer } from "./error-buffer.js";
+
 /** The OMC surface a declaration needs. `OmcClient` satisfies it. */
 export interface DeclareClient {
   loadString(input: {
@@ -70,7 +72,8 @@ export function classSource(declaration: ClassDeclaration): string {
  * take it.
  *
  * `success` is false for a class OMC refused and for one whose `within` target
- * it could not find, and the reason for either only lives in `getErrorString`.
+ * it could not find, and the reason for either only lives in the error buffer.
+ * A `success: true` that left an error there is a refusal too.
  */
 export async function declareClass(
   client: DeclareClient,
@@ -78,13 +81,16 @@ export async function declareClass(
 ): Promise<{ ok: true; source: string } | { ok: false; reason: string }> {
   const qualifiedName = qualifiedNameOf(declaration);
   const source = classSource(declaration);
-  const { success } = await client.loadString({
-    data: source,
-    filename: `<runtime:${qualifiedName}>`,
-    merge: true,
-  });
-  if (success) return { ok: true, source };
-  const { errorString } = await client.getErrorString();
+  const { result, errorString } = await withErrorBuffer(client, () =>
+    client.loadString({
+      data: source,
+      filename: `<runtime:${qualifiedName}>`,
+      merge: true,
+    }),
+  );
+  if (result.success && !looksLikeError(errorString)) {
+    return { ok: true, source };
+  }
   return {
     ok: false,
     reason:

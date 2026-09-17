@@ -235,6 +235,33 @@ describe("dispatchByName's logging and failure notification", () => {
     expect(notified[0]).toContain("already declared");
   });
 
+  it("logs a failed read without notifying", async () => {
+    // A model probing names fails a read per miss; a toast apiece would bury
+    // the user under answers the model can act on itself.
+    const { log, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient({
+      getErrorString: async () => ({
+        errorString: "Error: Class Demo.Nope not found",
+      }),
+    });
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    const result = await dispatchByName(deps, "getClassInformation", {
+      typeName: "Demo.Nope",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("not found");
+    expect(notified).toEqual([]);
+  });
+
   it("logs and notifies a write-gate refusal", async () => {
     const { log, warnings } = makeLog();
     const notified: string[] = [];

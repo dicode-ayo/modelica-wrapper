@@ -924,7 +924,7 @@ export class DiagramEditController {
       // the return value, same as `diagnostic`'s off-spec-reply case.
       if (!success || looksLikeError(errorString)) {
         this.reportError(
-          `addComponent ${componentClass} failed: ${diagnostic || errorString || "OMC rejected it"}`,
+          `addComponent ${componentClass} failed: ${diagnostic || errorString || "OMC returned success=false"}`,
         );
         return;
       }
@@ -1077,7 +1077,7 @@ export class DiagramEditController {
       const { success, diagnostic } = result;
       if (!success || looksLikeError(errorString)) {
         this.reportError(
-          `addConnection failed: ${diagnostic || errorString || "OMC rejected it"}`,
+          `addConnection failed: ${diagnostic || errorString || "OMC returned success=false"}`,
         );
         return;
       }
@@ -1518,7 +1518,7 @@ export class DiagramEditController {
   private reportError(message: string): void {
     this.deps.gate.send({ type: "error", message });
     log.warn("diagramEditor", message);
-    // Mirrors Check Model's own tee-in (`createReplLog`) so a user watching
+    // Mirrors Check Model's tee-in through `showInRepl` so a user watching
     // the REPL sees every OMC-backed error in one transcript, not just the
     // ones they typed themselves.
     showInRepl(`diagram ${this.deps.className}`, message, true);

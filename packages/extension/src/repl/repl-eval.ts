@@ -190,8 +190,9 @@ async function metaCd(
     // `<workspace>/.modelica`), and `:cd <path>` changes it.
     //
     // OMC returns an empty string on failure on some versions; on
-    // 1.26.x a bad path is a silent no-op that returns the prior cwd.
-    // We treat empty-string output as the only "failed" signal here.
+    // 1.26.x a bad path is a silent no-op that returns the prior cwd. An
+    // empty cwd or an Error left in the buffer is a failure; a prior cwd
+    // with a clean buffer is indistinguishable from success.
     const { result, errorString } = await withErrorBuffer(client, () =>
       client.cd({ newWorkingDirectory: arg }),
     );

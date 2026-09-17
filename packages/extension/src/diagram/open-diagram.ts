@@ -771,7 +771,7 @@ export async function applyClassParameterEdits(
       if (result.success && !looksLikeError(errorString)) {
         replLog.success(expr === "" ? `cleared ${name}` : `${name} := ${expr}`);
       } else {
-        const reason = errorString.trim() || "OMC returned success=false.";
+        const reason = errorString.trim() || "OMC returned success=false";
         replLog.error(reason);
         failures.push(`${name}: ${reason}`);
       }
@@ -838,7 +838,7 @@ export async function applyComponentParameterEdits(
           expr === "" ? `cleared ${elementName}` : `${elementName} := ${expr}`,
         );
       } else {
-        const reason = errorString.trim() || "OMC returned success=false.";
+        const reason = errorString.trim() || "OMC returned success=false";
         replLog.error(reason);
         failures.push(`${elementName}: ${reason}`);
       }
@@ -893,7 +893,7 @@ export async function resetComponentParameters(
       replLog.success(`reset ${componentName} (cleared all modifiers)`);
       return true;
     }
-    const reason = errorString.trim() || "OMC returned success=false.";
+    const reason = errorString.trim() || "OMC returned success=false";
     replLog.error(reason);
     void vscode.window.showWarningMessage(
       `Modelica: reset ${componentName} failed — ${reason}`,

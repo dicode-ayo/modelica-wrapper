@@ -71,7 +71,7 @@ describe("compareBufferToClass", () => {
 });
 
 describe("reloadBufferIntoOmc", () => {
-  it("drains stale diagnostics before loading the buffer's text", async () => {
+  it("clears the buffer before the load and reads it back after", async () => {
     const calls: string[] = [];
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
@@ -98,7 +98,7 @@ describe("reloadBufferIntoOmc", () => {
     );
 
     expect(result).toEqual({ ok: true });
-    expect(calls).toEqual(["getErrorString", "loadString"]);
+    expect(calls).toEqual(["getErrorString", "loadString", "getErrorString"]);
   });
 
   it("refuses a buffer declaring several top-level classes (#452)", async () => {
@@ -169,6 +169,54 @@ describe("reloadBufferIntoOmc", () => {
     });
   });
 
+  it("rejects a load OMC answered success: true but left an error for", async () => {
+    // The diagnostic is left by the load, so the pre-call clear cannot
+    // consume it first.
+    let loaded = false;
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      getErrorString: vi.fn(async () => ({
+        errorString: loaded ? "Error: Pkg.Model is not a valid class" : "",
+      })),
+      loadString: vi.fn(async () => {
+        loaded = true;
+        return { success: true };
+      }),
+    };
+
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI),
+      "Pkg.Model",
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      message:
+        "reverse sync rejected by OMC: Error: Pkg.Model is not a valid class",
+    });
+  });
+
+  it("keeps a plain warning a success", async () => {
+    let loaded = false;
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      getErrorString: vi.fn(async () => ({
+        errorString: loaded ? "Warning: unused variable x" : "",
+      })),
+      loadString: vi.fn(async () => {
+        loaded = true;
+        return { success: true };
+      }),
+    };
+
+    await expect(
+      reloadBufferIntoOmc(client, docFor(DOC_URI), "Pkg.Model"),
+    ).resolves.toEqual({ ok: true });
+  });
+
   it("falls back to a generic message when OMC reports no error text", async () => {
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
@@ -185,8 +233,7 @@ describe("reloadBufferIntoOmc", () => {
 
     expect(result).toEqual({
       ok: false,
-      message:
-        "reverse sync rejected by OMC: loadString returned success=false",
+      message: "reverse sync rejected by OMC: OMC returned success=false",
     });
   });
 });

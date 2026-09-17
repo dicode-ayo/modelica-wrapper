@@ -97,10 +97,8 @@ describe("resetComponentParameters", () => {
   });
 
   it("returns false and warns when OMC reports success: true but leaves an Error in its buffer", async () => {
-    // Same silent-failure shape as addComponent/addConnection: OMC accepts
-    // the call yet leaves the real reason in its error buffer rather than
-    // the return value — `withErrorBuffer` (`@dicode/omc-client`) is what
-    // this function now routes the call through to catch it.
+    // OMC accepts the call yet leaves the real reason in its error buffer
+    // rather than the return value.
     const { client } = mockClient({
       removeResult: { success: true },
       errorString: "Error: no such component gain",

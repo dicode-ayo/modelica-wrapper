@@ -1001,9 +1001,7 @@ describe("DiagramEditController: forward write path", () => {
 
   it("reports addComponent as failed when OMC's buffer holds an error despite success: true", async () => {
     // OMC can accept the call (a duplicate name is one real case) but leave
-    // the actual reason in its error buffer rather than the return value —
-    // the same silent-failure shape `withErrorBuffer` closes for the MCP
-    // server, now caught here too.
+    // the actual reason in its error buffer rather than the return value.
     const { client, listedTypes } = makeEditClient({
       addComponentErrorBuffer:
         "Error: An element with name gain1 is already declared",
