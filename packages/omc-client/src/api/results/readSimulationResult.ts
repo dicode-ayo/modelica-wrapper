@@ -14,12 +14,11 @@
  * brace-list (e.g. `{a.b, a[1].b[3].c}`). OMC's own `size = 0` ("any size")
  * silently returns an empty matrix on some result formats instead of the
  * documented behavior, so a `size` of 0 (or omitted) here is resolved via
- * `readSimulationResultSize` first and that row count is passed through —
- * callers never see the raw `size = 0` bug. Passing a non-zero `size`
- * still requires an exact match to the file's row count, which is
- * approximately (solver-dependent) the number of simulated intervals plus
- * 2 — OMC duplicates the final time point. Leave `size` at its default
- * instead of computing it yourself.
+ * `readSimulationResultSize` first and that row count is passed through
+ * instead — callers never reach the raw `size = 0` bug, whether the
+ * resolved count turns out zero or not. Passing a non-zero `size` still
+ * requires an exact match to the file's row count, which is
+ * solver-dependent and not safely computed caller-side.
  */
 
 import { z } from "zod";
@@ -46,10 +45,8 @@ export const ReadSimulationResultInputSchema = z.strictObject({
     .optional()
     .default(0)
     .describe(
-      "Number of rows expected; 0 (default) resolves the file's actual row " +
-        "count for you, non-zero must match the file exactly. Leave it at " +
-        "0 rather than computing it — the row count is solver-dependent, " +
-        "only approximately numberOfIntervals + 2.",
+      "Number of rows expected; 0 (default) resolves the file's actual " +
+        "row count for you, non-zero must match the file exactly.",
     ),
 });
 export type ReadSimulationResultInput = z.input<
@@ -69,15 +66,13 @@ export type ReadSimulationResultOutput = z.infer<
 
 export const ReadSimulationResultDescription =
   "Read the values of named variables from a simulation result file as a 2D `Real[:, :]` matrix. " +
-  "A row count of 0 (default) resolves the file's real row count automatically — leave it at 0 " +
-  "rather than computing it yourself, since the row count is solver-dependent.";
+  "A row count of 0 (default) resolves the file's real row count automatically.";
 
 async function resolveSize(
   ctx: CallContext,
   input: ReadSimulationResultInput,
 ): Promise<number> {
-  const requestedSize = input.size ?? 0;
-  if (requestedSize !== 0) return requestedSize;
+  if (input.size !== undefined && input.size !== 0) return input.size;
   const { size } = await readSimulationResultSize(ctx, {
     fileName: input.filename,
   });
@@ -89,6 +84,15 @@ export async function readSimulationResult(
   input: ReadSimulationResultInput,
 ): Promise<ReadSimulationResultOutput> {
   const size = await resolveSize(ctx, input);
+  // A resolved size of 0 is the one value that would reach OMC's own
+  // `size = 0` path, which this function exists to avoid.
+  if (size === 0) {
+    return parseOutput(
+      ReadSimulationResultOutputSchema,
+      { result: [] },
+      "readSimulationResult",
+    );
+  }
   const variableList = `{${input.variables.join(", ")}}`;
   const raw = await ctx.call(
     `readSimulationResult(${quote(input.filename)}, ${variableList}, ${size})`,

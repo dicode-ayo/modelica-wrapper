@@ -1,9 +1,7 @@
 /**
- * `readSimulationResult`'s documented `size = 0` ("reads any size") silently
- * returns an empty matrix on some result formats instead of the actual
- * rows (#699). A `size` of 0 (or omitted) is resolved via
- * `readSimulationResultSize` first, so the OMC-side `size = 0` bug is never
- * reached.
+ * OMC's documented `size = 0` ("reads any size") silently returns an empty
+ * matrix on some result formats instead of the actual rows, so a `size` of 0
+ * (or omitted) is resolved via `readSimulationResultSize` first.
  */
 
 import { describe, expect, it } from "vitest";
@@ -20,10 +18,11 @@ function stubCtx(responses: Record<string, string>): {
   const ctx: CallContext = {
     async call(cmd) {
       sent.push(cmd);
-      for (const [prefix, response] of Object.entries(responses)) {
-        if (cmd.startsWith(prefix)) return response;
+      const response = responses[cmd];
+      if (response === undefined) {
+        throw new Error(`stubCtx: no response configured for "${cmd}"`);
       }
-      throw new Error(`stubCtx: no response configured for "${cmd}"`);
+      return response;
     },
     async getErrorString() {
       return { errorString: "" };
@@ -36,7 +35,8 @@ describe("readSimulationResult: size = 0 resolution", () => {
   it("resolves size via readSimulationResultSize instead of passing 0 through", async () => {
     const { ctx, sent } = stubCtx({
       'readSimulationResultSize("run.csv")': "12",
-      "readSimulationResult(": "{{0.0, 0.1}, {1.0, 0.9}}",
+      'readSimulationResult("run.csv", {time, x}, 12)':
+        "{{0.0, 0.1}, {1.0, 0.9}}",
     });
 
     const out = await readSimulationResult(ctx, {
@@ -56,7 +56,8 @@ describe("readSimulationResult: size = 0 resolution", () => {
 
   it("passes an explicit non-zero size straight through, without resolving it", async () => {
     const { ctx, sent } = stubCtx({
-      "readSimulationResult(": "{{0.0, 0.1}, {1.0, 0.9}}",
+      'readSimulationResult("run.mat", {time, x}, 12)':
+        "{{0.0, 0.1}, {1.0, 0.9}}",
     });
 
     await readSimulationResult(ctx, {
@@ -68,10 +69,9 @@ describe("readSimulationResult: size = 0 resolution", () => {
     expect(sent).toEqual(['readSimulationResult("run.mat", {time, x}, 12)']);
   });
 
-  it("returns an empty matrix, not an error, when the file genuinely has 0 rows", async () => {
+  it("returns an empty matrix without a readSimulationResult call when the file has 0 rows", async () => {
     const { ctx, sent } = stubCtx({
       'readSimulationResultSize("empty.csv")': "0",
-      "readSimulationResult(": "{}",
     });
 
     const out = await readSimulationResult(ctx, {
@@ -80,9 +80,8 @@ describe("readSimulationResult: size = 0 resolution", () => {
     });
 
     expect(out.result).toEqual([]);
-    expect(sent).toEqual([
-      'readSimulationResultSize("empty.csv")',
-      'readSimulationResult("empty.csv", {time}, 0)',
-    ]);
+    // Passing the resolved 0 through to readSimulationResult would reach
+    // exactly the OMC bug this function exists to avoid.
+    expect(sent).toEqual(['readSimulationResultSize("empty.csv")']);
   });
 });

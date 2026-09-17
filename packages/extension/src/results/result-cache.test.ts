@@ -178,6 +178,7 @@ describe("ResultCache invalidation", () => {
     mtime = 200; // file rewritten
     await cache.trajectory("a.mat", "motor.w");
     expect(reader.seriesCalls).toBe(2); // re-read
+    expect(reader.sizeCalls).toBe(2); // re-resolved, not carried across mtimes
     expect(reader.closeCalls).toBe(1); // old handle released first
   });
 
