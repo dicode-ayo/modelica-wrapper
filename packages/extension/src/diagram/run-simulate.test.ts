@@ -34,14 +34,22 @@ function makeClient(opts: {
   resultFile?: string;
   errorString?: string;
 }): OmcClient {
+  let pending = "";
   return {
-    simulate: async () => ({
-      simulationResult: simulationResult({
-        resultFile: opts.resultFile ?? "res.mat",
-        messages: "",
-      }),
-    }),
-    getErrorString: async () => ({ errorString: opts.errorString ?? "" }),
+    simulate: async () => {
+      pending = opts.errorString ?? "";
+      return {
+        simulationResult: simulationResult({
+          resultFile: opts.resultFile ?? "res.mat",
+          messages: "",
+        }),
+      };
+    },
+    getErrorString: async () => {
+      const errorString = pending;
+      pending = "";
+      return { errorString };
+    },
     lastCall: "simulate(Demo)",
   } as unknown as OmcClient;
 }

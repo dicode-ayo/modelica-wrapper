@@ -20,7 +20,7 @@ import type {
   SaveClient,
   SourceTree,
 } from "@dicode/omc-client";
-import { looksLikeError, withErrorBuffer } from "@dicode/omc-client";
+import { looksLikeError, runQueued, withErrorBuffer } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { errorDetail } from "./error-detail.js";
@@ -131,13 +131,20 @@ const READS_ERROR_BUFFER = new Set<OmcFnName>([
  * name is one. The drain is serialized against every other caller sharing
  * this same client: the extension embeds this server on the OmcClient its
  * REPL and diagram editor use.
+ *
+ * A `READS_ERROR_BUFFER` call still goes through `runQueued` rather than a
+ * bare `client.invoke` — without that, it could land between some other
+ * queued mutation's own run and its final drain, and read the diagnostic
+ * that mutation is waiting to read back.
  */
 async function invokeDrained(
   client: McpToolClient,
   fn: OmcFnName,
   input: unknown,
 ): Promise<unknown> {
-  if (READS_ERROR_BUFFER.has(fn)) return client.invoke(fn, input);
+  if (READS_ERROR_BUFFER.has(fn)) {
+    return runQueued(client, () => client.invoke(fn, input));
+  }
   const { result, errorString } = await withErrorBuffer(client, () =>
     client.invoke(fn, input),
   );

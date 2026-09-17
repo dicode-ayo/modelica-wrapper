@@ -112,6 +112,61 @@ describe("dispatchByName's error-buffer drain under concurrency", () => {
     expect(fast.isError).toBeFalsy();
     expect(text(fast)).not.toContain("R is already declared");
   });
+
+  it("does not let a queued getErrorString read steal a mutation's own diagnostic", async () => {
+    // getErrorString is exempt from withErrorBuffer's own clear/drain (it IS
+    // the read), but it must still queue behind an in-flight mutation's turn
+    // — otherwise it can run between that mutation's invoke and its drain
+    // and read the diagnostic before the mutation ever sees it.
+    let buffer = "";
+    let releaseSlow: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    let signalReachedGate: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      signalReachedGate = resolve;
+    });
+
+    const client = baseClient({
+      getErrorString: async () => {
+        const errorString = buffer;
+        buffer = "";
+        return { errorString };
+      },
+      invoke: async (fn) => {
+        if (fn === "addComponent") {
+          buffer = "Error: An element with name R is already declared";
+          signalReachedGate();
+          await gate;
+          return { ok: true };
+        }
+        if (fn === "getErrorString") {
+          const errorString = buffer;
+          buffer = "";
+          return { errorString };
+        }
+        return { ok: true };
+      },
+    });
+    const deps: McpToolDeps = { ensureClient: async () => client, verdicts };
+
+    const slow = dispatchByName(deps, "addComponent", {
+      componentName: "r1",
+      componentClass: "Modelica.Electrical.Analog.Basic.Resistor",
+      intoTypeName: "Demo.Circuit",
+    });
+    await reachedGate;
+    const readPromise = dispatchByName(deps, "getErrorString", {});
+    releaseSlow();
+    const [slowResult, read] = await Promise.all([slow, readPromise]);
+
+    expect(slowResult.isError).toBe(true);
+    expect(text(slowResult)).toBe(
+      "Error: An element with name R is already declared",
+    );
+    expect(JSON.parse(text(read))).toEqual({ errorString: "" });
+  });
 });
 
 describe("dispatchByName's logging and failure notification", () => {

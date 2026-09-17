@@ -81,6 +81,7 @@ export {
 export { pathExists } from "./fs-util.js";
 export {
   looksLikeError,
+  runQueued,
   withErrorBuffer,
   type ErrorBufferClient,
 } from "./error-buffer.js";

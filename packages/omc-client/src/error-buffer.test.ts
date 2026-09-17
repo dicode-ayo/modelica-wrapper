@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikeError, withErrorBuffer } from "./error-buffer.js";
+import { looksLikeError, runQueued, withErrorBuffer } from "./error-buffer.js";
 
 describe("looksLikeError", () => {
   it("treats the literal word Error as a hard failure", () => {
@@ -119,5 +119,60 @@ describe("withErrorBuffer", () => {
 
     const { result } = await withErrorBuffer(client, async () => "recovered");
     expect(result).toBe("recovered");
+  });
+});
+
+describe("runQueued", () => {
+  it("runs without an extra clear or drain of its own", async () => {
+    const calls: string[] = [];
+    const client = {
+      getErrorString: async () => {
+        calls.push("getErrorString");
+        return { errorString: "" };
+      },
+    };
+
+    const result = await runQueued(client, async () => {
+      calls.push("run");
+      return "ok";
+    });
+
+    expect(result).toBe("ok");
+    expect(calls).toEqual(["run"]);
+  });
+
+  it("queues behind an in-flight withErrorBuffer turn instead of racing its drain", async () => {
+    let buffer = "";
+    let releaseSlow: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    let signalReachedGate: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      signalReachedGate = resolve;
+    });
+    const client = {
+      getErrorString: async () => {
+        const errorString = buffer;
+        buffer = "";
+        return { errorString };
+      },
+    };
+
+    const mutation = withErrorBuffer(client, async () => {
+      buffer = "Error: from the mutation";
+      signalReachedGate();
+      await gate;
+      return "done";
+    });
+    await reachedGate;
+    const read = runQueued(client, () => client.getErrorString());
+    releaseSlow();
+
+    const [{ errorString }, readResult] = await Promise.all([mutation, read]);
+    expect(errorString).toBe("Error: from the mutation");
+    // Queued behind the mutation's own drain, so the read only reaches the
+    // buffer after that drain already consumed the diagnostic.
+    expect(readResult).toEqual({ errorString: "" });
   });
 });

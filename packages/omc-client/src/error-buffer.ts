@@ -34,6 +34,24 @@ export function looksLikeError(errorString: string): boolean {
  */
 const turns = new WeakMap<ErrorBufferClient, Promise<unknown>>();
 
+function enqueue<T>(
+  client: ErrorBufferClient,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = turns.get(client) ?? Promise.resolve();
+  const turn = previous.then(run);
+  // Chained regardless of outcome — a rejected turn must not leave the next
+  // caller waiting on a promise that will never settle for them.
+  turns.set(
+    client,
+    turn.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return turn;
+}
+
 /**
  * Runs `run` with `client`'s error buffer cleared immediately before and
  * drained immediately after, the whole transaction serialized against any
@@ -45,27 +63,31 @@ const turns = new WeakMap<ErrorBufferClient, Promise<unknown>>();
  * message an unrelated earlier call left behind could be misread as this
  * call's own. Callers that need to read the buffer on purpose (an explicit
  * `getErrorString` or `getMessagesStringInternal`) must not route through
- * here — doing so would drain the very thing they're asking for.
+ * here — doing so would drain the very thing they're asking for; use
+ * {@link runQueued} instead.
  */
 export function withErrorBuffer<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<{ result: T; errorString: string }> {
-  const previous = turns.get(client) ?? Promise.resolve();
-  const turn = previous.then(async () => {
+  return enqueue(client, async () => {
     await client.getErrorString();
     const result = await run();
     const { errorString } = await client.getErrorString();
     return { result, errorString };
   });
-  // Chained regardless of outcome — a rejected turn must not leave the next
-  // caller waiting on a promise that will never settle for them.
-  turns.set(
-    client,
-    turn.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  return turn;
+}
+
+/**
+ * Runs `run` on the same per-client turn queue {@link withErrorBuffer} uses,
+ * without an extra clear or drain of its own. A direct `getErrorString` or
+ * `getMessagesStringInternal` call that skipped the queue entirely could
+ * still land between a queued mutation's own run and its final drain,
+ * consuming the diagnostic that mutation is waiting to read back.
+ */
+export function runQueued<T>(
+  client: ErrorBufferClient,
+  run: () => Promise<T>,
+): Promise<T> {
+  return enqueue(client, run);
 }
