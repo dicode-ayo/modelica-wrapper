@@ -162,6 +162,19 @@ There is also a generic dispatcher (`REGISTRY`, `invoke(fn, input)`) and the
 namespaced functional API (`browsing.*`, `contents.*`, … exported from
 [index.ts](../packages/omc-client/src/index.ts)).
 
+### Reading a simulation result's row count
+
+A result file (`.mat`/`.csv`/…) holds `numberOfIntervals + 2` rows — OMC
+duplicates the final time point on top of the simulated intervals plus the
+initial point. `readSimulationResult`'s own `size = 0` ("read any size") does
+not reliably honor that on every result format: on `.csv` it silently returns
+an empty matrix instead of the rows. `readSimulationResult` in
+[results/readSimulationResult.ts](../packages/omc-client/src/api/results/readSimulationResult.ts)
+works around this by resolving `size` through `readSimulationResultSize`
+first whenever the caller passes `0` or omits it, so the OMC-side bug is never
+reached; a caller who passes a non-zero `size` still needs it to match the
+file's row count exactly.
+
 ### The model-instance read path
 
 `getModelInstance(className, modifier="", prettyPrint=false)` returns the whole
