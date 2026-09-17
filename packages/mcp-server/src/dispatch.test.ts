@@ -113,3 +113,124 @@ describe("dispatchByName's error-buffer drain under concurrency", () => {
     expect(text(fast)).not.toContain("R is already declared");
   });
 });
+
+describe("dispatchByName's logging and failure notification", () => {
+  function makeLog(): {
+    log: { warn: (m: string) => void; info: (m: string) => void };
+    warnings: string[];
+    infos: string[];
+  } {
+    const warnings: string[] = [];
+    const infos: string[] = [];
+    return {
+      log: {
+        warn: (m) => warnings.push(m),
+        info: (m) => infos.push(m),
+      },
+      warnings,
+      infos,
+    };
+  }
+
+  it("logs a successful call's action and output, without notifying", async () => {
+    const { log, infos, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient();
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    await dispatchByName(deps, "getClassNames", { typeName: "Demo" });
+
+    expect(warnings).toEqual([]);
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toContain("getClassNames");
+    expect(infos[0]).toContain("Demo");
+    expect(notified).toEqual([]);
+  });
+
+  it("logs and notifies a call OMC left a diagnostic for", async () => {
+    const { log, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient({
+      getErrorString: async () => ({
+        errorString: "Error: An element with name R is already declared",
+      }),
+    });
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    await dispatchByName(deps, "addComponent", {
+      componentName: "r1",
+      componentClass: "Modelica.Electrical.Analog.Basic.Resistor",
+      intoTypeName: "Demo.Circuit",
+    });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("addComponent");
+    expect(warnings[0]).toContain("already declared");
+    expect(notified).toHaveLength(1);
+    expect(notified[0]).toContain("already declared");
+  });
+
+  it("logs and notifies a write-gate refusal", async () => {
+    const { log, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient();
+    const refusingVerdicts: WriteVerdictSource = {
+      forClass: async () => ({ ok: false, reason: "not your class to edit" }),
+    };
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts: refusingVerdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    await dispatchByName(deps, "addComponent", {
+      componentName: "r1",
+      componentClass: "Modelica.Electrical.Analog.Basic.Resistor",
+      intoTypeName: "Demo.Circuit",
+    });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("refused");
+    expect(notified).toHaveLength(1);
+    expect(notified[0]).toContain("not your class to edit");
+  });
+
+  it("truncates a huge logged value instead of flooding the channel", async () => {
+    const { log, infos } = makeLog();
+    const huge = "x".repeat(5000);
+    const client = baseClient({ invoke: async () => ({ contents: huge }) });
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+    };
+
+    await dispatchByName(deps, "listFile", { typeName: "Demo" });
+
+    expect(infos).toHaveLength(1);
+    expect(infos[0]?.length).toBeLessThan(huge.length);
+    expect(infos[0]).toContain("chars total");
+  });
+
+  it("works with neither log nor notifyFailure wired", async () => {
+    const client = baseClient();
+    const deps: McpToolDeps = { ensureClient: async () => client, verdicts };
+
+    const result = await dispatchByName(deps, "getClassNames", {
+      typeName: "Demo",
+    });
+
+    expect(result.isError).toBeFalsy();
+  });
+});

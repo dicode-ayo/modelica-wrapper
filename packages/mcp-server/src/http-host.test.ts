@@ -206,6 +206,22 @@ describe("the loopback MCP server", () => {
     expect(await pathExists(join(root, ".modelica"))).toBe(true);
   });
 
+  it("logs a dispatched call through the host's own log, unless deps already wired one", async () => {
+    const infos: string[] = [];
+    const started = createMcpHttpHost({
+      deps,
+      version: "1.2.3",
+      log: { warn: () => undefined, info: (m) => infos.push(m) },
+    });
+    host = started;
+    const endpoint = await started.start();
+    const session = await openSession(endpoint);
+
+    await callGetClassNames(endpoint, session);
+
+    expect(infos.some((m) => m.includes("getClassNames"))).toBe(true);
+  });
+
   it("rejects a body that is not JSON rather than handing it to the SDK", async () => {
     const { endpoint } = await serve();
 

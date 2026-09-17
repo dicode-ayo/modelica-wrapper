@@ -24,6 +24,7 @@ import { looksLikeError, withErrorBuffer } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { errorDetail } from "./error-detail.js";
+import type { McpLog } from "./log.js";
 import type {
   WriteAction,
   WriteVerdictClient,
@@ -82,6 +83,22 @@ export interface McpToolDeps {
    * `createClass` reports to the caller.
    */
   workspace?: SourceTree | undefined;
+  /**
+   * Where every dispatched call, its outcome, and any refusal are logged —
+   * the extension wires this to its own output channel (`createMcpHttpHost`'s
+   * `parked`). Absent in a host with nowhere to log to, or a test that
+   * doesn't care; {@link dispatchByName} treats it as optional throughout.
+   */
+  log?: McpLog | undefined;
+  /**
+   * Surfaces a refusal or a hard failure somewhere more visible than the log
+   * channel — the extension wires this to a VSCode error notification. An
+   * MCP tool call has no REPL transcript or webview of its own for a user to
+   * notice a failure in, unlike the extension's own diagram editor and REPL,
+   * so this is the surface that fills the same role there. Never called for
+   * a successful call.
+   */
+  notifyFailure?: ((message: string) => void) | undefined;
 }
 
 /** A class a tool writes that nothing in its wrapper's arguments names. */
@@ -111,6 +128,25 @@ const READS_ERROR_BUFFER = new Set<OmcFnName>([
   "getErrorString",
   "getMessagesStringInternal",
 ]);
+
+/**
+ * Bounds a value logged to the output channel — a class dump or a full
+ * source string can run past 300 KB (issue #658), which would otherwise
+ * flood the channel for one call.
+ */
+const MAX_LOGGED_CHARS = 2000;
+
+function loggable(value: unknown): string {
+  let text: string;
+  try {
+    text = JSON.stringify(value) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return text.length > MAX_LOGGED_CHARS
+    ? `${text.slice(0, MAX_LOGGED_CHARS)}… (${text.length} chars total)`
+    : text;
+}
 
 /**
  * Run `fn` with `input`, refusing first if the class it would write is not the
@@ -151,6 +187,13 @@ export async function dispatch<K extends OmcFnName>(
  * caller sharing this same client — the extension's REPL and diagram editor
  * included, since the extension embeds this server on the same OmcClient
  * instance those use.
+ *
+ * Every call, its outcome, and any refusal are logged via `deps.log` — an MCP
+ * tool call has no REPL transcript or webview of its own to show up in, so
+ * the output channel is the only place a user watching the extension sees
+ * what an agent actually did. A refusal or a hard failure additionally goes
+ * to `deps.notifyFailure`, the same visibility the extension's own REPL and
+ * diagram editor get from their transcripts.
  */
 export async function dispatchByName(
   deps: McpToolDeps,
@@ -158,6 +201,7 @@ export async function dispatchByName(
   input: unknown,
   gateOn?: GatedClass,
 ): Promise<CallToolResult> {
+  const { log, notifyFailure } = deps;
   try {
     const client = await deps.ensureClient();
     const refusal =
@@ -170,18 +214,27 @@ export async function dispatchByName(
             gateOn.className,
             gateOn.action,
           ));
-    if (refusal !== undefined) return errorResult(refusal);
+    if (refusal !== undefined) {
+      log?.warn(`${fn} ${loggable(input)} refused: ${refusal}`);
+      notifyFailure?.(`${fn} refused: ${refusal}`);
+      return errorResult(refusal);
+    }
 
     if (READS_ERROR_BUFFER.has(fn)) {
       const output = await client.invoke(fn, input);
+      log?.info(`${fn} ${loggable(input)} -> ${loggable(output)}`);
       return textResult(JSON.stringify(output));
     }
     const { result, errorString } = await withErrorBuffer(client, () =>
       client.invoke(fn, input),
     );
     if (looksLikeError(errorString)) throw new Error(errorString);
+    log?.info(`${fn} ${loggable(input)} -> ${loggable(result)}`);
     return textResult(JSON.stringify(result));
   } catch (err) {
-    return errorResult(errorDetail(err, fn));
+    const message = errorDetail(err, fn);
+    log?.warn(`${fn} ${loggable(input)} failed: ${message}`);
+    notifyFailure?.(`${fn} failed: ${message}`);
+    return errorResult(message);
   }
 }
