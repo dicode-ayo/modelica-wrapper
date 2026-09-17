@@ -1,3 +1,4 @@
+import { REGISTRY } from "@dicode/omc-client";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -50,5 +51,46 @@ describe("errorDetail", () => {
 
   it("falls back to the error message for a non-Zod error", () => {
     expect(errorDetail(new Error("boom"))).toBe("boom");
+  });
+});
+
+/**
+ * The same three shapes, against `@dicode/omc-client`'s real per-function
+ * schemas rather than ones built for this file — the schema `OmcClient.invoke`
+ * actually parses against. No `OmcClient` needed: a schema failure is
+ * decided before any OMC call would be made.
+ */
+describe("errorDetail against the real OMC registry schemas", () => {
+  it("renders getElements' wrong-typed typeName", () => {
+    const err = zodFailure(REGISTRY.getElements.inputSchema, { typeName: 42 });
+
+    expect(errorDetail(err, "getElements")).toBe(
+      "getElements.typeName: Invalid input: expected string, received number",
+    );
+  });
+
+  it("renders addComponent's two missing required arguments", () => {
+    const err = zodFailure(REGISTRY.addComponent.inputSchema, {
+      componentName: "r1",
+    });
+
+    expect(errorDetail(err, "addComponent")).toBe(
+      [
+        "addComponent.componentClass: Invalid input: expected string, received undefined",
+        "addComponent.intoTypeName: Invalid input: expected string, received undefined",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps getElements' modelicaName message for a bad typeName", () => {
+    const err = zodFailure(REGISTRY.getElements.inputSchema, {
+      typeName: "not a name)",
+    });
+
+    expect(errorDetail(err, "getElements")).toBe(
+      "getElements.typeName: must be a Modelica name — dot-separated identifiers, " +
+        'each optionally subscripted (e.g. "Modelica.Blocks.Math.Gain", "pins[3].p"), ' +
+        "or a single-quoted Q-IDENT",
+    );
   });
 });
