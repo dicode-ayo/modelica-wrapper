@@ -91,6 +91,7 @@ function fakeReader(): ResultReader {
   return {
     readSimulationResultVars: () =>
       Promise.resolve({ vars: ["time", "motor.w"] }),
+    readSimulationResultSize: () => Promise.resolve({ size: 3 }),
     readSimulationResult: () =>
       Promise.resolve({
         result: [

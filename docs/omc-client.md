@@ -164,16 +164,21 @@ namespaced functional API (`browsing.*`, `contents.*`, … exported from
 
 ### Reading a simulation result's row count
 
-A result file (`.mat`/`.csv`/…) holds `numberOfIntervals + 2` rows — OMC
-duplicates the final time point on top of the simulated intervals plus the
-initial point. `readSimulationResult`'s own `size = 0` ("read any size") does
-not reliably honor that on every result format: on `.csv` it silently returns
-an empty matrix instead of the rows. `readSimulationResult` in
+A result file's row count is solver-dependent — only approximately
+`numberOfIntervals + 2` (OMC duplicates the final time point on top of the
+simulated intervals plus the initial point), never an exact formula to
+compute from the caller's side. `readSimulationResult`'s own `size = 0`
+("read any size") does not reliably return the rows on every result format
+either: on `.csv` it silently returns an empty matrix instead.
+`readSimulationResult` in
 [results/readSimulationResult.ts](../packages/omc-client/src/api/results/readSimulationResult.ts)
-works around this by resolving `size` through `readSimulationResultSize`
-first whenever the caller passes `0` or omits it, so the OMC-side bug is never
-reached; a caller who passes a non-zero `size` still needs it to match the
-file's row count exactly.
+works around both by resolving `size` through `readSimulationResultSize`
+first whenever the caller passes `0` or omits it, so neither the OMC-side bug
+nor the exact-count guesswork reaches the caller. `ResultCache` in
+[extension/src/results/result-cache.ts](../packages/extension/src/results/result-cache.ts)
+resolves that size once per result file and passes it explicitly on every
+subsequent `readSimulationResult` call for the same file, rather than paying
+the extra `readSimulationResultSize` round trip per variable.
 
 ### The model-instance read path
 

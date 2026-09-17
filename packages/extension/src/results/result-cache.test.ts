@@ -4,6 +4,7 @@ import { ResultCache, type ResultReader } from "./result-cache.js";
 
 type Counting = ResultReader & {
   varsCalls: number;
+  sizeCalls: number;
   seriesCalls: number;
   closeCalls: number;
 };
@@ -11,11 +12,16 @@ type Counting = ResultReader & {
 function fakeReader(overrides: Partial<ResultReader> = {}): Counting {
   return {
     varsCalls: 0,
+    sizeCalls: 0,
     seriesCalls: 0,
     closeCalls: 0,
     async readSimulationResultVars() {
       this.varsCalls++;
       return { vars: ["time", "motor.w", "motor.i"] };
+    },
+    async readSimulationResultSize() {
+      this.sizeCalls++;
+      return { size: 3 };
     },
     async readSimulationResult() {
       this.seriesCalls++;
@@ -73,6 +79,18 @@ describe("ResultCache.trajectory", () => {
     expect(traj).toEqual({ t: [0, 1, 2], values: [10, 20, 30] });
     await cache.trajectory("a.mat", "motor.w");
     expect(reader.seriesCalls).toBe(1); // cached
+  });
+
+  it("resolves the file's size once and reuses it across variables", async () => {
+    const reader = fakeReader();
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+    await cache.trajectory("a.mat", "motor.w");
+    await cache.trajectory("a.mat", "motor.i");
+    expect(reader.sizeCalls).toBe(1); // not once per variable
+    expect(reader.seriesCalls).toBe(2);
   });
 
   it("undefined when the file is missing", async () => {
