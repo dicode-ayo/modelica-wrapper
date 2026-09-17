@@ -12,6 +12,12 @@
  * `name=value` string with values resolved through inheritance and
  * modifications — useful as a display layer when the source-level binding
  * is just `parameter Real k = default.k`.
+ *
+ * Scoped to the parameters the class declares directly: a subcomponent's
+ * parameters (the normal shape for anything built by `addComponent`) are not
+ * included, and the class comes back with an empty result rather than an
+ * error. Read a subcomponent's value with `getElementModifierValues`
+ * (dotted modifier path, e.g. `resistor.R`).
  */
 
 import { z } from "zod";
@@ -38,7 +44,7 @@ export type GetInstantiatedParametersAndValuesOutput = z.infer<
 >;
 
 export const GetInstantiatedParametersAndValuesDescription =
-  "Return parameter name=value bindings of an instantiated class with inheritance and modifications resolved.";
+  "Return name=value bindings for the parameters this class declares directly, with inheritance and its own modifications resolved. Does not descend into subcomponents — a class whose parameters live on its subcomponents (the normal shape for anything built by addComponent) returns an empty list, not an error. For a subcomponent's value (e.g. `resistor.R`), use getElementModifierValues with a dotted modifier path.";
 
 export async function getInstantiatedParametersAndValues(
   ctx: CallContext,

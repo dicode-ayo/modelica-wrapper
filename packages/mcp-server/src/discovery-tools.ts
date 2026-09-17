@@ -151,7 +151,7 @@ export function registerDiscoveryTools(
     "omc_invoke",
     {
       description:
-        "Call any OMC scripting function by name with named arguments, validated against its schema. Argument names are this API's, which differ from the OMC scripting docs in places (`typeName`, not `cl`) — use omc_describe_function first for the exact shape.",
+        "Call any OMC scripting function by name, validated against its schema. This tool's own arguments are `fn` (the function name) and `input` (an object of that function's named arguments) — not the function's arguments directly. Argument names inside `input` are this API's, which differ from the OMC scripting docs in places (`typeName`, not `cl`) — use omc_describe_function first for the exact shape.",
       inputSchema: InvokeSchema,
       annotations: { readOnlyHint: false },
     },
