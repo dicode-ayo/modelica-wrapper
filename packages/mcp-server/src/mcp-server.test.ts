@@ -8,7 +8,7 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import type { SourceTree } from "@dicode/omc-client";
+import { REGISTRY, type SourceTree } from "@dicode/omc-client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -30,7 +30,8 @@ const SYSTEM_LIBRARY_FILE = "/lib/Modelica 4.1.0+maint.om/Blocks/Math.mo";
 const REFUSAL = `Cannot edit ${SYSTEM_LIBRARY} — it belongs to a read-only system library.`;
 
 const calls: Call[] = [];
-let failWith: string | undefined;
+/** A message throws `new Error(failWith)`; an `Error` (a `ZodError` included) throws as given. */
+let failWith: string | Error | undefined;
 
 let sourceFile = "/w/Demo.mo";
 let loaded: Set<string>;
@@ -55,7 +56,9 @@ let workspace: SourceTree | undefined;
 const client: McpToolClient = {
   invoke: async (fn, input) => {
     calls.push({ fn, input });
-    if (failWith !== undefined) throw new Error(failWith);
+    if (failWith !== undefined) {
+      throw failWith instanceof Error ? failWith : new Error(failWith);
+    }
     return { ok: true };
   },
   deleteClass: async (input) => {
@@ -643,6 +646,25 @@ describe("the escape hatch", () => {
     });
 
     expect(calls).toEqual([{ fn: "setSourceFile", input }]);
+  });
+
+  it("renders a bad-argument ZodError as one line per problem, not the raw issue array", async () => {
+    // The real schema `OmcClient.invoke` parses against, so the rendering is
+    // pinned against what it actually throws rather than a hand-built stand-in.
+    const parsed = REGISTRY.getElements.inputSchema.safeParse({ typeName: 42 });
+    if (parsed.success) throw new Error("expected the parse to fail");
+    failWith = parsed.error;
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "getElements", input: { typeName: 42 } },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toBe(
+      "getElements.typeName: Invalid input: expected string, received number",
+    );
   });
 });
 
