@@ -26,10 +26,12 @@ export function buildMcpServer(deps: McpToolDeps, version: string): McpServer {
     { instructions: SERVER_INSTRUCTIONS },
   );
   registerParityTools(server, deps);
-  registerClassTools(server, deps);
-  registerSaveTools(server, deps);
-  registerSourceTools(server, deps);
-  registerShapeTools(server, deps);
-  registerDiscoveryTools(server, deps);
+  const composites = [
+    ...registerClassTools(server, deps),
+    ...registerSaveTools(server, deps),
+    ...registerSourceTools(server, deps),
+    ...registerShapeTools(server, deps),
+  ];
+  registerDiscoveryTools(server, deps, new Set(composites));
   return server;
 }

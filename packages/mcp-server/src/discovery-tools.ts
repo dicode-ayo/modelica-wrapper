@@ -94,8 +94,18 @@ function unknownArguments(
   return Object.keys(input).filter((name) => !known.has(name));
 }
 
-/** The refusal for a name the registry does not hold, naming its neighbors. */
-function unknownFunction(name: string): string {
+/**
+ * The refusal for a name the registry does not hold, naming its neighbors —
+ * or, for a name one of the other tool modules published, pointing at its
+ * own `tools/list` entry instead of this structurally-can't-hold-it index.
+ */
+function unknownFunction(
+  name: string,
+  publishedToolNames: ReadonlySet<string>,
+): string {
+  if (publishedToolNames.has(name)) {
+    return `${name} is a tool this server publishes, not an OMC scripting function. Its arguments are in its own tools/list entry.`;
+  }
   const needle = name.toLowerCase();
   const close = omcFunctionNames
     .filter((n) => n.toLowerCase().includes(needle))
@@ -107,9 +117,16 @@ function unknownFunction(name: string): string {
   return `No OMC function named ${name}. ${hint}`;
 }
 
+/**
+ * `publishedToolNames` is the set of MCP tools the other register* calls
+ * already published before this one runs — every composite `mcp-server.ts`
+ * builds from one or more registry calls, so `unknownFunction` can point a
+ * caller at the right index instead of a registry search guaranteed to miss.
+ */
 export function registerDiscoveryTools(
   server: McpServer,
   deps: McpToolDeps,
+  publishedToolNames: ReadonlySet<string>,
 ): void {
   server.registerTool(
     "omc_list_functions",
@@ -140,7 +157,8 @@ export function registerDiscoveryTools(
       annotations: { readOnlyHint: true },
     },
     async ({ name }) => {
-      if (!isOmcFnName(name)) return errorResult(unknownFunction(name));
+      if (!isOmcFnName(name))
+        return errorResult(unknownFunction(name, publishedToolNames));
       return textResult(
         JSON.stringify(describeFunctionInputAsJsonSchema(name)),
       );
@@ -156,7 +174,8 @@ export function registerDiscoveryTools(
       annotations: { readOnlyHint: false },
     },
     async ({ fn, input }) => {
-      if (!isOmcFnName(fn)) return errorResult(unknownFunction(fn));
+      if (!isOmcFnName(fn))
+        return errorResult(unknownFunction(fn, publishedToolNames));
       const unknown = unknownArguments(fn, input);
       if (unknown.length > 0) {
         return errorResult(
