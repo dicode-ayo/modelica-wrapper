@@ -15,10 +15,10 @@
  * silently returns an empty matrix on some result formats instead of the
  * documented behavior, so a `size` of 0 (or omitted) here is resolved via
  * `readSimulationResultSize` first and that row count is passed through
- * instead — callers never reach the raw `size = 0` bug, whether the
- * resolved count turns out zero or not. Passing a non-zero `size` still
- * requires an exact match to the file's row count, which is
- * solver-dependent and not safely computed caller-side.
+ * instead. Passing a non-zero `size` still requires an exact match to the
+ * file's row count, which is solver-dependent and not safely computed
+ * caller-side. The two calls this resolution takes are not atomic against
+ * a concurrent rewrite of the same file (dicode-ayo/modelica-wrapper#712).
  */
 
 import { z } from "zod";
@@ -42,6 +42,7 @@ export const ReadSimulationResultInputSchema = z.strictObject({
   size: z
     .number()
     .int()
+    .nonnegative()
     .optional()
     .default(0)
     .describe(
@@ -65,8 +66,7 @@ export type ReadSimulationResultOutput = z.infer<
 >;
 
 export const ReadSimulationResultDescription =
-  "Read the values of named variables from a simulation result file as a 2D `Real[:, :]` matrix. " +
-  "A row count of 0 (default) resolves the file's real row count automatically.";
+  "Read the values of named variables from a simulation result file as a 2D `Real[:, :]` matrix.";
 
 async function resolveSize(
   ctx: CallContext,

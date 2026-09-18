@@ -240,8 +240,7 @@ end ${pkg};
 
   it("readSimulationResultSize's count is the exact row count readSimulationResult reads back", async () => {
     // readSimulationResult resolves size:0 by trusting this value as an
-    // exact match (issue #699) — pin that the two APIs agree on what
-    // "size" counts, not just that each is independently plausible.
+    // exact match, so pin that the two APIs agree on what "size" counts.
     const { size } = await client.readSimulationResultSize({
       fileName: resultFile,
     });
@@ -320,7 +319,10 @@ end ${pkg};
       variables: ["time", "x"],
     });
     expect(result.length).toBe(2);
-    const [timeRow, xRow] = result as [number[], number[]];
+    const [timeRow, xRow] = result;
+    if (timeRow === undefined || xRow === undefined) {
+      throw new Error("readSimulationResult returned fewer than two rows");
+    }
     expect(timeRow.length).toBeGreaterThan(0);
     expect(xRow.length).toBe(timeRow.length);
   });
