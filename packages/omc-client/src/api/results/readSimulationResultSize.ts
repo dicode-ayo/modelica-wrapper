@@ -25,6 +25,7 @@ export const ReadSimulationResultSizeOutputSchema = z.object({
   size: z
     .number()
     .int()
+    .nonnegative()
     .describe("Number of stored rows (time points) in the result file."),
 });
 export type ReadSimulationResultSizeOutput = z.infer<

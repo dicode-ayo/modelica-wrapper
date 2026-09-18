@@ -1,9 +1,3 @@
-/**
- * OMC's documented `size = 0` ("reads any size") silently returns an empty
- * matrix on some result formats instead of the actual rows, so a `size` of 0
- * (or omitted) is resolved via `readSimulationResultSize` first.
- */
-
 import { describe, expect, it } from "vitest";
 
 import type { CallContext } from "../../_shared/callContext.js";
