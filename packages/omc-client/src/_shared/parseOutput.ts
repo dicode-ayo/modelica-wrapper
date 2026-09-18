@@ -31,6 +31,9 @@ export function parseOutput<T>(
   return result.data;
 }
 
+/** Stands in when OMC failed a call and left the buffer empty. */
+export const NO_REASON = "OMC gave no reason";
+
 /**
  * OMC's reason for a call that failed without saying so in its return value,
  * or `undefined` when the buffer holds nothing that reads as a failure.

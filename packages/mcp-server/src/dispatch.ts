@@ -21,6 +21,7 @@ import type {
   SourceTree,
 } from "@dicode/omc-client";
 import {
+  OmcDiagnosticError,
   isReadOnlyFunction,
   looksLikeError,
   runQueued,
@@ -135,13 +136,6 @@ const READS_ERROR_BUFFER = new Set<OmcFnName>([
   "getErrorString",
   "getMessagesStringInternal",
 ]);
-
-/**
- * A failure OMC reported through its error buffer rather than by throwing.
- * Distinguishes an answer the model can act on from a transport fault or a
- * dead client, which reach the same `catch`.
- */
-class OmcDiagnosticError extends Error {}
 
 /**
  * Many OMC mutations answer `success: true` (or nothing distinguishing at

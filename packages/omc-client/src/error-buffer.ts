@@ -31,6 +31,13 @@ export function looksLikeError(errorString: string): boolean {
 }
 
 /**
+ * A failure OMC reported through its error buffer rather than by throwing.
+ * Distinguishes an answer the caller can act on from a transport fault or a
+ * dead client, which reach the same `catch`.
+ */
+export class OmcDiagnosticError extends Error {}
+
+/**
  * One turn queue per client instance, keyed by identity (a `WeakMap`) so
  * unrelated `OmcClient` instances — e.g. one per test — never share a queue.
  */

@@ -12,7 +12,12 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
-import { failureReason, parseOutput } from "../../_shared/parseOutput.js";
+import {
+  NO_REASON,
+  failureReason,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
+import { OmcDiagnosticError } from "../../error-buffer.js";
 import { expectInt, parse } from "../../parse.js";
 
 export const ReadSimulationResultSizeInputSchema = z.strictObject({
@@ -47,10 +52,8 @@ export async function readSimulationResultSize(
   );
   const size = expectInt(parse(raw));
   if (size < 0) {
-    const reason =
-      (await failureReason(ctx)) ??
-      "OMC could not read the file and left no reason";
-    throw new Error(`readSimulationResultSize: ${reason}`);
+    const reason = (await failureReason(ctx)) ?? NO_REASON;
+    throw new OmcDiagnosticError(`readSimulationResultSize: ${reason}`);
   }
   return parseOutput(
     ReadSimulationResultSizeOutputSchema,

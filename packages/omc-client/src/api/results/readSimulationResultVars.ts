@@ -12,6 +12,7 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { failureReason, parseOutput } from "../../_shared/parseOutput.js";
+import { OmcDiagnosticError } from "../../error-buffer.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const ReadSimulationResultVarsInputSchema = z.strictObject({
@@ -60,7 +61,7 @@ export async function readSimulationResultVars(
   if (vars.length === 0) {
     const reason = await failureReason(ctx);
     if (reason !== undefined) {
-      throw new Error(`readSimulationResultVars: ${reason}`);
+      throw new OmcDiagnosticError(`readSimulationResultVars: ${reason}`);
     }
   }
   return parseOutput(

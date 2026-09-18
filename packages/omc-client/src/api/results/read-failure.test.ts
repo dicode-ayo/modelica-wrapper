@@ -19,11 +19,8 @@ const MISSING_FILE =
 function stubCtx(
   responses: Record<string, string>,
   errorString = "",
-): {
-  ctx: CallContext;
-  reads: number;
-} {
-  const state = { reads: 0 };
+): { ctx: CallContext; reads: () => number } {
+  let reads = 0;
   const ctx: CallContext = {
     async call(cmd) {
       const response = responses[cmd];
@@ -33,16 +30,11 @@ function stubCtx(
       return response;
     },
     async getErrorString() {
-      state.reads += 1;
+      reads += 1;
       return { errorString };
     },
   };
-  return {
-    ctx,
-    get reads() {
-      return state.reads;
-    },
-  };
+  return { ctx, reads: () => reads };
 }
 
 describe("a read OMC could not perform reports OMC's reason", () => {
@@ -81,7 +73,7 @@ describe("a read OMC could not perform reports OMC's reason", () => {
 
     await readSimulationResultVars(stub.ctx, { fileName: "run.mat" });
 
-    expect(stub.reads).toBe(0);
+    expect(stub.reads()).toBe(0);
   });
 
   it("raises the buffered reason for a -1 row count rather than a shape mismatch", async () => {
