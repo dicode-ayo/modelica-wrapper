@@ -3,13 +3,16 @@
  *
  * Returns the number of stored rows (time points) in the result file — the
  * exact `size` `readSimulationResult` requires to read the file in full.
+ *
+ * A file OMC cannot open (missing, or carrying a suffix it does not know)
+ * answers `-1` rather than failing, with the reason in the error buffer.
  */
 
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
+import { parseOutput, readFailure } from "../../_shared/parseOutput.js";
 import { expectInt, parse } from "../../parse.js";
 
 export const ReadSimulationResultSizeInputSchema = z.strictObject({
@@ -42,9 +45,13 @@ export async function readSimulationResultSize(
   const raw = await ctx.call(
     `readSimulationResultSize(${quote(input.fileName)})`,
   );
+  const size = expectInt(parse(raw));
+  if (size < 0) {
+    throw await readFailure(ctx, "readSimulationResultSize");
+  }
   return parseOutput(
     ReadSimulationResultSizeOutputSchema,
-    { size: expectInt(parse(raw)) },
+    { size },
     "readSimulationResultSize",
   );
 }

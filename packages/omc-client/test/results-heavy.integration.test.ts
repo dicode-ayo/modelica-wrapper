@@ -10,6 +10,7 @@
  *   simulate (in beforeAll, also asserted in its own test)
  *   translateModel / buildModel / translateModelXML
  *   readSimulationResultSize / readSimulationResultVars / readSimulationResult / val
+ *   the reasons those three give for a read OMC could not perform
  *   filterSimulationResults / deltaSimulationResults / diffSimulationResults
  *   closeSimulationResultFile
  *
@@ -274,6 +275,56 @@ end ${pkg};
     for (const v of noParams.vars) {
       expect(withParams.vars).toContain(v);
     }
+  });
+
+  // === Reads OMC cannot perform ===
+
+  it("readSimulationResultVars names a file it could not open (#720)", async () => {
+    await expect(
+      client.readSimulationResultVars({
+        fileName: join(tempDir, "does-not-exist.mat"),
+      }),
+    ).rejects.toThrow(/does-not-exist\.mat/);
+  });
+
+  it("readSimulationResultSize names a file it could not open, rather than answering -1", async () => {
+    await expect(
+      client.readSimulationResultSize({
+        fileName: join(tempDir, "does-not-exist.mat"),
+      }),
+    ).rejects.toThrow(/does-not-exist\.mat/);
+  });
+
+  it("readSimulationResult reports a size that does not match the file (#681)", async () => {
+    const { size } = await client.readSimulationResultSize({
+      fileName: resultFile,
+    });
+    await expect(
+      client.readSimulationResult({
+        filename: resultFile,
+        variables: ["time"],
+        size: size - 1,
+      }),
+    ).rejects.toThrow(/dimension sizes do not match/);
+  });
+
+  it("readSimulationResult names a file it could not open, given a size it cannot check first", async () => {
+    await expect(
+      client.readSimulationResult({
+        filename: join(tempDir, "does-not-exist.mat"),
+        variables: ["time"],
+        size: 12,
+      }),
+    ).rejects.toThrow(/does-not-exist\.mat/);
+  });
+
+  it("readSimulationResult names a variable the result does not hold", async () => {
+    await expect(
+      client.readSimulationResult({
+        filename: resultFile,
+        variables: ["nosuchvariable"],
+      }),
+    ).rejects.toThrow(/nosuchvariable/);
   });
 
   // === Numerical reads ===

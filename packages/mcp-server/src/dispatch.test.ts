@@ -5,7 +5,7 @@
  * `mcp-server.test.ts` drives doesn't give a test.
  */
 
-import { REGISTRY } from "@dicode/omc-client";
+import { OmcDiagnosticError, REGISTRY } from "@dicode/omc-client";
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 
@@ -317,6 +317,35 @@ describe("dispatchByName's logging and failure notification", () => {
     expect(warnings).toHaveLength(1);
     expect(notified).toHaveLength(1);
     expect(notified[0]).toContain("omc client closed");
+  });
+
+  it("keeps a read that raised OMC's reason itself between the model and the tool", async () => {
+    // A wrapper that reads the buffer itself throws `OmcDiagnosticError`, so
+    // its failure is classified the way `invokeDrained`'s own would be.
+    const { log, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient({
+      invoke: async () => {
+        throw new OmcDiagnosticError(
+          "readSimulationResultVars: Error: Failed to open simulation result gone.mat",
+        );
+      },
+    });
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    const result = await dispatchByName(deps, "readSimulationResultVars", {
+      fileName: "gone.mat",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("Failed to open simulation result");
+    expect(warnings).toHaveLength(1);
+    expect(notified).toEqual([]);
   });
 
   it("logs and notifies a write-gate refusal", async () => {

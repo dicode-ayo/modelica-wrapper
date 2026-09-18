@@ -80,6 +80,7 @@ export {
 } from "./declare-class.js";
 export { pathExists } from "./fs-util.js";
 export {
+  OmcDiagnosticError,
   looksLikeError,
   runQueued,
   withErrorBuffer,
