@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.1](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.1.0...@dicode/omc-client-v0.1.1) (2026-09-18)
+
+
+### Features
+
+* **mcp:** publish saveClass so an edit outlives OMC's memory ([#682](https://github.com/dicode-ayo/modelica-wrapper/issues/682)) ([9385299](https://github.com/dicode-ayo/modelica-wrapper/commit/9385299fb668287490e2a294d43953e4f2b85799))
+
+
+### Bug Fixes
+
+* defer the simulate window to the model's experiment annotation ([ec94259](https://github.com/dicode-ayo/modelica-wrapper/commit/ec942592798f8dc3335f71bde7550adb6c8c502a))
+* **mcp-server:** describe fixed-length tuples so every client accepts them ([#691](https://github.com/dicode-ayo/modelica-wrapper/issues/691)) ([2535be1](https://github.com/dicode-ayo/modelica-wrapper/commit/2535be1e0554e4f634ab6aca239fa81e11646eef))
+* **mcp-server:** judge a write by the Modelica text it carries ([#680](https://github.com/dicode-ayo/modelica-wrapper/issues/680)) ([03683b7](https://github.com/dicode-ayo/modelica-wrapper/commit/03683b7d695b2530af4faf9db6217a398b8d6e3b)), closes [#673](https://github.com/dicode-ayo/modelica-wrapper/issues/673)
+* **mcp:** describe three tools' actual shape instead of an implied one ([#707](https://github.com/dicode-ayo/modelica-wrapper/issues/707)) ([2ef955f](https://github.com/dicode-ayo/modelica-wrapper/commit/2ef955fa665d50821cb4ad5dbd1dff4f6e3fe01e))
+* **omc-client:** drain OMC's error buffer around every mutation, serialized per client ([64841d8](https://github.com/dicode-ayo/modelica-wrapper/commit/64841d8cb9683b5e2d960c5ad26d82c725122ffe))
+* **omc-client:** keep memory-only classes out of a from-scratch package.order ([#668](https://github.com/dicode-ayo/modelica-wrapper/issues/668)) ([57272a4](https://github.com/dicode-ayo/modelica-wrapper/commit/57272a48648c5bda6c4d676f81dee7a4e806b789)), closes [#653](https://github.com/dicode-ayo/modelica-wrapper/issues/653)
+* **omc-client:** refuse a simulate argument that will not survive the shell ([#689](https://github.com/dicode-ayo/modelica-wrapper/issues/689)) ([4a77738](https://github.com/dicode-ayo/modelica-wrapper/commit/4a7773807c38ff26c5c56decaad1dfdc6a2072ae))
+* **omc-client:** report OMC's reason for a result read it could not perform ([#722](https://github.com/dicode-ayo/modelica-wrapper/issues/722)) ([1bc4e21](https://github.com/dicode-ayo/modelica-wrapper/commit/1bc4e210af5eaa139e3362d139a45f40c60228f5)), closes [#720](https://github.com/dicode-ayo/modelica-wrapper/issues/720) [#681](https://github.com/dicode-ayo/modelica-wrapper/issues/681)
+* **omc-client:** resolve readSimulationResult's size:0 instead of trusting OMC ([#710](https://github.com/dicode-ayo/modelica-wrapper/issues/710)) ([9e05589](https://github.com/dicode-ayo/modelica-wrapper/commit/9e055895db60a68ac562295a08e550f44b4d05af))
+* **omc-client:** stop listFile's description claiming it reads the file ([#705](https://github.com/dicode-ayo/modelica-wrapper/issues/705)) ([2287517](https://github.com/dicode-ayo/modelica-wrapper/commit/22875178f89810008dcf2f2e339e5e364bd06ec0))
+* **omc-client:** validate command arguments before interpolating them ([#664](https://github.com/dicode-ayo/modelica-wrapper/issues/664)) ([1546a49](https://github.com/dicode-ayo/modelica-wrapper/commit/1546a495a3f981bf6020a53607b11d43f19c2268)), closes [#656](https://github.com/dicode-ayo/modelica-wrapper/issues/656)
+
+
+### Code Refactoring
+
+* **omc-client:** share the working directory OMC builds into ([#690](https://github.com/dicode-ayo/modelica-wrapper/issues/690)) ([c303055](https://github.com/dicode-ayo/modelica-wrapper/commit/c3030556d192f153602e7c59bee56ff96fe7e443))
+
 ## [0.1.0](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.0.5...@dicode/omc-client-v0.1.0) (2026-09-12)
 
 
