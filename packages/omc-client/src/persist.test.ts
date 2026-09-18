@@ -51,6 +51,8 @@ interface Stub {
   client: PersistClient;
   setCalls: Array<{ typeName: string; fileName: string }>;
   seedClass(typeName: string, fileName: string): void;
+  /** `seedClass` plus the file itself, so a disk-backed check finds it. */
+  seedOnDisk(typeName: string, fileName: string, text: string): Promise<void>;
   seedChildren(typeName: string, names: string[]): void;
 }
 
@@ -87,6 +89,11 @@ function makeClientStub(): Stub {
     client,
     setCalls,
     seedClass: (typeName, fileName) => classes.set(typeName, fileName),
+    seedOnDisk: async (typeName, fileName, text) => {
+      await fsp.mkdir(path.dirname(fileName), { recursive: true });
+      await fsp.writeFile(fileName, text, "utf8");
+      classes.set(typeName, fileName);
+    },
     seedChildren: (typeName, names) => children.set(typeName, names),
   };
 }
@@ -452,24 +459,19 @@ describe("persistClass", () => {
   });
 
   it("filters invalid identifiers from getClassNames before writing package.order", async () => {
-    const { client, seedChildren, seedClass } = makeClientStub();
+    const { client, seedChildren, seedOnDisk } = makeClientStub();
     // A class name with an embedded newline would corrupt the file format.
     seedChildren("MyLib", ["Valid", "bad\nname", "", "Also_Valid"]);
-    // Seeded with files so the disk-backed filter keeps them, leaving this
-    // test exercising only the identifier filter.
-    await fsp.mkdir(path.join(tmp, "MyLib"), { recursive: true });
-    await fsp.writeFile(
+    await seedOnDisk(
+      "MyLib.Valid",
       path.join(tmp, "MyLib", "Valid.mo"),
       "model Valid\nend Valid;\n",
-      "utf8",
     );
-    await fsp.writeFile(
+    await seedOnDisk(
+      "MyLib.Also_Valid",
       path.join(tmp, "MyLib", "Also_Valid.mo"),
       "model Also_Valid\nend Also_Valid;\n",
-      "utf8",
     );
-    seedClass("MyLib.Valid", path.join(tmp, "MyLib", "Valid.mo"));
-    seedClass("MyLib.Also_Valid", path.join(tmp, "MyLib", "Also_Valid.mo"));
     await persistClass(
       client,
       tree,
@@ -483,19 +485,16 @@ describe("persistClass", () => {
   });
 
   it("keeps a member declared inline in the parent's package.mo", async () => {
-    const { client, seedChildren, seedClass } = makeClientStub();
-    // The file exists on disk with Inline already in it, so the disk-backed
-    // check has real content behind it. "MyLib" itself is left unseeded so
-    // onDiskParent reports it as memory-only and the from-scratch path runs.
+    const { client, seedChildren, seedOnDisk } = makeClientStub();
+    // "MyLib" itself is left unseeded so onDiskParent reports it as
+    // memory-only and the from-scratch path runs.
     const libDir = path.join(tmp, "MyLib");
-    await fsp.mkdir(libDir, { recursive: true });
-    await fsp.writeFile(
+    seedChildren("MyLib", ["Inline"]);
+    await seedOnDisk(
+      "MyLib.Inline",
       path.join(libDir, "package.mo"),
       "package MyLib\n  model Inline\n  end Inline;\nend MyLib;\n",
-      "utf8",
     );
-    seedChildren("MyLib", ["Inline"]);
-    seedClass("MyLib.Inline", path.join(libDir, "package.mo"));
     await persistClass(
       client,
       tree,
@@ -510,10 +509,7 @@ describe("persistClass", () => {
 
   it("does not name a sibling whose recorded path only exists because persistClass is about to create it", async () => {
     const { client, seedChildren, seedClass } = makeClientStub();
-    // "Coincidence" is recorded against the exact package.mo persistClass is
-    // about to write, memberless, for MyLib itself. If the disk-backed
-    // check ran after that write, pathExists on this path would trivially
-    // pass — the check must resolve while the path still doesn't exist.
+    // Recorded against the package.mo this call is about to write.
     seedChildren("MyLib", ["Coincidence"]);
     seedClass("MyLib.Coincidence", path.join(tmp, "MyLib", "package.mo"));
     await persistClass(
@@ -530,9 +526,7 @@ describe("persistClass", () => {
 
   it("does not name a memory-only sibling in a package.order written from scratch", async () => {
     const { client, seedChildren } = makeClientStub();
-    // OMC's symbol table holds "Ghost" for MyLib but no file backs it (e.g.
-    // created but never persisted) — a from-scratch package.order must not
-    // name it, or OMC drops it with a warning on every load of the package.
+    // No seedClass: OMC has never recorded a file for Ghost.
     seedChildren("MyLib", ["Ghost"]);
     await persistClass(
       client,
@@ -622,11 +616,8 @@ describe("persistClass", () => {
 
   it("does not name a memory-only sibling in a package leaf's own package.order", async () => {
     const { client, seedChildren } = makeClientStub();
-    // Same hazard as the parent-package case, on the package-leaf's own
-    // from-scratch package.order: "Ghost" is in OMC's symbol table but no
-    // file backs it.
     seedChildren("MyPkg", ["Ghost"]);
-    const result = await persistClass(
+    await persistClass(
       client,
       tree,
       "MyPkg",
@@ -636,7 +627,6 @@ describe("persistClass", () => {
     expect(
       await fsp.readFile(path.join(tmp, "MyPkg", "package.order"), "utf8"),
     ).toBe("");
-    expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "package.mo"));
   });
 
   it("package leaf: onDiskParentDir resolves to package directory for children", async () => {

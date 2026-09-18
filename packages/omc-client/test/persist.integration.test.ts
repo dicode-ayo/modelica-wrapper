@@ -235,16 +235,12 @@ describeIf("persist + OMC roundtrip", () => {
     );
     await linkPersistedClass(client, "RoundtripGhostPkg.Reloaded", result);
 
-    const order = await fsp.readFile(
-      path.join(ws, "RoundtripGhostPkg", "package.order"),
-      "utf8",
-    );
     expect(
-      order
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line !== ""),
-    ).toEqual(["Reloaded"]);
+      await fsp.readFile(
+        path.join(ws, "RoundtripGhostPkg", "package.order"),
+        "utf8",
+      ),
+    ).toBe("Reloaded\n");
   });
 
   it("a package built one class at a time reloads with every member", async () => {

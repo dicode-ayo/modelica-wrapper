@@ -138,11 +138,7 @@ export async function persistClass(
     const pkgFile = path.join(baseDir, "package.mo");
     const orderFile = path.join(baseDir, "package.order");
     const orderFileMissing = !(await pathExists(orderFile));
-    // Resolved before package.mo is written: once that write lands, a
-    // sibling whose fileName OMC happens to report as this exact path would
-    // pass the disk-backed check purely because of this write, whether or
-    // not it is really declared inside the (still memberless) file we just
-    // created.
+    // Before this iteration writes package.mo — see diskBackedClassNames.
     const base = orderFileMissing
       ? await diskBackedClassNames(client, parentName)
       : [];
@@ -248,33 +244,37 @@ async function onDiskParent(
   client: PersistClient,
   parentName: string,
 ): Promise<OnDiskParent | undefined> {
-  try {
-    const info = await client.getClassInformation({ typeName: parentName });
-    if (isLikelyDiskPath(info.fileName)) {
-      return {
-        dir: path.dirname(info.fileName),
-        structured: path.basename(info.fileName) === "package.mo",
-      };
-    }
-  } catch {
-    /* parent not in OMC — caller will create it */
-  }
-  return undefined;
+  const file = await recordedDiskFile(client, parentName);
+  if (file === undefined) return undefined;
+  return {
+    dir: path.dirname(file),
+    structured: path.basename(file) === "package.mo",
+  };
 }
 
 /**
- * `parentName`'s current members (per `getClassNames`), filtered down to
- * those OMC reports a real on-disk file for. A `package.order` written from
- * scratch must list only names a file backs, the same hazard
- * {@link addToPackageOrder} documents for the append path.
+ * The file OMC records for `typeName`, or `undefined` when it records a
+ * placeholder or does not know the class.
+ */
+async function recordedDiskFile(
+  client: PersistClient,
+  typeName: string,
+): Promise<string | undefined> {
+  try {
+    const { fileName } = await client.getClassInformation({ typeName });
+    return isLikelyDiskPath(fileName) ? fileName : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `parentName`'s members that OMC records an existing on-disk file for — see
+ * {@link addToPackageOrder} for why a `package.order` may list nothing else.
  *
  * A member declared inline in `parentName`'s own `package.mo` reports that
- * file as its `fileName` (not a `<runtime:…>` placeholder), so it survives
- * this filter exactly when that `package.mo` is already on disk. Both call
- * sites resolve this before writing their own `package.mo` for that reason:
- * a member kept only because of a write this same call is about to make
- * would be the same orphan the filter exists to keep out, arrived at by a
- * different route.
+ * file as its `fileName`, so a caller resolves this before writing that
+ * `package.mo` itself; otherwise its own write would vouch for the member.
  */
 async function diskBackedClassNames(
   client: PersistClient,
@@ -283,18 +283,11 @@ async function diskBackedClassNames(
   const members = await safeGetClassNames(client, parentName);
   const backed = await Promise.all(
     members.map(async (member) => {
-      try {
-        const { fileName } = await client.getClassInformation({
-          typeName: `${parentName}.${member}`,
-        });
-        return isLikelyDiskPath(fileName) && (await pathExists(fileName));
-      } catch {
-        /* unknown to OMC, or the lookup itself failed — either way, unproven */
-        return false;
-      }
+      const file = await recordedDiskFile(client, `${parentName}.${member}`);
+      return file !== undefined && (await pathExists(file));
     }),
   );
-  return members.filter((_, index) => backed[index] === true);
+  return members.filter((_, index) => backed[index]);
 }
 
 /**
