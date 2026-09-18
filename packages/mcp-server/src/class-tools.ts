@@ -44,6 +44,7 @@ import {
   type McpToolDeps,
 } from "./dispatch.js";
 import { errorDetail } from "./error-detail.js";
+import { registerTool } from "./register-tool.js";
 import { refusalForClass } from "./write-gate.js";
 
 const CreateClassSchema = z.strictObject({
@@ -72,7 +73,8 @@ export function registerClassTools(
   deps: McpToolDeps,
 ): readonly string[] {
   const TOOL_NAME = "createClass";
-  server.registerTool(
+  registerTool(
+    server,
     TOOL_NAME,
     {
       description:

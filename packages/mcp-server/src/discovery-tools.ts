@@ -34,6 +34,7 @@ import {
   textResult,
   type McpToolDeps,
 } from "./dispatch.js";
+import { registerTool } from "./register-tool.js";
 
 const ListFunctionsSchema = z.strictObject({
   category: z
@@ -128,7 +129,8 @@ export function registerDiscoveryTools(
   deps: McpToolDeps,
   publishedToolNames: ReadonlySet<string>,
 ): void {
-  server.registerTool(
+  registerTool(
+    server,
     "omc_list_functions",
     {
       description:
@@ -148,7 +150,8 @@ export function registerDiscoveryTools(
     },
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "omc_describe_function",
     {
       description:
@@ -165,7 +168,8 @@ export function registerDiscoveryTools(
     },
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "omc_invoke",
     {
       description:

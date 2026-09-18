@@ -30,6 +30,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { dispatch, type McpToolDeps } from "./dispatch.js";
+import { registerTool } from "./register-tool.js";
 
 const FlatExtent = boundedArray(
   z.tuple([z.number(), z.number(), z.number(), z.number()]),
@@ -155,25 +156,21 @@ export function registerShapeTools(
 ): readonly string[] {
   const names: string[] = [];
 
-  /**
-   * `ToolCallback` is a conditional type on the schema, and nothing is
-   * assignable to one that is still generic — so the schema widens here and
-   * the input is re-narrowed on the way into the handler.
-   */
   const register = <S extends z.ZodType>(
     name: string,
     description: string,
     schema: S,
     handle: (input: z.infer<S>) => Promise<CallToolResult>,
   ): void => {
-    server.registerTool(
+    registerTool(
+      server,
       name,
       {
         description,
-        inputSchema: schema as z.ZodType,
+        inputSchema: schema,
         annotations: { readOnlyHint: false },
       },
-      async (input: unknown) => handle(input as z.infer<S>),
+      handle,
     );
     names.push(name);
   };
