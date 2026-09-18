@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { WriteAction, WriteVerdictClient } from "./write-verdict.js";
-import { refusalFor, type WriteTargetClient } from "./write-gate.js";
+import {
+  hasGateEntry,
+  REWRITES_OWN_FILE,
+  refusalFor,
+  type WriteTargetClient,
+} from "./write-gate.js";
 import type { WriteVerdictSource } from "./write-verdict.js";
 
 const REFUSAL =
@@ -681,5 +686,28 @@ describe("a call carrying paths to several Modelica files", () => {
     // an empty fileName, which would otherwise turn one junk entry into a
     // refusal of the whole batch instead of skipping past it.
     expect(files.parsed).toEqual(["/tmp/pwned.mo"]);
+  });
+});
+
+describe("REWRITES_OWN_FILE", () => {
+  it("gates every readOnly function it marks as rewriting its own file", () => {
+    const flagged = Object.entries(REWRITES_OWN_FILE)
+      .filter(([, rewritesOwnFile]) => rewritesOwnFile)
+      .map(([fn]) => fn);
+
+    for (const fn of flagged) {
+      expect(hasGateEntry(fn)).toBe(true);
+    }
+  });
+
+  it("pins save as the only readOnly function that needs the gate", () => {
+    // A new "true" here means a readOnly MUTATIONS entry now rewrites a
+    // class's own file the way save does — give it a BY_NAME row, then
+    // extend this list.
+    const flagged = Object.entries(REWRITES_OWN_FILE)
+      .filter(([, rewritesOwnFile]) => rewritesOwnFile)
+      .map(([fn]) => fn);
+
+    expect(flagged).toEqual(["save"]);
   });
 });
