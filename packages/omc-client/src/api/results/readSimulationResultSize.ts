@@ -1,7 +1,8 @@
 /**
  * OMC: `function readSimulationResultSize`
  *
- * Returns the number of stored time steps in the result file.
+ * Returns the number of stored rows (time points) in the result file — the
+ * exact `size` `readSimulationResult` requires to read the file in full.
  */
 
 import { z } from "zod";
@@ -24,14 +25,15 @@ export const ReadSimulationResultSizeOutputSchema = z.object({
   size: z
     .number()
     .int()
-    .describe("Number of stored intervals in the result file."),
+    .nonnegative()
+    .describe("Number of stored rows (time points) in the result file."),
 });
 export type ReadSimulationResultSizeOutput = z.infer<
   typeof ReadSimulationResultSizeOutputSchema
 >;
 
 export const ReadSimulationResultSizeDescription =
-  "Return the number of intervals stored in a simulation result file.";
+  "Return the number of rows (time points) stored in a simulation result file.";
 
 export async function readSimulationResultSize(
   ctx: CallContext,

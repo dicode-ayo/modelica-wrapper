@@ -25,9 +25,13 @@ export interface ResultReader {
   readSimulationResultVars(input: {
     fileName: string;
   }): Promise<{ vars: string[] }>;
+  readSimulationResultSize(input: { fileName: string }): Promise<{
+    size: number;
+  }>;
   readSimulationResult(input: {
     filename: string;
     variables: string[];
+    size?: number;
   }): Promise<{ result: number[][] }>;
   /** OMC's `closeSimulationResultFile()` takes no path — it closes whatever
    * result file is currently open. We call it best-effort before re-reading a
@@ -38,6 +42,7 @@ export interface ResultReader {
 interface Entry {
   mtimeMs: number;
   vars?: string[];
+  size?: number;
   series: Map<string, Trajectory>;
 }
 
@@ -108,9 +113,19 @@ export class ResultCache {
     const cached = entry.series.get(variable);
     if (cached) return cached;
     const reader = await this.resolveReader();
+    // readSimulationResult resolves a `size` of 0 through its own
+    // readSimulationResultSize round trip, so resolve it once per file here
+    // rather than once per variable a chart plots from the same result.
+    if (entry.size === undefined) {
+      entry.size = (
+        await reader.readSimulationResultSize({ fileName: path })
+      ).size;
+    }
+    if (entry.size === 0) return undefined;
     const { result } = await reader.readSimulationResult({
       filename: path,
       variables: ["time", variable],
+      size: entry.size,
     });
     const t = result[0];
     const values = result[1];

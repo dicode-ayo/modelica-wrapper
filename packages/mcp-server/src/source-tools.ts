@@ -21,6 +21,7 @@ import {
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
+import { registerTool } from "./register-tool.js";
 
 const SetSourceCodeSchema = z.strictObject({
   className: z
@@ -56,7 +57,8 @@ export function registerSourceTools(
   deps: McpToolDeps,
 ): readonly string[] {
   const TOOL_NAME = "setSourceCode";
-  server.registerTool(
+  registerTool(
+    server,
     TOOL_NAME,
     {
       description:

@@ -162,6 +162,14 @@ There is also a generic dispatcher (`REGISTRY`, `invoke(fn, input)`) and the
 namespaced functional API (`browsing.*`, `contents.*`, … exported from
 [index.ts](../packages/omc-client/src/index.ts)).
 
+### Reading a simulation result's row count
+
+A result file's row count is solver-dependent — roughly `numberOfIntervals +
+2`, never something to compute caller-side. `readSimulationResult` in
+[results/readSimulationResult.ts](../packages/omc-client/src/api/results/readSimulationResult.ts)
+resolves an omitted or `0` `size` through `readSimulationResultSize` itself;
+see the module docstring there for the OMC behavior it works around.
+
 ### The model-instance read path
 
 `getModelInstance(className, modifier="", prettyPrint=false)` returns the whole

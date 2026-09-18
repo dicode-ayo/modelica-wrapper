@@ -11,8 +11,14 @@
  * ```
  *
  * `variables` is a list of dotted-path variable identifiers emitted as a
- * brace-list (e.g. `{a.b, a[1].b[3].c}`). `size = 0` reads any size; a
- * non-zero `size` that doesn't match the file makes OMC fail.
+ * brace-list (e.g. `{a.b, a[1].b[3].c}`). OMC's own `size = 0` ("any size")
+ * silently returns an empty matrix on some result formats instead of the
+ * documented behavior, so a `size` of 0 (or omitted) here is resolved via
+ * `readSimulationResultSize` first and that row count is passed through
+ * instead. Passing a non-zero `size` still requires an exact match to the
+ * file's row count, which is solver-dependent and not safely computed
+ * caller-side. The two calls this resolution takes are not atomic against
+ * a concurrent rewrite of the same file (dicode-ayo/modelica-wrapper#712).
  */
 
 import { z } from "zod";
@@ -22,6 +28,7 @@ import { resultVariable } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, expectList, parse } from "../../parse.js";
+import { readSimulationResultSize } from "./readSimulationResultSize.js";
 
 export const ReadSimulationResultInputSchema = z.strictObject({
   filename: z
@@ -35,10 +42,12 @@ export const ReadSimulationResultInputSchema = z.strictObject({
   size: z
     .number()
     .int()
+    .nonnegative()
     .optional()
     .default(0)
     .describe(
-      "Number of rows expected; 0 reads any size, non-zero must match the file.",
+      "Number of rows expected; 0 (default) resolves the file's actual " +
+        "row count for you, non-zero must match the file exactly.",
     ),
 });
 export type ReadSimulationResultInput = z.input<
@@ -59,11 +68,32 @@ export type ReadSimulationResultOutput = z.infer<
 export const ReadSimulationResultDescription =
   "Read the values of named variables from a simulation result file as a 2D `Real[:, :]` matrix.";
 
+async function resolveSize(
+  ctx: CallContext,
+  input: ReadSimulationResultInput,
+): Promise<number> {
+  if (input.size !== undefined && input.size !== 0) return input.size;
+  const { size } = await readSimulationResultSize(ctx, {
+    fileName: input.filename,
+  });
+  return size;
+}
+
 export async function readSimulationResult(
   ctx: CallContext,
   input: ReadSimulationResultInput,
 ): Promise<ReadSimulationResultOutput> {
-  const size = input.size ?? 0;
+  const size = await resolveSize(ctx, input);
+  // A resolved size of 0 is the one value that would reach OMC's own
+  // `size = 0` path, which this function exists to avoid. There are no rows
+  // to read, but the output still owes one (empty) row per variable.
+  if (size === 0) {
+    return parseOutput(
+      ReadSimulationResultOutputSchema,
+      { result: input.variables.map(() => []) },
+      "readSimulationResult",
+    );
+  }
   const variableList = `{${input.variables.join(", ")}}`;
   const raw = await ctx.call(
     `readSimulationResult(${quote(input.filename)}, ${variableList}, ${size})`,
