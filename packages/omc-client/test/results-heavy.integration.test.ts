@@ -238,6 +238,20 @@ end ${pkg};
     expect(size).toBeLessThanOrEqual(103);
   });
 
+  it("readSimulationResultSize's count is the exact row count readSimulationResult reads back", async () => {
+    // readSimulationResult resolves size:0 by trusting this value as an
+    // exact match, so pin that the two APIs agree on what "size" counts.
+    const { size } = await client.readSimulationResultSize({
+      fileName: resultFile,
+    });
+    const { result } = await client.readSimulationResult({
+      filename: resultFile,
+      variables: ["time"],
+      size,
+    });
+    expect(result[0]?.length).toBe(size);
+  });
+
   it("readSimulationResultVars lists `time` and `x`", async () => {
     const { vars } = await client.readSimulationResultVars({
       fileName: resultFile,
@@ -279,6 +293,38 @@ end ${pkg};
     expect(timeRow[timeRow.length - 1]!).toBeCloseTo(1, 6);
     expect(xRow[0]).toBeCloseTo(0, 9);
     expect(xRow[xRow.length - 1]!).toBeCloseTo(1, 6);
+  });
+
+  it("readSimulationResult with size omitted returns rows on a .csv result (issue #699)", async () => {
+    // The bug this wrapper works around: OMC's own `size = 0` ("any size")
+    // silently returns an empty matrix on a .csv result instead of failing
+    // or returning the rows. Use a separate fileNamePrefix so we don't
+    // clobber the .mat the rest of the suite reads.
+    const sim = await client.simulate({
+      typeName: modelClass,
+      startTime: 0,
+      stopTime: 0.1,
+      numberOfIntervals: 10,
+      outputFormat: "csv",
+      fileNamePrefix: "Ramp_csv_size_zero",
+    });
+    const fileField = getRecordField(sim.simulationResult, "resultFile");
+    const csvFile = fileField === undefined ? undefined : asString(fileField);
+    if (csvFile === undefined || csvFile.length === 0) {
+      throw new Error("simulate did not return a .csv resultFile");
+    }
+
+    const { result } = await client.readSimulationResult({
+      filename: csvFile,
+      variables: ["time", "x"],
+    });
+    expect(result.length).toBe(2);
+    const [timeRow, xRow] = result;
+    if (timeRow === undefined || xRow === undefined) {
+      throw new Error("readSimulationResult returned fewer than two rows");
+    }
+    expect(timeRow.length).toBeGreaterThan(0);
+    expect(xRow.length).toBe(timeRow.length);
   });
 
   it("val reads a single variable at a single time-point", async () => {

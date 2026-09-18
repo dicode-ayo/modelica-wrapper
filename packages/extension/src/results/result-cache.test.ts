@@ -4,6 +4,7 @@ import { ResultCache, type ResultReader } from "./result-cache.js";
 
 type Counting = ResultReader & {
   varsCalls: number;
+  sizeCalls: number;
   seriesCalls: number;
   closeCalls: number;
 };
@@ -11,11 +12,16 @@ type Counting = ResultReader & {
 function fakeReader(overrides: Partial<ResultReader> = {}): Counting {
   return {
     varsCalls: 0,
+    sizeCalls: 0,
     seriesCalls: 0,
     closeCalls: 0,
     async readSimulationResultVars() {
       this.varsCalls++;
       return { vars: ["time", "motor.w", "motor.i"] };
+    },
+    async readSimulationResultSize() {
+      this.sizeCalls++;
+      return { size: 3 };
     },
     async readSimulationResult() {
       this.seriesCalls++;
@@ -73,6 +79,37 @@ describe("ResultCache.trajectory", () => {
     expect(traj).toEqual({ t: [0, 1, 2], values: [10, 20, 30] });
     await cache.trajectory("a.mat", "motor.w");
     expect(reader.seriesCalls).toBe(1); // cached
+  });
+
+  it("resolves the file's size once and reuses it across variables", async () => {
+    const reader = fakeReader();
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+    await cache.trajectory("a.mat", "motor.w");
+    await cache.trajectory("a.mat", "motor.i");
+    expect(reader.sizeCalls).toBe(1); // not once per variable
+    expect(reader.seriesCalls).toBe(2);
+  });
+
+  it("returns undefined without reading rows when the file's resolved size is 0", async () => {
+    const reader = fakeReader({
+      readSimulationResultSize: async function (this: Counting) {
+        this.sizeCalls++;
+        return { size: 0 };
+      },
+    });
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+    expect(await cache.trajectory("empty.mat", "motor.w")).toBeUndefined();
+    expect(await cache.trajectory("empty.mat", "motor.i")).toBeUndefined();
+    // Cached per file, and never falls through to a readSimulationResult
+    // call that would re-trigger its own size:0 resolution.
+    expect(reader.sizeCalls).toBe(1);
+    expect(reader.seriesCalls).toBe(0);
   });
 
   it("undefined when the file is missing", async () => {
@@ -141,6 +178,7 @@ describe("ResultCache invalidation", () => {
     mtime = 200; // file rewritten
     await cache.trajectory("a.mat", "motor.w");
     expect(reader.seriesCalls).toBe(2); // re-read
+    expect(reader.sizeCalls).toBe(2); // re-resolved, not carried across mtimes
     expect(reader.closeCalls).toBe(1); // old handle released first
   });
 
