@@ -96,8 +96,11 @@ export interface McpToolDeps {
    */
   log?: McpLog | undefined;
   /**
-   * Surfaces a refusal or a hard failure somewhere more visible than the log
-   * channel — the extension wires this to a VSCode error notification, the
+   * Surfaces a refusal, a failed write, or a read that failed for any reason
+   * other than OMC's own answer — a dead client, a transport fault — somewhere
+   * more visible than the log channel. `simulate` and `checkModel` classify as
+   * reads, so a model that will not build is reported to the caller and logged
+   * rather than raised. The extension wires this to a VSCode notification, the
    * same visibility its own REPL and diagram editor get from their
    * transcripts. Never called for a successful call.
    */
@@ -130,6 +133,13 @@ const READS_ERROR_BUFFER = new Set<OmcFnName>([
 ]);
 
 /**
+ * A failure OMC reported through its error buffer rather than by throwing.
+ * Distinguishes an answer the model can act on from a transport fault or a
+ * dead client, which reach the same `catch`.
+ */
+class OmcDiagnosticError extends Error {}
+
+/**
  * Many OMC mutations answer `success: true` (or nothing distinguishing at
  * all) for a call that did nothing, and stash the actual reason in OMC's own
  * error buffer instead of the return value — `addComponent` of a duplicate
@@ -147,7 +157,7 @@ async function invokeDrained(
   const { result, errorString } = await withErrorBuffer(client, () =>
     client.invoke(fn, input),
   );
-  if (looksLikeError(errorString)) throw new Error(errorString);
+  if (looksLikeError(errorString)) throw new OmcDiagnosticError(errorString);
   return result;
 }
 
@@ -199,9 +209,10 @@ export async function dispatch<K extends OmcFnName>(
  *
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
- * fault. A diagnostic OMC left in its error buffer counts as one too. Only a
- * refusal or a failed write reaches `notifyFailure`: a model probing names
- * fails a read per miss, and a toast apiece would bury the user.
+ * fault. A diagnostic OMC left in its error buffer counts as one too, and on a
+ * read it stays between the model and the tool: a model probing names fails a
+ * read per miss, and a toast apiece would bury the user. A read that failed
+ * for any other reason still reaches `notifyFailure`.
  */
 export async function dispatchByName(
   deps: McpToolDeps,
@@ -235,7 +246,10 @@ export async function dispatchByName(
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);
-    if (!isReadOnlyFunction(fn)) notifyFailure?.(`${fn} failed: ${message}`);
+    // A read whose answer is a diagnostic is the model's to act on; a read
+    // that failed because the session is gone is the user's to see.
+    const quiet = err instanceof OmcDiagnosticError && isReadOnlyFunction(fn);
+    if (!quiet) notifyFailure?.(`${fn} failed: ${message}`);
     return errorResult(message);
   }
 }

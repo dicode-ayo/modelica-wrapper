@@ -262,6 +262,30 @@ describe("dispatchByName's logging and failure notification", () => {
     expect(notified).toEqual([]);
   });
 
+  it("notifies a read that failed for something other than OMC's answer", async () => {
+    // A dead client is the user's to see; only OMC's own diagnostic stays
+    // between the model and the tool.
+    const { log, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient({
+      invoke: async () => {
+        throw new Error("omc client closed");
+      },
+    });
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    await dispatchByName(deps, "getClassInformation", { typeName: "Demo" });
+
+    expect(warnings).toHaveLength(1);
+    expect(notified).toHaveLength(1);
+    expect(notified[0]).toContain("omc client closed");
+  });
+
   it("logs and notifies a write-gate refusal", async () => {
     const { log, warnings } = makeLog();
     const notified: string[] = [];

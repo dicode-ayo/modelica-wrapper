@@ -373,7 +373,7 @@ export async function pasteClipboardItems(
       shapes: 0,
       connections: 0,
       failed: [
-        `paste: ${detail === "" ? "OMC rejected the pasted block" : detail}`,
+        `paste: ${detail === "" ? "OMC returned success=false" : detail}`,
       ],
     };
   }

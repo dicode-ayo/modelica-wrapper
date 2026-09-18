@@ -1,9 +1,10 @@
 /**
- * Single-slot task queue for the OMC channel.
+ * Single-slot task queue: tasks run one after another in submission order.
  *
- * OMC's REQ/REP socket admits exactly one round-trip at a time, so tasks run
- * one after another in submission order. A task's failure is contained: the
- * queue keeps draining rather than poisoning every task behind it.
+ * The OMC channel uses one because its REQ/REP socket admits exactly one
+ * round-trip at a time; the error-buffer turn queue uses one per client for
+ * the same one-at-a-time guarantee. A task's failure is contained either way:
+ * the queue keeps draining rather than poisoning every task behind it.
  */
 
 export class SerialQueue {

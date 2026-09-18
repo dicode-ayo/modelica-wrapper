@@ -233,7 +233,7 @@ describe("reloadBufferIntoOmc", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "reverse sync rejected by OMC: OMC returned success=false",
+      message: "reverse sync rejected by OMC: success=false",
     });
   });
 });

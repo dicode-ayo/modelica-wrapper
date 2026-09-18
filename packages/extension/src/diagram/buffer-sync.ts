@@ -82,10 +82,10 @@ export async function compareBufferToClass(
 export type ReloadResult = { ok: true } | { ok: false; message: string };
 
 /**
- * Reload `document`'s text into OMC, replacing the class. The load runs
- * inside a drained turn, so a diagnostic read back is one this load
- * produced rather than one an earlier call left behind, and no caller
- * sharing the client can consume it first.
+ * Reload `document`'s text into OMC, replacing the class. Only the load runs
+ * inside a drained turn: the screens ahead of it resolve a filename and read
+ * the buffer's own class names, and a diagnostic either leaves would
+ * otherwise be read back as this load's.
  *
  * `expectedClassName` is the class OMC currently holds for this buffer, the
  * one the caller opened its editor on. The rename screen compares what the
@@ -97,26 +97,20 @@ export async function reloadBufferIntoOmc(
   document: vscode.TextDocument,
   expectedClassName: string,
 ): Promise<ReloadResult> {
-  const { result, errorString } = await withErrorBuffer(client, async () => {
-    const data = document.getText();
-    const filename = await omcFilenameForDocument(client, document.uri);
-    const refusal = await bufferRefusal(client, {
-      data,
-      filename,
-      expected: expectedClassName,
-    });
-    if (refusal !== undefined) return { refusal };
-    const { success } = await client.loadString({
-      data,
-      filename,
-      merge: false,
-    });
-    return { success };
+  const data = document.getText();
+  const filename = await omcFilenameForDocument(client, document.uri);
+  const refusal = await bufferRefusal(client, {
+    data,
+    filename,
+    expected: expectedClassName,
   });
-  if ("refusal" in result) return { ok: false, message: result.refusal };
+  if (refusal !== undefined) return { ok: false, message: refusal };
+  const { result, errorString } = await withErrorBuffer(client, () =>
+    client.loadString({ data, filename, merge: false }),
+  );
   if (result.success && !looksLikeError(errorString)) return { ok: true };
   return {
     ok: false,
-    message: `reverse sync rejected by OMC: ${errorString.trim() || "OMC returned success=false"}`,
+    message: `reverse sync rejected by OMC: ${errorString.trim() || "success=false"}`,
   };
 }

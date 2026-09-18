@@ -67,22 +67,18 @@ describe("declareClass", () => {
   });
 
   it("refuses a load OMC answered success: true but left an error for", async () => {
-    // OMC reports a missing `within` target through its error buffer while
-    // the call itself still answers success.
+    // The buffer is the only place a reason lives, so a load answered
+    // success for while leaving an error behind is still a refusal.
     const { client } = makeClient({
       success: true,
-      errorString: "Error: Class Lib.Missing not found",
+      errorString: "Error: Class M is already declared in this scope",
     });
 
     await expect(
-      declareClass(client, {
-        name: "M",
-        kind: "model",
-        withinPath: "Lib.Missing",
-      }),
+      declareClass(client, { name: "M", kind: "model" }),
     ).resolves.toEqual({
       ok: false,
-      reason: "Error: Class Lib.Missing not found",
+      reason: "Error: Class M is already declared in this scope",
     });
   });
 

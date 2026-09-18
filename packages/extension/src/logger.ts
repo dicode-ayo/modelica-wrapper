@@ -26,8 +26,12 @@ function ts(): string {
  * Bounds one channel line. A single OMC payload — a class dump, a full source
  * string, `list(Modelica)` typed at the REPL — can run past 300 KB (issue
  * #658), which would otherwise flood the channel for one call.
+ *
+ * This has to stay well above the per-value bound `@dicode/modelica-mcp`
+ * applies to its own lines: at equal bounds a capped argument fills the line
+ * and evicts the result behind it.
  */
-const MAX_LINE_CHARS = 2000;
+const MAX_LINE_CHARS = 20_000;
 
 function bounded(line: string): string {
   return line.length > MAX_LINE_CHARS
