@@ -4,11 +4,17 @@ import type { CallContext } from "../../_shared/callContext.js";
 
 import { readSimulationResult } from "./readSimulationResult.js";
 
-function stubCtx(responses: Record<string, string>): {
-  ctx: CallContext;
-  sent: string[];
-} {
+/**
+ * A `CallContext` answering from `responses`, with `errorString` standing in
+ * for OMC's buffer. `reads` counts the buffer reads a wrapper spent, which is
+ * what separates a wrapper that asks for a reason from one that does not.
+ */
+export function stubCtx(
+  responses: Record<string, string>,
+  errorString = "",
+): { ctx: CallContext; sent: string[]; reads: () => number } {
   const sent: string[] = [];
+  let reads = 0;
   const ctx: CallContext = {
     async call(cmd) {
       sent.push(cmd);
@@ -19,10 +25,11 @@ function stubCtx(responses: Record<string, string>): {
       return response;
     },
     async getErrorString() {
-      return { errorString: "" };
+      reads += 1;
+      return { errorString };
     },
   };
-  return { ctx, sent };
+  return { ctx, sent, reads: () => reads };
 }
 
 describe("readSimulationResult: size = 0 resolution", () => {

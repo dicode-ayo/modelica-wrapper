@@ -30,12 +30,7 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { resultVariable } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
-import {
-  NO_REASON,
-  failureReason,
-  parseOutput,
-} from "../../_shared/parseOutput.js";
-import { OmcDiagnosticError } from "../../error-buffer.js";
+import { parseOutput, readFailure } from "../../_shared/parseOutput.js";
 import { asFloat, expectList, parse } from "../../parse.js";
 import { readSimulationResultSize } from "./readSimulationResultSize.js";
 
@@ -109,8 +104,7 @@ export async function readSimulationResult(
   );
   const value = parse(raw);
   if (value.kind === "call" && value.name === "fail") {
-    const reason = (await failureReason(ctx)) ?? NO_REASON;
-    throw new OmcDiagnosticError(`readSimulationResult: ${reason}`);
+    throw await readFailure(ctx, "readSimulationResult");
   }
   const rows = expectList(value);
   const result = rows.map((row) => {

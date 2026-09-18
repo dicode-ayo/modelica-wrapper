@@ -1,6 +1,6 @@
 import type { z } from "zod";
 
-import { looksLikeError } from "../error-buffer.js";
+import { OmcDiagnosticError, looksLikeError } from "../error-buffer.js";
 import {
   asBool,
   expectBool,
@@ -36,20 +36,31 @@ export const NO_REASON = "OMC gave no reason";
 
 /**
  * OMC's reason for a call that failed without saying so in its return value,
- * or `undefined` when the buffer holds nothing that reads as a failure.
+ * or `undefined` when the buffer holds nothing that reads as a failure. A
+ * warning left by a read that succeeded is not a failure, so
+ * {@link looksLikeError} decides rather than mere non-emptiness.
  *
- * The read side of OMC's API signals a failure only by the value it hands
- * back — `fail()`, a `-1` row count, an empty variable list — and leaves the
- * reason in the error buffer. Parsing that value can report the shape it
- * could not use, which names neither the file nor the reason; this is how a
- * wrapper gets at the latter. A read that succeeded with a warning is not a
- * failure, so {@link looksLikeError} decides rather than mere non-emptiness.
+ * Reads whatever the buffer holds: the reason is this call's own only when
+ * the caller cleared the buffer immediately before it, as `withErrorBuffer`
+ * does.
  */
 export async function failureReason(
   ctx: CallContext,
 ): Promise<string | undefined> {
   const { errorString } = await ctx.getErrorString();
   return looksLikeError(errorString) ? errorString.trim() : undefined;
+}
+
+/**
+ * The error a wrapper throws for a read OMC failed in its return value alone
+ * — `fail()`, a `-1` row count — carrying whatever reason OMC left behind.
+ */
+export async function readFailure(
+  ctx: CallContext,
+  fnName: string,
+): Promise<OmcDiagnosticError> {
+  const reason = (await failureReason(ctx)) ?? NO_REASON;
+  return new OmcDiagnosticError(`${fnName}: ${reason}`);
 }
 
 /**

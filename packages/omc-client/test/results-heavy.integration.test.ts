@@ -280,9 +280,6 @@ end ${pkg};
   // === Reads OMC cannot perform ===
 
   it("readSimulationResultVars names a file it could not open (#720)", async () => {
-    // OMC answers this with the same empty list a variable-free result gives,
-    // so a mock cannot reproduce the half that matters: the reason only
-    // reaching the caller because the wrapper drained the error buffer.
     await expect(
       client.readSimulationResultVars({
         fileName: join(tempDir, "does-not-exist.mat"),
@@ -311,9 +308,17 @@ end ${pkg};
     ).rejects.toThrow(/dimension sizes do not match/);
   });
 
+  it("readSimulationResult names a file it could not open, given a size it cannot check first", async () => {
+    await expect(
+      client.readSimulationResult({
+        filename: join(tempDir, "does-not-exist.mat"),
+        variables: ["time"],
+        size: 12,
+      }),
+    ).rejects.toThrow(/does-not-exist\.mat/);
+  });
+
   it("readSimulationResult names a variable the result does not hold", async () => {
-    // Same `fail()` as the size mismatch above, and a different reason —
-    // which is why the message is OMC's rather than one naming `size`.
     await expect(
       client.readSimulationResult({
         filename: resultFile,

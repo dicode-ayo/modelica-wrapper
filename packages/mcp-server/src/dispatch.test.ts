@@ -320,9 +320,8 @@ describe("dispatchByName's logging and failure notification", () => {
   });
 
   it("keeps a read that raised OMC's reason itself between the model and the tool", async () => {
-    // The result-read wrappers reach the error buffer themselves rather than
-    // returning a value the drain around them could judge, so their throw
-    // carries the classification the drain would have given it.
+    // A wrapper that reads the buffer itself throws `OmcDiagnosticError`, so
+    // its failure is classified the way `invokeDrained`'s own would be.
     const { log, warnings } = makeLog();
     const notified: string[] = [];
     const client = baseClient({
