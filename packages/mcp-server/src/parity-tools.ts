@@ -38,6 +38,7 @@ import {
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { dispatchByName, type McpToolDeps } from "./dispatch.js";
+import { atDraft2020_12 } from "./draft-2020-12.js";
 
 export const PARITY_TOOLS: readonly OmcFnName[] = [
   // Browsing and source
@@ -79,7 +80,7 @@ export const PARITY_TOOLS: readonly OmcFnName[] = [
 
 /**
  * Register one MCP tool per parity wrapper, handing the registry's own zod
- * input schema straight to the SDK — it does the JSON Schema conversion itself.
+ * input schema to the SDK — it does the JSON Schema conversion itself.
  *
  * No `outputSchema` is registered. The SDK converts zod on its own and would
  * throw on the `.transform()` that every `ModelInstance` output reaches; the
@@ -95,7 +96,7 @@ export function registerParityTools(
       fn,
       {
         description: entry.description,
-        inputSchema: entry.inputSchema,
+        inputSchema: atDraft2020_12(entry.inputSchema),
         annotations: { readOnlyHint: isReadOnlyFunction(fn) },
       },
       async (input: unknown) => dispatchByName(deps, fn, input),

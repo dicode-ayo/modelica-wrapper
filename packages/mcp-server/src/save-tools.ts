@@ -23,6 +23,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { errorResult, textResult, type McpToolDeps } from "./dispatch.js";
+import { atDraft2020_12 } from "./draft-2020-12.js";
 import { errorDetail } from "./error-detail.js";
 import { refusalForClass } from "./write-gate.js";
 
@@ -44,7 +45,7 @@ export function registerSaveTools(
     {
       description:
         "Write a class to its source file, creating one under the workspace when it has none and keeping the enclosing package's package.order current. Edits from the other mutating tools change OMC's memory only — call this to persist them. On a package it saves the members too.",
-      inputSchema: SaveClassSchema,
+      inputSchema: atDraft2020_12(SaveClassSchema),
       annotations: { readOnlyHint: false },
     },
     async ({ className }) => {

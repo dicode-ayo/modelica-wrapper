@@ -43,6 +43,7 @@ import {
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
+import { atDraft2020_12 } from "./draft-2020-12.js";
 import { errorDetail } from "./error-detail.js";
 import { refusalForClass } from "./write-gate.js";
 
@@ -77,7 +78,7 @@ export function registerClassTools(
     {
       description:
         "Create a Modelica class and write it to disk, adding it to the enclosing package's package.order. Use this rather than newModel, which leaves the class in OMC's memory with no file behind it.",
-      inputSchema: CreateClassSchema,
+      inputSchema: atDraft2020_12(CreateClassSchema),
       annotations: { readOnlyHint: false },
     },
     async ({ name, kind, withinPath, extendsFrom }) => {

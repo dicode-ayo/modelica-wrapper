@@ -30,6 +30,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { dispatch, type McpToolDeps } from "./dispatch.js";
+import { atDraft2020_12 } from "./draft-2020-12.js";
 
 const FlatExtent = boundedArray(
   z.tuple([z.number(), z.number(), z.number(), z.number()]),
@@ -170,7 +171,7 @@ export function registerShapeTools(
       name,
       {
         description,
-        inputSchema: schema as z.ZodType,
+        inputSchema: atDraft2020_12(schema as z.ZodType),
         annotations: { readOnlyHint: false },
       },
       async (input: unknown) => handle(input as z.infer<S>),

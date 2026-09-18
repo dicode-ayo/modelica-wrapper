@@ -2,13 +2,16 @@
  * What a client is handed when it lists the tools.
  *
  * The SDK converts every schema at draft-07 and takes no option to emit
- * anything else, so a construct the two drafts spell differently reaches a
- * 2020-12 client as something it refuses — and one request carries every tool,
- * so the refusal takes the whole set down rather than the tool that caused it.
+ * anything else, so both the draft it declares and a construct the two drafts
+ * spell differently reach a 2020-12 client as something it refuses — and one
+ * request carries every tool, so the refusal takes the whole set down rather
+ * than the tool that caused it.
  */
 
+import { describeFunctionInputAsJsonSchema } from "@dicode/omc-client";
 import { describe, expect, it } from "vitest";
 
+import { DRAFT_2020_12 } from "./draft-2020-12.js";
 import { buildMcpServer, type McpToolDeps } from "./mcp-server.js";
 
 const deps = {
@@ -30,6 +33,24 @@ function* subschemas(node: unknown): Generator<Record<string, unknown>> {
 }
 
 describe("the published input schemas", () => {
+  it("declare draft 2020-12 rather than the draft-07 they were converted at", async () => {
+    const tools = await listTools();
+
+    const declared = tools.map(
+      ({ inputSchema }) => (inputSchema as Record<string, unknown>)["$schema"],
+    );
+
+    expect([...new Set(declared)]).toEqual([DRAFT_2020_12]);
+  });
+
+  it("leave the draft omc_describe_function declares where it was", async () => {
+    await listTools();
+
+    const { input } = describeFunctionInputAsJsonSchema("simulate");
+
+    expect(input.$schema).toBe(DRAFT_2020_12);
+  });
+
   it("spell every array the same way in draft-07 and draft 2020-12", async () => {
     const tools = await listTools();
 
