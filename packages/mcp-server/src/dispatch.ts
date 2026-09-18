@@ -20,9 +20,17 @@ import type {
   SaveClient,
   SourceTree,
 } from "@dicode/omc-client";
+import {
+  isReadOnlyFunction,
+  looksLikeError,
+  runQueued,
+  withErrorBuffer,
+} from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ZodError } from "zod";
 
 import { errorDetail } from "./error-detail.js";
+import type { McpLog } from "./log.js";
 import type {
   WriteAction,
   WriteVerdictClient,
@@ -81,6 +89,26 @@ export interface McpToolDeps {
    * `createClass` reports to the caller.
    */
   workspace?: SourceTree | undefined;
+  /**
+   * Where every dispatched call, its outcome, and any refusal are logged. An
+   * MCP tool call has no REPL transcript or webview of its own, so this is
+   * the only place a user watching the extension sees what an agent did.
+   * Absent in a host with nowhere to log to.
+   */
+  log?: McpLog | undefined;
+  /**
+   * Surfaces a refusal, a failed write, or a read that failed for a reason the
+   * model cannot act on — a dead client, a transport fault — somewhere more
+   * visible than the log channel. A read that failed on OMC's own answer, or on
+   * its own malformed argument, stays between the model and the tool: nothing
+   * was written either way, and a toast per attempt would bury the user under a
+   * model's own iteration. `simulate` and `checkModel` classify as reads, so a
+   * model that will not build is reported to the caller and logged rather than
+   * raised. The extension wires this to a VSCode notification, the
+   * same visibility its own REPL and diagram editor get from their
+   * transcripts. Never called for a successful call.
+   */
+  notifyFailure?: ((message: string) => void) | undefined;
 }
 
 /** A class a tool writes that nothing in its wrapper's arguments names. */
@@ -97,6 +125,63 @@ export function textResult(text: string): CallToolResult {
 /** A tool result the model is told failed, carrying `message` as the reason. */
 export function errorResult(message: string): CallToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
+}
+
+/**
+ * Functions that read OMC's own error buffer rather than mutate a model.
+ * Draining around either would clear the very thing the caller asked to read.
+ */
+const READS_ERROR_BUFFER = new Set<OmcFnName>([
+  "getErrorString",
+  "getMessagesStringInternal",
+]);
+
+/**
+ * A failure OMC reported through its error buffer rather than by throwing.
+ * Distinguishes an answer the model can act on from a transport fault or a
+ * dead client, which reach the same `catch`.
+ */
+class OmcDiagnosticError extends Error {}
+
+/**
+ * Many OMC mutations answer `success: true` (or nothing distinguishing at
+ * all) for a call that did nothing, and stash the actual reason in OMC's own
+ * error buffer instead of the return value — `addComponent` of a duplicate
+ * name is one. A `READS_ERROR_BUFFER` call skips the drain but still takes a
+ * turn, see {@link runQueued}.
+ */
+async function invokeDrained(
+  client: McpToolClient,
+  fn: OmcFnName,
+  input: unknown,
+): Promise<unknown> {
+  if (READS_ERROR_BUFFER.has(fn)) {
+    return runQueued(client, () => client.invoke(fn, input));
+  }
+  const { result, errorString } = await withErrorBuffer(client, () =>
+    client.invoke(fn, input),
+  );
+  if (looksLikeError(errorString)) throw new OmcDiagnosticError(errorString);
+  return result;
+}
+
+/**
+ * Bounds each logged value on its own, so a 300 KB class dump (issue #658)
+ * cannot push the other half of the line past whatever bound the host's own
+ * log sink applies.
+ */
+export const MAX_LOGGED_CHARS = 2000;
+
+function loggable(value: unknown): string {
+  let text: string;
+  try {
+    text = JSON.stringify(value) ?? String(value);
+  } catch {
+    text = String(value);
+  }
+  return text.length > MAX_LOGGED_CHARS
+    ? `${text.slice(0, MAX_LOGGED_CHARS)}… (${text.length} chars total)`
+    : text;
 }
 
 /**
@@ -128,7 +213,8 @@ export async function dispatch<K extends OmcFnName>(
  *
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
- * fault.
+ * fault. A diagnostic OMC left in its error buffer counts as one too. What
+ * reaches `notifyFailure` is narrower than what fails; see its own docs.
  */
 export async function dispatchByName(
   deps: McpToolDeps,
@@ -136,6 +222,8 @@ export async function dispatchByName(
   input: unknown,
   gateOn?: GatedClass,
 ): Promise<CallToolResult> {
+  const { log, notifyFailure } = deps;
+  const action = `${fn} ${loggable(input)}`;
   try {
     const client = await deps.ensureClient();
     const refusal =
@@ -148,11 +236,22 @@ export async function dispatchByName(
             gateOn.className,
             gateOn.action,
           ));
-    if (refusal !== undefined) return errorResult(refusal);
+    if (refusal !== undefined) {
+      log?.warn(`${action} refused: ${refusal}`);
+      notifyFailure?.(`${fn} refused: ${refusal}`);
+      return errorResult(refusal);
+    }
 
-    const output = await client.invoke(fn, input);
+    const output = await invokeDrained(client, fn, input);
+    log?.info(`${action} -> ${loggable(output)}`);
     return textResult(JSON.stringify(output));
   } catch (err) {
-    return errorResult(errorDetail(err, fn));
+    const message = errorDetail(err, fn);
+    log?.warn(`${action} failed: ${message}`);
+    const quiet =
+      isReadOnlyFunction(fn) &&
+      (err instanceof OmcDiagnosticError || err instanceof ZodError);
+    if (!quiet) notifyFailure?.(`${fn} failed: ${message}`);
+    return errorResult(message);
   }
 }

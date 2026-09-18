@@ -102,12 +102,16 @@ interface PasteCall {
 
 /**
  * Records the single block a paste hands to OMC. `reject` turns the call into
- * an OMC rejection, which is now all-or-nothing.
+ * an OMC rejection, which is all-or-nothing. `leaves` is what the write puts
+ * in OMC's error buffer — only readable after the write, so the drain's
+ * pre-call clear cannot consume it.
  */
 function pasteClient(
   reject: (data: string) => string | null = () => null,
+  leaves = "OMC says: something is wrong",
 ): PasteClient & { calls: PasteCall[]; data: () => string } {
   const calls: PasteCall[] = [];
+  let wrote = false;
   return {
     calls,
     data: () => {
@@ -115,10 +119,10 @@ function pasteClient(
       if (first === undefined) throw new Error("no paste call was made");
       return first.data;
     },
-    getErrorString: () =>
-      Promise.resolve({ errorString: "OMC says: something is wrong" }),
+    getErrorString: () => Promise.resolve({ errorString: wrote ? leaves : "" }),
     loadClassContentString: (arg) => {
       calls.push(arg);
+      wrote = true;
       const diagnostic = reject(arg.data);
       return Promise.resolve(
         diagnostic === null
@@ -541,6 +545,44 @@ describe("pasteClipboardItems: connections", () => {
     expect(result.connections).toBe(0);
     expect(result.shapes).toBe(0);
     expect(result.failed).toEqual(["paste: syntax error"]);
+  });
+
+  it("claims nothing when OMC answered success: true but left an error", async () => {
+    const client = pasteClient(
+      () => null,
+      "Error: An element with name gain1 is already declared",
+    );
+
+    const result = await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ name: "gain1" })],
+      "diagram",
+      PASTE_OFFSET,
+    );
+
+    expect(result.added).toEqual([]);
+    expect(result.failed).toEqual([
+      "paste: Error: An element with name gain1 is already declared",
+    ]);
+  });
+
+  it("keeps a paste OMC only warned about", async () => {
+    const client = pasteClient(() => null, "Warning: unused connector");
+
+    const result = await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ name: "gain1" })],
+      "diagram",
+      PASTE_OFFSET,
+    );
+
+    // The paste renames around the `gain1` already in the layout.
+    expect(result.added).toEqual(["gain2"]);
+    expect(result.failed).toEqual([]);
   });
 });
 

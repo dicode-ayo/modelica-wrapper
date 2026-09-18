@@ -21,6 +21,15 @@ interface FakeClient {
   cdCalls: string[];
   /** Push a string here to make the next `getErrorString()` return non-empty. */
   errorQueue: string[];
+  /**
+   * Set before a `call()` this test expects to leave a diagnostic behind —
+   * `call()` pushes it onto `errorQueue` itself, the way OMC populates its
+   * real buffer as a side effect of running a command rather than before it.
+   * `evalLine` clears the buffer ahead of every call (`withErrorBuffer`), so
+   * pre-seeding `errorQueue` directly would be wiped by that clear before
+   * `call()` ever runs.
+   */
+  pendingCallError?: string;
   /** Replies for `call()` keyed by command — falls back to "" if missing. */
   callReplies: Map<string, string>;
   /** Replies for `cd({ newWorkingDirectory })` keyed by input path. */
@@ -28,6 +37,12 @@ interface FakeClient {
   /** Replies for `loadFile()` — defaults to success=true. */
   loadFileSuccess: boolean;
   loadFileError?: string;
+  /**
+   * Set before a `:cd` this test expects to leave a diagnostic behind —
+   * `cd()` pushes it onto `errorQueue` itself, for the same reason
+   * `pendingCallError` exists for the plain-command path.
+   */
+  cdError?: string;
 }
 
 function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
@@ -50,6 +65,10 @@ function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
   state.client = {
     async call(cmd: string) {
       calls.push(cmd);
+      if (state.pendingCallError !== undefined) {
+        errorQueue.push(state.pendingCallError);
+        delete state.pendingCallError;
+      }
       return callReplies.get(cmd) ?? "";
     },
     async getErrorString() {
@@ -58,7 +77,7 @@ function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
     },
     async loadFile({ fileName }: { fileName: string }) {
       loadFileCalls.push(fileName);
-      if (!state.loadFileSuccess && state.loadFileError !== undefined) {
+      if (state.loadFileError !== undefined) {
         errorQueue.push(state.loadFileError);
       }
       return { success: state.loadFileSuccess };
@@ -66,6 +85,7 @@ function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
     async cd({ newWorkingDirectory }: { newWorkingDirectory?: string } = {}) {
       const arg = newWorkingDirectory ?? "";
       cdCalls.push(arg);
+      if (state.cdError !== undefined) errorQueue.push(state.cdError);
       return { workingDirectory: cdReplies.get(arg) ?? "" };
     },
     async close() {
@@ -112,9 +132,8 @@ describe("evalLine — plain OMC commands", () => {
   it("treats a non-empty error buffer after a call as an error result", async () => {
     const fake = makeClient();
     fake.callReplies.set("bogus", "");
-    fake.errorQueue.push(
-      "[<interactive>:1:1] Error: Lookup of class bogus failed.",
-    );
+    fake.pendingCallError =
+      "[<interactive>:1:1] Error: Lookup of class bogus failed.";
     const { deps } = makeDeps(fake.client);
     const result = await evalLine("bogus", deps);
     expect(result.isError).toBe(true);
@@ -131,9 +150,8 @@ describe("evalLine — plain OMC commands", () => {
     const call =
       'getElementAnnotation("Modelica.Blocks.Examples.PID_Controller")';
     fake.callReplies.set(call, "");
-    fake.errorQueue.push(
-      "[<interactive>:1:1-1:0:writable] Error: Class getElementAnnotation not found in scope <global scope> (looking for a function or record).",
-    );
+    fake.pendingCallError =
+      "[<interactive>:1:1-1:0:writable] Error: Class getElementAnnotation not found in scope <global scope> (looking for a function or record).";
     const { deps } = makeDeps(fake.client);
     const result = await evalLine(call, deps);
     expect(result.isError).toBe(true);
@@ -267,6 +285,17 @@ describe("evalLine — meta commands", () => {
     expect(result.output).toContain("loadFile failed");
   });
 
+  it(":load rejects a success: true reply if OMC's buffer holds an Error", async () => {
+    // Same silent-failure shape as the plain-command path: loadFile can
+    // report success while the real reason sits in the buffer instead.
+    const fake = makeClient();
+    fake.loadFileError = "Error: parse error in /some/path.mo";
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":load /some/path.mo", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("parse error");
+  });
+
   it(":load with no arg returns an error", async () => {
     const fake = makeClient();
     const { deps } = makeDeps(fake.client);
@@ -300,6 +329,18 @@ describe("evalLine — meta commands", () => {
     expect(result.isError).toBe(false);
   });
 
+  it(":cd rejects a non-empty cwd if OMC's buffer holds an Error", async () => {
+    // Mirrors the empty-cwd failure signal: a populated workingDirectory
+    // doesn't rule out a real diagnostic sitting in the same buffer.
+    const fake = makeClient();
+    fake.cdReplies.set("/tmp", "/tmp");
+    fake.cdError = "Error: permission denied";
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":cd /tmp", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("permission denied");
+  });
+
   it(":cd with no arg prints the current cwd (cd getter)", async () => {
     // OMC's `cd("")` is documented as a pure getter — it returns the
     // current cwd without changing it. The fake encodes that here: the
@@ -316,7 +357,7 @@ describe("evalLine — meta commands", () => {
   it(":cd reports an error when the cd wrapper returns an empty cwd", async () => {
     const fake = makeClient();
     fake.cdReplies.set("/nope", "");
-    fake.errorQueue.push("Error: Cannot change directory");
+    fake.cdError = "Error: Cannot change directory";
     const { deps } = makeDeps(fake.client);
     const result = await evalLine(":cd /nope", deps);
     expect(result.isError).toBe(true);

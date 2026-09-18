@@ -14,6 +14,7 @@
  */
 
 export type { McpToolClient, McpToolDeps } from "./dispatch.js";
+export { MAX_LOGGED_CHARS } from "./dispatch.js";
 export type { SourceTree, SourceWriter } from "@dicode/omc-client";
 
 export {

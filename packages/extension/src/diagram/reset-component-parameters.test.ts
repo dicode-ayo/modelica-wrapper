@@ -32,12 +32,23 @@ function mockClient(opts: MockOptions = {}): {
   remove: ReturnType<typeof vi.fn>;
   getErrorString: ReturnType<typeof vi.fn>;
 } {
+  // `errorString` is enqueued by `removeElementModifiers` itself, as OMC's
+  // own buffer would be populated as a side effect of the call — not
+  // returned unconditionally by every `getErrorString` read. A pre-call
+  // clear that didn't actually clear anything, or a read that ran before
+  // the call, would otherwise be indistinguishable from a correct one here.
+  let pending: string | undefined;
   const remove = opts.removeThrows
     ? vi.fn().mockRejectedValue(opts.removeThrows)
-    : vi.fn().mockResolvedValue(opts.removeResult ?? { success: true });
-  const getErrorString = vi
-    .fn()
-    .mockResolvedValue({ errorString: opts.errorString ?? "" });
+    : vi.fn(async () => {
+        if (opts.errorString !== undefined) pending = opts.errorString;
+        return opts.removeResult ?? { success: true };
+      });
+  const getErrorString = vi.fn(async () => {
+    const errorString = pending ?? "";
+    pending = undefined;
+    return { errorString };
+  });
   const client = {
     removeElementModifiers: remove,
     getErrorString,
@@ -83,6 +94,25 @@ describe("resetComponentParameters", () => {
     expect(recordedMessages[0]?.level).toBe("warning");
     expect(recordedMessages[0]?.message).toContain("reset gain failed");
     expect(recordedMessages[0]?.message).toContain("no such component gain");
+  });
+
+  it("returns false and warns when OMC reports success: true but leaves an Error in its buffer", async () => {
+    // OMC accepts the call yet leaves the real reason in its error buffer
+    // rather than the return value.
+    const { client } = mockClient({
+      removeResult: { success: true },
+      errorString: "Error: no such component gain",
+    });
+
+    const ok = await resetComponentParameters(client, "Sample", "gain");
+
+    expect(ok).toBe(false);
+    expect(recordedMessages).toHaveLength(1);
+    expect(recordedMessages[0]?.level).toBe("warning");
+    expect(recordedMessages[0]?.message).toContain("reset gain failed");
+    expect(recordedMessages[0]?.message).toContain(
+      "Error: no such component gain",
+    );
   });
 
   it("returns false and warns when the RPC throws", async () => {

@@ -7,6 +7,7 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
+import { withErrorBuffer } from "@dicode/omc-client";
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import { renamedClassMessage } from "../single-entity-file.js";
@@ -71,11 +72,17 @@ describe("compareBufferToClass", () => {
 });
 
 describe("reloadBufferIntoOmc", () => {
-  it("drains stale diagnostics before loading the buffer's text", async () => {
+  it("screens the buffer before the clear, so only the load is drained", async () => {
     const calls: string[] = [];
     const client: BufferSyncClient = {
-      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
-      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      parseString: vi.fn(async () => {
+        calls.push("parseString");
+        return { classNames: ["Pkg.Model"] };
+      }),
+      getSourceFile: vi.fn(async () => {
+        calls.push("getSourceFile");
+        return { fileName: DOC_URI.toString() };
+      }),
       getErrorString: vi.fn(async () => {
         calls.push("getErrorString");
         return { errorString: "" };
@@ -98,7 +105,89 @@ describe("reloadBufferIntoOmc", () => {
     );
 
     expect(result).toEqual({ ok: true });
-    expect(calls).toEqual(["getErrorString", "loadString"]);
+    expect(calls).toEqual([
+      "getSourceFile",
+      "parseString",
+      "getErrorString",
+      "loadString",
+      "getErrorString",
+    ]);
+  });
+
+  it("keeps a concurrent withErrorBuffer turn from reading a diagnostic parseString left mid-screen", async () => {
+    // parseString can leave a diagnostic in OMC's buffer without throwing, on
+    // malformed text. Unqueued, that write could land inside an unrelated
+    // withErrorBuffer turn's own clear-run-drain window and be reported as
+    // that turn's own failure.
+    let buffer = "";
+    let releaseMutation: () => void = () => undefined;
+    const mutationGate = new Promise<void>((resolve) => {
+      releaseMutation = resolve;
+    });
+    let signalMutationRunning: () => void = () => undefined;
+    const mutationRunning = new Promise<void>((resolve) => {
+      signalMutationRunning = resolve;
+    });
+
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => {
+        buffer = "Error: malformed input near line 3";
+        return { classNames: ["Pkg.Model"] };
+      }),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      getErrorString: vi.fn(async () => {
+        const errorString = buffer;
+        buffer = "";
+        return { errorString };
+      }),
+      loadString: vi.fn(async () => ({ success: true })),
+    };
+
+    const mutation = withErrorBuffer(client, async () => {
+      signalMutationRunning();
+      await mutationGate;
+      return "unrelated mutation";
+    });
+    await mutationRunning;
+    const reload = reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
+    );
+    releaseMutation();
+
+    const [mutationResult, reloadResult] = await Promise.all([
+      mutation,
+      reload,
+    ]);
+
+    // Queued behind the mutation's whole turn, so parseString cannot run
+    // until that turn's own drain has already read an empty buffer.
+    expect(mutationResult.errorString).toBe("");
+    expect(reloadResult).toEqual({ ok: true });
+  });
+
+  it("keeps a load a failed screen left a diagnostic for", async () => {
+    // `realSourceFilename` swallows a throwing `getSourceFile` and leaves
+    // whatever OMC wrote for it behind; that is not this load's failure.
+    let loaded = false;
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => {
+        throw new Error("no source file");
+      }),
+      getErrorString: vi.fn(async () => ({
+        errorString: loaded ? "" : "Error: Class Pkg.Model not found",
+      })),
+      loadString: vi.fn(async () => {
+        loaded = true;
+        return { success: true };
+      }),
+    };
+
+    await expect(
+      reloadBufferIntoOmc(client, docFor(DOC_URI), "Pkg.Model"),
+    ).resolves.toEqual({ ok: true });
   });
 
   it("refuses a buffer declaring several top-level classes (#452)", async () => {
@@ -167,6 +256,54 @@ describe("reloadBufferIntoOmc", () => {
       ok: false,
       message: "reverse sync rejected by OMC: the real rejection",
     });
+  });
+
+  it("rejects a load OMC answered success: true but left an error for", async () => {
+    // The diagnostic is left by the load, so the pre-call clear cannot
+    // consume it first.
+    let loaded = false;
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      getErrorString: vi.fn(async () => ({
+        errorString: loaded ? "Error: Pkg.Model is not a valid class" : "",
+      })),
+      loadString: vi.fn(async () => {
+        loaded = true;
+        return { success: true };
+      }),
+    };
+
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI),
+      "Pkg.Model",
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      message:
+        "reverse sync rejected by OMC: Error: Pkg.Model is not a valid class",
+    });
+  });
+
+  it("keeps a plain warning a success", async () => {
+    let loaded = false;
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      getErrorString: vi.fn(async () => ({
+        errorString: loaded ? "Warning: unused variable x" : "",
+      })),
+      loadString: vi.fn(async () => {
+        loaded = true;
+        return { success: true };
+      }),
+    };
+
+    await expect(
+      reloadBufferIntoOmc(client, docFor(DOC_URI), "Pkg.Model"),
+    ).resolves.toEqual({ ok: true });
   });
 
   it("falls back to a generic message when OMC reports no error text", async () => {

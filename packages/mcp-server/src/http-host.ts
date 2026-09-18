@@ -80,6 +80,10 @@ function parked(deps: McpToolDeps, log: McpLog): McpToolDeps {
   const done = new WeakSet<object>();
   return {
     ...deps,
+    // Every dispatched call logs through the same channel the host's own
+    // lifecycle messages (cwd parking, listen failures) already use, unless
+    // the caller wired something more specific.
+    log: deps.log ?? log,
     ensureClient: async () => {
       const client = await deps.ensureClient();
       const { workspace } = deps;

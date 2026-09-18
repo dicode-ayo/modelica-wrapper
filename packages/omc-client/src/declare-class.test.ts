@@ -7,7 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   classSource,
+  declareClass,
   resolveRootPackageParent,
+  type DeclareClient,
   type RootPackageClient,
 } from "./declare-class.js";
 
@@ -25,6 +27,70 @@ describe("classSource", () => {
         withinPath: "Lib.Ops",
       }),
     ).toBe("within Lib.Ops;\noperator function Add\nend Add;\n");
+  });
+});
+
+describe("declareClass", () => {
+  function makeClient(options: { success: boolean; errorString?: string }): {
+    client: DeclareClient;
+    calls: string[];
+  } {
+    const calls: string[] = [];
+    // The diagnostic is left *by* the load, so a fixture that seeded it up
+    // front would have it consumed by the pre-call clear instead.
+    let buffer = "";
+    return {
+      calls,
+      client: {
+        loadString: vi.fn(() => {
+          calls.push("loadString");
+          buffer = options.errorString ?? "";
+          return Promise.resolve({ success: options.success });
+        }),
+        getErrorString: vi.fn(() => {
+          calls.push("getErrorString");
+          const errorString = buffer;
+          buffer = "";
+          return Promise.resolve({ errorString });
+        }),
+      },
+    };
+  }
+
+  it("declares a class OMC took, clearing the buffer first and reading it back after", async () => {
+    const { client, calls } = makeClient({ success: true });
+
+    await expect(
+      declareClass(client, { name: "M", kind: "model" }),
+    ).resolves.toEqual({ ok: true, source: "model M\nend M;\n" });
+    expect(calls).toEqual(["getErrorString", "loadString", "getErrorString"]);
+  });
+
+  it("refuses a load OMC answered success: true but left an error for", async () => {
+    // The buffer is the only place a reason lives, so a load OMC answered
+    // `success: true` while leaving an error behind is still a refusal.
+    const { client } = makeClient({
+      success: true,
+      errorString: "Error: <whatever OMC left behind>",
+    });
+
+    await expect(
+      declareClass(client, { name: "M", kind: "model" }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "Error: <whatever OMC left behind>",
+    });
+  });
+
+  it("names the class when OMC refuses without saying why", async () => {
+    const { client } = makeClient({ success: false });
+
+    await expect(
+      declareClass(client, { name: "M", kind: "model", withinPath: "Lib" }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "OMC refused to create Lib.M",
+    });
   });
 });
 

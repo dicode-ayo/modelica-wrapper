@@ -3,7 +3,9 @@ import {
   OmcClient,
   asString,
   diagram,
+  looksLikeError,
   produceParameterModel,
+  withErrorBuffer,
   type ClassDef,
   type DiagramLayout,
   type ModelInstance,
@@ -281,28 +283,31 @@ export async function runSimulate(
     async () => {
       const startedAt = Date.now();
       try {
-        // Drain stale errors so anything we read after simulate() is
-        // strictly attributable to this run.
-        await client.getErrorString();
-        const { simulationResult } = await client.simulate(input);
+        const { result, errorString } = await withErrorBuffer(client, () =>
+          client.simulate(input),
+        );
+        const { simulationResult } = result;
         refreshLabel();
         const replLog = createReplLog(label);
         const elapsedMs = Date.now() - startedAt;
-        const { errorString } = await client.getErrorString();
 
         // OMC's simulate() returns success at the API level even when
         // the C compile / link step fails — the failure surfaces as
-        // an empty `resultFile`. Detect that and treat it as an error.
+        // an empty `resultFile`, or (issue #657) a real Error left in the
+        // buffer alongside a resultFile from a stale or partial run.
+        // Detect either and treat it as an error.
         const resultFile = readRecordString(simulationResult, "resultFile");
         const messagesRaw = readRecordString(simulationResult, "messages");
-        if (resultFile.length === 0) {
+        if (resultFile.length === 0 || looksLikeError(errorString)) {
           const detail = stripBlanks([errorString, messagesRaw]).join("\n");
           replLog.error(
             `compile / run failed after ${elapsedMs} ms\n` +
               (detail.length > 0 ? detail : "OMC returned empty resultFile."),
           );
           void vscode.window.showErrorMessage(
-            `Modelica: simulate ${className} failed (no result file)`,
+            resultFile.length === 0
+              ? `Modelica: simulate ${className} failed (no result file)`
+              : `Modelica: simulate ${className} failed`,
           );
           return;
         }
@@ -747,30 +752,26 @@ export async function applyClassParameterEdits(
         ? `setExtendsModifierValue ${className} ${ref.inheritedFrom} ${name}`
         : `setElementModifierValue ${className} ${name}`;
     try {
-      // Drain stale errors so any errorString we read on failure is
-      // strictly attributable to this edit (mirrors addComponent /
-      // simulate).
-      await client.getErrorString();
-      const { success } =
+      const { result, errorString } = await withErrorBuffer(client, () =>
         ref.inheritedFrom !== undefined
-          ? await client.setExtendsModifierValue({
+          ? client.setExtendsModifierValue({
               typeName: className,
               extendsBase: ref.inheritedFrom,
               modifier: name,
               expr,
             })
-          : await client.setElementModifierValue({
+          : client.setElementModifierValue({
               typeName: className,
               elementName: name,
               expr,
-            });
+            }),
+      );
       if (client.lastCall) label = client.lastCall;
       const replLog = createReplLog(label);
-      if (success) {
+      if (result.success && !looksLikeError(errorString)) {
         replLog.success(expr === "" ? `cleared ${name}` : `${name} := ${expr}`);
       } else {
-        const { errorString } = await client.getErrorString();
-        const reason = errorString.trim() || "OMC returned success=false.";
+        const reason = errorString.trim() || "OMC returned success=false";
         replLog.error(reason);
         failures.push(`${name}: ${reason}`);
       }
@@ -823,21 +824,21 @@ export async function applyComponentParameterEdits(
   for (const { elementName, expr } of plan) {
     let label = `setElementModifierValue ${className} ${elementName}`;
     try {
-      await client.getErrorString();
-      const { success } = await client.setElementModifierValue({
-        typeName: className,
-        elementName,
-        expr,
-      });
+      const { result, errorString } = await withErrorBuffer(client, () =>
+        client.setElementModifierValue({
+          typeName: className,
+          elementName,
+          expr,
+        }),
+      );
       if (client.lastCall) label = client.lastCall;
       const replLog = createReplLog(label);
-      if (success) {
+      if (result.success && !looksLikeError(errorString)) {
         replLog.success(
           expr === "" ? `cleared ${elementName}` : `${elementName} := ${expr}`,
         );
       } else {
-        const { errorString } = await client.getErrorString();
-        const reason = errorString.trim() || "OMC returned success=false.";
+        const reason = errorString.trim() || "OMC returned success=false";
         replLog.error(reason);
         failures.push(`${elementName}: ${reason}`);
       }
@@ -864,9 +865,9 @@ export async function applyComponentParameterEdits(
  *
  * Returns OMC's `success` flag so the caller can decide whether to
  * refresh the modal. Mirrors `applyComponentParameterEdits`' fast-path
- * REPL-log + warning-toast policy: drain stale errors first, log the
- * exact `client.lastCall` on completion, and surface a `false`/throw via
- * both the REPL transcript and a single warning toast.
+ * REPL-log + warning-toast policy: drain OMC's error buffer around the call,
+ * log the exact `client.lastCall` on completion, and surface a `false`/throw
+ * via both the REPL transcript and a single warning toast.
  *
  * Pure of the panel object (takes only the client) so it's unit-testable
  * with a mock `OmcClient`; the handler below wires it to the re-fetch +
@@ -881,23 +882,18 @@ export async function resetComponentParameters(
 ): Promise<boolean> {
   let label = `removeElementModifiers ${className} ${componentName}`;
   try {
-    // Drain stale errors so any errorString we read on failure is
-    // strictly attributable to this reset (mirrors the submit path).
-    await client.getErrorString();
-    const success = await clearComponentModifiers(
-      client,
-      className,
-      componentName,
-      { keepRedeclares: true },
+    const { result: success, errorString } = await withErrorBuffer(client, () =>
+      clearComponentModifiers(client, className, componentName, {
+        keepRedeclares: true,
+      }),
     );
     if (client.lastCall) label = client.lastCall;
     const replLog = createReplLog(label);
-    if (success) {
+    if (success && !looksLikeError(errorString)) {
       replLog.success(`reset ${componentName} (cleared all modifiers)`);
       return true;
     }
-    const { errorString } = await client.getErrorString();
-    const reason = errorString.trim() || "OMC returned success=false.";
+    const reason = errorString.trim() || "OMC returned success=false";
     replLog.error(reason);
     void vscode.window.showWarningMessage(
       `Modelica: reset ${componentName} failed — ${reason}`,

@@ -334,7 +334,7 @@ end ReplaceableDonor;
     expect(result.failed).toHaveLength(1);
     // OMC's own prose, not a canned string — a rejected block loses the whole
     // paste, so the message is the only thing the user gets.
-    expect(result.failed.at(0)).not.toContain("OMC rejected");
+    expect(result.failed.at(0)).not.toContain("success=false");
     expect(result.failed.at(0)?.length).toBeGreaterThan("paste: ".length);
 
     const after = await client.listFile({ typeName: cls });

@@ -79,6 +79,12 @@ export {
   type RootPackageClient,
 } from "./declare-class.js";
 export { pathExists } from "./fs-util.js";
+export {
+  looksLikeError,
+  runQueued,
+  withErrorBuffer,
+  type ErrorBufferClient,
+} from "./error-buffer.js";
 export { boundedArray } from "./_shared/boundedArray.js";
 export {
   WORKSPACE_CACHE_DIRNAME,

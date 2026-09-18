@@ -56,6 +56,14 @@ export function mcpToolDeps(
 ): McpToolDeps {
   return {
     ...deps,
+    // A tool call has no REPL transcript or webview of its own — this is
+    // what gives a refusal or a hard failure the same visibility the
+    // extension's own REPL and diagram editor get from theirs.
+    notifyFailure:
+      deps.notifyFailure ??
+      ((message) => {
+        void vscode.window.showErrorMessage(`Modelica (MCP): ${message}`);
+      }),
     get workspace() {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       return root === undefined ? undefined : { root, writer };

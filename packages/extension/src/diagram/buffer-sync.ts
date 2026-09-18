@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+import { looksLikeError, runQueued, withErrorBuffer } from "@dicode/omc-client";
+
 import {
   bufferRefusal,
   type StringParseClient,
@@ -80,9 +82,12 @@ export async function compareBufferToClass(
 export type ReloadResult = { ok: true } | { ok: false; message: string };
 
 /**
- * Reload `document`'s text into OMC, replacing the class. Drains stale
- * diagnostics first so a failure's `getErrorString` attributes only errors
- * this load produced, not ones left over from an earlier call.
+ * Reload `document`'s text into OMC, replacing the class. The screens ahead
+ * of the load — resolving a filename and reading the buffer's own class names
+ * via `parseString` — run inside their own turn on the client's queue, since
+ * `parseString` can leave a diagnostic in OMC's buffer without throwing; only
+ * the load's own turn also clears and drains that buffer, to catch a
+ * diagnostic against `loadString` itself rather than an unrelated screen.
  *
  * `expectedClassName` is the class OMC currently holds for this buffer, the
  * one the caller opened its editor on. The rename screen compares what the
@@ -94,26 +99,23 @@ export async function reloadBufferIntoOmc(
   document: vscode.TextDocument,
   expectedClassName: string,
 ): Promise<ReloadResult> {
-  await client.getErrorString();
   const data = document.getText();
-  const filename = await omcFilenameForDocument(client, document.uri);
-  const refusal = await bufferRefusal(client, {
-    data,
-    filename,
-    expected: expectedClassName,
+  const { filename, refusal } = await runQueued(client, async () => {
+    const filename = await omcFilenameForDocument(client, document.uri);
+    const refusal = await bufferRefusal(client, {
+      data,
+      filename,
+      expected: expectedClassName,
+    });
+    return { filename, refusal };
   });
   if (refusal !== undefined) return { ok: false, message: refusal };
-  const { success } = await client.loadString({
-    data,
-    filename,
-    merge: false,
-  });
-  if (!success) {
-    const { errorString } = await client.getErrorString();
-    return {
-      ok: false,
-      message: `reverse sync rejected by OMC: ${errorString.trim() || "loadString returned success=false"}`,
-    };
-  }
-  return { ok: true };
+  const { result, errorString } = await withErrorBuffer(client, () =>
+    client.loadString({ data, filename, merge: false }),
+  );
+  if (result.success && !looksLikeError(errorString)) return { ok: true };
+  return {
+    ok: false,
+    message: `reverse sync rejected by OMC: ${errorString.trim() || "loadString returned success=false"}`,
+  };
 }

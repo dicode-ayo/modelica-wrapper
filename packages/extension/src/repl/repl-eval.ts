@@ -7,11 +7,11 @@
  *
  * Meta-commands (lines starting with `:`) dispatch through `META_HANDLERS`,
  * one per verb in `repl-help.ts`'s `META_COMMANDS`. Everything else is
- * forwarded to `client.call()`. After a forwarded call we drain
- * `client.getErrorString()` and surface any non-empty error buffer in
- * addition to the OMC reply — OMC can return a value AND a diagnostic in
- * the same step (e.g. typing a malformed expression). We separately mark
- * the result as `isError: true` so the terminal can pick a color.
+ * forwarded to `client.call()` through `withErrorBuffer` (`@dicode/omc-client`),
+ * so any non-empty error buffer surfaces alongside the OMC reply — OMC can
+ * return a value AND a diagnostic in the same step (e.g. typing a malformed
+ * expression). We separately mark the result as `isError: true` so the
+ * terminal can pick a color.
  *
  * Project rule: every OMC call constructed by this module must go through
  * a typed wrapper on `OmcClient`. The bare `client.call(rawLine)` below is
@@ -20,6 +20,7 @@
  * code and use the typed surface (`client.loadFile`, `client.cd`, etc).
  */
 
+import { looksLikeError, withErrorBuffer } from "@dicode/omc-client";
 import type { OmcClient } from "@dicode/omc-client";
 import type { OmcCommand } from "@dicode/omc-client";
 
@@ -75,18 +76,9 @@ export async function evalLine(
     // call sites that pass a literal; the REPL by definition takes free
     // text, so we cast to the underlying contract. OMC will surface any
     // parse error in its reply / error buffer.
-    const reply = await client.call(rawLine as OmcCommand);
-    // OMC often populates the error buffer in addition to returning a
-    // value. Drain it AFTER reading the reply so this run's diagnostics
-    // come out together.
-    let errorString = "";
-    try {
-      const r = await client.getErrorString();
-      errorString = r.errorString ?? "";
-    } catch {
-      // getErrorString itself failing isn't fatal — fall back to the
-      // primary reply only.
-    }
+    const { result: reply, errorString } = await withErrorBuffer(client, () =>
+      client.call(rawLine as OmcCommand),
+    );
     const trimmedReply = stripTrailingNewline(reply);
     if (errorString.length > 0) {
       const isError = looksLikeError(errorString);
@@ -168,9 +160,10 @@ async function metaLoad(
   }
   try {
     const client = await deps.ensureClient();
-    const { success } = await client.loadFile({ fileName: arg });
-    if (!success) {
-      const { errorString } = await client.getErrorString();
+    const { result, errorString } = await withErrorBuffer(client, () =>
+      client.loadFile({ fileName: arg }),
+    );
+    if (!result.success || looksLikeError(errorString)) {
       return {
         output: `error: loadFile failed${errorString ? `: ${errorString}` : ""}`,
         isError: true,
@@ -197,13 +190,14 @@ async function metaCd(
     // `<workspace>/.modelica`), and `:cd <path>` changes it.
     //
     // OMC returns an empty string on failure on some versions; on
-    // 1.26.x a bad path is a silent no-op that returns the prior cwd.
-    // We treat empty-string output as the only "failed" signal here.
-    const { workingDirectory } = await client.cd({
-      newWorkingDirectory: arg,
-    });
-    if (workingDirectory.length === 0) {
-      const { errorString } = await client.getErrorString();
+    // 1.26.x a bad path is a silent no-op that returns the prior cwd. An
+    // empty cwd or an Error left in the buffer is a failure; a prior cwd
+    // with a clean buffer is indistinguishable from success.
+    const { result, errorString } = await withErrorBuffer(client, () =>
+      client.cd({ newWorkingDirectory: arg }),
+    );
+    const { workingDirectory } = result;
+    if (workingDirectory.length === 0 || looksLikeError(errorString)) {
       return {
         output: `error: cd failed${errorString ? `: ${errorString}` : ""}`,
         isError: true,
@@ -232,13 +226,4 @@ async function metaReset(deps: ReplDependencies): Promise<ReplResult> {
 
 function stripTrailingNewline(s: string): string {
   return s.replace(/\r?\n+$/, "");
-}
-
-/**
- * Heuristic — treat the error buffer as a hard error if it mentions the
- * literal word "Error" (OMC's diagnostic-level marker). Warnings/notices
- * are still surfaced via `output` but don't paint the whole line red.
- */
-function looksLikeError(errorString: string): boolean {
-  return /\bError\b/.test(errorString);
 }

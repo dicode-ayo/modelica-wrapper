@@ -1,7 +1,9 @@
 import {
   classNameOf,
   connectorPlacementKeywords,
+  looksLikeError,
   shapeToRecord,
+  withErrorBuffer,
 } from "@dicode/omc-client";
 import type {
   ConnectionEndpoint,
@@ -358,19 +360,20 @@ export async function pasteClipboardItems(
   // Placements are offset as they are serialized. OMC's own offset writes an
   // `origin` rather than shifting the extent, which is not the placement the
   // rest of the edit path produces.
-  const write = await client.loadClassContentString({
-    data: block.join("\n"),
-    typeName: hostClass,
-  });
-  if (!write.success) {
-    const detail =
-      write.diagnostic ?? (await client.getErrorString()).errorString.trim();
+  const { result: write, errorString } = await withErrorBuffer(client, () =>
+    client.loadClassContentString({
+      data: block.join("\n"),
+      typeName: hostClass,
+    }),
+  );
+  if (!write.success || looksLikeError(errorString)) {
+    const detail = write.diagnostic ?? errorString.trim();
     return {
       added: [],
       shapes: 0,
       connections: 0,
       failed: [
-        `paste: ${detail === "" ? "OMC rejected the pasted block" : detail}`,
+        `paste: ${detail === "" ? "loadClassContentString returned success=false" : detail}`,
       ],
     };
   }

@@ -23,6 +23,8 @@
 
 import * as vscode from "vscode";
 
+import { log } from "../logger.js";
+
 import {
   computeCompletion,
   computeGhost,
@@ -494,6 +496,15 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
         output: `error: ${(err as Error).message}`,
         isError: true,
       };
+    }
+    // Every REPL line, logged to the output channel regardless of what the
+    // terminal itself shows — the transcript already displays this, but the
+    // channel is the one place every OMC-backed action (REPL, diagram
+    // editor, MCP) lands so a user can find one in the other's history.
+    if (result.isError) {
+      log.warn("repl", `${line} -> ${result.output}`);
+    } else {
+      log.info("repl", `${line} -> ${result.output}`);
     }
 
     // Wipe the "... working" line we wrote a moment ago. The cursor is

@@ -38,6 +38,19 @@ vi.mock("./library-source.js", () => ({
   },
   SearchAbortedError: class extends Error {},
 }));
+// `reportError` mirrors into the REPL the same way Check Model does
+// (`createReplLog`, which the parameter-edit path already uses) — stub only
+// `showInRepl` so a test can assert the mirror happened without a real
+// terminal, keeping every other export (including `createReplLog`) real.
+const showInRepl = vi.fn();
+vi.mock("../commands/repl.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../commands/repl.js")>();
+  return {
+    ...actual,
+    showInRepl: (label: string, output: string, isError?: boolean) =>
+      showInRepl(label, output, isError),
+  };
+});
 import type {
   ExtensionToWebview,
   WebviewToExtension,
@@ -632,6 +645,13 @@ function makeEditClient(opts?: {
   modifiers?: Record<string, string>;
   /** Whether OMC accepts the paste block. */
   pasteSuccess?: boolean;
+  /**
+   * What `getErrorString` reports on the read right after `addComponent`
+   * runs, simulating OMC leaving a diagnostic in its buffer despite a
+   * `success: true` reply. Consumed once, then the fixture's usual filler
+   * ("boom", never matching `looksLikeError`) resumes.
+   */
+  addComponentErrorBuffer?: string;
 }): {
   client: OmcClient;
   invoked: string[];
@@ -661,6 +681,8 @@ function makeEditClient(opts?: {
   const graphicsWrites: Array<Record<string, unknown>> = [];
   const classInfoQueries: string[] = [];
   const ops: string[] = [];
+  /** Set by `addComponent` for `getErrorString`'s next read — see the option's doc. */
+  let pendingErrorBuffer: string | undefined;
   const client = {
     lastCall: "mock",
     invoke: vi.fn((fn: string, input?: Record<string, unknown>) => {
@@ -699,6 +721,9 @@ function makeEditClient(opts?: {
     addComponent: vi.fn((input: Record<string, unknown>) => {
       ops.push("addComponent");
       addComponentCalls.push(input);
+      if (opts?.addComponentErrorBuffer !== undefined) {
+        pendingErrorBuffer = opts.addComponentErrorBuffer;
+      }
       return Promise.resolve({ success: true });
     }),
     addConnection: vi.fn((input: Record<string, unknown>) => {
@@ -761,7 +786,11 @@ function makeEditClient(opts?: {
       const path = input.modifier.slice(input.modifier.indexOf(".") + 1);
       return Promise.resolve({ value: opts?.modifiers?.[path] ?? "" });
     }),
-    getErrorString: vi.fn(() => Promise.resolve({ errorString: "boom" })),
+    getErrorString: vi.fn(() => {
+      const errorString = pendingErrorBuffer ?? "boom";
+      pendingErrorBuffer = undefined;
+      return Promise.resolve({ errorString });
+    }),
   } as unknown as OmcClient;
   return {
     client,
@@ -968,6 +997,38 @@ describe("DiagramEditController: forward write path", () => {
     expect(String(addComponentCalls[0]?.annotation)).toContain("Placement");
     expect(listedTypes).toEqual(["Pkg.M"]);
     expect(writes).toEqual([LISTED_SOURCE]);
+  });
+
+  it("reports addComponent as failed when OMC's buffer holds an error despite success: true", async () => {
+    // OMC can accept the call (a duplicate name is one real case) but leave
+    // the actual reason in its error buffer rather than the return value.
+    const { client, listedTypes } = makeEditClient({
+      addComponentErrorBuffer:
+        "Error: An element with name gain1 is already declared",
+    });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 5, y: 5 },
+    });
+
+    const message =
+      "addComponent Modelica.Blocks.Math.Gain failed: Error: An element with name gain1 is already declared";
+    expect(posted.at(-1)).toEqual({ type: "error", message });
+    // Never reflected the buffer back from a class the write didn't actually land on.
+    expect(listedTypes).toEqual([]);
+    expect(writes).toEqual([]);
+    // Mirrors Check Model's own tee-in: the error is visible in the REPL
+    // transcript too, not just the webview/toast.
+    expect(showInRepl).toHaveBeenCalledWith("diagram Pkg.M", message, true);
   });
 
   it("refuses to add a partial class and never writes it", async () => {
