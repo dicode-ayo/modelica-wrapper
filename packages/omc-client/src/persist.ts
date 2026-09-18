@@ -102,10 +102,10 @@ interface OnDiskParent {
  *
  * The enclosing package's `package.order` gains the new member, so a fresh
  * OMC `loadFile` finds it. A `package.order` written from scratch alongside a
- * new `package.mo` lists the children OMC reports; an existing one is only
- * appended to, never rewritten — see {@link addToPackageOrder}. A directory
- * package this never created, and that has no `package.order`, keeps having
- * none.
+ * new `package.mo` lists the disk-backed subset of the children OMC reports
+ * — see {@link diskBackedClassNames}; an existing one is only appended to,
+ * never rewritten — see {@link addToPackageOrder}. A directory package this
+ * never created, and that has no `package.order`, keeps having none.
  *
  * A `package` is written as `<baseDir>/<leafName>/package.mo` so its own
  * directory becomes the parent for subsequent children; every other
@@ -136,15 +136,19 @@ export async function persistClass(
     baseDir = path.join(baseDir, part);
     await mkdir(baseDir, { recursive: true });
     const pkgFile = path.join(baseDir, "package.mo");
+    const orderFile = path.join(baseDir, "package.order");
+    const orderFileMissing = !(await pathExists(orderFile));
+    // Before this iteration writes package.mo — see diskBackedClassNames.
+    const base = orderFileMissing
+      ? await diskBackedClassNames(client, parentName)
+      : [];
     if (!(await pathExists(pkgFile))) {
       const within = parts.slice(0, i).join(".");
       const header = within ? `within ${within};\n` : "";
       await writer.write(pkgFile, `${header}package ${part}\nend ${part};\n`);
     }
-    const orderFile = path.join(baseDir, "package.order");
-    if (!(await pathExists(orderFile))) {
+    if (orderFileMissing) {
       const nextSegment = parts[i + 1];
-      const base = await safeGetClassNames(client, parentName);
       const children =
         nextSegment !== undefined && !base.includes(nextSegment)
           ? [...base, nextSegment]
@@ -175,7 +179,7 @@ export async function persistClass(
     if (!(await pathExists(orderFile))) {
       // Written even when the package has no members yet: it is what the next
       // class created inside gets appended to.
-      const children = await safeGetClassNames(client, qualifiedName);
+      const children = await diskBackedClassNames(client, qualifiedName);
       await writer.write(
         orderFile,
         children.length === 0 ? "" : children.join("\n") + "\n",
@@ -240,18 +244,50 @@ async function onDiskParent(
   client: PersistClient,
   parentName: string,
 ): Promise<OnDiskParent | undefined> {
+  const file = await recordedDiskFile(client, parentName);
+  if (file === undefined) return undefined;
+  return {
+    dir: path.dirname(file),
+    structured: path.basename(file) === "package.mo",
+  };
+}
+
+/**
+ * The file OMC records for `typeName`, or `undefined` when it records a
+ * placeholder or does not know the class.
+ */
+async function recordedDiskFile(
+  client: PersistClient,
+  typeName: string,
+): Promise<string | undefined> {
   try {
-    const info = await client.getClassInformation({ typeName: parentName });
-    if (isLikelyDiskPath(info.fileName)) {
-      return {
-        dir: path.dirname(info.fileName),
-        structured: path.basename(info.fileName) === "package.mo",
-      };
-    }
+    const { fileName } = await client.getClassInformation({ typeName });
+    return isLikelyDiskPath(fileName) ? fileName : undefined;
   } catch {
-    /* parent not in OMC — caller will create it */
+    return undefined;
   }
-  return undefined;
+}
+
+/**
+ * `parentName`'s members that OMC records an existing on-disk file for — see
+ * {@link addToPackageOrder} for why a `package.order` may list nothing else.
+ *
+ * A member declared inline in `parentName`'s own `package.mo` reports that
+ * file as its `fileName`, so a caller resolves this before writing that
+ * `package.mo` itself; otherwise its own write would vouch for the member.
+ */
+async function diskBackedClassNames(
+  client: PersistClient,
+  parentName: string,
+): Promise<string[]> {
+  const members = await safeGetClassNames(client, parentName);
+  const backed = await Promise.all(
+    members.map(async (member) => {
+      const file = await recordedDiskFile(client, `${parentName}.${member}`);
+      return file !== undefined && (await pathExists(file));
+    }),
+  );
+  return members.filter((_, index) => backed[index]);
 }
 
 /**
