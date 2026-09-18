@@ -690,11 +690,11 @@ describe("a call carrying paths to several Modelica files", () => {
 });
 
 describe("REWRITES_OWN_FILE", () => {
-  it("gates every readOnly function it marks as rewriting its own file", () => {
-    const flagged = Object.entries(REWRITES_OWN_FILE)
-      .filter(([, rewritesOwnFile]) => rewritesOwnFile)
-      .map(([fn]) => fn);
+  const flagged = Object.entries(REWRITES_OWN_FILE)
+    .filter(([, rewritesOwnFile]) => rewritesOwnFile)
+    .map(([fn]) => fn);
 
+  it("gates every readOnly function it marks as rewriting its own file", () => {
     for (const fn of flagged) {
       expect(hasGateEntry(fn)).toBe(true);
     }
@@ -704,10 +704,6 @@ describe("REWRITES_OWN_FILE", () => {
     // A new "true" here means a readOnly MUTATIONS entry now rewrites a
     // class's own file the way save does — give it a BY_NAME row, then
     // extend this list.
-    const flagged = Object.entries(REWRITES_OWN_FILE)
-      .filter(([, rewritesOwnFile]) => rewritesOwnFile)
-      .map(([fn]) => fn);
-
     expect(flagged).toEqual(["save"]);
   });
 });

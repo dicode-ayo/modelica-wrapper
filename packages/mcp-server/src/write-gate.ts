@@ -434,13 +434,24 @@ const BY_NAME: Readonly<
 > = { save: SAVE_ARGUMENT, ...CLASS_ARGUMENTS };
 
 /**
- * Whether `fn` has a `BY_NAME` row of its own to derive a class from, as
- * opposed to one `refusalFor` lets straight through. What
+ * `fn`'s row in {@link BY_NAME}, or `undefined` when it names nothing the gate
+ * judges — no row at all, or the explicit `null` row a top-level creation
+ * (`copyClass`'s `within`, `newModel`'s `withinPath`) leaves for `refusalFor`
+ * to let straight through.
+ */
+function rowFor(
+  fn: string,
+): ResolvedArgument | readonly ResolvedArgument[] | undefined {
+  const row = BY_NAME[fn];
+  return row === null ? undefined : row;
+}
+
+/**
+ * Whether `fn` has a `BY_NAME` row of its own to derive a class from. What
  * {@link REWRITES_OWN_FILE} pins every `true` entry against.
  */
 export function hasGateEntry(fn: string): boolean {
-  const row = BY_NAME[fn];
-  return row !== undefined && row !== null;
+  return rowFor(fn) !== undefined;
 }
 
 /**
@@ -456,8 +467,8 @@ export async function refusalFor(
   fn: OmcFnName,
   input: unknown,
 ): Promise<string | undefined> {
-  const row = BY_NAME[fn];
-  if (row === undefined || row === null) return undefined;
+  const row = rowFor(fn);
+  if (row === undefined) return undefined;
   if (typeof input !== "object" || input === null) return undefined;
 
   // One set across the whole row, so a target two arguments share — text
