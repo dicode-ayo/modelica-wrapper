@@ -67,18 +67,18 @@ describe("declareClass", () => {
   });
 
   it("refuses a load OMC answered success: true but left an error for", async () => {
-    // The buffer is the only place a reason lives, so a load answered
-    // success for while leaving an error behind is still a refusal.
+    // The buffer is the only place a reason lives, so a load OMC answered
+    // `success: true` while leaving an error behind is still a refusal.
     const { client } = makeClient({
       success: true,
-      errorString: "Error: Class M is already declared in this scope",
+      errorString: "Error: <whatever OMC left behind>",
     });
 
     await expect(
       declareClass(client, { name: "M", kind: "model" }),
     ).resolves.toEqual({
       ok: false,
-      reason: "Error: Class M is already declared in this scope",
+      reason: "Error: <whatever OMC left behind>",
     });
   });
 

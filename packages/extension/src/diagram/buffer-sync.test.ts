@@ -71,11 +71,17 @@ describe("compareBufferToClass", () => {
 });
 
 describe("reloadBufferIntoOmc", () => {
-  it("clears the buffer before the load and reads it back after", async () => {
+  it("screens the buffer before the clear, so only the load is drained", async () => {
     const calls: string[] = [];
     const client: BufferSyncClient = {
-      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
-      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      parseString: vi.fn(async () => {
+        calls.push("parseString");
+        return { classNames: ["Pkg.Model"] };
+      }),
+      getSourceFile: vi.fn(async () => {
+        calls.push("getSourceFile");
+        return { fileName: DOC_URI.toString() };
+      }),
       getErrorString: vi.fn(async () => {
         calls.push("getErrorString");
         return { errorString: "" };
@@ -98,7 +104,36 @@ describe("reloadBufferIntoOmc", () => {
     );
 
     expect(result).toEqual({ ok: true });
-    expect(calls).toEqual(["getErrorString", "loadString", "getErrorString"]);
+    expect(calls).toEqual([
+      "getSourceFile",
+      "parseString",
+      "getErrorString",
+      "loadString",
+      "getErrorString",
+    ]);
+  });
+
+  it("keeps a load a failed screen left a diagnostic for", async () => {
+    // `realSourceFilename` swallows a throwing `getSourceFile` and leaves
+    // whatever OMC wrote for it behind; that is not this load's failure.
+    let loaded = false;
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => {
+        throw new Error("no source file");
+      }),
+      getErrorString: vi.fn(async () => ({
+        errorString: loaded ? "" : "Error: Class Pkg.Model not found",
+      })),
+      loadString: vi.fn(async () => {
+        loaded = true;
+        return { success: true };
+      }),
+    };
+
+    await expect(
+      reloadBufferIntoOmc(client, docFor(DOC_URI), "Pkg.Model"),
+    ).resolves.toEqual({ ok: true });
   });
 
   it("refuses a buffer declaring several top-level classes (#452)", async () => {
@@ -233,7 +268,8 @@ describe("reloadBufferIntoOmc", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "reverse sync rejected by OMC: success=false",
+      message:
+        "reverse sync rejected by OMC: loadString returned success=false",
     });
   });
 });

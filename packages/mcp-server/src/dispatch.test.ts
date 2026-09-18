@@ -5,7 +5,9 @@
  * `mcp-server.test.ts` drives doesn't give a test.
  */
 
+import { REGISTRY } from "@dicode/omc-client";
 import { describe, expect, it } from "vitest";
+import type { z } from "zod";
 
 import {
   dispatchByName,
@@ -39,6 +41,13 @@ function baseClient(overrides: Partial<McpToolClient> = {}): McpToolClient {
     getModelicaPath: async () => ({ modelicaPath: "/usr/lib/omlibrary" }),
     ...overrides,
   };
+}
+
+/** The `ZodError` a real `entry.inputSchema.parse(input)` failure throws. */
+function zodFailure(schema: z.ZodTypeAny, input: unknown): z.ZodError {
+  const result = schema.safeParse(input);
+  if (result.success) throw new Error("expected the parse to fail");
+  return result.error;
 }
 
 const verdicts: WriteVerdictSource = {
@@ -259,6 +268,30 @@ describe("dispatchByName's logging and failure notification", () => {
     expect(result.isError).toBe(true);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("not found");
+    expect(notified).toEqual([]);
+  });
+
+  it("keeps a read's malformed argument between the model and the tool", async () => {
+    // `omc_invoke` screens argument names, not their types, so a wrong-typed
+    // value reaches `invoke`'s own parse. Nothing was written, and the tool
+    // description tells the model to iterate on the shape.
+    const { log, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient({
+      invoke: async () => {
+        throw zodFailure(REGISTRY.getElements.inputSchema, { typeName: 42 });
+      },
+    });
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    await dispatchByName(deps, "getElements", { typeName: 42 });
+
+    expect(warnings).toHaveLength(1);
     expect(notified).toEqual([]);
   });
 

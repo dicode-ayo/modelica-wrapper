@@ -111,6 +111,6 @@ export async function reloadBufferIntoOmc(
   if (result.success && !looksLikeError(errorString)) return { ok: true };
   return {
     ok: false,
-    message: `reverse sync rejected by OMC: ${errorString.trim() || "success=false"}`,
+    message: `reverse sync rejected by OMC: ${errorString.trim() || "loadString returned success=false"}`,
   };
 }

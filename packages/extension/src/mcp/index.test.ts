@@ -4,12 +4,15 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
+import { MAX_LOGGED_CHARS } from "@dicode/modelica-mcp";
 import { afterEach, expect, it } from "vitest";
 
 import {
   recordedMessages,
   setWorkspaceFolders,
 } from "../../test-support/vscode-mock.js";
+
+import { MAX_LINE_CHARS } from "../logger.js";
 
 import { mcpToolDeps } from "./index.js";
 
@@ -62,4 +65,15 @@ it("does not override a notifyFailure the caller already wired", () => {
 
   expect(calls).toEqual(["boom"]);
   expect(recordedMessages).toEqual([]);
+});
+
+it("bounds a channel line above what one dispatch line can carry", () => {
+  // `fn input -> output` caps each value at MAX_LOGGED_CHARS and appends an
+  // overflow suffix to each. A sink bound that does not clear the pair drops
+  // the result half of every line carrying a long argument.
+  const GLUE_AND_SUFFIXES = 200;
+
+  expect(MAX_LINE_CHARS).toBeGreaterThan(
+    2 * MAX_LOGGED_CHARS + GLUE_AND_SUFFIXES,
+  );
 });

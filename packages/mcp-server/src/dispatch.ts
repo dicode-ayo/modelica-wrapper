@@ -27,6 +27,7 @@ import {
   withErrorBuffer,
 } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ZodError } from "zod";
 
 import { errorDetail } from "./error-detail.js";
 import type { McpLog } from "./log.js";
@@ -96,11 +97,14 @@ export interface McpToolDeps {
    */
   log?: McpLog | undefined;
   /**
-   * Surfaces a refusal, a failed write, or a read that failed for any reason
-   * other than OMC's own answer — a dead client, a transport fault — somewhere
-   * more visible than the log channel. `simulate` and `checkModel` classify as
-   * reads, so a model that will not build is reported to the caller and logged
-   * rather than raised. The extension wires this to a VSCode notification, the
+   * Surfaces a refusal, a failed write, or a read that failed for a reason the
+   * model cannot act on — a dead client, a transport fault — somewhere more
+   * visible than the log channel. A read that failed on OMC's own answer, or on
+   * its own malformed argument, stays between the model and the tool: nothing
+   * was written either way, and a toast per attempt would bury the user under a
+   * model's own iteration. `simulate` and `checkModel` classify as reads, so a
+   * model that will not build is reported to the caller and logged rather than
+   * raised. The extension wires this to a VSCode notification, the
    * same visibility its own REPL and diagram editor get from their
    * transcripts. Never called for a successful call.
    */
@@ -166,7 +170,7 @@ async function invokeDrained(
  * cannot push the other half of the line past whatever bound the host's own
  * log sink applies.
  */
-const MAX_LOGGED_CHARS = 2000;
+export const MAX_LOGGED_CHARS = 2000;
 
 function loggable(value: unknown): string {
   let text: string;
@@ -209,10 +213,8 @@ export async function dispatch<K extends OmcFnName>(
  *
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
- * fault. A diagnostic OMC left in its error buffer counts as one too, and on a
- * read it stays between the model and the tool: a model probing names fails a
- * read per miss, and a toast apiece would bury the user. A read that failed
- * for any other reason still reaches `notifyFailure`.
+ * fault. A diagnostic OMC left in its error buffer counts as one too. What
+ * reaches `notifyFailure` is narrower than what fails; see its own docs.
  */
 export async function dispatchByName(
   deps: McpToolDeps,
@@ -246,9 +248,9 @@ export async function dispatchByName(
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);
-    // A read whose answer is a diagnostic is the model's to act on; a read
-    // that failed because the session is gone is the user's to see.
-    const quiet = err instanceof OmcDiagnosticError && isReadOnlyFunction(fn);
+    const quiet =
+      isReadOnlyFunction(fn) &&
+      (err instanceof OmcDiagnosticError || err instanceof ZodError);
     if (!quiet) notifyFailure?.(`${fn} failed: ${message}`);
     return errorResult(message);
   }

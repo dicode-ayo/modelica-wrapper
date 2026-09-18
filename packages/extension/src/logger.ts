@@ -27,11 +27,12 @@ function ts(): string {
  * string, `list(Modelica)` typed at the REPL — can run past 300 KB (issue
  * #658), which would otherwise flood the channel for one call.
  *
- * This has to stay well above the per-value bound `@dicode/modelica-mcp`
- * applies to its own lines: at equal bounds a capped argument fills the line
- * and evicts the result behind it.
+ * This has to clear the per-value bound `@dicode/modelica-mcp` applies to its
+ * own lines: a dispatch line carries two capped values (`fn input -> output`),
+ * each with its own overflow suffix, so at equal bounds the argument fills the
+ * line and evicts the result behind it. `logger.test.ts` pins the worst case.
  */
-const MAX_LINE_CHARS = 20_000;
+export const MAX_LINE_CHARS = 20_000;
 
 function bounded(line: string): string {
   return line.length > MAX_LINE_CHARS
