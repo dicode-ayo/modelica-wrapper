@@ -20,11 +20,14 @@ export const DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema";
 /**
  * `schema` published as draft 2020-12.
  *
+ * The converter writes the target's own `$schema` before copying registry
+ * metadata over it, which is what lets this override rather than be ignored.
+ *
  * The metadata replaces whatever was registered before rather than merging
- * with it, so the rest of it is carried across here. A registry entry is
- * keyed by the schema object, and the curated tools share theirs with
- * `describeFunctionInputAsJsonSchema`, which already projects at 2020-12 —
- * the declaration written here is the one that path emits anyway.
+ * with it, so the rest of it is carried across here. A registry entry is keyed
+ * by the schema object, and the curated tools share theirs with
+ * `describeFunctionInputAsJsonSchema` — whatever is registered here reaches
+ * that output too.
  */
 export function atDraft2020_12<T extends z.ZodType>(schema: T): T {
   z.globalRegistry.add(schema, {
