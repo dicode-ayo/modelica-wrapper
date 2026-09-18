@@ -1,14 +1,17 @@
 /**
  * OMC: `function readSimulationResultVars`
  *
- * Returns the variable names stored in the result file.
+ * Returns the variable names stored in the result file. A file OMC cannot
+ * open reads back as the same empty list a result file holding no variables
+ * would give, so an empty answer is separated from a failure by the error
+ * buffer rather than by the return value.
  */
 
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
+import { failureReason, parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const ReadSimulationResultVarsInputSchema = z.strictObject({
@@ -53,9 +56,16 @@ export async function readSimulationResultVars(
   const raw = await ctx.call(
     `readSimulationResultVars(${quote(input.fileName)}, readParameters=${mlBool(input.readParameters ?? true)}, openmodelicaStyle=${mlBool(input.openmodelicaStyle ?? false)})`,
   );
+  const vars = expectStringList(parse(raw));
+  if (vars.length === 0) {
+    const reason = await failureReason(ctx);
+    if (reason !== undefined) {
+      throw new Error(`readSimulationResultVars: ${reason}`);
+    }
+  }
   return parseOutput(
     ReadSimulationResultVarsOutputSchema,
-    { vars: expectStringList(parse(raw)) },
+    { vars },
     "readSimulationResultVars",
   );
 }

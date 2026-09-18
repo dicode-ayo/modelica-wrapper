@@ -1,5 +1,6 @@
 import type { z } from "zod";
 
+import { looksLikeError } from "../error-buffer.js";
 import {
   asBool,
   expectBool,
@@ -28,6 +29,24 @@ export function parseOutput<T>(
     );
   }
   return result.data;
+}
+
+/**
+ * OMC's reason for a call that failed without saying so in its return value,
+ * or `undefined` when the buffer holds nothing that reads as a failure.
+ *
+ * The read side of OMC's API signals a failure only by the value it hands
+ * back — `fail()`, a `-1` row count, an empty variable list — and leaves the
+ * reason in the error buffer. Parsing that value can report the shape it
+ * could not use, which names neither the file nor the reason; this is how a
+ * wrapper gets at the latter. A read that succeeded with a warning is not a
+ * failure, so {@link looksLikeError} decides rather than mere non-emptiness.
+ */
+export async function failureReason(
+  ctx: CallContext,
+): Promise<string | undefined> {
+  const { errorString } = await ctx.getErrorString();
+  return looksLikeError(errorString) ? errorString.trim() : undefined;
 }
 
 /**

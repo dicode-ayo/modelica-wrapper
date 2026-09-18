@@ -19,6 +19,10 @@
  * file's row count, which is solver-dependent and not safely computed
  * caller-side. The two calls this resolution takes are not atomic against
  * a concurrent rewrite of the same file (dicode-ayo/modelica-wrapper#712).
+ *
+ * A `size` that does not match, a variable the file does not hold, and a
+ * file OMC cannot open all answer `fail()` and nothing else; only the error
+ * buffer says which of the three it was.
  */
 
 import { z } from "zod";
@@ -26,7 +30,7 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { resultVariable } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
+import { failureReason, parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, expectList, parse } from "../../parse.js";
 import { readSimulationResultSize } from "./readSimulationResultSize.js";
 
@@ -98,7 +102,13 @@ export async function readSimulationResult(
   const raw = await ctx.call(
     `readSimulationResult(${quote(input.filename)}, ${variableList}, ${size})`,
   );
-  const rows = expectList(parse(raw));
+  const value = parse(raw);
+  if (value.kind === "call" && value.name === "fail") {
+    const reason =
+      (await failureReason(ctx)) ?? "OMC refused the read and left no reason";
+    throw new Error(`readSimulationResult: ${reason}`);
+  }
+  const rows = expectList(value);
   const result = rows.map((row) => {
     const items = expectList(row);
     return items.map((v) => asFloat(v) ?? 0);
