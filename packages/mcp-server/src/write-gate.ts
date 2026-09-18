@@ -38,8 +38,10 @@
  * table, so `MUTATIONS` in `@dicode/omc-client` classifies it `"readOnly"` and
  * it is not a `MutatingFnName` — yet it reaches OMC through the same
  * `omc_invoke` path as every gated wrapper, and is gated by its own entry
- * below. `REWRITES_OWN_FILE` is what catches the next function shaped like
- * `save`: exhaustive over every `"readOnly"` name, so one that also rewrites a
+ * below. That classification is what lets `MUTATIONS` keep meaning "changes
+ * the model in memory", which is what cache invalidation reads it for.
+ * `REWRITES_OWN_FILE` is what catches the next function shaped like `save`:
+ * exhaustive over every `"readOnly"` name, so one that also rewrites a
  * class's own file cannot join `MUTATIONS` without this file being touched.
  */
 
@@ -264,7 +266,7 @@ type ReadOnlyFnName = Exclude<OmcFunction, MutatingFnName>;
  * a `BY_NAME` entry of its own — the same guarantee `CLASS_ARGUMENTS` gives
  * `MutatingFnName`.
  */
-export const REWRITES_OWN_FILE: { readonly [K in ReadOnlyFnName]: boolean } = {
+export const REWRITES_OWN_FILE = {
   quit: false,
   getErrorString: false,
   getMessagesStringInternal: false,
@@ -418,7 +420,7 @@ export const REWRITES_OWN_FILE: { readonly [K in ReadOnlyFnName]: boolean } = {
   filterSimulationResults: false,
   deltaSimulationResults: false,
   diffSimulationResults: false,
-};
+} as const satisfies { readonly [K in ReadOnlyFnName]: boolean };
 
 /**
  * `CLASS_ARGUMENTS` and `SAVE_ARGUMENT` with their per-function field-name

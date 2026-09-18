@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { WriteAction, WriteVerdictClient } from "./write-verdict.js";
+import type {
+  WriteAction,
+  WriteVerdictClient,
+  WriteVerdictSource,
+} from "./write-verdict.js";
 import {
   hasGateEntry,
   REWRITES_OWN_FILE,
   refusalFor,
   type WriteTargetClient,
 } from "./write-gate.js";
-import type { WriteVerdictSource } from "./write-verdict.js";
 
 const REFUSAL =
   "Cannot edit Modelica.Blocks.Math.Sin — it belongs to a read-only system library.";
@@ -700,7 +703,7 @@ describe("REWRITES_OWN_FILE", () => {
     }
   });
 
-  it("pins save as the only readOnly function that needs the gate", () => {
+  it("pins save as the only readOnly function that rewrites its own file", () => {
     // A new "true" here means a readOnly MUTATIONS entry now rewrites a
     // class's own file the way save does — give it a BY_NAME row, then
     // extend this list.
