@@ -34,7 +34,7 @@ import {
   textResult,
   type McpToolDeps,
 } from "./dispatch.js";
-import { atDraft2020_12 } from "./draft-2020-12.js";
+import { registerTool } from "./register-tool.js";
 
 const ListFunctionsSchema = z.strictObject({
   category: z
@@ -129,12 +129,13 @@ export function registerDiscoveryTools(
   deps: McpToolDeps,
   publishedToolNames: ReadonlySet<string>,
 ): void {
-  server.registerTool(
+  registerTool(
+    server,
     "omc_list_functions",
     {
       description:
         "List the OMC scripting functions reachable through omc_invoke, by category. Omit `category` for the overview.",
-      inputSchema: atDraft2020_12(ListFunctionsSchema),
+      inputSchema: ListFunctionsSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ category }) => {
@@ -149,12 +150,13 @@ export function registerDiscoveryTools(
     },
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "omc_describe_function",
     {
       description:
         "Return one OMC function's category, description, and JSON Schema for its arguments.",
-      inputSchema: atDraft2020_12(DescribeFunctionSchema),
+      inputSchema: DescribeFunctionSchema,
       annotations: { readOnlyHint: true },
     },
     async ({ name }) => {
@@ -166,12 +168,13 @@ export function registerDiscoveryTools(
     },
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "omc_invoke",
     {
       description:
         "Call any OMC scripting function by name, validated against its schema. This tool's own arguments are `fn` (the function name) and `input` (an object of that function's named arguments) — not the function's arguments directly. Argument names inside `input` are this API's, which differ from the OMC scripting docs in places (`typeName`, not `cl`) — use omc_describe_function first for the exact shape.",
-      inputSchema: atDraft2020_12(InvokeSchema),
+      inputSchema: InvokeSchema,
       annotations: { readOnlyHint: false },
     },
     async ({ fn, input }) => {

@@ -38,7 +38,7 @@ import {
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { dispatchByName, type McpToolDeps } from "./dispatch.js";
-import { atDraft2020_12 } from "./draft-2020-12.js";
+import { registerTool } from "./register-tool.js";
 
 export const PARITY_TOOLS: readonly OmcFnName[] = [
   // Browsing and source
@@ -92,11 +92,12 @@ export function registerParityTools(
 ): void {
   for (const fn of PARITY_TOOLS) {
     const entry = REGISTRY[fn];
-    server.registerTool(
+    registerTool(
+      server,
       fn,
       {
         description: entry.description,
-        inputSchema: atDraft2020_12(entry.inputSchema),
+        inputSchema: entry.inputSchema,
         annotations: { readOnlyHint: isReadOnlyFunction(fn) },
       },
       async (input: unknown) => dispatchByName(deps, fn, input),

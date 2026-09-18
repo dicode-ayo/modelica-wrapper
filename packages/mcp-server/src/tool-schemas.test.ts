@@ -11,7 +11,7 @@
 import { describeFunctionInputAsJsonSchema } from "@dicode/omc-client";
 import { describe, expect, it } from "vitest";
 
-import { DRAFT_2020_12 } from "./draft-2020-12.js";
+import { DRAFT_2020_12 } from "./register-tool.js";
 import { buildMcpServer, type McpToolDeps } from "./mcp-server.js";
 
 const deps = {

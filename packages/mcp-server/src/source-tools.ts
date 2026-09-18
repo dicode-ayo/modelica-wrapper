@@ -21,7 +21,7 @@ import {
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
-import { atDraft2020_12 } from "./draft-2020-12.js";
+import { registerTool } from "./register-tool.js";
 
 const SetSourceCodeSchema = z.strictObject({
   className: z
@@ -57,12 +57,13 @@ export function registerSourceTools(
   deps: McpToolDeps,
 ): readonly string[] {
   const TOOL_NAME = "setSourceCode";
-  server.registerTool(
+  registerTool(
+    server,
     TOOL_NAME,
     {
       description:
         "Replace a class's Modelica source and reload it into OMC, keeping it bound to the file it came from. The file itself is not written — call saveClass to persist the change.",
-      inputSchema: atDraft2020_12(SetSourceCodeSchema),
+      inputSchema: SetSourceCodeSchema,
       annotations: { readOnlyHint: false },
     },
     async ({ className, code }) => {

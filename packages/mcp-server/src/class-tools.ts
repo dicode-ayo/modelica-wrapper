@@ -43,8 +43,8 @@ import {
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
-import { atDraft2020_12 } from "./draft-2020-12.js";
 import { errorDetail } from "./error-detail.js";
+import { registerTool } from "./register-tool.js";
 import { refusalForClass } from "./write-gate.js";
 
 const CreateClassSchema = z.strictObject({
@@ -73,12 +73,13 @@ export function registerClassTools(
   deps: McpToolDeps,
 ): readonly string[] {
   const TOOL_NAME = "createClass";
-  server.registerTool(
+  registerTool(
+    server,
     TOOL_NAME,
     {
       description:
         "Create a Modelica class and write it to disk, adding it to the enclosing package's package.order. Use this rather than newModel, which leaves the class in OMC's memory with no file behind it.",
-      inputSchema: atDraft2020_12(CreateClassSchema),
+      inputSchema: CreateClassSchema,
       annotations: { readOnlyHint: false },
     },
     async ({ name, kind, withinPath, extendsFrom }) => {
