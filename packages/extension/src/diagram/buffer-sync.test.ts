@@ -7,6 +7,7 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
+import { withErrorBuffer } from "@dicode/omc-client";
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import { renamedClassMessage } from "../single-entity-file.js";
@@ -111,6 +112,59 @@ describe("reloadBufferIntoOmc", () => {
       "loadString",
       "getErrorString",
     ]);
+  });
+
+  it("keeps a concurrent withErrorBuffer turn from reading a diagnostic parseString left mid-screen", async () => {
+    // parseString can leave a diagnostic in OMC's buffer without throwing, on
+    // malformed text. Unqueued, that write could land inside an unrelated
+    // withErrorBuffer turn's own clear-run-drain window and be reported as
+    // that turn's own failure.
+    let buffer = "";
+    let releaseMutation: () => void = () => undefined;
+    const mutationGate = new Promise<void>((resolve) => {
+      releaseMutation = resolve;
+    });
+    let signalMutationRunning: () => void = () => undefined;
+    const mutationRunning = new Promise<void>((resolve) => {
+      signalMutationRunning = resolve;
+    });
+
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => {
+        buffer = "Error: malformed input near line 3";
+        return { classNames: ["Pkg.Model"] };
+      }),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      getErrorString: vi.fn(async () => {
+        const errorString = buffer;
+        buffer = "";
+        return { errorString };
+      }),
+      loadString: vi.fn(async () => ({ success: true })),
+    };
+
+    const mutation = withErrorBuffer(client, async () => {
+      signalMutationRunning();
+      await mutationGate;
+      return "unrelated mutation";
+    });
+    await mutationRunning;
+    const reload = reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
+    );
+    releaseMutation();
+
+    const [mutationResult, reloadResult] = await Promise.all([
+      mutation,
+      reload,
+    ]);
+
+    // Queued behind the mutation's whole turn, so parseString cannot run
+    // until that turn's own drain has already read an empty buffer.
+    expect(mutationResult.errorString).toBe("");
+    expect(reloadResult).toEqual({ ok: true });
   });
 
   it("keeps a load a failed screen left a diagnostic for", async () => {

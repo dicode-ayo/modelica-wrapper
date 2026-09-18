@@ -34,10 +34,10 @@ function ts(): string {
  */
 export const MAX_LINE_CHARS = 20_000;
 
-function bounded(line: string): string {
-  return line.length > MAX_LINE_CHARS
-    ? `${line.slice(0, MAX_LINE_CHARS)}… (${line.length} chars total)`
-    : line;
+export function bounded(line: string): string {
+  if (line.length <= MAX_LINE_CHARS) return line;
+  const suffix = `… (${line.length} chars total)`;
+  return `${line.slice(0, MAX_LINE_CHARS - suffix.length)}${suffix}`;
 }
 
 /**
