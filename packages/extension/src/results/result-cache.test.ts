@@ -66,6 +66,28 @@ describe("ResultCache.variables", () => {
     expect(await cache.variables("gone.mat")).toEqual([]);
     expect(reader.varsCalls).toBe(0);
   });
+
+  it("surfaces the reason for a file that is there but OMC will not read", async () => {
+    // The mtime guard above answers a file that is not there at all. One OMC
+    // refuses — a suffix it does not know, a half-written .mat — reaches the
+    // reader, and its reason is the caller's to show rather than an empty list
+    // the caller would read as a fact about the model.
+    const reader = fakeReader({
+      async readSimulationResultVars() {
+        throw new Error(
+          "readSimulationResultVars: Error: Unknown result-file suffix of file 'a.txt'",
+        );
+      },
+    });
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+
+    await expect(cache.variables("a.txt")).rejects.toThrow(
+      /Unknown result-file suffix/,
+    );
+  });
 });
 
 describe("ResultCache.trajectory", () => {
@@ -110,6 +132,26 @@ describe("ResultCache.trajectory", () => {
     // call that would re-trigger its own size:0 resolution.
     expect(reader.sizeCalls).toBe(1);
     expect(reader.seriesCalls).toBe(0);
+  });
+
+  it("surfaces the reason a size resolution failed, rather than an empty chart", async () => {
+    // A plot that silently draws nothing looks like a model that produced
+    // nothing; the reason belongs to whoever asked for the trace.
+    const reader = fakeReader({
+      async readSimulationResultSize() {
+        throw new Error(
+          "readSimulationResultSize: Error: Failed to open simulation result a.mat: No such file or directory",
+        );
+      },
+    });
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+
+    await expect(cache.trajectory("a.mat", "motor.w")).rejects.toThrow(
+      /Failed to open simulation result/,
+    );
   });
 
   it("undefined when the file is missing", async () => {
