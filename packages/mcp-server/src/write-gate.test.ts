@@ -7,6 +7,7 @@ import type {
 } from "./write-verdict.js";
 import {
   hasGateEntry,
+  HAS_DESTINATION_ARGUMENT,
   REWRITES_OWN_FILE,
   refusalFor,
   type WriteTargetClient,
@@ -17,6 +18,8 @@ const REFUSAL =
 
 const LIBRARY_FILE =
   "/home/me/.openmodelica/libraries/Modelica 4.1.0+maint.om/Blocks/Math.mo";
+
+const LIBRARY_ROOT = "/home/me/.openmodelica/libraries/Modelica 4.1.0+maint.om";
 
 /** Records every class a verdict was asked about, refusing the named ones. */
 function verdicts(...readOnly: string[]): WriteVerdictSource & {
@@ -36,6 +39,26 @@ function verdicts(...readOnly: string[]): WriteVerdictSource & {
 
 /** A client no call that names its class reaches: those need no OMC. */
 const client = {} as WriteVerdictClient & WriteTargetClient;
+
+/** {@link client} reporting `modelicaPath` for the destination-origin check. */
+function withModelicaPath(
+  modelicaPath: string,
+): WriteVerdictClient & WriteTargetClient {
+  return {
+    ...client,
+    getModelicaPath: async () => ({ modelicaPath }),
+  };
+}
+
+/** {@link client} whose `getModelicaPath` throws — the destination gate's fail-open path. */
+function unreachableModelicaPath(): WriteVerdictClient & WriteTargetClient {
+  return {
+    ...client,
+    getModelicaPath: async () => {
+      throw new Error("omc: call timed out");
+    },
+  };
+}
 
 /**
  * A client reporting `classNames` as what a source string declares, and every
@@ -689,6 +712,96 @@ describe("a call carrying paths to several Modelica files", () => {
     // an empty fileName, which would otherwise turn one junk entry into a
     // refusal of the whole batch instead of skipping past it.
     expect(files.parsed).toEqual(["/tmp/pwned.mo"]);
+  });
+});
+
+describe("a call naming a destination path", () => {
+  it("refuses filterSimulationResults when outFile resolves under a MODELICAPATH root", async () => {
+    const source = verdicts();
+    const outFile = `${LIBRARY_ROOT}/Blocks/filtered.mat`;
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "filterSimulationResults",
+      { inFile: "/workspace/res.mat", outFile, vars: ["x"] },
+    );
+
+    expect(refusal).toBe(
+      `Cannot write to ${outFile} — it is inside a read-only system library directory.`,
+    );
+    expect(source.asked).toEqual([]);
+  });
+
+  it("allows filterSimulationResults when outFile is outside every MODELICAPATH root", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "filterSimulationResults",
+      {
+        inFile: "/workspace/res.mat",
+        outFile: "/workspace/scratch/filtered.mat",
+        vars: ["x"],
+      },
+    );
+
+    expect(refusal).toBeUndefined();
+  });
+
+  it("allows filterSimulationResults when getModelicaPath throws (fails open)", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      unreachableModelicaPath(),
+      "filterSimulationResults",
+      {
+        inFile: "/workspace/res.mat",
+        outFile: `${LIBRARY_ROOT}/Blocks/filtered.mat`,
+        vars: ["x"],
+      },
+    );
+
+    expect(refusal).toBeUndefined();
+  });
+
+  it("asks nothing about buildModelFMU or translateModelXML: neither has a gate row", async () => {
+    const source = verdicts();
+    const reachable = withModelicaPath(LIBRARY_ROOT);
+
+    expect(
+      await refusalFor(source, reachable, "buildModelFMU", {
+        typeName: "Demo.Circuit",
+        fileNamePrefix: "circuit",
+      }),
+    ).toBeUndefined();
+    expect(
+      await refusalFor(source, reachable, "translateModelXML", {
+        typeName: "Demo.Circuit",
+      }),
+    ).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
+});
+
+describe("HAS_DESTINATION_ARGUMENT", () => {
+  const flagged = Object.entries(HAS_DESTINATION_ARGUMENT)
+    .filter(([, hasDestinationArgument]) => hasDestinationArgument)
+    .map(([fn]) => fn);
+
+  it("gates every readOnly function it marks as having a destination argument", () => {
+    for (const fn of flagged) {
+      expect(hasGateEntry(fn)).toBe(true);
+    }
+  });
+
+  it("pins filterSimulationResults as the only readOnly function with a gated destination", () => {
+    // A new "true" here means a readOnly MUTATIONS entry now takes a
+    // caller-named destination path; give it a BY_NAME row, then extend this
+    // list.
+    expect(flagged).toEqual(["filterSimulationResults"]);
   });
 });
 

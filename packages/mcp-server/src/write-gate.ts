@@ -43,7 +43,16 @@
  * `REWRITES_OWN_FILE` is what catches the next function shaped like `save`:
  * exhaustive over every `"readOnly"` name, so one that also rewrites a
  * class's own file cannot join `MUTATIONS` without this file being touched.
+ *
+ * A `"readOnly"` function can also take a caller-named destination path that
+ * is not a class's own file at all — `filterSimulationResults`'s `outFile` is
+ * an arbitrary write target the wrapper's schema does nothing to constrain.
+ * `HAS_DESTINATION_ARGUMENT` is that table's counterpart: exhaustive over
+ * every `"readOnly"` name, gating the argument by origin alone through
+ * `refusalForDestination` rather than by a class lookup.
  */
+
+import * as path from "node:path";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
 import { isLikelyDiskPath } from "@dicode/omc-client";
@@ -105,6 +114,13 @@ export interface WriteTargetClient {
  * the cheapest verdict is reached first and a target two arguments share is
  * asked about once.
  *
+ * `as: "destination"` marks an arbitrary output-file path the call writes to —
+ * not a Modelica class file, and nothing already at that path is evicted or
+ * judged the way a `"binding"` path's classes are. The path need not be an
+ * existing file, or an existing Modelica class, at all, so it is checked by
+ * origin only: it must not resolve under a `MODELICAPATH` root. It never goes
+ * through a class lookup or a file-permission check.
+ *
  * `null` means the input says nothing the gate judges: a library or an FMU
  * named rather than written (`loadModel`, `installPackage`, `importFMU`), or
  * OMC's own state (`setCommandLineOptions`).
@@ -123,6 +139,10 @@ type Argument<Field extends string> =
       readonly field: Field;
       readonly as: "sourceFile" | "sourceFiles";
       readonly encodingField?: Field;
+    }
+  | {
+      readonly field: Field;
+      readonly as: "destination";
     };
 
 /**
@@ -180,6 +200,11 @@ const declaresInFiles = <F extends string>(
   field: F,
   encodingField?: F,
 ): Argument<F> => fileArgument("sourceFiles", field, encodingField);
+
+const destination = <F extends string>(field: F): Argument<F> => ({
+  field,
+  as: "destination",
+});
 
 /**
  * `copyClass`'s `within` and `newModel`'s `withinPath` are empty for a
@@ -248,6 +273,14 @@ const SAVE_ARGUMENT: ClassArgument<"save"> = {
   as: "class",
   action: "save",
 };
+
+/**
+ * Naming `filterSimulationResults` as `ClassArgument`'s own type argument is
+ * what fails the build if it ever leaves the OMC function registry or
+ * renames `outFile`.
+ */
+const FILTER_SIMULATION_RESULTS_ARGUMENT: ClassArgument<"filterSimulationResults"> =
+  destination("outFile");
 
 /**
  * Every OMC function `MUTATIONS` (in `@dicode/omc-client`) classifies
@@ -423,6 +456,179 @@ export const REWRITES_OWN_FILE = {
 } as const satisfies { readonly [K in ReadOnlyFnName]: boolean };
 
 /**
+ * Whether a `"readOnly"` OMC function takes a caller-named destination path
+ * to write output to — an arbitrary path unrelated to any Modelica class,
+ * gated by `refusalForDestination` (origin only) rather than
+ * `refusalForClass`. Exhaustive over every readOnly function for the same
+ * reason {@link REWRITES_OWN_FILE} is: a new one added to `MUTATIONS` fails
+ * the build until this table says whether it needs a `BY_NAME` entry of its
+ * own.
+ *
+ * `buildModelFMU` and `translateModelXML` are not flagged here despite each
+ * generating an output file: `buildModelFMU`'s `fileNamePrefix` goes through
+ * the shared `fileNamePrefix` zod schema (`@dicode/omc-client`'s
+ * `_shared/fields.ts`), whose pattern (`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`) admits
+ * no path separator, so it can never resolve outside whatever directory OMC
+ * treats as cwd; `translateModelXML`'s wrapper input is `TypeNameInput` alone
+ * and exposes no destination argument at all.
+ */
+export const HAS_DESTINATION_ARGUMENT = {
+  quit: false,
+  getErrorString: false,
+  getMessagesStringInternal: false,
+  getVersion: false,
+  getModelicaPath: false,
+  getClassNames: false,
+  searchClassNames: false,
+  getClassInformation: false,
+  isPackage: false,
+  getInheritanceCount: false,
+  getInheritedClasses: false,
+  getUses: false,
+  existClass: false,
+  existModel: false,
+  existPackage: false,
+  getClassRestriction: false,
+  getClassComment: false,
+  isType: false,
+  isClass: false,
+  isRecord: false,
+  isBlock: false,
+  isFunction: false,
+  isModel: false,
+  isConnector: false,
+  isPartial: false,
+  isReplaceable: false,
+  isProtectedClass: false,
+  isEnumeration: false,
+  isConstant: false,
+  isParameter: false,
+  isProtected: false,
+  isRedeclare: false,
+  isPrimitive: false,
+  isOperator: false,
+  isOperatorFunction: false,
+  isOperatorRecord: false,
+  isOptimization: false,
+  getEnumerationLiterals: false,
+  getReplaceableChoices: false,
+  extendsFrom: false,
+  getAllSubtypeOf: false,
+  classAnnotationExists: false,
+  getNthInheritedClass: false,
+  isShortDefinition: false,
+  getComponents: false,
+  getComponentAnnotations: false,
+  getConnectionCount: false,
+  getNthConnection: false,
+  getNthConnectionAnnotation: false,
+  getTransitions: false,
+  getInitialStates: false,
+  getIconAnnotation: false,
+  getDiagramAnnotation: false,
+  getDocumentationAnnotation: false,
+  listFile: false,
+  instantiateModel: false,
+  getModelInstance: false,
+  getModelInstanceAnnotation: false,
+  modifierToJSON: false,
+  getConnectionList: false,
+  getNthConnector: false,
+  getNthConnectorIconAnnotation: false,
+  getConnectorCount: false,
+  getNthInheritedClassIconMapAnnotation: false,
+  getNthInheritedClassDiagramMapAnnotation: false,
+  getDefaultComponentName: false,
+  getDefaultComponentPrefixes: false,
+  getComponentComment: false,
+  getInstantiatedParametersAndValues: false,
+  getAnnotationNamedModifiers: false,
+  getAnnotationModifierValue: false,
+  getComponentCount: false,
+  getNthComponent: false,
+  getNthComponentAnnotation: false,
+  getNthComponentCondition: false,
+  getNthComponentModification: false,
+  getAnnotationCount: false,
+  getNthAnnotationString: false,
+  getAlgorithmCount: false,
+  getNthAlgorithm: false,
+  getAlgorithmItemsCount: false,
+  getNthAlgorithmItem: false,
+  getInitialAlgorithmCount: false,
+  getNthInitialAlgorithm: false,
+  getInitialAlgorithmItemsCount: false,
+  getNthInitialAlgorithmItem: false,
+  getNthEquation: false,
+  getNthEquationItem: false,
+  getInitialEquationCount: false,
+  getNthInitialEquation: false,
+  getInitialEquationItemsCount: false,
+  getNthInitialEquationItem: false,
+  getImportCount: false,
+  getNthImport: false,
+  convertUnits: false,
+  getDerivedUnits: false,
+  uriToFilename: false,
+  qualifyPath: false,
+  parseFile: false,
+  parseString: false,
+  getSourceFile: false,
+  diffModelicaFileListings: false,
+  save: false,
+  cd: false,
+  getParameterValue: false,
+  getParameterNames: false,
+  getComponentModifierNames: false,
+  getComponentModifierValue: false,
+  getComponentModifierValues: false,
+  getExtendsModifierNames: false,
+  getExtendsModifierValue: false,
+  getDerivedClassModifierNames: false,
+  getDerivedClassModifierValue: false,
+  isExtendsModifierFinal: false,
+  getElements: false,
+  getElementsInfo: false,
+  getElementAnnotation: false,
+  getElementAnnotations: false,
+  getElementModifierNames: false,
+  getElementModifierValue: false,
+  getElementModifierValues: false,
+  getAvailableLibraries: false,
+  getAvailableLibraryVersions: false,
+  getAvailablePackageVersions: false,
+  getAvailablePackageConversionsFrom: false,
+  getAvailablePackageConversionsTo: false,
+  getConversionsFromVersions: false,
+  updatePackageIndex: false,
+  getLoadedLibraries: false,
+  getPackages: false,
+  setMatchingAlgorithm: false,
+  setIndexReductionMethod: false,
+  getMatchingAlgorithm: false,
+  getAvailableMatchingAlgorithms: false,
+  getIndexReductionMethod: false,
+  getAvailableIndexReductionMethods: false,
+  getAvailableTearingMethods: false,
+  checkModel: false,
+  translateModel: false,
+  buildModel: false,
+  simulate: false,
+  buildModelFMU: false,
+  translateModelXML: false,
+  getSimulationOptions: false,
+  isExperiment: false,
+  readSimulationResultSize: false,
+  readSimulationResultVars: false,
+  closeSimulationResultFile: false,
+  readSimulationResult: false,
+  val: false,
+  filterSimulationResults: true,
+  deltaSimulationResults: false,
+  diffSimulationResults: false,
+} as const satisfies { readonly [K in ReadOnlyFnName]: boolean };
+
+/**
  * `CLASS_ARGUMENTS` and `SAVE_ARGUMENT` with their per-function field-name
  * literals erased, which is all a lookup by a runtime name can preserve.
  */
@@ -433,7 +639,11 @@ const BY_NAME: Readonly<
     string,
     ResolvedArgument | readonly ResolvedArgument[] | null | undefined
   >
-> = { save: SAVE_ARGUMENT, ...CLASS_ARGUMENTS };
+> = {
+  save: SAVE_ARGUMENT,
+  filterSimulationResults: FILTER_SIMULATION_RESULTS_ARGUMENT,
+  ...CLASS_ARGUMENTS,
+};
 
 /**
  * `fn`'s row in {@link BY_NAME}, or `undefined` when it names nothing the gate
@@ -560,6 +770,10 @@ async function refusalForArgument(
       }
       return undefined;
     }
+    case "destination": {
+      if (typeof raw !== "string" || raw === "") return undefined;
+      return refusalForDestination(client, raw);
+    }
     default: {
       const unreachable: never = argument;
       throw new Error(
@@ -681,6 +895,67 @@ async function refusalForDeclaredClasses(
     passed.add(target);
   }
   return undefined;
+}
+
+/**
+ * Whether `destinationPath` resolves under one of `MODELICAPATH`'s roots —
+ * the same algorithm `packages/extension/src/system-library.ts`'s
+ * `systemLibraryVerdict` derives for a class's own source file, but starting
+ * from a path already in hand rather than one reached through
+ * `getSourceFile`. `mcp-server` cannot depend on the extension package, and
+ * this is a small single-purpose comparison rather than something worth a
+ * shared cross-package utility, so it is reimplemented locally here.
+ *
+ * Fails open — `false` — on any error from `getModelicaPath()`, matching the
+ * "deriving a verdict fails open" philosophy documented on
+ * `WriteVerdictSource`/`write-verdict.ts` and the `catch` in
+ * `WriteVerdicts.forClass`: refusing a destination the gate could not
+ * actually check would block a write nothing judged.
+ */
+async function isUnderSystemLibraryRoot(
+  client: WriteVerdictClient,
+  destinationPath: string,
+): Promise<boolean> {
+  let modelicaPath: string;
+  try {
+    ({ modelicaPath } = await client.getModelicaPath());
+  } catch {
+    return false;
+  }
+  const roots = modelicaPath
+    .split(path.delimiter)
+    .map((root) => root.trim())
+    .filter((root) => root.length > 0)
+    .map((root) => path.resolve(root));
+  const file = path.resolve(destinationPath);
+  return roots.some((root) => file === root || isUnder(file, root));
+}
+
+/** True when `file` is nested beneath `root` (and is not `root` itself). */
+function isUnder(file: string, root: string): boolean {
+  const rel = path.relative(root, file);
+  return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+/**
+ * The refusal a caller-named destination path earns, or `undefined` when it
+ * is fine to write to. There is no class name here to run through
+ * {@link WriteVerdictSource} — `destinationPath` need not be an existing file,
+ * or an existing Modelica class, at all — so the check is origin only, built
+ * directly the way {@link refusalForSource}/{@link refusalForSourceFile}
+ * construct their own ad hoc messages without going through `verdicts`.
+ */
+async function refusalForDestination(
+  client: WriteVerdictClient,
+  destinationPath: string,
+): Promise<string | undefined> {
+  const underSystemLibrary = await isUnderSystemLibraryRoot(
+    client,
+    destinationPath,
+  );
+  return underSystemLibrary
+    ? `Cannot write to ${destinationPath} — it is inside a read-only system library directory.`
+    : undefined;
 }
 
 /**
