@@ -1,3 +1,5 @@
+import * as path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -7,9 +9,9 @@ import type {
 } from "./write-verdict.js";
 import {
   hasGateEntry,
-  HAS_DESTINATION_ARGUMENT,
-  REWRITES_OWN_FILE,
+  READ_ONLY_GATE,
   refusalFor,
+  type DestinationClient,
   type WriteTargetClient,
 } from "./write-gate.js";
 
@@ -38,27 +40,36 @@ function verdicts(...readOnly: string[]): WriteVerdictSource & {
 }
 
 /** A client no call that names its class reaches: those need no OMC. */
-const client = {} as WriteVerdictClient & WriteTargetClient;
+const client = {} as WriteVerdictClient & WriteTargetClient & DestinationClient;
 
-/** {@link client} reporting `modelicaPath` for the destination-origin check. */
+/**
+ * {@link client} reporting `modelicaPath` for the destination-origin check,
+ * and `workingDirectory` as OMC's own cwd — what a relative destination path
+ * resolves against.
+ */
 function withModelicaPath(
   modelicaPath: string,
-): WriteVerdictClient & WriteTargetClient {
+  workingDirectory = "/workspace",
+): WriteVerdictClient & WriteTargetClient & DestinationClient {
   return {
     ...client,
     getModelicaPath: async () => ({ modelicaPath }),
+    cd: async () => ({ workingDirectory }),
   };
 }
 
-/** {@link client} whose `getModelicaPath` throws — the destination gate's fail-open path. */
-function unreachableModelicaPath(): WriteVerdictClient & WriteTargetClient {
-  return {
-    ...client,
-    getModelicaPath: async () => {
-      throw new Error("omc: call timed out");
-    },
-  };
-}
+/**
+ * {@link client} whose `getModelicaPath` throws — the destination gate's
+ * fail-open path.
+ */
+const unreachableModelicaPath: WriteVerdictClient &
+  WriteTargetClient &
+  DestinationClient = {
+  ...client,
+  getModelicaPath: async () => {
+    throw new Error("omc: call timed out");
+  },
+};
 
 /**
  * A client reporting `classNames` as what a source string declares, and every
@@ -67,7 +78,7 @@ function unreachableModelicaPath(): WriteVerdictClient & WriteTargetClient {
 function declaring(
   classNames: string[],
   loaded: string[] = [],
-): WriteVerdictClient & WriteTargetClient {
+): WriteVerdictClient & WriteTargetClient & DestinationClient {
   return {
     ...client,
     parseString: async () => ({ classNames }),
@@ -82,7 +93,7 @@ function declaring(
 function declaringFile(
   classNames: string[],
   loaded: string[] = [],
-): WriteVerdictClient & WriteTargetClient {
+): WriteVerdictClient & WriteTargetClient & DestinationClient {
   return {
     ...client,
     parseFile: async () => ({ classNames }),
@@ -99,7 +110,11 @@ function declaringFile(
 function declaringPerFile(
   byFile: Record<string, string[]>,
   loaded: string[] = [],
-): WriteVerdictClient & WriteTargetClient & { parsed: string[] } {
+): WriteVerdictClient &
+  WriteTargetClient &
+  DestinationClient & {
+    parsed: string[];
+  } {
   const parsed: string[] = [];
   return {
     ...client,
@@ -120,7 +135,11 @@ function declaringIntoFile(
   classNames: string[],
   byFile: Record<string, string[]>,
   loaded: string[] = [],
-): WriteVerdictClient & WriteTargetClient & { parsed: string[] } {
+): WriteVerdictClient &
+  WriteTargetClient &
+  DestinationClient & {
+    parsed: string[];
+  } {
   return {
     ...declaringPerFile(byFile, loaded),
     parseString: async () => ({ classNames }),
@@ -540,7 +559,9 @@ describe("a call carrying a path to a Modelica file", () => {
   it("reads the file with the same encoding the real load will use", async () => {
     const source = verdicts();
     const seen: { fileName: string; encoding?: string }[] = [];
-    const encodingAware: WriteVerdictClient & WriteTargetClient = {
+    const encodingAware: WriteVerdictClient &
+      WriteTargetClient &
+      DestinationClient = {
       ...client,
       parseFile: async (input) => {
         seen.push(input);
@@ -651,7 +672,9 @@ describe("a call carrying paths to several Modelica files", () => {
   it("reads every file in the batch with the same encoding the real load will use", async () => {
     const source = verdicts();
     const seen: { fileName: string; encoding?: string }[] = [];
-    const encodingAware: WriteVerdictClient & WriteTargetClient = {
+    const encodingAware: WriteVerdictClient &
+      WriteTargetClient &
+      DestinationClient = {
       ...client,
       parseFile: async (input) => {
         seen.push(input);
@@ -733,6 +756,40 @@ describe("a call naming a destination path", () => {
     expect(source.asked).toEqual([]);
   });
 
+  it("refuses outFile that is exactly a MODELICAPATH root, not only nested under one", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "filterSimulationResults",
+      { inFile: "/workspace/res.mat", outFile: LIBRARY_ROOT, vars: ["x"] },
+    );
+
+    expect(refusal).toBe(
+      `Cannot write to ${LIBRARY_ROOT} — it is inside a read-only system library directory.`,
+    );
+    expect(source.asked).toEqual([]);
+  });
+
+  it("refuses a relative outFile that resolves under a MODELICAPATH root against OMC's own cwd, not the host process's (regression)", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT, `${LIBRARY_ROOT}/Blocks`),
+      "filterSimulationResults",
+      { inFile: "/workspace/res.mat", outFile: "filtered.mat", vars: ["x"] },
+    );
+
+    // The host process's own cwd (this test runner's) is nowhere near
+    // LIBRARY_ROOT — only resolving against OMC's actual cwd catches this.
+    expect(refusal).toBe(
+      "Cannot write to filtered.mat — it is inside a read-only system library directory.",
+    );
+    expect(source.asked).toEqual([]);
+  });
+
   it("allows filterSimulationResults when outFile is outside every MODELICAPATH root", async () => {
     const source = verdicts();
 
@@ -748,6 +805,27 @@ describe("a call naming a destination path", () => {
     );
 
     expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
+
+  it("checks outFile against every root of a multi-root MODELICAPATH", async () => {
+    const source = verdicts();
+    const otherRoot = "/opt/modelica/OtherLib";
+    const modelicaPath = `${otherRoot}${path.delimiter}  ${path.delimiter} ${LIBRARY_ROOT} `;
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(modelicaPath),
+      "filterSimulationResults",
+      {
+        inFile: "/workspace/res.mat",
+        outFile: `${LIBRARY_ROOT}/Blocks/filtered.mat`,
+        vars: ["x"],
+      },
+    );
+
+    expect(refusal).toContain("read-only system library directory");
+    expect(source.asked).toEqual([]);
   });
 
   it("allows filterSimulationResults when getModelicaPath throws (fails open)", async () => {
@@ -755,7 +833,7 @@ describe("a call naming a destination path", () => {
 
     const refusal = await refusalFor(
       source,
-      unreachableModelicaPath(),
+      unreachableModelicaPath,
       "filterSimulationResults",
       {
         inFile: "/workspace/res.mat",
@@ -765,6 +843,7 @@ describe("a call naming a destination path", () => {
     );
 
     expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
   });
 
   it("asks nothing about buildModelFMU or translateModelXML: neither has a gate row", async () => {
@@ -786,40 +865,29 @@ describe("a call naming a destination path", () => {
   });
 });
 
-describe("HAS_DESTINATION_ARGUMENT", () => {
-  const flagged = Object.entries(HAS_DESTINATION_ARGUMENT)
-    .filter(([, hasDestinationArgument]) => hasDestinationArgument)
-    .map(([fn]) => fn);
+describe("READ_ONLY_GATE", () => {
+  const flagged = (gate: "ownFile" | "destination") =>
+    Object.entries(READ_ONLY_GATE)
+      .filter(([, g]) => g === gate)
+      .map(([fn]) => fn);
 
-  it("gates every readOnly function it marks as having a destination argument", () => {
-    for (const fn of flagged) {
-      expect(hasGateEntry(fn)).toBe(true);
-    }
-  });
-
-  it("pins filterSimulationResults as the only readOnly function with a gated destination", () => {
-    // A new "true" here means a readOnly MUTATIONS entry now takes a
-    // caller-named destination path; give it a BY_NAME row, then extend this
-    // list.
-    expect(flagged).toEqual(["filterSimulationResults"]);
-  });
-});
-
-describe("REWRITES_OWN_FILE", () => {
-  const flagged = Object.entries(REWRITES_OWN_FILE)
-    .filter(([, rewritesOwnFile]) => rewritesOwnFile)
-    .map(([fn]) => fn);
-
-  it("gates every readOnly function it marks as rewriting its own file", () => {
-    for (const fn of flagged) {
+  it("gates every readOnly function it classifies ownFile or destination", () => {
+    for (const fn of [...flagged("ownFile"), ...flagged("destination")]) {
       expect(hasGateEntry(fn)).toBe(true);
     }
   });
 
   it("pins save as the only readOnly function that rewrites its own file", () => {
-    // A new "true" here means a readOnly MUTATIONS entry now rewrites a
+    // A new "ownFile" here means a readOnly MUTATIONS entry now rewrites a
     // class's own file the way save does — give it a BY_NAME row, then
     // extend this list.
-    expect(flagged).toEqual(["save"]);
+    expect(flagged("ownFile")).toEqual(["save"]);
+  });
+
+  it("pins filterSimulationResults as the only readOnly function with a gated destination", () => {
+    // A new "destination" here means a readOnly MUTATIONS entry now takes a
+    // caller-named destination path; give it a BY_NAME row, then extend this
+    // list.
+    expect(flagged("destination")).toEqual(["filterSimulationResults"]);
   });
 });
