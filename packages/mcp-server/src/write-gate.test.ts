@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { WriteAction, WriteVerdictClient } from "./write-verdict.js";
-import { refusalFor, type WriteTargetClient } from "./write-gate.js";
-import type { WriteVerdictSource } from "./write-verdict.js";
+import type {
+  WriteAction,
+  WriteVerdictClient,
+  WriteVerdictSource,
+} from "./write-verdict.js";
+import {
+  hasGateEntry,
+  REWRITES_OWN_FILE,
+  refusalFor,
+  type WriteTargetClient,
+} from "./write-gate.js";
 
 const REFUSAL =
   "Cannot edit Modelica.Blocks.Math.Sin — it belongs to a read-only system library.";
@@ -681,5 +689,24 @@ describe("a call carrying paths to several Modelica files", () => {
     // an empty fileName, which would otherwise turn one junk entry into a
     // refusal of the whole batch instead of skipping past it.
     expect(files.parsed).toEqual(["/tmp/pwned.mo"]);
+  });
+});
+
+describe("REWRITES_OWN_FILE", () => {
+  const flagged = Object.entries(REWRITES_OWN_FILE)
+    .filter(([, rewritesOwnFile]) => rewritesOwnFile)
+    .map(([fn]) => fn);
+
+  it("gates every readOnly function it marks as rewriting its own file", () => {
+    for (const fn of flagged) {
+      expect(hasGateEntry(fn)).toBe(true);
+    }
+  });
+
+  it("pins save as the only readOnly function that rewrites its own file", () => {
+    // A new "true" here means a readOnly MUTATIONS entry now rewrites a
+    // class's own file the way save does — give it a BY_NAME row, then
+    // extend this list.
+    expect(flagged).toEqual(["save"]);
   });
 });

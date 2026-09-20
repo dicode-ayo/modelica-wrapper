@@ -40,11 +40,19 @@
  * `omc_invoke` path as every gated wrapper, and is gated by its own entry
  * below. That classification is what lets `MUTATIONS` keep meaning "changes
  * the model in memory", which is what cache invalidation reads it for.
+ * `REWRITES_OWN_FILE` is what catches the next function shaped like `save`:
+ * exhaustive over every `"readOnly"` name, so one that also rewrites a
+ * class's own file cannot join `MUTATIONS` without this file being touched.
  */
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
 import { isLikelyDiskPath } from "@dicode/omc-client";
-import type { MutatingFnName, OmcFnName, OmcInput } from "@dicode/omc-client";
+import type {
+  MutatingFnName,
+  OmcFnName,
+  OmcFunction,
+  OmcInput,
+} from "@dicode/omc-client";
 
 import { errorDetail } from "./error-detail.js";
 
@@ -242,6 +250,179 @@ const SAVE_ARGUMENT: ClassArgument<"save"> = {
 };
 
 /**
+ * Every OMC function `MUTATIONS` (in `@dicode/omc-client`) classifies
+ * `"readOnly"` — the complement of `MutatingFnName` within `OmcFunction`, since
+ * a composite registry function has no `OmcFunction` name of its own to begin
+ * with.
+ */
+type ReadOnlyFnName = Exclude<OmcFunction, MutatingFnName>;
+
+/**
+ * Whether a `"readOnly"` OMC function rewrites a class's own source file the
+ * way `save` does, without OMC's symbol table ever seeing it — which needs
+ * the same gate a `MutatingFnName` gets from `CLASS_ARGUMENTS`, just reached
+ * from outside it. Exhaustive over every readOnly function, so a new one
+ * added to `MUTATIONS` fails the build until this table says whether it needs
+ * a `BY_NAME` entry of its own — the same guarantee `CLASS_ARGUMENTS` gives
+ * `MutatingFnName`.
+ */
+export const REWRITES_OWN_FILE = {
+  quit: false,
+  getErrorString: false,
+  getMessagesStringInternal: false,
+  getVersion: false,
+  getModelicaPath: false,
+  getClassNames: false,
+  searchClassNames: false,
+  getClassInformation: false,
+  isPackage: false,
+  getInheritanceCount: false,
+  getInheritedClasses: false,
+  getUses: false,
+  existClass: false,
+  existModel: false,
+  existPackage: false,
+  getClassRestriction: false,
+  getClassComment: false,
+  isType: false,
+  isClass: false,
+  isRecord: false,
+  isBlock: false,
+  isFunction: false,
+  isModel: false,
+  isConnector: false,
+  isPartial: false,
+  isReplaceable: false,
+  isProtectedClass: false,
+  isEnumeration: false,
+  isConstant: false,
+  isParameter: false,
+  isProtected: false,
+  isRedeclare: false,
+  isPrimitive: false,
+  isOperator: false,
+  isOperatorFunction: false,
+  isOperatorRecord: false,
+  isOptimization: false,
+  getEnumerationLiterals: false,
+  getReplaceableChoices: false,
+  extendsFrom: false,
+  getAllSubtypeOf: false,
+  classAnnotationExists: false,
+  getNthInheritedClass: false,
+  isShortDefinition: false,
+  getComponents: false,
+  getComponentAnnotations: false,
+  getConnectionCount: false,
+  getNthConnection: false,
+  getNthConnectionAnnotation: false,
+  getTransitions: false,
+  getInitialStates: false,
+  getIconAnnotation: false,
+  getDiagramAnnotation: false,
+  getDocumentationAnnotation: false,
+  listFile: false,
+  instantiateModel: false,
+  getModelInstance: false,
+  getModelInstanceAnnotation: false,
+  modifierToJSON: false,
+  getConnectionList: false,
+  getNthConnector: false,
+  getNthConnectorIconAnnotation: false,
+  getConnectorCount: false,
+  getNthInheritedClassIconMapAnnotation: false,
+  getNthInheritedClassDiagramMapAnnotation: false,
+  getDefaultComponentName: false,
+  getDefaultComponentPrefixes: false,
+  getComponentComment: false,
+  getInstantiatedParametersAndValues: false,
+  getAnnotationNamedModifiers: false,
+  getAnnotationModifierValue: false,
+  getComponentCount: false,
+  getNthComponent: false,
+  getNthComponentAnnotation: false,
+  getNthComponentCondition: false,
+  getNthComponentModification: false,
+  getAnnotationCount: false,
+  getNthAnnotationString: false,
+  getAlgorithmCount: false,
+  getNthAlgorithm: false,
+  getAlgorithmItemsCount: false,
+  getNthAlgorithmItem: false,
+  getInitialAlgorithmCount: false,
+  getNthInitialAlgorithm: false,
+  getInitialAlgorithmItemsCount: false,
+  getNthInitialAlgorithmItem: false,
+  getNthEquation: false,
+  getNthEquationItem: false,
+  getInitialEquationCount: false,
+  getNthInitialEquation: false,
+  getInitialEquationItemsCount: false,
+  getNthInitialEquationItem: false,
+  getImportCount: false,
+  getNthImport: false,
+  convertUnits: false,
+  getDerivedUnits: false,
+  uriToFilename: false,
+  qualifyPath: false,
+  parseFile: false,
+  parseString: false,
+  getSourceFile: false,
+  diffModelicaFileListings: false,
+  save: true,
+  cd: false,
+  getParameterValue: false,
+  getParameterNames: false,
+  getComponentModifierNames: false,
+  getComponentModifierValue: false,
+  getComponentModifierValues: false,
+  getExtendsModifierNames: false,
+  getExtendsModifierValue: false,
+  getDerivedClassModifierNames: false,
+  getDerivedClassModifierValue: false,
+  isExtendsModifierFinal: false,
+  getElements: false,
+  getElementsInfo: false,
+  getElementAnnotation: false,
+  getElementAnnotations: false,
+  getElementModifierNames: false,
+  getElementModifierValue: false,
+  getElementModifierValues: false,
+  getAvailableLibraries: false,
+  getAvailableLibraryVersions: false,
+  getAvailablePackageVersions: false,
+  getAvailablePackageConversionsFrom: false,
+  getAvailablePackageConversionsTo: false,
+  getConversionsFromVersions: false,
+  updatePackageIndex: false,
+  getLoadedLibraries: false,
+  getPackages: false,
+  setMatchingAlgorithm: false,
+  setIndexReductionMethod: false,
+  getMatchingAlgorithm: false,
+  getAvailableMatchingAlgorithms: false,
+  getIndexReductionMethod: false,
+  getAvailableIndexReductionMethods: false,
+  getAvailableTearingMethods: false,
+  checkModel: false,
+  translateModel: false,
+  buildModel: false,
+  simulate: false,
+  buildModelFMU: false,
+  translateModelXML: false,
+  getSimulationOptions: false,
+  isExperiment: false,
+  readSimulationResultSize: false,
+  readSimulationResultVars: false,
+  closeSimulationResultFile: false,
+  readSimulationResult: false,
+  val: false,
+  filterSimulationResults: false,
+  deltaSimulationResults: false,
+  diffSimulationResults: false,
+} as const satisfies { readonly [K in ReadOnlyFnName]: boolean };
+
+/**
  * `CLASS_ARGUMENTS` and `SAVE_ARGUMENT` with their per-function field-name
  * literals erased, which is all a lookup by a runtime name can preserve.
  */
@@ -253,6 +434,27 @@ const BY_NAME: Readonly<
     ResolvedArgument | readonly ResolvedArgument[] | null | undefined
   >
 > = { save: SAVE_ARGUMENT, ...CLASS_ARGUMENTS };
+
+/**
+ * `fn`'s row in {@link BY_NAME}, or `undefined` when it names nothing the gate
+ * judges — no row at all, or the explicit `null` row a top-level creation
+ * (`copyClass`'s `within`, `newModel`'s `withinPath`) leaves for `refusalFor`
+ * to let straight through.
+ */
+function rowFor(
+  fn: string,
+): ResolvedArgument | readonly ResolvedArgument[] | undefined {
+  const row = BY_NAME[fn];
+  return row === null ? undefined : row;
+}
+
+/**
+ * Whether `fn` has a `BY_NAME` row of its own to derive a class from. What
+ * {@link REWRITES_OWN_FILE} pins every `true` entry against.
+ */
+export function hasGateEntry(fn: string): boolean {
+  return rowFor(fn) !== undefined;
+}
 
 /**
  * The refusal `fn` earns for `input`, or `undefined` when the call may proceed.
@@ -267,8 +469,8 @@ export async function refusalFor(
   fn: OmcFnName,
   input: unknown,
 ): Promise<string | undefined> {
-  const row = BY_NAME[fn];
-  if (row === undefined || row === null) return undefined;
+  const row = rowFor(fn);
+  if (row === undefined) return undefined;
   if (typeof input !== "object" || input === null) return undefined;
 
   // One set across the whole row, so a target two arguments share — text
