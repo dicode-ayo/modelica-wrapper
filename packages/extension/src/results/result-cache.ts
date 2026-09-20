@@ -59,6 +59,7 @@ async function defaultStatMtimeMs(path: string): Promise<number | undefined> {
 
 export class ResultCache {
   private readonly entries = new Map<string, Entry>();
+  private readonly refreshes = new Map<string, Promise<Entry | undefined>>();
 
   constructor(
     private readonly resolveReader: () => Promise<ResultReader>,
@@ -73,6 +74,21 @@ export class ResultCache {
    * OMC handle is closed first), or `undefined` when the file is missing.
    */
   private async fresh(path: string): Promise<Entry | undefined> {
+    let refresh = this.refreshes.get(path);
+    if (!refresh) {
+      refresh = this.refresh(path);
+      this.refreshes.set(path, refresh);
+    }
+    try {
+      return await refresh;
+    } finally {
+      if (this.refreshes.get(path) === refresh) {
+        this.refreshes.delete(path);
+      }
+    }
+  }
+
+  private async refresh(path: string): Promise<Entry | undefined> {
     const mtimeMs = await this.statMtimeMs(path);
     if (mtimeMs === undefined) {
       this.entries.delete(path);

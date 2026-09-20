@@ -236,6 +236,28 @@ describe("ResultCache invalidation", () => {
 });
 
 describe("ResultCache concurrent dedupe", () => {
+  it("shares one replacement entry after an mtime change", async () => {
+    const reader = fakeReader();
+    let mtime = 100;
+    const cache = new ResultCache(
+      async () => reader,
+      async () => mtime,
+    );
+
+    await cache.trajectory("a.mat", "motor.w");
+    mtime = 200;
+
+    const [a, b] = await Promise.all([
+      cache.trajectory("a.mat", "motor.w"),
+      cache.trajectory("a.mat", "motor.w"),
+    ]);
+
+    expect(b).toBe(a);
+    expect(reader.closeCalls).toBe(1);
+    expect(reader.sizeCalls).toBe(2);
+    expect(reader.seriesCalls).toBe(2);
+  });
+
   it("dedupes concurrent variables() calls for the same path", async () => {
     const reader = fakeReader({
       async readSimulationResultVars(this: Counting) {
