@@ -790,6 +790,33 @@ describe("a call naming a destination path", () => {
     expect(source.asked).toEqual([]);
   });
 
+  it("refuses an empty outFile that resolves to OMC's own cwd under a MODELICAPATH root (regression)", async () => {
+    // isLikelyDiskPath("") is false, so an early guard that used it here (as
+    // the sibling "binding" case does) would treat "" as "not a path" and
+    // skip the check entirely — but "" is a real destination: it resolves to
+    // OMC's own cwd, which cd (ungated) can already point at a library root.
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT, LIBRARY_ROOT),
+      "diffSimulationResults",
+      {
+        actualFile: "/workspace/a.mat",
+        expectedFile: "/workspace/b.mat",
+        diffPrefix: "",
+        method: "1norm",
+      },
+    );
+
+    // The refusal names the caller's own (empty) input, not the path it
+    // resolved to — the same convention every other destination refusal uses.
+    expect(refusal).toBe(
+      "Cannot write to  — it is inside a read-only system library directory.",
+    );
+    expect(source.asked).toEqual([]);
+  });
+
   it("allows filterSimulationResults when outFile is outside every MODELICAPATH root", async () => {
     const source = verdicts();
 

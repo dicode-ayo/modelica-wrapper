@@ -289,30 +289,28 @@ const SAVE_ARGUMENT: GateArgument<"save"> = {
 };
 
 /**
- * `filterSimulationResults` has no class of its own to name — `outFile` is a
- * destination row, not a class row — so naming it as `GateArgument`'s own type
- * argument fails the build if it ever leaves the OMC function registry or
- * renames `outFile`.
- */
-const FILTER_SIMULATION_RESULTS_ARGUMENT: GateArgument<"filterSimulationResults"> =
-  writesTo("outFile");
-
-/**
- * `diffSimulationResults` has no class of its own to name — `diffPrefix` is a
- * destination row, not a class row — so naming it as `GateArgument`'s own type
- * argument fails the build if it ever leaves the OMC function registry or
- * renames `diffPrefix`.
- */
-const DIFF_SIMULATION_RESULTS_ARGUMENT: GateArgument<"diffSimulationResults"> =
-  writesTo("diffPrefix");
-
-/**
  * Every OMC function `MUTATIONS` (in `@dicode/omc-client`) classifies
  * `"readOnly"` — the complement of `MutatingFnName` within `OmcFunction`, since
  * a composite registry function has no `OmcFunction` name of its own to begin
  * with.
  */
 type ReadOnlyFnName = Exclude<OmcFunction, MutatingFnName>;
+
+/**
+ * The `"destination"` rows for the `"readOnly"` functions `READ_ONLY_GATE`
+ * classifies that way. Each has no class of its own to name — the field is a
+ * destination row, not a class row — so naming each as `GateArgument`'s own
+ * type argument is what fails the build if it ever leaves the OMC function
+ * registry or renames its argument.
+ */
+const DESTINATION_ARGUMENTS = {
+  filterSimulationResults: writesTo(
+    "outFile",
+  ) satisfies GateArgument<"filterSimulationResults">,
+  diffSimulationResults: writesTo(
+    "diffPrefix",
+  ) satisfies GateArgument<"diffSimulationResults">,
+};
 
 /**
  * What kind of write a `"readOnly"` OMC function performs, beyond the
@@ -327,8 +325,8 @@ type ReadOnlyFnName = Exclude<OmcFunction, MutatingFnName>;
  *   `MutatingFnName` gets from `CLASS_ARGUMENTS`, just reached from outside
  *   it.
  * - `"destination"`: takes a caller-named destination path unrelated to any
- *   Modelica class — `filterSimulationResults`'s `outFile` — gated by origin
- *   alone through `refusalForDestination` rather than a class lookup.
+ *   Modelica class — `DESTINATION_ARGUMENTS`' rows — gated by origin alone
+ *   through `refusalForDestination` rather than a class lookup.
  *
  * `buildModelFMU` and `translateModelXML` are `"none"` despite each
  * generating an output file: `buildModelFMU`'s `fileNamePrefix` goes through
@@ -501,8 +499,9 @@ export const READ_ONLY_GATE = {
 };
 
 /**
- * `CLASS_ARGUMENTS` and `SAVE_ARGUMENT` with their per-function field-name
- * literals erased, which is all a lookup by a runtime name can preserve.
+ * `CLASS_ARGUMENTS`, `SAVE_ARGUMENT` and `DESTINATION_ARGUMENTS` with their
+ * per-function field-name literals erased, which is all a lookup by a runtime
+ * name can preserve.
  */
 type ResolvedArgument = Argument<string>;
 
@@ -513,8 +512,7 @@ const BY_NAME: Readonly<
   >
 > = {
   save: SAVE_ARGUMENT,
-  filterSimulationResults: FILTER_SIMULATION_RESULTS_ARGUMENT,
-  diffSimulationResults: DIFF_SIMULATION_RESULTS_ARGUMENT,
+  ...DESTINATION_ARGUMENTS,
   ...CLASS_ARGUMENTS,
 };
 
@@ -644,7 +642,7 @@ async function refusalForArgument(
       return undefined;
     }
     case "destination": {
-      if (typeof raw !== "string" || !isLikelyDiskPath(raw)) return undefined;
+      if (typeof raw !== "string") return undefined;
       return refusalForDestination(client, raw);
     }
     default: {
