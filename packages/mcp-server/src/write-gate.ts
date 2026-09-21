@@ -791,9 +791,12 @@ async function refusalForDeclaredClasses(
  * actually check would block a write nothing judged.
  *
  * Compares resolved paths textually, without dereferencing symlinks — a
- * symlink pointing into a `MODELICAPATH` root can bypass this check. Known,
- * pre-existing limitation shared with `system-library.ts`'s `isUnder`, not
- * something this function newly introduces.
+ * symlink pointing into a `MODELICAPATH` root can bypass this check, the same
+ * property `system-library.ts`'s `isUnder` has.
+ *
+ * The `cd()` read here and the call it guards are two separate turns on
+ * `OmcClient`'s queue, not one atomic unit, so an interleaved `cd` to a real
+ * path can move OMC's cwd between them (issue #730).
  */
 async function isUnderSystemLibraryRoot(
   client: DestinationClient,
