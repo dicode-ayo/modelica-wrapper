@@ -298,6 +298,15 @@ const FILTER_SIMULATION_RESULTS_ARGUMENT: GateArgument<"filterSimulationResults"
   writesTo("outFile");
 
 /**
+ * `diffSimulationResults` has no class of its own to name — `diffPrefix` is a
+ * destination row, not a class row — so naming it as `GateArgument`'s own type
+ * argument fails the build if it ever leaves the OMC function registry or
+ * renames `diffPrefix`.
+ */
+const DIFF_SIMULATION_RESULTS_ARGUMENT: GateArgument<"diffSimulationResults"> =
+  writesTo("diffPrefix");
+
+/**
  * Every OMC function `MUTATIONS` (in `@dicode/omc-client`) classifies
  * `"readOnly"` — the complement of `MutatingFnName` within `OmcFunction`, since
  * a composite registry function has no `OmcFunction` name of its own to begin
@@ -331,8 +340,7 @@ type ReadOnlyFnName = Exclude<OmcFunction, MutatingFnName>;
  *
  * `simulate`, `buildModel` and `translateModel` are also `"none"` here: their
  * `simflags`/`cflags` arguments can carry a flag-embedded destination (e.g.
- * `-r=<path>`) that this table does not evaluate — tracked separately as
- * issue #728.
+ * `-r=<path>`) that this table does not evaluate (issue #728).
  */
 export const READ_ONLY_GATE = {
   quit: "none",
@@ -487,7 +495,7 @@ export const READ_ONLY_GATE = {
   val: "none",
   filterSimulationResults: "destination",
   deltaSimulationResults: "none",
-  diffSimulationResults: "none",
+  diffSimulationResults: "destination",
 } as const satisfies {
   readonly [K in ReadOnlyFnName]: "none" | "ownFile" | "destination";
 };
@@ -506,6 +514,7 @@ const BY_NAME: Readonly<
 > = {
   save: SAVE_ARGUMENT,
   filterSimulationResults: FILTER_SIMULATION_RESULTS_ARGUMENT,
+  diffSimulationResults: DIFF_SIMULATION_RESULTS_ARGUMENT,
   ...CLASS_ARGUMENTS,
 };
 

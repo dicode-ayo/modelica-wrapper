@@ -846,6 +846,45 @@ describe("a call naming a destination path", () => {
     expect(source.asked).toEqual([]);
   });
 
+  it("refuses diffSimulationResults when diffPrefix resolves under a MODELICAPATH root", async () => {
+    const source = verdicts();
+    const diffPrefix = `${LIBRARY_ROOT}/Blocks/diff`;
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "diffSimulationResults",
+      {
+        actualFile: "/workspace/actual.mat",
+        expectedFile: "/workspace/expected.mat",
+        diffPrefix,
+      },
+    );
+
+    expect(refusal).toBe(
+      `Cannot write to ${diffPrefix} — it is inside a read-only system library directory.`,
+    );
+    expect(source.asked).toEqual([]);
+  });
+
+  it("allows diffSimulationResults when diffPrefix is outside every MODELICAPATH root", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "diffSimulationResults",
+      {
+        actualFile: "/workspace/actual.mat",
+        expectedFile: "/workspace/expected.mat",
+        diffPrefix: "/workspace/scratch/diff",
+      },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
+
   it("asks nothing about buildModelFMU or translateModelXML: neither has a gate row", async () => {
     const source = verdicts();
     const reachable = withModelicaPath(LIBRARY_ROOT);
@@ -884,10 +923,13 @@ describe("READ_ONLY_GATE", () => {
     expect(flagged("ownFile")).toEqual(["save"]);
   });
 
-  it("pins filterSimulationResults as the only readOnly function with a gated destination", () => {
+  it("pins filterSimulationResults and diffSimulationResults as the readOnly functions with a gated destination", () => {
     // A new "destination" here means a readOnly MUTATIONS entry now takes a
     // caller-named destination path; give it a BY_NAME row, then extend this
     // list.
-    expect(flagged("destination")).toEqual(["filterSimulationResults"]);
+    expect(flagged("destination")).toEqual([
+      "filterSimulationResults",
+      "diffSimulationResults",
+    ]);
   });
 });
