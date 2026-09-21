@@ -817,6 +817,28 @@ describe("a call naming a destination path", () => {
     expect(source.asked).toEqual([]);
   });
 
+  it("resolves a relative MODELICAPATH root against OMC's own cwd, not the host process's (regression)", async () => {
+    // A relative MODELICAPATH root ("Blocks") means "Blocks under OMC's own
+    // cwd" — the same base cd({}) reports for a relative destination, not
+    // the host process's own cwd (this test runner's, which the LIBRARY_ROOT
+    // absolute outFile below is nowhere near).
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath("Blocks", LIBRARY_ROOT),
+      "filterSimulationResults",
+      {
+        inFile: "/workspace/res.mat",
+        outFile: `${LIBRARY_ROOT}/Blocks/filtered.mat`,
+        vars: ["x"],
+      },
+    );
+
+    expect(refusal).toContain("read-only system library directory");
+    expect(source.asked).toEqual([]);
+  });
+
   it("allows filterSimulationResults when outFile is outside every MODELICAPATH root", async () => {
     const source = verdicts();
 

@@ -788,7 +788,9 @@ async function refusalForDeclaredClasses(
  * host process's own `cwd()`: OMC's working directory is parked independently
  * (`packages/omc-client/src/working-directory.ts`) and can be moved further
  * at any time through the ungated `cd` OMC function, so a relative path's
- * real destination and the host process's idea of "here" can disagree.
+ * real destination and the host process's idea of "here" can disagree. A
+ * relative `MODELICAPATH` root is resolved against the same working
+ * directory, for the same reason — OMC resolves both against its own cwd.
  *
  * Fails open — `false` — on any error from `getModelicaPath()` or `cd()`,
  * matching the "deriving a verdict fails open" philosophy documented on
@@ -820,7 +822,7 @@ async function isUnderSystemLibraryRoot(
     .split(path.delimiter)
     .map((root) => root.trim())
     .filter((root) => root.length > 0)
-    .map((root) => path.resolve(root));
+    .map((root) => path.resolve(workingDirectory, root));
   const file = path.resolve(workingDirectory, destinationPath);
   return roots.some((root) => isUnder(file, root));
 }
