@@ -1,6 +1,8 @@
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type {
   WriteAction,
@@ -1121,6 +1123,60 @@ describe("a call naming a destination path", () => {
 
     expect(refusal).toBeUndefined();
     expect(source.asked).toEqual([]);
+  });
+});
+
+describe("a destination path reached through a symlink", () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "mw-write-gate-"));
+  });
+
+  afterEach(async () => {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  it("refuses a workdir reached through a symlinked ancestor into a MODELICAPATH root", async () => {
+    const realRoot = path.join(tmp, "reallib");
+    await fsp.mkdir(realRoot, { recursive: true });
+    const link = path.join(tmp, "linked");
+    await fsp.symlink(realRoot, link, "dir");
+    // The leaf itself doesn't exist yet — importFMU will create it — so only
+    // "linked" is a real symlink for realpathExistingAncestor to resolve.
+    const workdir = path.join(link, "generated");
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(realRoot),
+      "importFMU",
+      { filename: "/workspace/motor.fmu", workdir },
+    );
+
+    expect(refusal).toBe(
+      `Cannot write to ${workdir} — it is inside a read-only system library directory.`,
+    );
+  });
+
+  it("allows a workdir whose symlink resolves outside every MODELICAPATH root", async () => {
+    const realRoot = path.join(tmp, "reallib");
+    const scratch = path.join(tmp, "scratch");
+    await fsp.mkdir(realRoot, { recursive: true });
+    await fsp.mkdir(scratch, { recursive: true });
+    const link = path.join(tmp, "linked-scratch");
+    await fsp.symlink(scratch, link, "dir");
+    const workdir = path.join(link, "generated");
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(realRoot),
+      "importFMU",
+      { filename: "/workspace/motor.fmu", workdir },
+    );
+
+    expect(refusal).toBeUndefined();
   });
 });
 

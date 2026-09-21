@@ -52,6 +52,7 @@
  * `importFMU`'s row is one.
  */
 
+import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
@@ -820,9 +821,12 @@ async function refusalForDeclaredClasses(
  * `WriteVerdicts.forClass`: refusing a destination the gate could not
  * actually check would block a write nothing judged.
  *
- * Compares resolved paths textually, without dereferencing symlinks — a
- * symlink pointing into a `MODELICAPATH` root can bypass this check, the same
- * property `system-library.ts`'s `isUnder` has.
+ * Every path — the working directory, each `MODELICAPATH` root, and
+ * `destinationPath` itself — is run through {@link realpathExistingAncestor}
+ * before the containment check, so a symlink anywhere in a root's path
+ * cannot make a destination that really lands inside it compare as outside.
+ * `system-library.ts`'s `isUnder` (a different check, for a class's own
+ * already-existing source file) does not get this same treatment here.
  *
  * The `cd()` read here and the call it guards are two separate turns on
  * `OmcClient`'s queue, not one atomic unit, so an interleaved `cd` to a real
@@ -832,21 +836,51 @@ async function isUnderSystemLibraryRoot(
   client: DestinationClient,
   destinationPath: string,
 ): Promise<boolean> {
-  let modelicaPath: string;
-  let workingDirectory: string;
   try {
-    ({ modelicaPath } = await client.getModelicaPath());
-    ({ workingDirectory } = await client.cd({ newWorkingDirectory: "" }));
+    const { modelicaPath } = await client.getModelicaPath();
+    const { workingDirectory: rawWorkingDirectory } = await client.cd({
+      newWorkingDirectory: "",
+    });
+    const workingDirectory =
+      await realpathExistingAncestor(rawWorkingDirectory);
+    const roots = await Promise.all(
+      modelicaPath
+        .split(path.delimiter)
+        .map((root) => root.trim())
+        .filter((root) => root.length > 0)
+        .map((root) =>
+          realpathExistingAncestor(path.resolve(workingDirectory, root)),
+        ),
+    );
+    const file = await realpathExistingAncestor(
+      path.resolve(workingDirectory, destinationPath),
+    );
+    return roots.some((root) => isUnder(file, root));
   } catch {
     return false;
   }
-  const roots = modelicaPath
-    .split(path.delimiter)
-    .map((root) => root.trim())
-    .filter((root) => root.length > 0)
-    .map((root) => path.resolve(workingDirectory, root));
-  const file = path.resolve(workingDirectory, destinationPath);
-  return roots.some((root) => isUnder(file, root));
+}
+
+/**
+ * `target`, with every existing ancestor resolved to its real (symlink-free)
+ * location and any non-existent tail appended unchanged — a component that
+ * doesn't exist yet cannot itself be a symlink pointing anywhere, so there is
+ * nothing for `fs.realpath` to resolve there. `workdir` (from `importFMU`,
+ * among others) routinely names a directory OMC hasn't created yet, so a
+ * plain `fs.realpath` would throw `ENOENT` on exactly the caller-named paths
+ * this check exists to judge; walking up to the nearest real ancestor keeps
+ * the check meaningful without requiring the target to already exist.
+ */
+async function realpathExistingAncestor(target: string): Promise<string> {
+  try {
+    return await fsp.realpath(target);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    const parent = path.dirname(target);
+    if (parent === target) return target;
+    const resolvedParent = await realpathExistingAncestor(parent);
+    return path.join(resolvedParent, path.basename(target));
+  }
 }
 
 /** True when `file` is `root` itself or nested beneath it. */
