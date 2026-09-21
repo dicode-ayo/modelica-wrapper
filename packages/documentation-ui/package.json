@@ -55,7 +55,7 @@
   "devDependencies": {
     "@storybook/web-components": "^10.6.0",
     "@types/js-beautify": "^1.14.3",
-    "@types/node": "^24.13.4",
+    "@types/node": "^24.13.6",
     "@vitest/coverage-istanbul": "^4.1.11",
     "happy-dom": "^20.14.5",
     "typescript": "^5.9.3",
