@@ -190,6 +190,12 @@ const editsElement = <F extends string>(field: F): Argument<F> => ({
   action: "edit",
 });
 
+const createsInsideElement = <F extends string>(field: F): Argument<F> => ({
+  field,
+  as: "element",
+  action: "createInside",
+});
+
 const declaresInSource = <F extends string>(field: F): Argument<F> => ({
   field,
   as: "source",
@@ -243,13 +249,15 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   // `workdir` is a caller-named output directory OMC writes the generated
   // wrapper class into — the same arbitrary destination shape
   // `filterSimulationResults`'s `outFile` gets, gated by origin alone.
-  // `modelName` overrides the generated wrapper's own class name: when it
-  // already names an existing class, OMC overwrites that class's
-  // definition in the symbol table, so it is judged the same way
-  // `loadClassContentString`'s `typeName` is — an empty/omitted `modelName`
-  // (OMC's own "derive it from the FMU" default) has no fixed target to
-  // judge and passes, same as any other empty class-argument.
-  importFMU: [writesTo("workdir"), edits("modelName")],
+  // `modelName` overrides the generated wrapper's own class name and can be
+  // fully qualified (`modelicaName` admits dots), so it is judged the same
+  // way `copyClass`'s `within` and `newModel`'s `withinPath` are: by its
+  // enclosing scope, not the name itself — a fresh name inside a protected
+  // package is refused exactly like an overwrite of one already there,
+  // since either way the package is what the gate is protecting. An empty
+  // or top-level `modelName` has no scope to judge and passes, same as an
+  // empty `within`/`withinPath`.
+  importFMU: [writesTo("workdir"), createsInsideElement("modelName")],
   installPackage: null,
   loadClassContentString: createsInside("typeName"),
   loadFile: declaresInFile("fileName", "encoding"),

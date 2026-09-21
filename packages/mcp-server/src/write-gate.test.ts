@@ -970,9 +970,8 @@ describe("a call naming a destination path", () => {
   });
 
   it("refuses importFMU's empty workdir when it resolves to OMC's own cwd under a MODELICAPATH root", async () => {
-    // The wrapper defaults `workdir` to "", meaning "use OMC's cwd" — the
-    // same empty-destination shape `diffSimulationResults`'s `diffPrefix`
-    // gets above, and the same reason it must not be treated as "no path".
+    // The wrapper defaults `workdir` to "", which OMC reads as "use my cwd" —
+    // a real destination, not an absent one.
     const source = verdicts();
 
     const refusal = await refusalFor(
@@ -1023,10 +1022,15 @@ describe("a call naming a destination path", () => {
     expect(source.asked).toEqual([]);
   });
 
-  it("refuses importFMU when modelName names a class that belongs to a read-only system library", async () => {
-    const source = verdicts("Modelica.Blocks.Math.Sin");
+  it("refuses importFMU's modelName by its enclosing scope, whether that class already exists or not", async () => {
+    // `Modelica.Blocks.Math` is the scope either way: `.Sin` overwrites an
+    // existing class in it, `.NewFmu` would plant a fresh one there — both
+    // are the same "write into a protected package" the gate exists to
+    // refuse, and the gate has no `existClass` lookup here to tell them
+    // apart (unlike `refusalForDeclaredClasses`'s parsed-source path).
+    const source = verdicts("Modelica.Blocks.Math");
 
-    const refusal = await refusalFor(
+    const overwrite = await refusalFor(
       source,
       withModelicaPath(LIBRARY_ROOT),
       "importFMU",
@@ -1036,11 +1040,41 @@ describe("a call naming a destination path", () => {
         modelName: "Modelica.Blocks.Math.Sin",
       },
     );
+    const plant = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "importFMU",
+      {
+        filename: "/workspace/motor.fmu",
+        workdir: "/workspace/scratch",
+        modelName: "Modelica.Blocks.Math.NewFmu",
+      },
+    );
 
-    expect(refusal).toBe(REFUSAL);
+    expect(overwrite).toBe(REFUSAL);
+    expect(plant).toBe(REFUSAL);
     expect(source.asked).toEqual([
-      { className: "Modelica.Blocks.Math.Sin", action: "edit" },
+      { className: "Modelica.Blocks.Math", action: "createInside" },
+      { className: "Modelica.Blocks.Math", action: "createInside" },
     ]);
+  });
+
+  it("does not judge a top-level modelName: it has no enclosing scope", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "importFMU",
+      {
+        filename: "/workspace/motor.fmu",
+        workdir: "/workspace/scratch",
+        modelName: "TopLevelFmu",
+      },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
   });
 
   it("does not judge an empty or omitted modelName: OMC derives its own name from the FMU", async () => {
