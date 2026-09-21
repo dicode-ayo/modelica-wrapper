@@ -40,10 +40,17 @@
  * `omc_invoke` path as every gated wrapper, and is gated by its own entry
  * below. That classification is what lets `MUTATIONS` keep meaning "changes
  * the model in memory", which is what cache invalidation reads it for.
- * `REWRITES_OWN_FILE` is what catches the next function shaped like `save`:
- * exhaustive over every `"readOnly"` name, so one that also rewrites a
- * class's own file cannot join `MUTATIONS` without this file being touched.
+ *
+ * A `"readOnly"` function can also take a caller-named destination path that
+ * is not a class's own file at all — `filterSimulationResults`'s `outFile` is
+ * an arbitrary write target the wrapper's schema does nothing to constrain,
+ * gated by origin alone through `refusalForDestination` rather than by a
+ * class lookup. `READ_ONLY_GATE` is what catches both cases: exhaustive over
+ * every `"readOnly"` name, so one shaped like `save` or `filterSimulationResults`
+ * cannot join `MUTATIONS` without this file being touched.
  */
+
+import * as path from "node:path";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
 import { isLikelyDiskPath } from "@dicode/omc-client";
@@ -77,6 +84,21 @@ export interface WriteTargetClient {
 }
 
 /**
+ * The OMC surface a caller-named destination path is judged against:
+ * `MODELICAPATH`'s roots, and OMC's own actual working directory — which is
+ * what a relative destination resolves against, not the host process's
+ * `cwd()`. `cd()` with an empty `newWorkingDirectory` is OMC's own getter for
+ * that (`packages/omc-client/src/api/lifecycle/cd.ts`); `McpToolClient`
+ * satisfies it.
+ */
+export interface DestinationClient {
+  getModelicaPath(): Promise<{ modelicaPath: string }>;
+  cd(input: {
+    newWorkingDirectory: string;
+  }): Promise<{ workingDirectory: string }>;
+}
+
+/**
  * How `K`'s input says what the call would write, and what the caller is doing
  * to it.
  *
@@ -105,6 +127,14 @@ export interface WriteTargetClient {
  * the cheapest verdict is reached first and a target two arguments share is
  * asked about once.
  *
+ * `as: "destination"` marks an arbitrary output-file path the call writes to —
+ * not a Modelica class file, and nothing already at that path is evicted or
+ * judged the way a `"binding"` path's classes are. The path need not be an
+ * existing file, or an existing Modelica class, at all, so it is checked by
+ * origin only: it must not resolve, against OMC's own working directory,
+ * under a `MODELICAPATH` root. It never goes through a class lookup or a
+ * file-permission check.
+ *
  * `null` means the input says nothing the gate judges: a library or an FMU
  * named rather than written (`loadModel`, `installPackage`, `importFMU`), or
  * OMC's own state (`setCommandLineOptions`).
@@ -123,6 +153,10 @@ type Argument<Field extends string> =
       readonly field: Field;
       readonly as: "sourceFile" | "sourceFiles";
       readonly encodingField?: Field;
+    }
+  | {
+      readonly field: Field;
+      readonly as: "destination";
     };
 
 /**
@@ -131,7 +165,7 @@ type Argument<Field extends string> =
  * name `K`'s input actually has is assignable here — so a renamed argument
  * fails the build.
  */
-type ClassArgument<K extends OmcFnName> =
+type GateArgument<K extends OmcFnName> =
   | Argument<Extract<keyof OmcInput<K>, string>>
   | readonly Argument<Extract<keyof OmcInput<K>, string>>[]
   | null;
@@ -181,12 +215,17 @@ const declaresInFiles = <F extends string>(
   encodingField?: F,
 ): Argument<F> => fileArgument("sourceFiles", field, encodingField);
 
+const writesTo = <F extends string>(field: F): Argument<F> => ({
+  field,
+  as: "destination",
+});
+
 /**
  * `copyClass`'s `within` and `newModel`'s `withinPath` are empty for a
  * top-level class. An empty name has no verdict to derive, so the gate lets it
  * through — the same way a lookup that fails does.
  */
-const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
+const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   addClassAnnotation: edits("typeName"),
   addComponent: edits("intoTypeName"),
   addConnection: edits("typeName"),
@@ -240,10 +279,10 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: ClassArgument<K> } = {
 };
 
 /**
- * Naming `save` as `ClassArgument`'s own type argument is what fails the build
+ * Naming `save` as `GateArgument`'s own type argument is what fails the build
  * if it ever leaves the OMC function registry or renames `typeName`.
  */
-const SAVE_ARGUMENT: ClassArgument<"save"> = {
+const SAVE_ARGUMENT: GateArgument<"save"> = {
   field: "typeName",
   as: "class",
   action: "save",
@@ -258,173 +297,219 @@ const SAVE_ARGUMENT: ClassArgument<"save"> = {
 type ReadOnlyFnName = Exclude<OmcFunction, MutatingFnName>;
 
 /**
- * Whether a `"readOnly"` OMC function rewrites a class's own source file the
- * way `save` does, without OMC's symbol table ever seeing it — which needs
- * the same gate a `MutatingFnName` gets from `CLASS_ARGUMENTS`, just reached
- * from outside it. Exhaustive over every readOnly function, so a new one
- * added to `MUTATIONS` fails the build until this table says whether it needs
- * a `BY_NAME` entry of its own — the same guarantee `CLASS_ARGUMENTS` gives
- * `MutatingFnName`.
+ * The `"destination"` rows for the `"readOnly"` functions `READ_ONLY_GATE`
+ * classifies that way. Each has no class of its own to name — the field is a
+ * destination row, not a class row — so naming each as `GateArgument`'s own
+ * type argument is what fails the build if it ever leaves the OMC function
+ * registry or renames its argument.
+ *
+ * Unlike `CLASS_ARGUMENTS`, there is no mapped type tying this record's keys
+ * to `READ_ONLY_GATE`'s `"destination"` entries: `ReadOnlyFnName` is not a
+ * subtype of `GateArgument`'s `OmcFnName` constraint, so a mapped type over it
+ * does not typecheck. The `write-gate.test.ts` `READ_ONLY_GATE` describe block
+ * is what actually catches a function classified `"destination"` here without
+ * a matching row — the same test-enforced link `SAVE_ARGUMENT` and `"ownFile"`
+ * have always had.
  */
-export const REWRITES_OWN_FILE = {
-  quit: false,
-  getErrorString: false,
-  getMessagesStringInternal: false,
-  getVersion: false,
-  getModelicaPath: false,
-  getClassNames: false,
-  searchClassNames: false,
-  getClassInformation: false,
-  isPackage: false,
-  getInheritanceCount: false,
-  getInheritedClasses: false,
-  getUses: false,
-  existClass: false,
-  existModel: false,
-  existPackage: false,
-  getClassRestriction: false,
-  getClassComment: false,
-  isType: false,
-  isClass: false,
-  isRecord: false,
-  isBlock: false,
-  isFunction: false,
-  isModel: false,
-  isConnector: false,
-  isPartial: false,
-  isReplaceable: false,
-  isProtectedClass: false,
-  isEnumeration: false,
-  isConstant: false,
-  isParameter: false,
-  isProtected: false,
-  isRedeclare: false,
-  isPrimitive: false,
-  isOperator: false,
-  isOperatorFunction: false,
-  isOperatorRecord: false,
-  isOptimization: false,
-  getEnumerationLiterals: false,
-  getReplaceableChoices: false,
-  extendsFrom: false,
-  getAllSubtypeOf: false,
-  classAnnotationExists: false,
-  getNthInheritedClass: false,
-  isShortDefinition: false,
-  getComponents: false,
-  getComponentAnnotations: false,
-  getConnectionCount: false,
-  getNthConnection: false,
-  getNthConnectionAnnotation: false,
-  getTransitions: false,
-  getInitialStates: false,
-  getIconAnnotation: false,
-  getDiagramAnnotation: false,
-  getDocumentationAnnotation: false,
-  listFile: false,
-  instantiateModel: false,
-  getModelInstance: false,
-  getModelInstanceAnnotation: false,
-  modifierToJSON: false,
-  getConnectionList: false,
-  getNthConnector: false,
-  getNthConnectorIconAnnotation: false,
-  getConnectorCount: false,
-  getNthInheritedClassIconMapAnnotation: false,
-  getNthInheritedClassDiagramMapAnnotation: false,
-  getDefaultComponentName: false,
-  getDefaultComponentPrefixes: false,
-  getComponentComment: false,
-  getInstantiatedParametersAndValues: false,
-  getAnnotationNamedModifiers: false,
-  getAnnotationModifierValue: false,
-  getComponentCount: false,
-  getNthComponent: false,
-  getNthComponentAnnotation: false,
-  getNthComponentCondition: false,
-  getNthComponentModification: false,
-  getAnnotationCount: false,
-  getNthAnnotationString: false,
-  getAlgorithmCount: false,
-  getNthAlgorithm: false,
-  getAlgorithmItemsCount: false,
-  getNthAlgorithmItem: false,
-  getInitialAlgorithmCount: false,
-  getNthInitialAlgorithm: false,
-  getInitialAlgorithmItemsCount: false,
-  getNthInitialAlgorithmItem: false,
-  getNthEquation: false,
-  getNthEquationItem: false,
-  getInitialEquationCount: false,
-  getNthInitialEquation: false,
-  getInitialEquationItemsCount: false,
-  getNthInitialEquationItem: false,
-  getImportCount: false,
-  getNthImport: false,
-  convertUnits: false,
-  getDerivedUnits: false,
-  uriToFilename: false,
-  qualifyPath: false,
-  parseFile: false,
-  parseString: false,
-  getSourceFile: false,
-  diffModelicaFileListings: false,
-  save: true,
-  cd: false,
-  getParameterValue: false,
-  getParameterNames: false,
-  getComponentModifierNames: false,
-  getComponentModifierValue: false,
-  getComponentModifierValues: false,
-  getExtendsModifierNames: false,
-  getExtendsModifierValue: false,
-  getDerivedClassModifierNames: false,
-  getDerivedClassModifierValue: false,
-  isExtendsModifierFinal: false,
-  getElements: false,
-  getElementsInfo: false,
-  getElementAnnotation: false,
-  getElementAnnotations: false,
-  getElementModifierNames: false,
-  getElementModifierValue: false,
-  getElementModifierValues: false,
-  getAvailableLibraries: false,
-  getAvailableLibraryVersions: false,
-  getAvailablePackageVersions: false,
-  getAvailablePackageConversionsFrom: false,
-  getAvailablePackageConversionsTo: false,
-  getConversionsFromVersions: false,
-  updatePackageIndex: false,
-  getLoadedLibraries: false,
-  getPackages: false,
-  setMatchingAlgorithm: false,
-  setIndexReductionMethod: false,
-  getMatchingAlgorithm: false,
-  getAvailableMatchingAlgorithms: false,
-  getIndexReductionMethod: false,
-  getAvailableIndexReductionMethods: false,
-  getAvailableTearingMethods: false,
-  checkModel: false,
-  translateModel: false,
-  buildModel: false,
-  simulate: false,
-  buildModelFMU: false,
-  translateModelXML: false,
-  getSimulationOptions: false,
-  isExperiment: false,
-  readSimulationResultSize: false,
-  readSimulationResultVars: false,
-  closeSimulationResultFile: false,
-  readSimulationResult: false,
-  val: false,
-  filterSimulationResults: false,
-  deltaSimulationResults: false,
-  diffSimulationResults: false,
-} as const satisfies { readonly [K in ReadOnlyFnName]: boolean };
+const DESTINATION_ARGUMENTS = {
+  filterSimulationResults: writesTo(
+    "outFile",
+  ) satisfies GateArgument<"filterSimulationResults">,
+  diffSimulationResults: writesTo(
+    "diffPrefix",
+  ) satisfies GateArgument<"diffSimulationResults">,
+};
 
 /**
- * `CLASS_ARGUMENTS` and `SAVE_ARGUMENT` with their per-function field-name
- * literals erased, which is all a lookup by a runtime name can preserve.
+ * What kind of write a `"readOnly"` OMC function performs, beyond the
+ * `MUTATIONS` classification that only means "does not change the model OMC
+ * holds in memory". Exhaustive over every readOnly function, so a new one
+ * added to `MUTATIONS` fails the build until this table says which it is —
+ * the same guarantee `CLASS_ARGUMENTS` gives `MutatingFnName`:
+ *
+ * - `"none"`: nothing the gate judges (queries, `cd`, `quit`, …).
+ * - `"ownFile"`: rewrites a class's own source file the way `save` does,
+ *   without OMC's symbol table ever seeing it — needing the same gate a
+ *   `MutatingFnName` gets from `CLASS_ARGUMENTS`, just reached from outside
+ *   it.
+ * - `"destination"`: takes a caller-named destination path unrelated to any
+ *   Modelica class — `DESTINATION_ARGUMENTS`' rows — gated by origin alone
+ *   through `refusalForDestination` rather than a class lookup.
+ *
+ * `buildModelFMU` and `translateModelXML` are `"none"` despite each
+ * generating an output file: `buildModelFMU`'s `fileNamePrefix` goes through
+ * the shared `fileNamePrefix` schema (`@dicode/omc-client`'s
+ * `_shared/fields.ts`), which admits no path separator, so it can never
+ * resolve outside whatever directory OMC treats as cwd; `translateModelXML`'s
+ * wrapper input is `TypeNameInput` alone and exposes no destination argument
+ * at all.
+ *
+ * `simulate`, `buildModel` and `translateModel` are also `"none"` here: their
+ * `simflags`/`cflags` arguments can carry a flag-embedded destination (e.g.
+ * `-r=<path>`) that this table does not evaluate (issue #728).
+ */
+export const READ_ONLY_GATE = {
+  quit: "none",
+  getErrorString: "none",
+  getMessagesStringInternal: "none",
+  getVersion: "none",
+  getModelicaPath: "none",
+  getClassNames: "none",
+  searchClassNames: "none",
+  getClassInformation: "none",
+  isPackage: "none",
+  getInheritanceCount: "none",
+  getInheritedClasses: "none",
+  getUses: "none",
+  existClass: "none",
+  existModel: "none",
+  existPackage: "none",
+  getClassRestriction: "none",
+  getClassComment: "none",
+  isType: "none",
+  isClass: "none",
+  isRecord: "none",
+  isBlock: "none",
+  isFunction: "none",
+  isModel: "none",
+  isConnector: "none",
+  isPartial: "none",
+  isReplaceable: "none",
+  isProtectedClass: "none",
+  isEnumeration: "none",
+  isConstant: "none",
+  isParameter: "none",
+  isProtected: "none",
+  isRedeclare: "none",
+  isPrimitive: "none",
+  isOperator: "none",
+  isOperatorFunction: "none",
+  isOperatorRecord: "none",
+  isOptimization: "none",
+  getEnumerationLiterals: "none",
+  getReplaceableChoices: "none",
+  extendsFrom: "none",
+  getAllSubtypeOf: "none",
+  classAnnotationExists: "none",
+  getNthInheritedClass: "none",
+  isShortDefinition: "none",
+  getComponents: "none",
+  getComponentAnnotations: "none",
+  getConnectionCount: "none",
+  getNthConnection: "none",
+  getNthConnectionAnnotation: "none",
+  getTransitions: "none",
+  getInitialStates: "none",
+  getIconAnnotation: "none",
+  getDiagramAnnotation: "none",
+  getDocumentationAnnotation: "none",
+  listFile: "none",
+  instantiateModel: "none",
+  getModelInstance: "none",
+  getModelInstanceAnnotation: "none",
+  modifierToJSON: "none",
+  getConnectionList: "none",
+  getNthConnector: "none",
+  getNthConnectorIconAnnotation: "none",
+  getConnectorCount: "none",
+  getNthInheritedClassIconMapAnnotation: "none",
+  getNthInheritedClassDiagramMapAnnotation: "none",
+  getDefaultComponentName: "none",
+  getDefaultComponentPrefixes: "none",
+  getComponentComment: "none",
+  getInstantiatedParametersAndValues: "none",
+  getAnnotationNamedModifiers: "none",
+  getAnnotationModifierValue: "none",
+  getComponentCount: "none",
+  getNthComponent: "none",
+  getNthComponentAnnotation: "none",
+  getNthComponentCondition: "none",
+  getNthComponentModification: "none",
+  getAnnotationCount: "none",
+  getNthAnnotationString: "none",
+  getAlgorithmCount: "none",
+  getNthAlgorithm: "none",
+  getAlgorithmItemsCount: "none",
+  getNthAlgorithmItem: "none",
+  getInitialAlgorithmCount: "none",
+  getNthInitialAlgorithm: "none",
+  getInitialAlgorithmItemsCount: "none",
+  getNthInitialAlgorithmItem: "none",
+  getNthEquation: "none",
+  getNthEquationItem: "none",
+  getInitialEquationCount: "none",
+  getNthInitialEquation: "none",
+  getInitialEquationItemsCount: "none",
+  getNthInitialEquationItem: "none",
+  getImportCount: "none",
+  getNthImport: "none",
+  convertUnits: "none",
+  getDerivedUnits: "none",
+  uriToFilename: "none",
+  qualifyPath: "none",
+  parseFile: "none",
+  parseString: "none",
+  getSourceFile: "none",
+  diffModelicaFileListings: "none",
+  save: "ownFile",
+  cd: "none",
+  getParameterValue: "none",
+  getParameterNames: "none",
+  getComponentModifierNames: "none",
+  getComponentModifierValue: "none",
+  getComponentModifierValues: "none",
+  getExtendsModifierNames: "none",
+  getExtendsModifierValue: "none",
+  getDerivedClassModifierNames: "none",
+  getDerivedClassModifierValue: "none",
+  isExtendsModifierFinal: "none",
+  getElements: "none",
+  getElementsInfo: "none",
+  getElementAnnotation: "none",
+  getElementAnnotations: "none",
+  getElementModifierNames: "none",
+  getElementModifierValue: "none",
+  getElementModifierValues: "none",
+  getAvailableLibraries: "none",
+  getAvailableLibraryVersions: "none",
+  getAvailablePackageVersions: "none",
+  getAvailablePackageConversionsFrom: "none",
+  getAvailablePackageConversionsTo: "none",
+  getConversionsFromVersions: "none",
+  updatePackageIndex: "none",
+  getLoadedLibraries: "none",
+  getPackages: "none",
+  setMatchingAlgorithm: "none",
+  setIndexReductionMethod: "none",
+  getMatchingAlgorithm: "none",
+  getAvailableMatchingAlgorithms: "none",
+  getIndexReductionMethod: "none",
+  getAvailableIndexReductionMethods: "none",
+  getAvailableTearingMethods: "none",
+  checkModel: "none",
+  translateModel: "none",
+  buildModel: "none",
+  simulate: "none",
+  buildModelFMU: "none",
+  translateModelXML: "none",
+  getSimulationOptions: "none",
+  isExperiment: "none",
+  readSimulationResultSize: "none",
+  readSimulationResultVars: "none",
+  closeSimulationResultFile: "none",
+  readSimulationResult: "none",
+  val: "none",
+  filterSimulationResults: "destination",
+  deltaSimulationResults: "none",
+  diffSimulationResults: "destination",
+} as const satisfies {
+  readonly [K in ReadOnlyFnName]: "none" | "ownFile" | "destination";
+};
+
+/**
+ * `CLASS_ARGUMENTS`, `SAVE_ARGUMENT` and `DESTINATION_ARGUMENTS` with their
+ * per-function field-name literals erased, which is all a lookup by a runtime
+ * name can preserve.
  */
 type ResolvedArgument = Argument<string>;
 
@@ -433,7 +518,11 @@ const BY_NAME: Readonly<
     string,
     ResolvedArgument | readonly ResolvedArgument[] | null | undefined
   >
-> = { save: SAVE_ARGUMENT, ...CLASS_ARGUMENTS };
+> = {
+  save: SAVE_ARGUMENT,
+  ...DESTINATION_ARGUMENTS,
+  ...CLASS_ARGUMENTS,
+};
 
 /**
  * `fn`'s row in {@link BY_NAME}, or `undefined` when it names nothing the gate
@@ -450,7 +539,7 @@ function rowFor(
 
 /**
  * Whether `fn` has a `BY_NAME` row of its own to derive a class from. What
- * {@link REWRITES_OWN_FILE} pins every `true` entry against.
+ * {@link READ_ONLY_GATE} pins every non-`"none"` entry against.
  */
 export function hasGateEntry(fn: string): boolean {
   return rowFor(fn) !== undefined;
@@ -465,7 +554,7 @@ export function hasGateEntry(fn: string): boolean {
  */
 export async function refusalFor(
   verdicts: WriteVerdictSource,
-  client: WriteVerdictClient & WriteTargetClient,
+  client: WriteVerdictClient & WriteTargetClient & DestinationClient,
   fn: OmcFnName,
   input: unknown,
 ): Promise<string | undefined> {
@@ -499,7 +588,7 @@ export async function refusalFor(
  */
 async function refusalForArgument(
   verdicts: WriteVerdictSource,
-  client: WriteVerdictClient & WriteTargetClient,
+  client: WriteVerdictClient & WriteTargetClient & DestinationClient,
   input: object,
   argument: ResolvedArgument,
   passed: Set<string>,
@@ -559,6 +648,10 @@ async function refusalForArgument(
         if (refusal !== undefined) return refusal;
       }
       return undefined;
+    }
+    case "destination": {
+      if (typeof raw !== "string") return undefined;
+      return refusalForDestination(client, raw);
     }
     default: {
       const unreachable: never = argument;
@@ -681,6 +774,85 @@ async function refusalForDeclaredClasses(
     passed.add(target);
   }
   return undefined;
+}
+
+/**
+ * Whether `destinationPath` resolves, against OMC's own actual working
+ * directory, under one of `MODELICAPATH`'s roots — the same algorithm
+ * `packages/extension/src/system-library.ts`'s `systemLibraryVerdict` derives
+ * for a class's own source file, but starting from a path already in hand
+ * rather than one reached through `getSourceFile`. `mcp-server` cannot depend
+ * on the extension package.
+ *
+ * `destinationPath` is resolved against `cd`'s report of OMC's cwd, not the
+ * host process's own `cwd()`: OMC's working directory is parked independently
+ * (`packages/omc-client/src/working-directory.ts`) and can be moved further
+ * at any time through the ungated `cd` OMC function, so a relative path's
+ * real destination and the host process's idea of "here" can disagree. A
+ * relative `MODELICAPATH` root is resolved against the same working
+ * directory, for the same reason — OMC resolves both against its own cwd.
+ *
+ * Fails open — `false` — on any error from `getModelicaPath()` or `cd()`,
+ * matching the "deriving a verdict fails open" philosophy documented on
+ * `WriteVerdictSource`/`write-verdict.ts` and the `catch` in
+ * `WriteVerdicts.forClass`: refusing a destination the gate could not
+ * actually check would block a write nothing judged.
+ *
+ * Compares resolved paths textually, without dereferencing symlinks — a
+ * symlink pointing into a `MODELICAPATH` root can bypass this check, the same
+ * property `system-library.ts`'s `isUnder` has.
+ *
+ * The `cd()` read here and the call it guards are two separate turns on
+ * `OmcClient`'s queue, not one atomic unit, so an interleaved `cd` to a real
+ * path can move OMC's cwd between them (issue #730).
+ */
+async function isUnderSystemLibraryRoot(
+  client: DestinationClient,
+  destinationPath: string,
+): Promise<boolean> {
+  let modelicaPath: string;
+  let workingDirectory: string;
+  try {
+    ({ modelicaPath } = await client.getModelicaPath());
+    ({ workingDirectory } = await client.cd({ newWorkingDirectory: "" }));
+  } catch {
+    return false;
+  }
+  const roots = modelicaPath
+    .split(path.delimiter)
+    .map((root) => root.trim())
+    .filter((root) => root.length > 0)
+    .map((root) => path.resolve(workingDirectory, root));
+  const file = path.resolve(workingDirectory, destinationPath);
+  return roots.some((root) => isUnder(file, root));
+}
+
+/** True when `file` is `root` itself or nested beneath it. */
+function isUnder(file: string, root: string): boolean {
+  if (file === root) return true;
+  const rel = path.relative(root, file);
+  return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+/**
+ * The refusal a caller-named destination path earns, or `undefined` when it
+ * is fine to write to. There is no class name here to run through
+ * {@link WriteVerdictSource} — `destinationPath` need not be an existing file,
+ * or an existing Modelica class, at all — so the check is origin only, built
+ * directly the way {@link refusalForSource}/{@link refusalForSourceFile}
+ * construct their own ad hoc messages without going through `verdicts`.
+ */
+async function refusalForDestination(
+  client: DestinationClient,
+  destinationPath: string,
+): Promise<string | undefined> {
+  const underSystemLibrary = await isUnderSystemLibraryRoot(
+    client,
+    destinationPath,
+  );
+  return underSystemLibrary
+    ? `Cannot write to ${destinationPath} — it is inside a read-only system library directory.`
+    : undefined;
 }
 
 /**
