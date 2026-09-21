@@ -1002,6 +1002,72 @@ describe("a call naming a destination path", () => {
     expect(source.asked).toEqual([]);
   });
 
+  it("refuses importFMU with workdir omitted entirely, the same as an explicit empty string (regression)", async () => {
+    // omc_invoke passes the caller's raw input straight through with no
+    // per-function zod defaulting (discovery-tools.ts), so a caller that
+    // simply leaves out the optional `workdir` — the natural minimal call —
+    // must not bypass the check the equivalent explicit `workdir: ""` gets:
+    // the real wrapper call defaults it to "" (OMC's own cwd) either way.
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT, LIBRARY_ROOT),
+      "importFMU",
+      { filename: "/workspace/motor.fmu" },
+    );
+
+    expect(refusal).toBe(
+      "Cannot write to  — it is inside a read-only system library directory.",
+    );
+    expect(source.asked).toEqual([]);
+  });
+
+  it("refuses importFMU when modelName names a class that belongs to a read-only system library", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "importFMU",
+      {
+        filename: "/workspace/motor.fmu",
+        workdir: "/workspace/scratch",
+        modelName: "Modelica.Blocks.Math.Sin",
+      },
+    );
+
+    expect(refusal).toBe(REFUSAL);
+    expect(source.asked).toEqual([
+      { className: "Modelica.Blocks.Math.Sin", action: "edit" },
+    ]);
+  });
+
+  it("does not judge an empty or omitted modelName: OMC derives its own name from the FMU", async () => {
+    const source = verdicts("Modelica.Blocks.Math.Sin");
+
+    const omitted = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "importFMU",
+      { filename: "/workspace/motor.fmu", workdir: "/workspace/scratch" },
+    );
+    const empty = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "importFMU",
+      {
+        filename: "/workspace/motor.fmu",
+        workdir: "/workspace/scratch",
+        modelName: "",
+      },
+    );
+
+    expect(omitted).toBeUndefined();
+    expect(empty).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
+
   it("does not judge importFMU's filename: it names the FMU being imported, not a write target", async () => {
     const source = verdicts();
 

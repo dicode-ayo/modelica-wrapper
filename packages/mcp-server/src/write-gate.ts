@@ -245,8 +245,13 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   // `workdir` is a caller-named output directory OMC writes the generated
   // wrapper class into — the same arbitrary destination shape
   // `filterSimulationResults`'s `outFile` gets, gated by origin alone
-  // (issue #729).
-  importFMU: writesTo("workdir"),
+  // (issue #729). `modelName` overrides the generated wrapper's own class
+  // name: when it already names an existing class, OMC overwrites that
+  // class's definition in the symbol table, so it is judged the same way
+  // `loadClassContentString`'s `typeName` is — an empty/omitted `modelName`
+  // (OMC's own "derive it from the FMU" default) has no fixed target to
+  // judge and passes, same as any other empty class-argument.
+  importFMU: [writesTo("workdir"), edits("modelName")],
   installPackage: null,
   loadClassContentString: createsInside("typeName"),
   loadFile: declaresInFile("fileName", "encoding"),
@@ -659,8 +664,19 @@ async function refusalForArgument(
       return undefined;
     }
     case "destination": {
-      if (typeof raw !== "string") return undefined;
-      return refusalForDestination(client, raw);
+      // Unlike every other `"destination"` row (`outFile`, `diffPrefix`),
+      // both required by their own wrapper schema, `importFMU`'s `workdir`
+      // is optional and defaults to `""` (OMC's own cwd) — `omc_invoke`
+      // passes the caller's raw input straight to `refusalFor` with no
+      // per-function zod parsing or defaulting first (`discovery-tools.ts`),
+      // so an omitted key reaches here as `undefined`, not `""`. Treating
+      // `undefined` as "nothing to judge" would skip the check entirely for
+      // exactly the input a caller most naturally sends — the one that
+      // still resolves to a real destination once the wrapper applies its
+      // own default. Only a wrong-typed value (which the real call's own
+      // schema validation rejects regardless) has truly nothing to judge.
+      if (raw !== undefined && typeof raw !== "string") return undefined;
+      return refusalForDestination(client, raw ?? "");
     }
     default: {
       const unreachable: never = argument;
