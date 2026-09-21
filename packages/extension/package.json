@@ -540,7 +540,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^24.13.4",
+    "@types/node": "^24.13.6",
     "@types/vscode": "^1.136.0",
     "@vitest/coverage-istanbul": "^4.1.11",
     "@vscode/vsce": "^3.9.2",
