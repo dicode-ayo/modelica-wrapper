@@ -951,6 +951,73 @@ describe("a call naming a destination path", () => {
     ).toBeUndefined();
     expect(source.asked).toEqual([]);
   });
+
+  it("refuses importFMU when workdir resolves under a MODELICAPATH root (#729)", async () => {
+    const source = verdicts();
+    const workdir = `${LIBRARY_ROOT}/Blocks`;
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "importFMU",
+      { filename: "/workspace/motor.fmu", workdir },
+    );
+
+    expect(refusal).toBe(
+      `Cannot write to ${workdir} — it is inside a read-only system library directory.`,
+    );
+    expect(source.asked).toEqual([]);
+  });
+
+  it("refuses importFMU's empty workdir when it resolves to OMC's own cwd under a MODELICAPATH root", async () => {
+    // The wrapper defaults `workdir` to "", meaning "use OMC's cwd" — the
+    // same empty-destination shape `diffSimulationResults`'s `diffPrefix`
+    // gets above, and the same reason it must not be treated as "no path".
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT, LIBRARY_ROOT),
+      "importFMU",
+      { filename: "/workspace/motor.fmu", workdir: "" },
+    );
+
+    expect(refusal).toBe(
+      "Cannot write to  — it is inside a read-only system library directory.",
+    );
+    expect(source.asked).toEqual([]);
+  });
+
+  it("allows importFMU when workdir is outside every MODELICAPATH root", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "importFMU",
+      { filename: "/workspace/motor.fmu", workdir: "/workspace/scratch" },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
+
+  it("does not judge importFMU's filename: it names the FMU being imported, not a write target", async () => {
+    const source = verdicts();
+
+    const refusal = await refusalFor(
+      source,
+      withModelicaPath(LIBRARY_ROOT),
+      "importFMU",
+      {
+        filename: `${LIBRARY_ROOT}/Blocks/motor.fmu`,
+        workdir: "/workspace/scratch",
+      },
+    );
+
+    expect(refusal).toBeUndefined();
+    expect(source.asked).toEqual([]);
+  });
 });
 
 describe("READ_ONLY_GATE", () => {

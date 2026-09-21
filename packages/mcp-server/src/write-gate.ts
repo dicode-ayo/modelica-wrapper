@@ -48,6 +48,10 @@
  * class lookup. `READ_ONLY_GATE` is what catches both cases: exhaustive over
  * every `"readOnly"` name, so one shaped like `save` or `filterSimulationResults`
  * cannot join `MUTATIONS` without this file being touched.
+ *
+ * A `MutatingFnName` can carry the same shape directly in `CLASS_ARGUMENTS` —
+ * `importFMU`'s `workdir` is a caller-named output directory alongside the
+ * `filename` it imports, so its row judges `workdir` by origin the same way.
  */
 
 import * as path from "node:path";
@@ -135,9 +139,9 @@ export interface DestinationClient {
  * under a `MODELICAPATH` root. It never goes through a class lookup or a
  * file-permission check.
  *
- * `null` means the input says nothing the gate judges: a library or an FMU
- * named rather than written (`loadModel`, `installPackage`, `importFMU`), or
- * OMC's own state (`setCommandLineOptions`).
+ * `null` means the input says nothing the gate judges: a library named rather
+ * than written (`loadModel`, `installPackage`), or OMC's own state
+ * (`setCommandLineOptions`).
  */
 type Argument<Field extends string> =
   | {
@@ -237,7 +241,12 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   deleteConnection: edits("typeName"),
   deleteInitialState: edits("typeName"),
   deleteTransition: edits("typeName"),
-  importFMU: null,
+  // `filename` (the FMU being imported) is named rather than written, but
+  // `workdir` is a caller-named output directory OMC writes the generated
+  // wrapper class into — the same arbitrary destination shape
+  // `filterSimulationResults`'s `outFile` gets, gated by origin alone
+  // (issue #729).
+  importFMU: writesTo("workdir"),
   installPackage: null,
   loadClassContentString: createsInside("typeName"),
   loadFile: declaresInFile("fileName", "encoding"),
