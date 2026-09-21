@@ -47,11 +47,9 @@
  * gated by origin alone through `refusalForDestination` rather than by a
  * class lookup. `READ_ONLY_GATE` is what catches both cases: exhaustive over
  * every `"readOnly"` name, so one shaped like `save` or `filterSimulationResults`
- * cannot join `MUTATIONS` without this file being touched.
- *
- * A `MutatingFnName` can carry the same shape directly in `CLASS_ARGUMENTS` —
- * `importFMU`'s `workdir` is a caller-named output directory alongside the
- * `filename` it imports, so its row judges `workdir` by origin the same way.
+ * cannot join `MUTATIONS` without this file being touched. A `MutatingFnName`
+ * can carry the same `"destination"` shape directly in `CLASS_ARGUMENTS` —
+ * `importFMU`'s row is one.
  */
 
 import * as path from "node:path";
@@ -244,10 +242,10 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   // `filename` (the FMU being imported) is named rather than written, but
   // `workdir` is a caller-named output directory OMC writes the generated
   // wrapper class into — the same arbitrary destination shape
-  // `filterSimulationResults`'s `outFile` gets, gated by origin alone
-  // (issue #729). `modelName` overrides the generated wrapper's own class
-  // name: when it already names an existing class, OMC overwrites that
-  // class's definition in the symbol table, so it is judged the same way
+  // `filterSimulationResults`'s `outFile` gets, gated by origin alone.
+  // `modelName` overrides the generated wrapper's own class name: when it
+  // already names an existing class, OMC overwrites that class's
+  // definition in the symbol table, so it is judged the same way
   // `loadClassContentString`'s `typeName` is — an empty/omitted `modelName`
   // (OMC's own "derive it from the FMU" default) has no fixed target to
   // judge and passes, same as any other empty class-argument.
