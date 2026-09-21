@@ -250,7 +250,7 @@ importers:
         specifier: ^0.27.0
         version: 0.27.0
       zeromq:
-        specifier: ^6.7.0
+        specifier: ^6.8.0
         version: 6.8.0
       zod:
         specifier: ^4.5.4
@@ -346,7 +346,7 @@ importers:
   packages/omc-client:
     dependencies:
       zeromq:
-        specifier: ^6.7.0
+        specifier: ^6.8.0
         version: 6.8.0
       zod:
         specifier: ^4.5.4
