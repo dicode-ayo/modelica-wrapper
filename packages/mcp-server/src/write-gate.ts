@@ -302,6 +302,14 @@ type ReadOnlyFnName = Exclude<OmcFunction, MutatingFnName>;
  * destination row, not a class row — so naming each as `GateArgument`'s own
  * type argument is what fails the build if it ever leaves the OMC function
  * registry or renames its argument.
+ *
+ * Unlike `CLASS_ARGUMENTS`, there is no mapped type tying this record's keys
+ * to `READ_ONLY_GATE`'s `"destination"` entries: `ReadOnlyFnName` is not a
+ * subtype of `GateArgument`'s `OmcFnName` constraint, so a mapped type over it
+ * does not typecheck. The `write-gate.test.ts` `READ_ONLY_GATE` describe block
+ * is what actually catches a function classified `"destination"` here without
+ * a matching row — the same test-enforced link `SAVE_ARGUMENT` and `"ownFile"`
+ * have always had.
  */
 const DESTINATION_ARGUMENTS = {
   filterSimulationResults: writesTo(
