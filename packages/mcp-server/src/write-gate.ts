@@ -104,8 +104,11 @@ export interface DestinationClient {
  * How `K`'s input says what the call would write, and what the caller is doing
  * to it.
  *
- * `as: "element"` marks an argument holding a dotted path to an element *inside*
- * a class; its enclosing scope is what gets written.
+ * `as: "element"` marks an argument holding a dotted path one level more
+ * specific than what actually gets written: an element *inside* a class
+ * (`setElementAnnotation`'s `typeName`) or a class *inside* a package
+ * (`importFMU`'s `modelName`, which can itself be a class OMC hasn't created
+ * yet) — either way, its enclosing scope is what gets judged.
  *
  * `as: "source"` marks an argument holding Modelica text the call brings in,
  * and `as: "sourceFile"` / `"sourceFiles"` a path (or array of paths) to a file
@@ -245,18 +248,11 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   deleteConnection: edits("typeName"),
   deleteInitialState: edits("typeName"),
   deleteTransition: edits("typeName"),
-  // `filename` (the FMU being imported) is named rather than written, but
-  // `workdir` is a caller-named output directory OMC writes the generated
-  // wrapper class into — the same arbitrary destination shape
-  // `filterSimulationResults`'s `outFile` gets, gated by origin alone.
-  // `modelName` overrides the generated wrapper's own class name and can be
-  // fully qualified (`modelicaName` admits dots), so it is judged the same
-  // way `copyClass`'s `within` and `newModel`'s `withinPath` are: by its
-  // enclosing scope, not the name itself — a fresh name inside a protected
-  // package is refused exactly like an overwrite of one already there,
-  // since either way the package is what the gate is protecting. An empty
-  // or top-level `modelName` has no scope to judge and passes, same as an
-  // empty `within`/`withinPath`.
+  // `filename` (the FMU being imported) is deliberately left ungated — it
+  // names rather than writes. `workdir` is a `"destination"` row like
+  // `filterSimulationResults`'s `outFile`. `modelName` can be fully
+  // qualified (`modelicaName` admits dots), so it is judged the same way
+  // `copyClass`'s `within` and `newModel`'s `withinPath` are.
   importFMU: [writesTo("workdir"), createsInsideElement("modelName")],
   installPackage: null,
   loadClassContentString: createsInside("typeName"),
@@ -670,17 +666,12 @@ async function refusalForArgument(
       return undefined;
     }
     case "destination": {
-      // Unlike every other `"destination"` row (`outFile`, `diffPrefix`),
-      // both required by their own wrapper schema, `importFMU`'s `workdir`
-      // is optional and defaults to `""` (OMC's own cwd) — `omc_invoke`
-      // passes the caller's raw input straight to `refusalFor` with no
-      // per-function zod parsing or defaulting first (`discovery-tools.ts`),
-      // so an omitted key reaches here as `undefined`, not `""`. Treating
-      // `undefined` as "nothing to judge" would skip the check entirely for
-      // exactly the input a caller most naturally sends — the one that
-      // still resolves to a real destination once the wrapper applies its
-      // own default. Only a wrong-typed value (which the real call's own
-      // schema validation rejects regardless) has truly nothing to judge.
+      // `omc_invoke` passes the caller's raw input to `refusalFor` before any
+      // per-function zod parsing or defaulting runs (`discovery-tools.ts`),
+      // so a field whose own schema defaults to `""` reaches here as
+      // `undefined` when the caller omits it — reading that as "nothing to
+      // judge" would skip the very destination the real call still resolves.
+      // Only a wrong-typed value has truly nothing to judge.
       if (raw !== undefined && typeof raw !== "string") return undefined;
       return refusalForDestination(client, raw ?? "");
     }

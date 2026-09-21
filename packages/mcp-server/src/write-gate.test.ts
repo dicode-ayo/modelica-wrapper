@@ -1078,7 +1078,11 @@ describe("a call naming a destination path", () => {
   });
 
   it("does not judge an empty or omitted modelName: OMC derives its own name from the FMU", async () => {
-    const source = verdicts("Modelica.Blocks.Math.Sin");
+    // `source.asked` below is the load-bearing assertion: an empty
+    // `enclosingScope` is refused nowhere `forClass` could be seeded to
+    // catch, so what actually pins the skip is that `forClass` is never
+    // reached at all.
+    const source = verdicts();
 
     const omitted = await refusalFor(
       source,
