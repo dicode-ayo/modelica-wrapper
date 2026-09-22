@@ -15,6 +15,8 @@ import {
   parseMutationDiagnostic,
   parseOutput,
 } from "../../_shared/parseOutput.js";
+import { existClass } from "../browsing/existClass.js";
+import { getComponents } from "../contents/getComponents.js";
 
 export const AddComponentInputSchema = z.strictObject({
   /** Local instance name to give the new component. */
@@ -59,10 +61,34 @@ export type AddComponentOutput = z.infer<typeof AddComponentOutputSchema>;
 export const AddComponentDescription =
   "Insert a new component into a class with an optional Placement annotation.";
 
+/**
+ * OMC answers `success: true` for a duplicate component name or an
+ * unresolvable `componentClass` — the write still corrupts the model, it
+ * just doesn't say so. Both are screened here, before OMC's own
+ * `addComponent` call, rather than inferred from its (unreliable) result.
+ */
 export async function addComponent(
   ctx: CallContext,
   input: AddComponentInput,
 ): Promise<AddComponentOutput> {
+  const { exists } = await existClass(ctx, { typeName: input.componentClass });
+  if (!exists) {
+    return {
+      success: false,
+      diagnostic: `${input.componentClass} does not resolve to a known class`,
+    };
+  }
+
+  const { components } = await getComponents(ctx, {
+    typeName: input.intoTypeName,
+  });
+  if (components.some((c) => c.name === input.componentName)) {
+    return {
+      success: false,
+      diagnostic: `${input.intoTypeName} already declares a component named ${input.componentName}`,
+    };
+  }
+
   const annotation = input.annotation ?? "";
   const ann =
     annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;

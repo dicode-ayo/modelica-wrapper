@@ -408,6 +408,37 @@ end ${pkg};
       expect(components.map((c) => c.name)).not.toContain("y");
     });
 
+    it("addComponent refuses a duplicate component name instead of reporting success", async () => {
+      const first = await client.addComponent({
+        componentName: "x",
+        componentClass: "Real",
+        intoTypeName: fixture.modelClass,
+      });
+      expect(first.success).toBe(true);
+
+      const duplicate = await client.addComponent({
+        componentName: "x",
+        componentClass: "Real",
+        intoTypeName: fixture.modelClass,
+      });
+      expect(duplicate.success).toBe(false);
+
+      const del = await client.deleteComponent({
+        componentName: "x",
+        typeName: fixture.modelClass,
+      });
+      expect(del.success).toBe(true);
+    });
+
+    it("addComponent refuses a componentClass OMC cannot resolve instead of reporting success", async () => {
+      const add = await client.addComponent({
+        componentName: "x",
+        componentClass: "Does.Not.Exist.AtAll",
+        intoTypeName: fixture.modelClass,
+      });
+      expect(add.success).toBe(false);
+    });
+
     it("addConnection / updateConnection / deleteConnection roundtrip", async () => {
       await client.addComponent({
         componentName: "uIn",

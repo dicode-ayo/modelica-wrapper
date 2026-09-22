@@ -221,7 +221,7 @@ like a `package` (issue #345).
 | --- | --- | --- | --- |
 | Move / resize component | `componentPlacement` | `setElementAnnotation(<class>.<element>, placementAnnotation)` | ✅ `updateComponent` rejects a `Placement` holding both `transformation` and `iconTransformation` |
 | Delete component | `componentDeleted` | `deleteComponent` | ✅ |
-| Add component (library→canvas) | — | `addComponent` | ✅ via `onAddComponent`, position = view centre; `isPartial` refuses `partial` classes before the write (issue #277) |
+| Add component (library→canvas) | — | `addComponent` | ✅ via `onAddComponent`, position = view centre; `isPartial` refuses `partial` classes before the write (issue #277), and the wrapper itself refuses a duplicate component name or an unresolvable `componentClass` before the write (issue #721) |
 | Connection add/delete/reroute | `connectionAdded/Deleted/Waypoints` | `addConnection`/`deleteConnection`/`updateConnection` | ✅ (drag *existing* waypoints only; `Line` style round-trips alongside the route, issue #219) |
 | Vector-port re-index | `connectionRenamed` | `updateConnectionNames` | ⚠️ fragile (cascade-shift risk) |
 | Component params | — | `setElementModifierValue` | ✅ [parameter-edits.ts](../packages/extension/src/diagram/parameter-edits.ts) |

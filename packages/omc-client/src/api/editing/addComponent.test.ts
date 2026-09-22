@@ -8,6 +8,8 @@
  *     used to crash strict `parse()` with "unexpected trailing input")
  *   - the OMC `call(...)` command is shaped correctly: includes the
  *     placement annotation with the `annotate=` prefix
+ *   - the pre-write screen refuses an unresolvable `componentClass` or a
+ *     duplicate `componentName` without ever calling OMC's `addComponent`
  *
  * Uses a stub `CallContext` rather than spinning a real OMC — this
  * is a unit test for the wrapper's response handling, not an
@@ -26,16 +28,34 @@ interface StubLog {
 }
 
 /**
- * Build a CallContext whose `call()` always returns `response` and
- * `getErrorString()` returns an empty buffer. The `log` captures
- * what the wrapper sent so individual tests can assert the command
- * shape without re-coupling to the implementation.
+ * Build a CallContext whose `call()` routes `existClass`/`getComponents`
+ * screening calls and otherwise returns `response` (the `addComponent`
+ * reply). `classExists`/`existingNames` drive the two screens; both default
+ * to letting the write through, so callers that only care about the final
+ * `addComponent` response don't need to pass `opts`. `getErrorString()`
+ * returns an empty buffer. The `log` captures what the wrapper sent so
+ * individual tests can assert the command shape without re-coupling to the
+ * implementation.
  */
-function stubCtx(response: string): { ctx: CallContext; log: StubLog } {
+function stubCtx(
+  response: string,
+  opts?: { classExists?: boolean; existingNames?: string[] },
+): { ctx: CallContext; log: StubLog } {
+  const classExists = opts?.classExists ?? true;
+  const existingNames = opts?.existingNames ?? [];
   const log: StubLog = { sent: [], errorStringCalls: 0 };
   const ctx: CallContext = {
     async call(cmd) {
       log.sent.push(cmd);
+      if (cmd.startsWith("existClass(")) return String(classExists);
+      if (cmd.startsWith("getComponents(")) {
+        if (existingNames.length === 0) return "{}";
+        const rows = existingNames.map(
+          (n) =>
+            `{"Real","${n}","","public",false,false,false,false,"","","",{}}`,
+        );
+        return `{${rows.join(",")}}`;
+      }
       return response;
     },
     async getErrorString() {
@@ -137,6 +157,8 @@ describe("addComponent: outgoing command shape", () => {
       intoTypeName: "MyPkg.MyModel",
     });
     expect(log.sent).toEqual([
+      "existClass(Real)",
+      "getComponents(MyPkg.MyModel, useQuotes=false)",
       "addComponent(x, Real, MyPkg.MyModel, annotate=Placement())",
     ]);
   });
@@ -150,9 +172,42 @@ describe("addComponent: outgoing command shape", () => {
       annotation:
         "Placement(visible=true, transformation(origin={10, 20}, extent={{-10, -10}, {10, 10}}))",
     });
-    expect(log.sent).toEqual([
+    expect(log.sent.at(-1)).toEqual(
       "addComponent(gain1, Modelica.Blocks.Math.Gain, MyPkg.MyModel, " +
         "annotate=Placement(visible=true, transformation(origin={10, 20}, extent={{-10, -10}, {10, 10}})))",
-    ]);
+    );
+  });
+});
+
+describe("addComponent: pre-write screen", () => {
+  it("refuses without calling OMC's addComponent when componentClass does not resolve", async () => {
+    const { ctx, log } = stubCtx("true", { classExists: false });
+    const out = await addComponent(ctx, {
+      componentName: "gain1",
+      componentClass: "Not.A.Real.Class",
+      intoTypeName: "MyPkg.MyModel",
+    });
+    expect(out).toEqual({
+      success: false,
+      diagnostic: "Not.A.Real.Class does not resolve to a known class",
+    });
+    expect(log.sent.some((cmd) => cmd.startsWith("addComponent("))).toBe(false);
+  });
+
+  it("refuses without calling OMC's addComponent when componentName already exists in intoTypeName", async () => {
+    const { ctx, log } = stubCtx("true", {
+      classExists: true,
+      existingNames: ["gain1"],
+    });
+    const out = await addComponent(ctx, {
+      componentName: "gain1",
+      componentClass: "Modelica.Blocks.Math.Gain",
+      intoTypeName: "MyPkg.MyModel",
+    });
+    expect(out).toEqual({
+      success: false,
+      diagnostic: "MyPkg.MyModel already declares a component named gain1",
+    });
+    expect(log.sent.some((cmd) => cmd.startsWith("addComponent("))).toBe(false);
   });
 });

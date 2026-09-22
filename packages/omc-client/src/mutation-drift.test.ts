@@ -144,6 +144,11 @@ async function commandFor(
   const ctx: CallContext = {
     call: (cmd) => {
       sent.push(cmd);
+      // `addComponent` screens with `existClass`/`getComponents` before
+      // sending its own command; `getComponents` needs a parseable list
+      // reply rather than the generic "true" every other probe here reads
+      // as its own mutation reply.
+      if (cmd.startsWith("getComponents(")) return Promise.resolve("{}");
       return Promise.resolve("true");
     },
     getErrorString: () => Promise.resolve({ errorString: "" }),
@@ -155,7 +160,7 @@ async function commandFor(
   await (entry.fn as AnyFn)(ctx, entry.inputSchema.parse(input)).catch(
     () => undefined,
   );
-  const [cmd] = sent;
+  const cmd = sent.at(-1);
   if (cmd === undefined) throw new Error(`${fn} sent no command`);
   return cmd;
 }
