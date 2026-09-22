@@ -47,9 +47,12 @@
  * gated by origin alone through `refusalForDestination` rather than by a
  * class lookup. `READ_ONLY_GATE` is what catches both cases: exhaustive over
  * every `"readOnly"` name, so one shaped like `save` or `filterSimulationResults`
- * cannot join `MUTATIONS` without this file being touched.
+ * cannot join `MUTATIONS` without this file being touched. A `MutatingFnName`
+ * can carry the same `"destination"` shape directly in `CLASS_ARGUMENTS` —
+ * `importFMU`'s row is one.
  */
 
+import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
@@ -102,8 +105,11 @@ export interface DestinationClient {
  * How `K`'s input says what the call would write, and what the caller is doing
  * to it.
  *
- * `as: "element"` marks an argument holding a dotted path to an element *inside*
- * a class; its enclosing scope is what gets written.
+ * `as: "element"` marks an argument holding a dotted path one level more
+ * specific than what actually gets written: an element *inside* a class
+ * (`setElementAnnotation`'s `typeName`) or a class *inside* a package
+ * (`importFMU`'s `modelName`, which can itself be a class OMC hasn't created
+ * yet) — either way, its enclosing scope is what gets judged.
  *
  * `as: "source"` marks an argument holding Modelica text the call brings in,
  * and `as: "sourceFile"` / `"sourceFiles"` a path (or array of paths) to a file
@@ -135,9 +141,9 @@ export interface DestinationClient {
  * under a `MODELICAPATH` root. It never goes through a class lookup or a
  * file-permission check.
  *
- * `null` means the input says nothing the gate judges: a library or an FMU
- * named rather than written (`loadModel`, `installPackage`, `importFMU`), or
- * OMC's own state (`setCommandLineOptions`).
+ * `null` means the input says nothing the gate judges: a library named rather
+ * than written (`loadModel`, `installPackage`), or OMC's own state
+ * (`setCommandLineOptions`).
  */
 type Argument<Field extends string> =
   | {
@@ -186,6 +192,12 @@ const editsElement = <F extends string>(field: F): Argument<F> => ({
   field,
   as: "element",
   action: "edit",
+});
+
+const createsInsideElement = <F extends string>(field: F): Argument<F> => ({
+  field,
+  as: "element",
+  action: "createInside",
 });
 
 const declaresInSource = <F extends string>(field: F): Argument<F> => ({
@@ -237,7 +249,12 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   deleteConnection: edits("typeName"),
   deleteInitialState: edits("typeName"),
   deleteTransition: edits("typeName"),
-  importFMU: null,
+  // `filename` (the FMU being imported) is deliberately left ungated — it
+  // names rather than writes. `workdir` is a `"destination"` row like
+  // `filterSimulationResults`'s `outFile`. `modelName` can be fully
+  // qualified (`modelicaName` admits dots), so it is judged the same way
+  // `copyClass`'s `within` and `newModel`'s `withinPath` are.
+  importFMU: [writesTo("workdir"), createsInsideElement("modelName")],
   installPackage: null,
   loadClassContentString: createsInside("typeName"),
   loadFile: declaresInFile("fileName", "encoding"),
@@ -650,8 +667,14 @@ async function refusalForArgument(
       return undefined;
     }
     case "destination": {
-      if (typeof raw !== "string") return undefined;
-      return refusalForDestination(client, raw);
+      // `omc_invoke` passes the caller's raw input to `refusalFor` before any
+      // per-function zod parsing or defaulting runs (`discovery-tools.ts`),
+      // so a field whose own schema defaults to `""` reaches here as
+      // `undefined` when the caller omits it — reading that as "nothing to
+      // judge" would skip the very destination the real call still resolves.
+      // Only a wrong-typed value has truly nothing to judge.
+      if (raw !== undefined && typeof raw !== "string") return undefined;
+      return refusalForDestination(client, raw ?? "");
     }
     default: {
       const unreachable: never = argument;
@@ -798,9 +821,12 @@ async function refusalForDeclaredClasses(
  * `WriteVerdicts.forClass`: refusing a destination the gate could not
  * actually check would block a write nothing judged.
  *
- * Compares resolved paths textually, without dereferencing symlinks — a
- * symlink pointing into a `MODELICAPATH` root can bypass this check, the same
- * property `system-library.ts`'s `isUnder` has.
+ * Every path — the working directory, each `MODELICAPATH` root, and
+ * `destinationPath` itself — is run through {@link realpathExistingAncestor}
+ * before the containment check, so a symlink anywhere in a root's path
+ * cannot make a destination that really lands inside it compare as outside.
+ * `system-library.ts`'s `isUnder` (a different check, for a class's own
+ * already-existing source file) does not get this same treatment here.
  *
  * The `cd()` read here and the call it guards are two separate turns on
  * `OmcClient`'s queue, not one atomic unit, so an interleaved `cd` to a real
@@ -810,21 +836,51 @@ async function isUnderSystemLibraryRoot(
   client: DestinationClient,
   destinationPath: string,
 ): Promise<boolean> {
-  let modelicaPath: string;
-  let workingDirectory: string;
   try {
-    ({ modelicaPath } = await client.getModelicaPath());
-    ({ workingDirectory } = await client.cd({ newWorkingDirectory: "" }));
+    const { modelicaPath } = await client.getModelicaPath();
+    const { workingDirectory: rawWorkingDirectory } = await client.cd({
+      newWorkingDirectory: "",
+    });
+    const workingDirectory =
+      await realpathExistingAncestor(rawWorkingDirectory);
+    const roots = await Promise.all(
+      modelicaPath
+        .split(path.delimiter)
+        .map((root) => root.trim())
+        .filter((root) => root.length > 0)
+        .map((root) =>
+          realpathExistingAncestor(path.resolve(workingDirectory, root)),
+        ),
+    );
+    const file = await realpathExistingAncestor(
+      path.resolve(workingDirectory, destinationPath),
+    );
+    return roots.some((root) => isUnder(file, root));
   } catch {
     return false;
   }
-  const roots = modelicaPath
-    .split(path.delimiter)
-    .map((root) => root.trim())
-    .filter((root) => root.length > 0)
-    .map((root) => path.resolve(workingDirectory, root));
-  const file = path.resolve(workingDirectory, destinationPath);
-  return roots.some((root) => isUnder(file, root));
+}
+
+/**
+ * `target`, with every existing ancestor resolved to its real (symlink-free)
+ * location and any non-existent tail appended unchanged — a component that
+ * doesn't exist yet cannot itself be a symlink pointing anywhere, so there is
+ * nothing for `fs.realpath` to resolve there. `workdir` (from `importFMU`,
+ * among others) routinely names a directory OMC hasn't created yet, so a
+ * plain `fs.realpath` would throw `ENOENT` on exactly the caller-named paths
+ * this check exists to judge; walking up to the nearest real ancestor keeps
+ * the check meaningful without requiring the target to already exist.
+ */
+async function realpathExistingAncestor(target: string): Promise<string> {
+  try {
+    return await fsp.realpath(target);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    const parent = path.dirname(target);
+    if (parent === target) return target;
+    const resolvedParent = await realpathExistingAncestor(parent);
+    return path.join(resolvedParent, path.basename(target));
+  }
 }
 
 /** True when `file` is `root` itself or nested beneath it. */
