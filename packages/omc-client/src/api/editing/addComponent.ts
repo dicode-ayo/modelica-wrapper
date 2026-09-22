@@ -17,6 +17,7 @@ import {
 } from "../../_shared/parseOutput.js";
 import { existClass } from "../browsing/existClass.js";
 import { getComponents } from "../contents/getComponents.js";
+import { qualifyPath } from "../contents/qualifyPath.js";
 
 export const AddComponentInputSchema = z.strictObject({
   /** Local instance name to give the new component. */
@@ -59,34 +60,53 @@ export const AddComponentOutputSchema = SuccessWithDiagnosticOutput;
 export type AddComponentOutput = z.infer<typeof AddComponentOutputSchema>;
 
 export const AddComponentDescription =
-  "Insert a new component into a class with an optional Placement annotation.";
+  "Insert a new component into a class with an optional Placement annotation; refuses a duplicate component name or an unresolvable componentClass.";
+
+/**
+ * `getComponents` only reports components declared directly in
+ * `intoTypeName`, not ones inherited via `extends`, so a name that collides
+ * with an inherited component is not caught here — see `getElements.ts`'s
+ * docstring and `docs/diagram-omc-reference.md`'s change-class-filter note.
+ */
+async function screenReasonToRefuse(
+  ctx: CallContext,
+  input: AddComponentInput,
+): Promise<string | undefined> {
+  try {
+    const { qualifiedPath } = await qualifyPath(ctx, {
+      typeName: input.intoTypeName,
+      path: input.componentClass,
+    });
+    const { exists } = await existClass(ctx, { typeName: qualifiedPath });
+    if (!exists) {
+      return `${input.componentClass} does not resolve to a known class`;
+    }
+
+    const { components } = await getComponents(ctx, {
+      typeName: input.intoTypeName,
+    });
+    if (components.some((c) => c.name === input.componentName)) {
+      return `${input.intoTypeName} already declares a component named ${input.componentName}`;
+    }
+
+    return undefined;
+  } catch (err) {
+    return `could not verify the write is safe: ${(err as Error).message}`;
+  }
+}
 
 /**
  * OMC answers `success: true` for a duplicate component name or an
  * unresolvable `componentClass` — the write still corrupts the model, it
- * just doesn't say so. Both are screened here, before OMC's own
- * `addComponent` call, rather than inferred from its (unreliable) result.
+ * just doesn't say so.
  */
 export async function addComponent(
   ctx: CallContext,
   input: AddComponentInput,
 ): Promise<AddComponentOutput> {
-  const { exists } = await existClass(ctx, { typeName: input.componentClass });
-  if (!exists) {
-    return {
-      success: false,
-      diagnostic: `${input.componentClass} does not resolve to a known class`,
-    };
-  }
-
-  const { components } = await getComponents(ctx, {
-    typeName: input.intoTypeName,
-  });
-  if (components.some((c) => c.name === input.componentName)) {
-    return {
-      success: false,
-      diagnostic: `${input.intoTypeName} already declares a component named ${input.componentName}`,
-    };
+  const refusal = await screenReasonToRefuse(ctx, input);
+  if (refusal !== undefined) {
+    return { success: false, diagnostic: refusal };
   }
 
   const annotation = input.annotation ?? "";

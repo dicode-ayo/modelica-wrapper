@@ -10,6 +10,11 @@
  *     placement annotation with the `annotate=` prefix
  *   - the pre-write screen refuses an unresolvable `componentClass` or a
  *     duplicate `componentName` without ever calling OMC's `addComponent`
+ *   - the screen resolves `componentClass` within `intoTypeName`'s scope
+ *     before checking it exists, so a relative name that's only valid in
+ *     that scope is allowed through rather than falsely refused
+ *   - a screening call that throws yields `{ success: false, diagnostic }`
+ *     instead of propagating
  *
  * Uses a stub `CallContext` rather than spinning a real OMC — this
  * is a unit test for the wrapper's response handling, not an
@@ -28,18 +33,26 @@ interface StubLog {
 }
 
 /**
- * Build a CallContext whose `call()` routes `existClass`/`getComponents`
- * screening calls and otherwise returns `response` (the `addComponent`
- * reply). `classExists`/`existingNames` drive the two screens; both default
- * to letting the write through, so callers that only care about the final
- * `addComponent` response don't need to pass `opts`. `getErrorString()`
- * returns an empty buffer. The `log` captures what the wrapper sent so
- * individual tests can assert the command shape without re-coupling to the
- * implementation.
+ * Build a CallContext whose `call()` routes `qualifyPath`/`existClass`/
+ * `getComponents` screening calls and otherwise returns `response` (the
+ * `addComponent` reply). `classExists`/`existingNames` drive the last two
+ * screens; both default to letting the write through, so callers that only
+ * care about the final `addComponent` response don't need to pass `opts`.
+ * `qualifiedPath`, when set, is returned verbatim for any `qualifyPath(...)`
+ * call; when unset, the stub echoes back the `path` argument unchanged,
+ * parsed out of the `` `qualifyPath(${typeName}, ${path})` `` command (safe
+ * to split on `", "` since neither argument contains a comma per the
+ * `modelicaName` grammar). `getErrorString()` returns an empty buffer. The
+ * `log` captures what the wrapper sent so individual tests can assert the
+ * command shape without re-coupling to the implementation.
  */
 function stubCtx(
   response: string,
-  opts?: { classExists?: boolean; existingNames?: string[] },
+  opts?: {
+    classExists?: boolean;
+    existingNames?: string[];
+    qualifiedPath?: string;
+  },
 ): { ctx: CallContext; log: StubLog } {
   const classExists = opts?.classExists ?? true;
   const existingNames = opts?.existingNames ?? [];
@@ -47,6 +60,15 @@ function stubCtx(
   const ctx: CallContext = {
     async call(cmd) {
       log.sent.push(cmd);
+      if (cmd.startsWith("qualifyPath(")) {
+        if (opts?.qualifiedPath !== undefined) return opts.qualifiedPath;
+        const inner = cmd.slice("qualifyPath(".length, -1);
+        const path = inner.split(", ").at(1);
+        if (path === undefined) {
+          throw new Error(`stub could not parse qualifyPath command: ${cmd}`);
+        }
+        return path;
+      }
       if (cmd.startsWith("existClass(")) return String(classExists);
       if (cmd.startsWith("getComponents(")) {
         if (existingNames.length === 0) return "{}";
@@ -157,6 +179,7 @@ describe("addComponent: outgoing command shape", () => {
       intoTypeName: "MyPkg.MyModel",
     });
     expect(log.sent).toEqual([
+      "qualifyPath(MyPkg.MyModel, Real)",
       "existClass(Real)",
       "getComponents(MyPkg.MyModel, useQuotes=false)",
       "addComponent(x, Real, MyPkg.MyModel, annotate=Placement())",
@@ -209,5 +232,53 @@ describe("addComponent: pre-write screen", () => {
       diagnostic: "MyPkg.MyModel already declares a component named gain1",
     });
     expect(log.sent.some((cmd) => cmd.startsWith("addComponent("))).toBe(false);
+  });
+
+  it("allows a componentClass that only resolves within intoTypeName's scope", async () => {
+    // "Sibling.Gain" isn't a name existClass would recognize directly, but
+    // qualifyPath resolves it in MyPkg.MyModel's scope to something that
+    // does exist — the screen must check the qualified name, not the raw one.
+    const { ctx, log } = stubCtx("true", {
+      classExists: true,
+      qualifiedPath: "MyPkg.Sibling.Gain",
+    });
+    const out = await addComponent(ctx, {
+      componentName: "gain1",
+      componentClass: "Sibling.Gain",
+      intoTypeName: "MyPkg.MyModel",
+    });
+    expect(out).toEqual({ success: true });
+    expect(log.sent).toEqual([
+      "qualifyPath(MyPkg.MyModel, Sibling.Gain)",
+      "existClass(MyPkg.Sibling.Gain)",
+      "getComponents(MyPkg.MyModel, useQuotes=false)",
+      "addComponent(gain1, Sibling.Gain, MyPkg.MyModel, annotate=Placement())",
+    ]);
+  });
+
+  it("returns a diagnostic instead of throwing when a screening call fails", async () => {
+    const ctx: CallContext = {
+      async call(cmd) {
+        if (cmd.startsWith("qualifyPath(")) return "Real";
+        if (cmd.startsWith("existClass(")) return "true";
+        if (cmd.startsWith("getComponents(")) {
+          throw new Error("class MyPkg.DoesNotExist not found");
+        }
+        return "true";
+      },
+      async getErrorString() {
+        return { errorString: "" };
+      },
+    };
+    const out = await addComponent(ctx, {
+      componentName: "x",
+      componentClass: "Real",
+      intoTypeName: "MyPkg.DoesNotExist",
+    });
+    expect(out).toEqual({
+      success: false,
+      diagnostic:
+        "could not verify the write is safe: class MyPkg.DoesNotExist not found",
+    });
   });
 });

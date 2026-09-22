@@ -144,11 +144,11 @@ async function commandFor(
   const ctx: CallContext = {
     call: (cmd) => {
       sent.push(cmd);
-      // `addComponent` screens with `existClass`/`getComponents` before
-      // sending its own command; `getComponents` needs a parseable list
-      // reply rather than the generic "true" every other probe here reads
-      // as its own mutation reply.
+      // getComponents needs a parseable list reply, not every other probe's
+      // generic "true"; qualifyPath needs a parseable TypeName (a bare
+      // string), not a bool.
       if (cmd.startsWith("getComponents(")) return Promise.resolve("{}");
+      if (cmd.startsWith("qualifyPath(")) return Promise.resolve("Probe.Other");
       return Promise.resolve("true");
     },
     getErrorString: () => Promise.resolve({ errorString: "" }),

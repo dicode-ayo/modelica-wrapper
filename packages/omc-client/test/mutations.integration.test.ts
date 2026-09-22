@@ -423,6 +423,11 @@ end ${pkg};
       });
       expect(duplicate.success).toBe(false);
 
+      const { components } = await client.getComponents({
+        typeName: fixture.modelClass,
+      });
+      expect(components.filter((c) => c.name === "x")).toHaveLength(1);
+
       const del = await client.deleteComponent({
         componentName: "x",
         typeName: fixture.modelClass,
@@ -437,6 +442,11 @@ end ${pkg};
         intoTypeName: fixture.modelClass,
       });
       expect(add.success).toBe(false);
+
+      const { components } = await client.getComponents({
+        typeName: fixture.modelClass,
+      });
+      expect(components.some((c) => c.name === "x")).toBe(false);
     });
 
     it("addConnection / updateConnection / deleteConnection roundtrip", async () => {

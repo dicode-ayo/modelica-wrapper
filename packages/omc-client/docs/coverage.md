@@ -217,7 +217,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
-| `addComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addComponent.html) | Real OMC (1.27.0) answers `success: true` for a duplicate component name or an unresolvable `componentClass`, leaving the model silently invalid. The wrapper screens both via `existClass`/`getComponents` before the write and reports `success: false` itself (issue #721). |
+| `addComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addComponent.html) | Real OMC (1.27.0) answers `success: true` for a duplicate component name or an unresolvable `componentClass`, leaving the model silently invalid. The wrapper screens both via `existClass`/`getComponents` before the write and reports `success: false` itself (issue #721); the screen only checks `intoTypeName`'s locally-declared components, not ones inherited via `extends`. |
 | `deleteComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteComponent.html) | |
 | `renameComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.renameComponent.html) | |
 | `updateComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateComponent.html) | |

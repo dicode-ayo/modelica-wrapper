@@ -140,9 +140,8 @@ const READS_ERROR_BUFFER = new Set<OmcFnName>([
 /**
  * Many OMC mutations answer `success: true` (or nothing distinguishing at
  * all) for a call that did nothing, and stash the actual reason in OMC's own
- * error buffer instead of the return value — `addComponent` of a duplicate
- * name is one. A `READS_ERROR_BUFFER` call skips the drain but still takes a
- * turn, see {@link runQueued}.
+ * error buffer instead of the return value. A `READS_ERROR_BUFFER` call skips
+ * the drain but still takes a turn, see {@link runQueued}.
  */
 async function invokeDrained(
   client: McpToolClient,
