@@ -42,8 +42,11 @@ export interface ResultReader {
 interface Entry {
   mtimeMs: number;
   vars?: string[];
+  varsPending?: Promise<string[]>;
   size?: number;
+  sizePending?: Promise<number>;
   series: Map<string, Trajectory>;
+  seriesPending: Map<string, Promise<Trajectory | undefined>>;
 }
 
 async function defaultStatMtimeMs(path: string): Promise<number | undefined> {
@@ -56,6 +59,7 @@ async function defaultStatMtimeMs(path: string): Promise<number | undefined> {
 
 export class ResultCache {
   private readonly entries = new Map<string, Entry>();
+  private readonly refreshes = new Map<string, Promise<Entry | undefined>>();
 
   constructor(
     private readonly resolveReader: () => Promise<ResultReader>,
@@ -70,6 +74,21 @@ export class ResultCache {
    * OMC handle is closed first), or `undefined` when the file is missing.
    */
   private async fresh(path: string): Promise<Entry | undefined> {
+    let refresh = this.refreshes.get(path);
+    if (!refresh) {
+      refresh = this.refresh(path);
+      this.refreshes.set(path, refresh);
+    }
+    try {
+      return await refresh;
+    } finally {
+      if (this.refreshes.get(path) === refresh) {
+        this.refreshes.delete(path);
+      }
+    }
+  }
+
+  private async refresh(path: string): Promise<Entry | undefined> {
     const mtimeMs = await this.statMtimeMs(path);
     if (mtimeMs === undefined) {
       this.entries.delete(path);
@@ -82,7 +101,11 @@ export class ResultCache {
       // (Windows) before the next read reopens it.
       await this.closeQuietly();
     }
-    const entry: Entry = { mtimeMs, series: new Map() };
+    const entry: Entry = {
+      mtimeMs,
+      series: new Map(),
+      seriesPending: new Map(),
+    };
     this.entries.set(path, entry);
     return entry;
   }
@@ -91,13 +114,28 @@ export class ResultCache {
   async variables(path: string): Promise<string[]> {
     const entry = await this.fresh(path);
     if (!entry) return [];
-    if (!entry.vars) {
-      const reader = await this.resolveReader();
-      entry.vars = (
-        await reader.readSimulationResultVars({ fileName: path })
-      ).vars;
+    if (entry.vars) return entry.vars;
+    if (!entry.varsPending) {
+      entry.varsPending = this.readVars(path, entry);
     }
-    return entry.vars;
+    return entry.varsPending;
+  }
+
+  // Caches the in-flight promise, not just the resolved value, so a second
+  // concurrent caller awaits this read instead of issuing its own. A
+  // rejection is not cached: the `finally` clears `varsPending` either way,
+  // and `entry.vars` is only ever set on success.
+  private async readVars(path: string, entry: Entry): Promise<string[]> {
+    try {
+      const reader = await this.resolveReader();
+      const { vars } = await reader.readSimulationResultVars({
+        fileName: path,
+      });
+      entry.vars = vars;
+      return vars;
+    } finally {
+      delete entry.varsPending;
+    }
   }
 
   /**
@@ -112,20 +150,30 @@ export class ResultCache {
     if (!entry) return undefined;
     const cached = entry.series.get(variable);
     if (cached) return cached;
-    const reader = await this.resolveReader();
-    // readSimulationResult resolves a `size` of 0 through its own
-    // readSimulationResultSize round trip, so resolve it once per file here
-    // rather than once per variable a chart plots from the same result.
-    if (entry.size === undefined) {
-      entry.size = (
-        await reader.readSimulationResultSize({ fileName: path })
-      ).size;
+    const pending = entry.seriesPending.get(variable);
+    if (pending) return pending;
+
+    const promise = this.readTrajectory(path, variable, entry);
+    entry.seriesPending.set(variable, promise);
+    try {
+      return await promise;
+    } finally {
+      entry.seriesPending.delete(variable);
     }
-    if (entry.size === 0) return undefined;
+  }
+
+  private async readTrajectory(
+    path: string,
+    variable: string,
+    entry: Entry,
+  ): Promise<Trajectory | undefined> {
+    const size = await this.resolveSize(path, entry);
+    if (size === 0) return undefined;
+    const reader = await this.resolveReader();
     const { result } = await reader.readSimulationResult({
       filename: path,
       variables: ["time", variable],
-      size: entry.size,
+      size,
     });
     const t = result[0];
     const values = result[1];
@@ -133,6 +181,31 @@ export class ResultCache {
     const traj: Trajectory = { t, values };
     entry.series.set(variable, traj);
     return traj;
+  }
+
+  // readSimulationResult resolves a `size` of 0 through its own
+  // readSimulationResultSize round trip, so resolve it once per file here
+  // rather than once per variable a chart plots from the same result — and
+  // once per concurrent caller racing this same file.
+  private async resolveSize(path: string, entry: Entry): Promise<number> {
+    if (entry.size !== undefined) return entry.size;
+    if (!entry.sizePending) {
+      entry.sizePending = this.readSize(path, entry);
+    }
+    return entry.sizePending;
+  }
+
+  private async readSize(path: string, entry: Entry): Promise<number> {
+    try {
+      const reader = await this.resolveReader();
+      const { size } = await reader.readSimulationResultSize({
+        fileName: path,
+      });
+      entry.size = size;
+      return size;
+    } finally {
+      delete entry.sizePending;
+    }
   }
 
   /** Whether `path` currently exists on disk (a directory counts too — this is

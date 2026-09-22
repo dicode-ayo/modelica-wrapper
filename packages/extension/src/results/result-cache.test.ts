@@ -234,3 +234,100 @@ describe("ResultCache invalidation", () => {
     expect(reader.closeCalls).toBe(0);
   });
 });
+
+describe("ResultCache concurrent dedupe", () => {
+  it("shares one replacement entry after an mtime change", async () => {
+    const reader = fakeReader();
+    let mtime = 100;
+    const cache = new ResultCache(
+      async () => reader,
+      async () => mtime,
+    );
+
+    await cache.trajectory("a.mat", "motor.w");
+    mtime = 200;
+
+    const [a, b] = await Promise.all([
+      cache.trajectory("a.mat", "motor.w"),
+      cache.trajectory("a.mat", "motor.w"),
+    ]);
+
+    expect(b).toBe(a);
+    expect(reader.closeCalls).toBe(1);
+    expect(reader.sizeCalls).toBe(2);
+    expect(reader.seriesCalls).toBe(2);
+  });
+
+  it("dedupes concurrent variables() calls for the same path", async () => {
+    const reader = fakeReader({
+      async readSimulationResultVars(this: Counting) {
+        await Promise.resolve();
+        this.varsCalls++;
+        return { vars: ["time", "motor.w"] };
+      },
+    });
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+
+    const [a, b] = await Promise.all([
+      cache.variables("a.mat"),
+      cache.variables("a.mat"),
+    ]);
+
+    expect(a).toEqual(["time", "motor.w"]);
+    expect(b).toEqual(["time", "motor.w"]);
+    expect(reader.varsCalls).toBe(1);
+  });
+
+  it("dedupes concurrent size resolution across different variables in trajectory()", async () => {
+    const reader = fakeReader({
+      async readSimulationResultSize(this: Counting) {
+        await Promise.resolve();
+        this.sizeCalls++;
+        return { size: 3 };
+      },
+    });
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+
+    await Promise.all([
+      cache.trajectory("a.mat", "motor.w"),
+      cache.trajectory("a.mat", "motor.i"),
+    ]);
+
+    expect(reader.sizeCalls).toBe(1);
+    expect(reader.seriesCalls).toBe(2); // distinct variables still each read
+  });
+
+  it("dedupes concurrent trajectory() calls for the same path and variable", async () => {
+    const reader = fakeReader({
+      async readSimulationResult(this: Counting) {
+        await Promise.resolve();
+        this.seriesCalls++;
+        return {
+          result: [
+            [0, 1, 2],
+            [10, 20, 30],
+          ] satisfies number[][],
+        };
+      },
+    });
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+
+    const [a, b] = await Promise.all([
+      cache.trajectory("a.mat", "motor.w"),
+      cache.trajectory("a.mat", "motor.w"),
+    ]);
+
+    expect(a).toEqual({ t: [0, 1, 2], values: [10, 20, 30] });
+    expect(b).toBe(a); // both callers resolved the same in-flight read
+    expect(reader.seriesCalls).toBe(1);
+  });
+});
