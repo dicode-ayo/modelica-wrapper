@@ -156,7 +156,11 @@ async function declareAndPersist(
   }
 
   const declared = await declareClass(client, declaration);
-  if (!declared.ok) return errorResult(declared.reason);
+  // `reason` is OMC's own error-buffer text verbatim — for a `withinPath`
+  // OMC can't resolve, that can be its "the available classes were: ..."
+  // dump of every loaded class. Route it through `errorDetail` so it's
+  // capped like every other tool error instead of reaching the caller whole.
+  if (!declared.ok) return errorResult(errorDetail(declared.reason));
 
   const { workspace } = deps;
   if (workspace === undefined) {

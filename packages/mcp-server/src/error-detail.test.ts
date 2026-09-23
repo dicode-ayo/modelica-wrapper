@@ -54,6 +54,42 @@ describe("errorDetail", () => {
   });
 });
 
+describe("errorDetail: caps a large OMC diagnostic (#658)", () => {
+  it("passes a short multi-line message through unchanged", () => {
+    const message = "Error: element R already declared\nat line 12";
+    expect(errorDetail(new Error(message))).toBe(message);
+  });
+
+  it("keeps the head and elides the rest, with a count, for a class-dump-sized reply", () => {
+    // Mirrors OMC's "the available classes were: ..." refusal — one loaded
+    // class per line, thousands of lines, hundreds of KB — the 356 KB
+    // `createClass` repro from the issue.
+    const lines = Array.from(
+      { length: 6411 },
+      (_, i) => `Modelica.Blocks.Examples.Class${i}`,
+    );
+    const message = `Error: class "Nope.Missing" not found, the available classes were:\n${lines.join("\n")}`;
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail.length).toBeLessThan(message.length);
+    expect(detail.startsWith('Error: class "Nope.Missing" not found')).toBe(
+      true,
+    );
+    expect(detail).toMatch(/\n\.\.\.\n\[\+6352 more lines elided\]$/);
+    expect(detail).not.toContain("Class6410");
+  });
+
+  it("elides a single very long line by character count instead of leaving it whole", () => {
+    const message = "Error: " + "x".repeat(10_000);
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail.length).toBeLessThan(message.length);
+    expect(detail).toMatch(/\n\.\.\.\n\[\+\d+ more characters elided\]$/);
+  });
+});
+
 /**
  * The same three shapes, against `@dicode/omc-client`'s real per-function
  * schemas rather than ones built for this file — the schema `OmcClient.invoke`
