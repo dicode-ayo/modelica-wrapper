@@ -15,19 +15,31 @@ const MAX_ERROR_CHARS = 4000;
  *
  * The line cap and the character cap both have to hold: a reply within
  * `MAX_ERROR_LINES` can still be huge if those few lines are each long (a
- * class dump that wraps long qualified names onto few lines), so the char
- * cap is applied to whatever the line cap leaves rather than skipped
- * whenever the line cap didn't fire.
+ * class dump that wraps long qualified names onto few lines). The char cap
+ * is applied to the lines the line cap already kept, not to the original
+ * text, so a message that trips both caps gets one combined elision count
+ * instead of the char cap silently discarding the line cap's own framing.
  */
 function capErrorText(text: string): string {
   const lines = text.split("\n");
-  const byLines =
-    lines.length > MAX_ERROR_LINES
-      ? `${lines.slice(0, MAX_ERROR_LINES).join("\n")}\n...\n[+${lines.length - MAX_ERROR_LINES} more lines elided]`
-      : text;
-  if (byLines.length <= MAX_ERROR_CHARS) return byLines;
-  const elided = text.length - MAX_ERROR_CHARS;
-  return `${text.slice(0, MAX_ERROR_CHARS)}\n...\n[+${elided} more characters elided]`;
+  const keptLines =
+    lines.length > MAX_ERROR_LINES ? lines.slice(0, MAX_ERROR_LINES) : lines;
+  const elidedLines = lines.length - keptLines.length;
+
+  let head = keptLines.join("\n");
+  let elidedChars = 0;
+  if (head.length > MAX_ERROR_CHARS) {
+    elidedChars = head.length - MAX_ERROR_CHARS;
+    head = head.slice(0, MAX_ERROR_CHARS);
+  }
+
+  if (elidedLines === 0 && elidedChars === 0) return text;
+
+  const notes = [
+    elidedLines > 0 ? `${elidedLines} more lines` : undefined,
+    elidedChars > 0 ? `${elidedChars} more characters` : undefined,
+  ].filter((note) => note !== undefined);
+  return `${head}\n...\n[+${notes.join(", ")} elided]`;
 }
 
 /**

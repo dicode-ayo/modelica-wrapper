@@ -100,6 +100,20 @@ describe("errorDetail: caps a large OMC diagnostic", () => {
     expect(detail.length).toBeLessThan(message.length);
     expect(detail).toMatch(/\n\.\.\.\n\[\+\d+ more characters elided\]$/);
   });
+
+  it("combines both counts when the kept lines are themselves over the character cap", () => {
+    // 100 lines trips the line cap; the 60 kept lines (100 chars each) are
+    // still over MAX_ERROR_CHARS on their own, so both bounds have to apply
+    // to the same returned message.
+    const message = Array.from({ length: 100 }, () => "x".repeat(100)).join(
+      "\n",
+    );
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail.length).toBeLessThan(message.length);
+    expect(detail).toMatch(/\[\+40 more lines, \d+ more characters elided\]$/);
+  });
 });
 
 /**
