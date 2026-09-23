@@ -54,7 +54,7 @@ describe("errorDetail", () => {
   });
 });
 
-describe("errorDetail: caps a large OMC diagnostic (#658)", () => {
+describe("errorDetail: caps a large OMC diagnostic", () => {
   it("passes a short multi-line message through unchanged", () => {
     const message = "Error: element R already declared\nat line 12";
     expect(errorDetail(new Error(message))).toBe(message);
@@ -62,8 +62,7 @@ describe("errorDetail: caps a large OMC diagnostic (#658)", () => {
 
   it("keeps the head and elides the rest, with a count, for a class-dump-sized reply", () => {
     // Mirrors OMC's "the available classes were: ..." refusal — one loaded
-    // class per line, thousands of lines, hundreds of KB — the 356 KB
-    // `createClass` repro from the issue.
+    // class per line, thousands of lines, hundreds of KB.
     const lines = Array.from(
       { length: 6411 },
       (_, i) => `Modelica.Blocks.Examples.Class${i}`,
@@ -82,6 +81,19 @@ describe("errorDetail: caps a large OMC diagnostic (#658)", () => {
 
   it("elides a single very long line by character count instead of leaving it whole", () => {
     const message = "Error: " + "x".repeat(10_000);
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail.length).toBeLessThan(message.length);
+    expect(detail).toMatch(/\n\.\.\.\n\[\+\d+ more characters elided\]$/);
+  });
+
+  it("caps by character count even when the line count stays under the line cap", () => {
+    // Few lines, each individually huge — under MAX_ERROR_LINES so the line
+    // cap alone would let it through whole; the char cap still has to apply.
+    const message = Array.from({ length: 3 }, () => "x".repeat(5000)).join(
+      "\n",
+    );
 
     const detail = errorDetail(new Error(message));
 

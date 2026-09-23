@@ -10,20 +10,24 @@ import { ZodError } from "zod";
 const MAX_ERROR_LINES = 60;
 const MAX_ERROR_CHARS = 4000;
 
-/** Keeps `text`'s head and elides the remainder, noting how much was cut. */
+/**
+ * Keeps `text`'s head and elides the remainder, noting how much was cut.
+ *
+ * The line cap and the character cap both have to hold: a reply within
+ * `MAX_ERROR_LINES` can still be huge if those few lines are each long (a
+ * class dump that wraps long qualified names onto few lines), so the char
+ * cap is applied to whatever the line cap leaves rather than skipped
+ * whenever the line cap didn't fire.
+ */
 function capErrorText(text: string): string {
   const lines = text.split("\n");
-  if (lines.length > MAX_ERROR_LINES) {
-    const head = lines.slice(0, MAX_ERROR_LINES).join("\n");
-    const elided = lines.length - MAX_ERROR_LINES;
-    return `${head}\n...\n[+${elided} more lines elided]`;
-  }
-  if (text.length > MAX_ERROR_CHARS) {
-    const head = text.slice(0, MAX_ERROR_CHARS);
-    const elided = text.length - MAX_ERROR_CHARS;
-    return `${head}\n...\n[+${elided} more characters elided]`;
-  }
-  return text;
+  const byLines =
+    lines.length > MAX_ERROR_LINES
+      ? `${lines.slice(0, MAX_ERROR_LINES).join("\n")}\n...\n[+${lines.length - MAX_ERROR_LINES} more lines elided]`
+      : text;
+  if (byLines.length <= MAX_ERROR_CHARS) return byLines;
+  const elided = text.length - MAX_ERROR_CHARS;
+  return `${text.slice(0, MAX_ERROR_CHARS)}\n...\n[+${elided} more characters elided]`;
 }
 
 /**
@@ -35,9 +39,14 @@ function capErrorText(text: string): string {
  * given, prefixes each path so the line names the call the argument belonged
  * to.
  *
- * The result is always capped (`capErrorText`) — this is the one place every
- * tool error passes through before reaching the MCP client, so it is where a
- * refusal that came back as hundreds of KB of OMC prose gets cut down to size.
+ * The result is always capped (`capErrorText`), so a refusal that came back
+ * as hundreds of KB of OMC prose gets cut down to size wherever a caller
+ * routes it through here. Not every tool error does: a hand-built refusal
+ * string (a write-gate refusal, an unknown-function message) is short by
+ * construction and returned straight to `errorResult` without this. Route a
+ * new raw OMC reason (`getErrorString` text, a caught error's `.message`)
+ * through `errorDetail` rather than straight to `errorResult` — that's what
+ * keeps the cap ahead of it.
  */
 export function errorDetail(err: unknown, fnName?: string): string {
   if (err instanceof ZodError) {

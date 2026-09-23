@@ -997,7 +997,7 @@ describe("createClass", () => {
     expect(text(result)).toBe("Parse error near 'end'");
   });
 
-  it("caps OMC's own reason instead of passing a whole-library class dump through (#658)", async () => {
+  it("caps OMC's own reason instead of passing a whole-library class dump through", async () => {
     // A `withinPath` OMC can't resolve answers with "the available classes
     // were: ..." — every class loaded from the standard library, one per
     // line. `declareClass`'s reason is OMC's error-buffer text verbatim, so
