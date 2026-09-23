@@ -105,6 +105,15 @@ type Value =
 - Coercion helpers: `asString/asBool/asInt/asFloat/asList/asStringList`
   (return `undefined` on mismatch) and strict `expectString/…` (throw).
 
+A reply OMC meant as a diagnostic rather than a value — prose containing the
+word "Error", per `looksLikeError`
+([error-buffer.ts](../packages/omc-client/src/error-buffer.ts)) — usually isn't
+valid `Value` syntax either, so it fails to parse cleanly or lands as an
+`ident`/`call` of the wrong shape for what the caller expected. `parse` and the
+`expect*` coercions both check for this and throw `OmcDiagnosticError` carrying
+OMC's own text in that case, instead of their own complaint about syntax or
+shape (`"unexpected trailing input at …"`, `"expected float, got ident"`).
+
 This is deliberately **not** the positional string-splitting that OMEdit's
 `StringHandler::getStrings()` does — that approach is the single biggest source of
 inherited annotation bugs. Argument order comes from the Modelica spec (§18.6 for

@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import getElementsFixture from "../test/fixtures/getElements-Modelica.Blocks.Examples.PID_Controller.txt?raw";
 import getElementsInfoFixture from "../test/fixtures/getElementsInfo-Modelica.Blocks.Examples.PID_Controller.txt?raw";
-import { isNull, parse, parseLeading, toJson } from "./parse.js";
+import { OmcDiagnosticError } from "./error-buffer.js";
+import {
+  expectFloat,
+  expectList,
+  isNull,
+  parse,
+  parseLeading,
+  toJson,
+} from "./parse.js";
 
 describe("parse: scalars", () => {
   it.each([
@@ -433,6 +441,65 @@ end OpenModelica.Scripting.ErrorMessage;}`;
     if (!info || info.kind !== "kwarg") throw new Error("missing info");
     if (info.value.kind !== "call") throw new Error("info value not a call");
     expect(info.value.name).toBe("OpenModelica.Scripting.SourceInfo");
+  });
+});
+
+describe("parse: OMC error replies surfaced instead of a parse failure (#658)", () => {
+  it("throws OMC's own diagnostic, not a trailing-input complaint, for a bool-plus-diagnostic reply", () => {
+    // The `createClass` bad-name repro: `loadString` answers `false` then
+    // appends OMC's own diagnostic line. Before the fix, strict `parse()`
+    // parsed the leading `false` and then choked on the rest with
+    // "unexpected trailing input at 6: ...", losing OMC's actual complaint.
+    const raw = "false\nError occurred building AST";
+    let thrown: unknown;
+    try {
+      parse(raw);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(OmcDiagnosticError);
+    expect((thrown as Error).message).toBe(raw);
+  });
+
+  it("still raises its own syntax complaint for garbled input that isn't an OMC error", () => {
+    // Preserves the pre-existing "unterminated" behavior: nothing here reads
+    // as an OMC diagnostic (no `Error` word), so the parser's own message is
+    // still what the caller sees.
+    let thrown: unknown;
+    try {
+      parse("'unterminated");
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).not.toBeInstanceOf(OmcDiagnosticError);
+    expect((thrown as Error).message).toMatch(/unterminated '/);
+  });
+
+  it("expectFloat surfaces OMC's bare-ident error reply instead of 'expected float, got ident'", () => {
+    // The `val` repro: OMC answers with the bare word `Error` in place of a
+    // number. `parse()` accepts it cleanly as a one-word ident (no trailing
+    // input), so the mismatch has to be caught where the float is expected.
+    let thrown: unknown;
+    try {
+      expectFloat(parse("Error"));
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(OmcDiagnosticError);
+    expect((thrown as Error).message).toBe("Error");
+  });
+
+  it("expectList surfaces OMC's call-shaped error reply instead of 'expected list/tuple, got call'", () => {
+    // The `readSimulationResult` (missing file) repro: OMC answers with a
+    // call-shaped diagnostic rather than the documented `fail()` sentinel.
+    let thrown: unknown;
+    try {
+      expectList(parse('Error("no such file: run.mat")'));
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toBeInstanceOf(OmcDiagnosticError);
+    expect((thrown as Error).message).toBe("Error: no such file: run.mat");
   });
 });
 

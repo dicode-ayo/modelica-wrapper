@@ -32,6 +32,8 @@
  * actually emits.
  */
 
+import { OmcDiagnosticError, looksLikeError } from "./error-buffer.js";
+
 export type Value =
   | { kind: "string"; value: string }
   | { kind: "bool"; value: boolean }
@@ -50,19 +52,30 @@ const NULL: Value = { kind: "null" };
  *
  * Trailing newlines and surrounding whitespace are tolerated.
  * Empty/whitespace input yields a null Value.
+ *
+ * A reply OMC meant as a diagnostic rather than a value (prose containing the
+ * word "Error", per {@link looksLikeError}) generally isn't valid syntax here
+ * either, so it fails one way or another below. When it does, that diagnostic
+ * text is the caller's real answer — surface it as an {@link OmcDiagnosticError}
+ * instead of this function's own complaint about the syntax.
  */
 export function parse(src: string): Value {
   const text = src.trim();
   if (text === "") return NULL;
-  const p = new Parser(text);
-  const v = p.value();
-  p.skipSpace();
-  if (p.pos !== p.src.length) {
-    throw new Error(
-      `unexpected trailing input at ${p.pos}: ${JSON.stringify(p.peek(20))}`,
-    );
+  try {
+    const p = new Parser(text);
+    const v = p.value();
+    p.skipSpace();
+    if (p.pos !== p.src.length) {
+      throw new Error(
+        `unexpected trailing input at ${p.pos}: ${JSON.stringify(p.peek(20))}`,
+      );
+    }
+    return v;
+  } catch (err) {
+    if (looksLikeError(text)) throw new OmcDiagnosticError(text);
+    throw err;
   }
-  return v;
 }
 
 /**
@@ -506,33 +519,56 @@ export function asStringList(v: Value): string[] | undefined {
   return out;
 }
 
+/**
+ * A parsed `ident`/`call` whose name reads as an OMC diagnostic (`looksLikeError`)
+ * is OMC's error reply, not a value of the wrong shape — the caller's real
+ * answer is that text, not "expected X, got ident/call". Every `expect*` below
+ * raises through here so a shape mismatch that is actually OMC declining the
+ * call surfaces OMC's own words instead.
+ */
+function mismatch(v: Value, expected: string): never {
+  if ((v.kind === "ident" || v.kind === "call") && looksLikeError(v.name)) {
+    throw new OmcDiagnosticError(describeErrorValue(v));
+  }
+  throw new Error(`expected ${expected}, got ${v.kind}`);
+}
+
+/** Renders an `ident`/`call` Value read as an OMC diagnostic back into text. */
+function describeErrorValue(
+  v: Extract<Value, { kind: "ident" | "call" }>,
+): string {
+  if (v.kind === "ident") return v.name;
+  const args = v.args.map((a) => asString(a) ?? JSON.stringify(toJson(a)));
+  return args.length === 0 ? v.name : `${v.name}: ${args.join(", ")}`;
+}
+
 export function expectString(v: Value): string {
   const s = asString(v);
-  if (s === undefined) throw new Error(`expected string, got ${v.kind}`);
+  if (s === undefined) return mismatch(v, "string");
   return s;
 }
 
 export function expectBool(v: Value): boolean {
   const b = asBool(v);
-  if (b === undefined) throw new Error(`expected bool, got ${v.kind}`);
+  if (b === undefined) return mismatch(v, "bool");
   return b;
 }
 
 export function expectInt(v: Value): number {
   const n = asInt(v);
-  if (n === undefined) throw new Error(`expected int, got ${v.kind}`);
+  if (n === undefined) return mismatch(v, "int");
   return n;
 }
 
 export function expectFloat(v: Value): number {
   const f = asFloat(v);
-  if (f === undefined) throw new Error(`expected float, got ${v.kind}`);
+  if (f === undefined) return mismatch(v, "float");
   return f;
 }
 
 export function expectList(v: Value): Value[] {
   const l = asList(v);
-  if (l === undefined) throw new Error(`expected list/tuple, got ${v.kind}`);
+  if (l === undefined) return mismatch(v, "list/tuple");
   return l;
 }
 
@@ -540,8 +576,7 @@ export function expectList(v: Value): Value[] {
 export function expectStringList(v: Value): string[] {
   if (v.kind === "null") return [];
   const list = asStringList(v);
-  if (list === undefined)
-    throw new Error(`expected list of strings, got ${v.kind}`);
+  if (list === undefined) return mismatch(v, "list of strings");
   return list;
 }
 
