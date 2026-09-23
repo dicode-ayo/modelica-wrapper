@@ -16,7 +16,7 @@ function stubCtx(response: string): CallContext {
   };
 }
 
-describe("val: OMC error replies (#658)", () => {
+describe("val: OMC error replies", () => {
   it("parses a clean value", async () => {
     const out = await val(stubCtx("1.5"), { var: "x" });
     expect(out).toEqual({ valAtTime: 1.5 });
@@ -25,13 +25,10 @@ describe("val: OMC error replies (#658)", () => {
   it("surfaces OMC's own diagnostic rather than 'expected float, got ident'", async () => {
     // OMC answers with the bare word `Error` in place of a number — asking
     // for a variable that doesn't exist, or a time outside the simulation.
-    // `parse()` accepts it cleanly as a one-word ident, so the mismatch used
-    // to surface as a type-mismatch complaint that named the wrong culprit.
+    // `parse()` accepts it cleanly as a one-word ident, so the mismatch has
+    // to be caught where the float is expected.
     await expect(
       val(stubCtx("Error"), { var: "no.such.variable" }),
-    ).rejects.toThrow(OmcDiagnosticError);
-    await expect(
-      val(stubCtx("Error"), { var: "no.such.variable" }),
-    ).rejects.toThrow("Error");
+    ).rejects.toThrow(new OmcDiagnosticError("Error"));
   });
 });

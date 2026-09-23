@@ -53,29 +53,39 @@ const NULL: Value = { kind: "null" };
  * Trailing newlines and surrounding whitespace are tolerated.
  * Empty/whitespace input yields a null Value.
  *
- * A reply OMC meant as a diagnostic rather than a value (prose containing the
- * word "Error", per {@link looksLikeError}) generally isn't valid syntax here
- * either, so it fails one way or another below. When it does, that diagnostic
- * text is the caller's real answer — surface it as an {@link OmcDiagnosticError}
- * instead of this function's own complaint about the syntax.
+ * Two shapes of "this wasn't really a value" get reclassified as an
+ * {@link OmcDiagnosticError} instead of this function's own complaint about
+ * the syntax: a value that parses cleanly but leaves an error-shaped
+ * remainder behind (e.g. `false\nError occurred building AST`), and a reply
+ * that fails to parse at all *and* itself starts with OMC's diagnostic shape
+ * (`Error ...`). Checking only the unparsed remainder, and only the start of
+ * the whole reply, keeps a genuine syntax error in something that merely
+ * mentions "Error" partway through (a string literal, an annotation body)
+ * from being swallowed — that case still raises the parser's own complaint,
+ * with the original parse failure kept as `cause` where OMC's diagnostic
+ * shape did match.
  */
 export function parse(src: string): Value {
   const text = src.trim();
   if (text === "") return NULL;
+  const p = new Parser(text);
+  let v: Value;
   try {
-    const p = new Parser(text);
-    const v = p.value();
-    p.skipSpace();
-    if (p.pos !== p.src.length) {
-      throw new Error(
-        `unexpected trailing input at ${p.pos}: ${JSON.stringify(p.peek(20))}`,
-      );
-    }
-    return v;
+    v = p.value();
   } catch (err) {
-    if (looksLikeError(text)) throw new OmcDiagnosticError(text);
+    if (/^Error\b/.test(text)) {
+      throw new OmcDiagnosticError(text, { cause: err });
+    }
     throw err;
   }
+  p.skipSpace();
+  if (p.pos !== p.src.length) {
+    if (looksLikeError(p.src.slice(p.pos))) throw new OmcDiagnosticError(text);
+    throw new Error(
+      `unexpected trailing input at ${p.pos}: ${JSON.stringify(p.peek(20))}`,
+    );
+  }
+  return v;
 }
 
 /**
@@ -524,7 +534,7 @@ export function asStringList(v: Value): string[] | undefined {
  * is OMC's error reply, not a value of the wrong shape — the caller's real
  * answer is that text, not "expected X, got ident/call". Every `expect*` below
  * raises through here so a shape mismatch that is actually OMC declining the
- * call surfaces OMC's own words instead.
+ * call surfaces that reply instead.
  */
 function mismatch(v: Value, expected: string): never {
   if ((v.kind === "ident" || v.kind === "call") && looksLikeError(v.name)) {
@@ -533,7 +543,15 @@ function mismatch(v: Value, expected: string): never {
   throw new Error(`expected ${expected}, got ${v.kind}`);
 }
 
-/** Renders an `ident`/`call` Value read as an OMC diagnostic back into text. */
+/**
+ * Renders an `ident`/`call` Value read as an OMC diagnostic back into text.
+ *
+ * For an `ident`, `v.name` already is OMC's reply verbatim. For a `call`,
+ * there is no verbatim text left to hand back — only the parsed name and
+ * args — so this reconstructs a colon-joined message
+ * (`"Error: no such file: run.mat"`) from them; OMC never sent that exact
+ * string.
+ */
 function describeErrorValue(
   v: Extract<Value, { kind: "ident" | "call" }>,
 ): string {

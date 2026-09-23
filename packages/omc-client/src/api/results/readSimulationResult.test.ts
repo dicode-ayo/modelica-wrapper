@@ -89,12 +89,10 @@ describe("readSimulationResult: size = 0 resolution", () => {
   });
 });
 
-describe("readSimulationResult: OMC error replies (#658)", () => {
+describe("readSimulationResult: OMC error replies", () => {
   it("surfaces OMC's own diagnostic rather than 'expected list/tuple, got call'", async () => {
-    // The missing-file repro: OMC answers with a call-shaped diagnostic
-    // rather than the documented `fail()` sentinel this wrapper already
-    // special-cases. Before the fix, `expectList` choked on the unexpected
-    // shape with a message naming the wrong problem.
+    // OMC answers with a call-shaped diagnostic rather than the documented
+    // `fail()` sentinel this wrapper already special-cases.
     const { ctx } = stubCtx({
       'readSimulationResult("missing.mat", {time}, 1)':
         'Error("no such file: missing.mat")',
@@ -102,10 +100,7 @@ describe("readSimulationResult: OMC error replies (#658)", () => {
     const input = { filename: "missing.mat", variables: ["time"], size: 1 };
 
     await expect(readSimulationResult(ctx, input)).rejects.toThrow(
-      OmcDiagnosticError,
-    );
-    await expect(readSimulationResult(ctx, input)).rejects.toThrow(
-      "no such file: missing.mat",
+      new OmcDiagnosticError("Error: no such file: missing.mat"),
     );
   });
 });

@@ -105,13 +105,19 @@ type Value =
 - Coercion helpers: `asString/asBool/asInt/asFloat/asList/asStringList`
   (return `undefined` on mismatch) and strict `expectString/…` (throw).
 
-A reply OMC meant as a diagnostic rather than a value — prose containing the
-word "Error", per `looksLikeError`
+A reply OMC meant as a diagnostic rather than a value — prose starting with or
+trailing off into the word "Error", per `looksLikeError`
 ([error-buffer.ts](../packages/omc-client/src/error-buffer.ts)) — usually isn't
 valid `Value` syntax either, so it fails to parse cleanly or lands as an
-`ident`/`call` of the wrong shape for what the caller expected. `parse` and the
-`expect*` coercions both check for this and throw `OmcDiagnosticError` carrying
-OMC's own text in that case, instead of their own complaint about syntax or
+`ident`/`call` of the wrong shape for what the caller expected. `parse` throws
+`OmcDiagnosticError` for an unparsed remainder that looks like OMC's diagnostic
+shape, or for a reply that fails to parse and itself starts with `Error`; the
+`expect*` coercions do the same for an `ident`/`call` value shaped like one.
+Both raise `OmcDiagnosticError` carrying OMC's own text for the `ident` case
+and the trailing-remainder case; for a `call`-shaped diagnostic, the message is
+reconstructed from the parsed name and args (`"Error: no such file: run.mat"`)
+rather than OMC's verbatim reply, since only the parsed shape is available at
+that point. Either way it replaces the parser's own complaint about syntax or
 shape (`"unexpected trailing input at …"`, `"expected float, got ident"`).
 
 This is deliberately **not** the positional string-splitting that OMEdit's

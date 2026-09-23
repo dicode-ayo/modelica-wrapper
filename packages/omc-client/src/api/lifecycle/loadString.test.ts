@@ -16,23 +16,17 @@ function stubCtx(response: string): CallContext {
   };
 }
 
-describe("loadString: OMC error replies (#658)", () => {
+describe("loadString: OMC error replies", () => {
   it("parses a clean success", async () => {
     const out = await loadString(stubCtx("true"), { data: "model M end M;" });
     expect(out).toEqual({ success: true });
   });
 
   it("surfaces OMC's own diagnostic rather than a trailing-input parse complaint", async () => {
-    // The `createClass` bad-name repro: OMC answers `false` then appends its
-    // own "Error occurred building AST" line. Before the fix, strict
-    // `parse()` choked on that trailing text with "unexpected trailing input
-    // at 6: ...", hiding OMC's actual complaint from the caller.
+    // `loadString` answers `false` and then OMC's diagnostic line.
     const raw = "false\nError occurred building AST";
     await expect(
       loadString(stubCtx(raw), { data: "model 'bad name' end 'bad name';" }),
-    ).rejects.toThrow(OmcDiagnosticError);
-    await expect(
-      loadString(stubCtx(raw), { data: "model 'bad name' end 'bad name';" }),
-    ).rejects.toThrow(raw);
+    ).rejects.toThrow(new OmcDiagnosticError(raw));
   });
 });
