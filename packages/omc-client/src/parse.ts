@@ -55,9 +55,9 @@ const NULL: Value = { kind: "null" };
  *
  * Three shapes of "this wasn't really a value" get reclassified as an
  * {@link OmcDiagnosticError} instead of this function's own complaint about
- * the syntax, all gated on the diagnostic shape (`/^Error\b/`) appearing at
- * the *start* of either the whole reply or the unparsed remainder — never
- * merely somewhere inside it:
+ * the syntax, all gated on the diagnostic shape ({@link startsWithError})
+ * appearing at the *start* of either the whole reply or the unparsed
+ * remainder — never merely somewhere inside it:
  *
  *   - the whole reply fails to parse and itself starts with `Error ...`
  *     (the original parse failure is kept as `cause`);
@@ -573,6 +573,12 @@ function describeErrorValue(
 }
 
 export function expectString(v: Value): string {
+  // `asString` treats a bare `ident` as a valid unquoted string (OMC returns
+  // several enum-like values unquoted) and would never route an OMC
+  // diagnostic ident through `mismatch` on its own, unlike every other
+  // `expect*` here — check the diagnostic shape first.
+  if (v.kind === "ident" && startsWithError(v.name))
+    return mismatch(v, "string");
   const s = asString(v);
   if (s === undefined) return mismatch(v, "string");
   return s;

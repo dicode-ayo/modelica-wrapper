@@ -6,6 +6,7 @@ import { OmcDiagnosticError } from "./error-buffer.js";
 import {
   expectFloat,
   expectList,
+  expectString,
   isNull,
   parse,
   parseLeading,
@@ -514,17 +515,17 @@ describe("parse: OMC error replies surfaced instead of a parse failure", () => {
   });
 
   it('does not mistake "ErrorLevel" for the diagnostic shape when it is trailing input', () => {
-    // `ErrorLevel` starts with "Error" but isn't the whole word, so the `\b`
-    // boundary must reject it — the trailing "x" is a genuine syntax
-    // complaint, not an OMC diagnostic.
+    // `ErrorLevel` starts with "Error" but isn't the whole word, so
+    // `startsWithError` must reject it — the trailing "x" is a genuine
+    // syntax complaint, not an OMC diagnostic.
     expect(() => parse("ErrorLevel x")).toThrow(/unexpected trailing input/);
     expect(() => parse("ErrorLevel x")).not.toThrow(OmcDiagnosticError);
   });
 
   it("expectFloat still reports a shape mismatch for an ident named ErrorLevel, not an OMC diagnostic", () => {
-    // Same `\b` boundary in `mismatch()`: a bare ident whose name merely
-    // starts with "Error" as a substring, not the whole word, is a genuine
-    // shape mismatch.
+    // Same `startsWithError` check in `mismatch()`: a bare ident whose name
+    // merely starts with "Error" as a substring, not the whole word, is a
+    // genuine shape mismatch.
     expect(() => expectFloat(parse("ErrorLevel"))).toThrow(
       "expected float, got ident",
     );
@@ -536,6 +537,18 @@ describe("parse: OMC error replies surfaced instead of a parse failure", () => {
     expect(() => expectFloat(parse("Error.Foo"))).toThrow(
       "expected float, got ident",
     );
+  });
+
+  it("expectString throws OMC's diagnostic instead of accepting a bare Error ident as a valid string", () => {
+    // `asString` treats any `ident` as a valid unquoted string (OMC returns
+    // several enum-like values that way), so this is the one `expect*` that
+    // doesn't reach `mismatch` through a plain shape check.
+    expect(() => expectString(parse("Error"))).toThrow(OmcDiagnosticError);
+    expect(() => expectString(parse("Error"))).toThrow("Error");
+  });
+
+  it("expectString still returns a non-diagnostic bare ident as a plain string", () => {
+    expect(expectString(parse("NONE"))).toBe("NONE");
   });
 });
 
