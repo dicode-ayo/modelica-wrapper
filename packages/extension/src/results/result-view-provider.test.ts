@@ -564,24 +564,35 @@ describe("ResultViewEditorProvider: refresh with traces", () => {
     fireReady(); // generation 1 — will be superseded before its stats settle
     fireReady(); // generation 2 — the one that should win
 
-    // Two results scanned by missingScan plus one trace read, per generation.
+    // Generation 1 requests its own missingScan pair plus a trace-file mtime
+    // check (3). Generation 2's missingScan always issues its own pair (2),
+    // but its trace-file check hits the same path while generation 1's is
+    // still pending, so `ResultCache`'s `fresh()` dedup reuses that in-flight
+    // request instead of issuing a second one — 5 total, not 6.
     await vi.waitFor(() => {
-      if (stats.length < 6) throw new Error("not all stats requested yet");
+      if (stats.length < 5) throw new Error("not all stats requested yet");
     });
 
     const resolveStat = (s: (typeof stats)[number]): void =>
       s.resolve(s.path.endsWith("gone.mat") ? undefined : 100);
 
-    // Let generation 2's stats settle first.
-    stats.slice(3, 6).forEach(resolveStat);
+    // Settle the shared trace-file stat (stats[2]) plus generation 2's own
+    // missingScan pair (stats[3], stats[4]) — everything generation 2 needs
+    // to fully post.
+    [stats[2], stats[3], stats[4]].forEach((s) => {
+      if (s) resolveStat(s);
+    });
     await vi.waitFor(() => {
       if (!posted.some((m) => m.type === "missingResults")) {
         throw new Error("generation 2 missingResults not posted yet");
       }
     });
 
-    // Generation 1's stats settle late, after generation 2 already won.
-    stats.slice(0, 3).forEach(resolveStat);
+    // Generation 1's own missingScan pair settles late, after generation 2
+    // already won.
+    [stats[0], stats[1]].forEach((s) => {
+      if (s) resolveStat(s);
+    });
     await new Promise((r) => setTimeout(r, 10));
 
     const missingPosts = posted.filter((m) => m.type === "missingResults");
