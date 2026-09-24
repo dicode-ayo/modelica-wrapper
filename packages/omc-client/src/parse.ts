@@ -53,17 +53,25 @@ const NULL: Value = { kind: "null" };
  * Trailing newlines and surrounding whitespace are tolerated.
  * Empty/whitespace input yields a null Value.
  *
- * Two shapes of "this wasn't really a value" get reclassified as an
+ * Three shapes of "this wasn't really a value" get reclassified as an
  * {@link OmcDiagnosticError} instead of this function's own complaint about
- * the syntax: a value that parses cleanly but leaves an error-shaped
- * remainder behind (e.g. `false\nError occurred building AST`), and a reply
- * that fails to parse at all *and* itself starts with OMC's diagnostic shape
- * (`Error ...`). Checking only the unparsed remainder, and only the start of
- * the whole reply, keeps a genuine syntax error in something that merely
- * mentions "Error" partway through (a string literal, an annotation body)
- * from being swallowed — that case still raises the parser's own complaint,
- * with the original parse failure kept as `cause` where OMC's diagnostic
- * shape did match.
+ * the syntax, all gated on the diagnostic shape (`/^Error\b/`) appearing at
+ * the *start* of either the whole reply or the unparsed remainder — never
+ * merely somewhere inside it:
+ *
+ *   - the whole reply fails to parse and itself starts with `Error ...`
+ *     (the original parse failure is kept as `cause`);
+ *   - the whole reply starts with `Error ...` but still parses cleanly, e.g.
+ *     `Error: Failed to load package Foo` parses `Error` as a bare
+ *     identifier, leaving `: Failed to load package Foo` as trailing input;
+ *   - the reply parses cleanly and only the unparsed remainder starts with
+ *     `Error ...`, e.g. `false\nError occurred building AST`.
+ *
+ * Anchoring every check to the start, not a word-boundary search, keeps a
+ * genuine syntax error in something that merely mentions "Error" partway
+ * through (a string literal, an annotation body, an unterminated quote after
+ * unrelated trailing text) from being swallowed — that case still raises the
+ * parser's own complaint.
  */
 export function parse(src: string): Value {
   const text = src.trim();
@@ -80,7 +88,9 @@ export function parse(src: string): Value {
   }
   p.skipSpace();
   if (p.pos !== p.src.length) {
-    if (looksLikeError(p.src.slice(p.pos))) throw new OmcDiagnosticError(text);
+    if (/^Error\b/.test(text) || /^Error\b/.test(p.src.slice(p.pos))) {
+      throw new OmcDiagnosticError(text);
+    }
     throw new Error(
       `unexpected trailing input at ${p.pos}: ${JSON.stringify(p.peek(20))}`,
     );

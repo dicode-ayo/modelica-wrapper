@@ -471,6 +471,31 @@ describe("parse: OMC error replies surfaced instead of a parse failure", () => {
     expect(() => parse(raw)).not.toThrow(OmcDiagnosticError);
   });
 
+  it("throws OMC's own diagnostic, not a trailing-input complaint, for a bare-ident reply followed by diagnostic prose", () => {
+    // `Error` parses cleanly as a bare identifier, leaving "occurred building
+    // AST" as trailing input. The remainder itself doesn't contain "Error",
+    // so only checking the whole reply's start catches this.
+    const raw = "Error occurred building AST";
+    expect(() => parse(raw)).toThrow(new OmcDiagnosticError(raw));
+  });
+
+  it("throws OMC's own diagnostic, not a trailing-input complaint, for a bare-ident reply followed by a colon-prefixed reason", () => {
+    // `Error` parses cleanly as a bare identifier (":" isn't an ident char),
+    // leaving ": Failed to load package Foo" as trailing input.
+    const raw = "Error: Failed to load package Foo";
+    expect(() => parse(raw)).toThrow(new OmcDiagnosticError(raw));
+  });
+
+  it('raises its own trailing-input complaint, not OmcDiagnosticError, when the unparsed remainder only mentions "Error" partway through', () => {
+    // The remainder ("'Error", an unterminated quoted ident) contains the
+    // word "Error" but doesn't start with it — a real syntax error, not an
+    // OMC diagnostic, so it must not be reclassified just because "Error"
+    // appears somewhere in the remainder.
+    const raw = `"ok" 'Error`;
+    expect(() => parse(raw)).toThrow(/unexpected trailing input/);
+    expect(() => parse(raw)).not.toThrow(OmcDiagnosticError);
+  });
+
   it("expectFloat surfaces OMC's bare-ident error reply instead of 'expected float, got ident'", () => {
     // OMC answers with the bare word `Error` in place of a number.
     // `parse()` accepts it cleanly as a one-word ident (no trailing input),
