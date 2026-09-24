@@ -35,10 +35,12 @@ export function looksLikeError(errorString: string): boolean {
  * diagnostic shape leads the text, not merely appears somewhere inside it.
  * Distinguishes OMC's own diagnostic replies from a value whose text simply
  * contains "Error" — a dotted class name, a string literal, an annotation
- * body — which is not a diagnostic and must not be read as one.
+ * body — which is not a diagnostic and must not be read as one. The
+ * lookahead excludes `.` as a word boundary too, so a class name whose first
+ * segment is `Error` (`Error.Foo`) doesn't count as a diagnostic either.
  */
 export function startsWithError(text: string): boolean {
-  return /^Error\b/.test(text);
+  return /^Error(?![\w.])/.test(text);
 }
 
 /**

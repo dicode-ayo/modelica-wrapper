@@ -529,6 +529,14 @@ describe("parse: OMC error replies surfaced instead of a parse failure", () => {
       "expected float, got ident",
     );
   });
+
+  it("expectFloat still reports a shape mismatch for a dotted class name whose first segment is Error", () => {
+    // `\b` matches between "Error" and "." too, so the boundary alone isn't
+    // enough — `startsWithError` also excludes `.` as a following character.
+    expect(() => expectFloat(parse("Error.Foo"))).toThrow(
+      "expected float, got ident",
+    );
+  });
 });
 
 describe("parse: real OMC fixtures", () => {

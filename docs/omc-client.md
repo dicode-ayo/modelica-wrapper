@@ -105,20 +105,21 @@ type Value =
 - Coercion helpers: `asString/asBool/asInt/asFloat/asList/asStringList`
   (return `undefined` on mismatch) and strict `expectString/…` (throw).
 
-A reply OMC meant as a diagnostic rather than a value — prose starting with or
-trailing off into the word "Error", per `looksLikeError`
-([error-buffer.ts](../packages/omc-client/src/error-buffer.ts)) — usually isn't
-valid `Value` syntax either, so it fails to parse cleanly or lands as an
-`ident`/`call` of the wrong shape for what the caller expected. `parse` throws
-`OmcDiagnosticError` for an unparsed remainder that looks like OMC's diagnostic
-shape, or for a reply that fails to parse and itself starts with `Error`; the
-`expect*` coercions do the same for an `ident`/`call` value shaped like one.
-Both raise `OmcDiagnosticError` carrying OMC's own text for the `ident` case
-and the trailing-remainder case; for a `call`-shaped diagnostic, the message is
-reconstructed from the parsed name and args (`"Error: no such file: run.mat"`)
-rather than OMC's verbatim reply, since only the parsed shape is available at
-that point. Either way it replaces the parser's own complaint about syntax or
-shape (`"unexpected trailing input at …"`, `"expected float, got ident"`).
+A reply OMC meant as a diagnostic rather than a value (text that _starts with_
+the word `Error`, per `startsWithError` in
+[error-buffer.ts](../packages/omc-client/src/error-buffer.ts)) usually isn't
+valid `Value` syntax either. `parse` throws `OmcDiagnosticError` carrying the
+whole reply verbatim when the reply starts with `Error` and either fails to
+parse or leaves trailing input (`Error: Failed to load package Foo`), or when
+it parses cleanly but the unparsed remainder starts with `Error`
+(`false\nError occurred building AST`). A bare `Error` or `Error(...)` parses
+cleanly as an `ident`/`call`, so the `expect*` coercions raise
+`OmcDiagnosticError` for an `ident`/`call` whose name starts with `Error`. For
+an `ident` the message is OMC's text. For a `call`, only the parsed shape is
+left, so the message is rebuilt from the name and args
+(`"Error: no such file: run.mat"`), and OMC never sent that exact string. Text
+that only mentions "Error" partway through still gets the parser's own
+complaint (`"unexpected trailing input at …"`, `"expected float, got ident"`).
 
 This is deliberately **not** the positional string-splitting that OMEdit's
 `StringHandler::getStrings()` does — that approach is the single biggest source of

@@ -1089,7 +1089,7 @@ describe("createClass", () => {
     }
   });
 
-  it("caps the OMC-supplied part of a root-package refusal without dropping its own final sentence", async () => {
+  it("caps the root-package reason without dropping the refusal's own final sentence", async () => {
     const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
     await fsp.writeFile(path.join(root, "package.mo"), "", "utf8");
     parsedFileClasses = Array.from({ length: 2000 }, (_, i) => `Class${i}`);
@@ -1107,7 +1107,10 @@ describe("createClass", () => {
 
       expect(result.isError).toBe(true);
       const body = text(result);
-      expect(body).toContain("more characters elided]");
+      expect(body).toMatch(
+        /\n\.\.\.\n\[\+\d+ more characters elided\]\. Name the package/,
+      );
+      expect(body).not.toContain("more lines");
       expect(
         body.endsWith("Name the package to create it inside with withinPath."),
       ).toBe(true);
