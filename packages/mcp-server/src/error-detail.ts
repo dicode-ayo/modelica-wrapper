@@ -14,11 +14,9 @@ const MAX_ERROR_CHARS = 4000;
  * Keeps `text`'s head and elides the remainder, noting how much was cut.
  *
  * The line cap and the character cap both have to hold: a reply within
- * `MAX_ERROR_LINES` can still be huge if those few lines are each long (a
- * class dump that wraps long qualified names onto few lines). The char cap
- * is applied to the lines the line cap already kept, not to the original
- * text, so a message that trips both caps gets one combined elision count
- * instead of the char cap silently discarding the line cap's own framing.
+ * `MAX_ERROR_LINES` can still be huge if those few lines are each long. The
+ * char cap applies to the lines the line cap kept, so a message that trips
+ * both gets one combined elision count.
  */
 export function capErrorText(text: string): string {
   const lines = text.split("\n");
@@ -51,14 +49,9 @@ export function capErrorText(text: string): string {
  * given, prefixes each path so the line names the call the argument belonged
  * to.
  *
- * The result is always capped (`capErrorText`), so a refusal that came back
- * as hundreds of KB of OMC prose gets cut down to size wherever a caller
- * routes it through here. Not every tool error does: a hand-built refusal
- * string (a write-gate refusal, an unknown-function message) is short by
- * construction and returned straight to `errorResult` without this. Route a
- * new raw OMC reason (`getErrorString` text, a caught error's `.message`)
- * through `errorDetail` rather than straight to `errorResult` — that's what
- * keeps the cap ahead of it.
+ * The result is always capped (`capErrorText`). A raw OMC reason that is
+ * already a known `string` (not an `unknown` catch value) should call
+ * `capErrorText` directly rather than round-tripping through here.
  */
 export function errorDetail(err: unknown, fnName?: string): string {
   if (err instanceof ZodError) {

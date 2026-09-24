@@ -1017,7 +1017,7 @@ describe("createClass", () => {
     expect(result.isError).toBe(true);
     const body = text(result);
     expect(body.length).toBeLessThan(loadFails.length);
-    expect(body).toContain("more lines elided]");
+    expect(body).toContain("\n...\n[+441 more lines elided]");
     expect(body).not.toContain("Class499");
   });
 
@@ -1084,6 +1084,33 @@ describe("createClass", () => {
       expect(text(result)).toContain("more than one top-level class");
       expect(text(result)).toContain("withinPath");
       expect(calls).toEqual([]);
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("caps the OMC-supplied part of a root-package refusal without dropping its own final sentence", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
+    await fsp.writeFile(path.join(root, "package.mo"), "", "utf8");
+    parsedFileClasses = Array.from({ length: 2000 }, (_, i) => `Class${i}`);
+    workspace = {
+      root,
+      writer: { write: () => Promise.resolve() },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Circuit", kind: "model" },
+      })) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      const body = text(result);
+      expect(body).toContain("more characters elided]");
+      expect(
+        body.endsWith("Name the package to create it inside with withinPath."),
+      ).toBe(true);
     } finally {
       await fsp.rm(root, { recursive: true, force: true });
     }

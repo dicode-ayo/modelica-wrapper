@@ -89,8 +89,7 @@ export function registerClassTools(
           withinPath === undefined
             ? await enclosingPackage(client, deps.workspace)
             : ({ ok: true, parent: withinPath } as const);
-        if (!destination.ok)
-          return errorResult(capErrorText(destination.reason));
+        if (!destination.ok) return errorResult(destination.reason);
         const { parent } = destination;
         if (parent !== undefined) {
           const refusal = await refusalForClass(
@@ -226,7 +225,7 @@ async function enclosingPackage(
     ? { ok: true, parent: resolved.parent }
     : {
         ok: false,
-        reason: `this source tree's root is a package, so a class cannot be created outside it — ${resolved.reason}. Name the package to create it inside with withinPath.`,
+        reason: `this source tree's root is a package, so a class cannot be created outside it — ${capErrorText(resolved.reason)}. Name the package to create it inside with withinPath.`,
       };
 }
 
