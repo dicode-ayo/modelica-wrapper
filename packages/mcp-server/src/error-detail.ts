@@ -34,8 +34,12 @@ export function capErrorText(text: string): string {
   if (elidedLines === 0 && elidedChars === 0) return text;
 
   const notes = [
-    elidedLines > 0 ? `${elidedLines} more lines` : undefined,
-    elidedChars > 0 ? `${elidedChars} more characters` : undefined,
+    elidedLines > 0
+      ? `${elidedLines} more line${elidedLines === 1 ? "" : "s"}`
+      : undefined,
+    elidedChars > 0
+      ? `${elidedChars} more character${elidedChars === 1 ? "" : "s"}`
+      : undefined,
   ].filter((note) => note !== undefined);
   return `${head}\n...\n[+${notes.join(", ")} elided]`;
 }

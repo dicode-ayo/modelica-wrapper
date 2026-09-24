@@ -103,6 +103,16 @@ describe("errorDetail: caps a large OMC diagnostic", () => {
     );
   });
 
+  it("singularizes the elision note for exactly one elided line", () => {
+    const message = Array.from({ length: 61 }, () => "x").join("\n");
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail).toBe(
+      `${message.split("\n").slice(0, 60).join("\n")}\n...\n[+1 more line elided]`,
+    );
+  });
+
   it("combines both counts when the kept lines are themselves over the character cap", () => {
     // 100 lines trips the line cap; the 60 kept lines (100 chars each) are
     // still over MAX_ERROR_CHARS on their own, so both bounds have to apply
