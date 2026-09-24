@@ -20,7 +20,7 @@ const MAX_ERROR_CHARS = 4000;
  * text, so a message that trips both caps gets one combined elision count
  * instead of the char cap silently discarding the line cap's own framing.
  */
-function capErrorText(text: string): string {
+export function capErrorText(text: string): string {
   const lines = text.split("\n");
   const keptLines =
     lines.length > MAX_ERROR_LINES ? lines.slice(0, MAX_ERROR_LINES) : lines;

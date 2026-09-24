@@ -43,7 +43,7 @@ import {
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
-import { errorDetail } from "./error-detail.js";
+import { capErrorText, errorDetail } from "./error-detail.js";
 import { registerTool } from "./register-tool.js";
 import { refusalForClass } from "./write-gate.js";
 
@@ -89,7 +89,8 @@ export function registerClassTools(
           withinPath === undefined
             ? await enclosingPackage(client, deps.workspace)
             : ({ ok: true, parent: withinPath } as const);
-        if (!destination.ok) return errorResult(destination.reason);
+        if (!destination.ok)
+          return errorResult(capErrorText(destination.reason));
         const { parent } = destination;
         if (parent !== undefined) {
           const refusal = await refusalForClass(
@@ -156,7 +157,7 @@ async function declareAndPersist(
   }
 
   const declared = await declareClass(client, declaration);
-  if (!declared.ok) return errorResult(errorDetail(declared.reason));
+  if (!declared.ok) return errorResult(capErrorText(declared.reason));
 
   const { workspace } = deps;
   if (workspace === undefined) {

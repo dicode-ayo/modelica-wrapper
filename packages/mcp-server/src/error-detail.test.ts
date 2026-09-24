@@ -84,8 +84,9 @@ describe("errorDetail: caps a large OMC diagnostic", () => {
 
     const detail = errorDetail(new Error(message));
 
-    expect(detail.length).toBeLessThan(message.length);
-    expect(detail).toMatch(/\n\.\.\.\n\[\+\d+ more characters elided\]$/);
+    expect(detail).toBe(
+      `${message.slice(0, 4000)}\n...\n[+6007 more characters elided]`,
+    );
   });
 
   it("caps by character count even when the line count stays under the line cap", () => {
@@ -97,8 +98,9 @@ describe("errorDetail: caps a large OMC diagnostic", () => {
 
     const detail = errorDetail(new Error(message));
 
-    expect(detail.length).toBeLessThan(message.length);
-    expect(detail).toMatch(/\n\.\.\.\n\[\+\d+ more characters elided\]$/);
+    expect(detail).toBe(
+      `${message.slice(0, 4000)}\n...\n[+11002 more characters elided]`,
+    );
   });
 
   it("combines both counts when the kept lines are themselves over the character cap", () => {
@@ -111,8 +113,9 @@ describe("errorDetail: caps a large OMC diagnostic", () => {
 
     const detail = errorDetail(new Error(message));
 
-    expect(detail.length).toBeLessThan(message.length);
-    expect(detail).toMatch(/\[\+40 more lines, \d+ more characters elided\]$/);
+    expect(detail).toBe(
+      `${message.slice(0, 4000)}\n...\n[+40 more lines, 2059 more characters elided]`,
+    );
   });
 });
 
