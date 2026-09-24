@@ -32,7 +32,7 @@
  * actually emits.
  */
 
-import { OmcDiagnosticError, looksLikeError } from "./error-buffer.js";
+import { OmcDiagnosticError, startsWithError } from "./error-buffer.js";
 
 export type Value =
   | { kind: "string"; value: string }
@@ -81,14 +81,14 @@ export function parse(src: string): Value {
   try {
     v = p.value();
   } catch (err) {
-    if (/^Error\b/.test(text)) {
+    if (startsWithError(text)) {
       throw new OmcDiagnosticError(text, { cause: err });
     }
     throw err;
   }
   p.skipSpace();
   if (p.pos !== p.src.length) {
-    if (/^Error\b/.test(text) || /^Error\b/.test(p.src.slice(p.pos))) {
+    if (startsWithError(text) || startsWithError(p.src.slice(p.pos))) {
       throw new OmcDiagnosticError(text);
     }
     throw new Error(
@@ -540,14 +540,16 @@ export function asStringList(v: Value): string[] | undefined {
 }
 
 /**
- * A parsed `ident`/`call` whose name reads as an OMC diagnostic (`looksLikeError`)
- * is OMC's error reply, not a value of the wrong shape — the caller's real
- * answer is that text, not "expected X, got ident/call". Every `expect*` below
- * raises through here so a shape mismatch that is actually OMC declining the
- * call surfaces that reply instead.
+ * A parsed `ident`/`call` whose name starts with OMC's diagnostic shape
+ * (`startsWithError`) is OMC's error reply, not a value of the wrong shape —
+ * the caller's real answer is that text, not "expected X, got ident/call".
+ * Every `expect*` below raises through here so a shape mismatch that is
+ * actually OMC declining the call surfaces that reply instead. Anchoring to
+ * the start keeps a legitimate name that merely contains "Error" as a
+ * segment (a dotted class name, a call) from being misread as a diagnostic.
  */
 function mismatch(v: Value, expected: string): never {
-  if ((v.kind === "ident" || v.kind === "call") && looksLikeError(v.name)) {
+  if ((v.kind === "ident" || v.kind === "call") && startsWithError(v.name)) {
     throw new OmcDiagnosticError(describeErrorValue(v));
   }
   throw new Error(`expected ${expected}, got ${v.kind}`);

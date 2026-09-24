@@ -512,6 +512,23 @@ describe("parse: OMC error replies surfaced instead of a parse failure", () => {
       new OmcDiagnosticError("Error: no such file: run.mat"),
     );
   });
+
+  it('does not mistake "ErrorLevel" for the diagnostic shape when it is trailing input', () => {
+    // `ErrorLevel` starts with "Error" but isn't the whole word, so the `\b`
+    // boundary must reject it — the trailing "x" is a genuine syntax
+    // complaint, not an OMC diagnostic.
+    expect(() => parse("ErrorLevel x")).toThrow(/unexpected trailing input/);
+    expect(() => parse("ErrorLevel x")).not.toThrow(OmcDiagnosticError);
+  });
+
+  it("expectFloat still reports a shape mismatch for an ident named ErrorLevel, not an OMC diagnostic", () => {
+    // Same `\b` boundary in `mismatch()`: a bare ident whose name merely
+    // starts with "Error" as a substring, not the whole word, is a genuine
+    // shape mismatch.
+    expect(() => expectFloat(parse("ErrorLevel"))).toThrow(
+      "expected float, got ident",
+    );
+  });
 });
 
 describe("parse: real OMC fixtures", () => {

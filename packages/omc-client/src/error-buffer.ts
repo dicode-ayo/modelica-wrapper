@@ -31,6 +31,17 @@ export function looksLikeError(errorString: string): boolean {
 }
 
 /**
+ * Anchored form of the same diagnostic-level marker: true only when the
+ * diagnostic shape leads the text, not merely appears somewhere inside it.
+ * Distinguishes OMC's own diagnostic replies from a value whose text simply
+ * contains "Error" — a dotted class name, a string literal, an annotation
+ * body — which is not a diagnostic and must not be read as one.
+ */
+export function startsWithError(text: string): boolean {
+  return /^Error\b/.test(text);
+}
+
+/**
  * A failure OMC reported through its error buffer rather than by throwing.
  * Distinguishes an answer the caller can act on from a transport fault or a
  * dead client, which reach the same `catch`.
