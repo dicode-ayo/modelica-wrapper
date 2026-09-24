@@ -549,6 +549,11 @@ describe("parse: OMC error replies surfaced instead of a parse failure", () => {
 
   it("expectString still returns a non-diagnostic bare ident as a plain string", () => {
     expect(expectString(parse("NONE"))).toBe("NONE");
+    expect(expectString(parse("ErrorLevel"))).toBe("ErrorLevel");
+  });
+
+  it("expectString throws OMC's diagnostic for a call-shaped reply too", () => {
+    expect(() => expectString(parse('Error("x")'))).toThrow(OmcDiagnosticError);
   });
 });
 
