@@ -576,10 +576,9 @@ describe("ResultViewEditorProvider: refresh with traces", () => {
     const resolveStat = (s: (typeof stats)[number]): void =>
       s.resolve(s.path.endsWith("gone.mat") ? undefined : 100);
 
-    // Settle the shared trace-file stat (stats[2]) plus generation 2's own
-    // missingScan pair (stats[3], stats[4]) — everything generation 2 needs
-    // to fully post.
-    stats.slice(2, 5).forEach(resolveStat);
+    // Everything after generation 1's `exists()` pair: the shared trace-file
+    // stat and generation 2's pair, all generation 2 needs to fully post.
+    stats.slice(2).forEach(resolveStat);
     await vi.waitFor(() => {
       if (!posted.some((m) => m.type === "missingResults")) {
         throw new Error("generation 2 missingResults not posted yet");
