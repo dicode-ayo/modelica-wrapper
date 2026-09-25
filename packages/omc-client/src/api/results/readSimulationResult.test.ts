@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { OmcDiagnosticError } from "../../error-buffer.js";
 
 import { readSimulationResult } from "./readSimulationResult.js";
 
@@ -85,5 +86,21 @@ describe("readSimulationResult: size = 0 resolution", () => {
     // Passing the resolved 0 through to readSimulationResult would reach
     // exactly the OMC bug this function exists to avoid.
     expect(sent).toEqual(['readSimulationResultSize("empty.csv")']);
+  });
+});
+
+describe("readSimulationResult: OMC error replies", () => {
+  it("surfaces OMC's own diagnostic rather than 'expected list/tuple, got call'", async () => {
+    // OMC answers with a call-shaped diagnostic rather than the documented
+    // `fail()` sentinel this wrapper already special-cases.
+    const { ctx } = stubCtx({
+      'readSimulationResult("missing.mat", {time}, 1)':
+        'Error("no such file: missing.mat")',
+    });
+    const input = { filename: "missing.mat", variables: ["time"], size: 1 };
+
+    await expect(readSimulationResult(ctx, input)).rejects.toThrow(
+      new OmcDiagnosticError("Error: no such file: missing.mat"),
+    );
   });
 });

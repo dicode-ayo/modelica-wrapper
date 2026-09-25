@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import getElementsFixture from "../test/fixtures/getElements-Modelica.Blocks.Examples.PID_Controller.txt?raw";
 import getElementsInfoFixture from "../test/fixtures/getElementsInfo-Modelica.Blocks.Examples.PID_Controller.txt?raw";
-import { isNull, parse, parseLeading, toJson } from "./parse.js";
+import { OmcDiagnosticError } from "./error-buffer.js";
+import {
+  expectFloat,
+  expectList,
+  expectString,
+  isNull,
+  parse,
+  parseLeading,
+  toJson,
+} from "./parse.js";
 
 describe("parse: scalars", () => {
   it.each([
@@ -433,6 +442,118 @@ end OpenModelica.Scripting.ErrorMessage;}`;
     if (!info || info.kind !== "kwarg") throw new Error("missing info");
     if (info.value.kind !== "call") throw new Error("info value not a call");
     expect(info.value.name).toBe("OpenModelica.Scripting.SourceInfo");
+  });
+});
+
+describe("parse: OMC error replies surfaced instead of a parse failure", () => {
+  it("throws OMC's own diagnostic, not a trailing-input complaint, for a bool-plus-diagnostic reply", () => {
+    // `loadString` answers `false` and then appends OMC's own diagnostic
+    // line; the unparsed remainder after the bool is what gets checked.
+    const raw = "false\nError occurred building AST";
+    expect(() => parse(raw)).toThrow(new OmcDiagnosticError(raw));
+  });
+
+  it("still raises its own syntax complaint for garbled input that isn't an OMC error", () => {
+    // Nothing here reads as an OMC diagnostic (no `Error` word), so the
+    // parser's own message is what the caller sees.
+    expect(() => parse("'unterminated")).toThrow(/unterminated '/);
+    expect(() => parse("'unterminated")).not.toThrow(OmcDiagnosticError);
+  });
+
+  it('raises the parser\'s own syntax error, not OmcDiagnosticError, for a reply that mentions "Error" mid-text but is genuinely malformed elsewhere', () => {
+    // The reply contains the word "Error" inside a string literal, and
+    // separately has an unterminated quoted ident later on. The failure is a
+    // real syntax error, not OMC declining the call, and the reply neither
+    // starts with "Error" nor leaves an error-shaped unparsed remainder — so
+    // it must not be reclassified just because "Error" appears somewhere in
+    // the text.
+    const raw = `{"Error occurred", 'oops}`;
+    expect(() => parse(raw)).toThrow(/unterminated '/);
+    expect(() => parse(raw)).not.toThrow(OmcDiagnosticError);
+  });
+
+  it("throws OMC's own diagnostic, not a trailing-input complaint, for a bare-ident reply followed by diagnostic prose", () => {
+    // `Error` parses cleanly as a bare identifier, leaving "occurred building
+    // AST" as trailing input. The remainder itself doesn't contain "Error",
+    // so only checking the whole reply's start catches this.
+    const raw = "Error occurred building AST";
+    expect(() => parse(raw)).toThrow(new OmcDiagnosticError(raw));
+  });
+
+  it("throws OMC's own diagnostic, not a trailing-input complaint, for a bare-ident reply followed by a colon-prefixed reason", () => {
+    // `Error` parses cleanly as a bare identifier (":" isn't an ident char),
+    // leaving ": Failed to load package Foo" as trailing input.
+    const raw = "Error: Failed to load package Foo";
+    expect(() => parse(raw)).toThrow(new OmcDiagnosticError(raw));
+  });
+
+  it('raises its own trailing-input complaint, not OmcDiagnosticError, when the unparsed remainder only mentions "Error" partway through', () => {
+    // The remainder ("'Error", an unterminated quoted ident) contains the
+    // word "Error" but doesn't start with it — a real syntax error, not an
+    // OMC diagnostic, so it must not be reclassified just because "Error"
+    // appears somewhere in the remainder.
+    const raw = `"ok" 'Error`;
+    expect(() => parse(raw)).toThrow(/unexpected trailing input/);
+    expect(() => parse(raw)).not.toThrow(OmcDiagnosticError);
+  });
+
+  it("expectFloat surfaces OMC's bare-ident error reply instead of 'expected float, got ident'", () => {
+    // OMC answers with the bare word `Error` in place of a number.
+    // `parse()` accepts it cleanly as a one-word ident (no trailing input),
+    // so the mismatch has to be caught where the float is expected.
+    expect(() => expectFloat(parse("Error"))).toThrow(
+      new OmcDiagnosticError("Error"),
+    );
+  });
+
+  it("expectList surfaces OMC's call-shaped error reply instead of 'expected list/tuple, got call'", () => {
+    // OMC answers with a call-shaped diagnostic rather than the documented
+    // `fail()` sentinel.
+    expect(() => expectList(parse('Error("no such file: run.mat")'))).toThrow(
+      new OmcDiagnosticError("Error: no such file: run.mat"),
+    );
+  });
+
+  it('does not mistake "ErrorLevel" for the diagnostic shape when it is trailing input', () => {
+    // `ErrorLevel` starts with "Error" but isn't the whole word, so
+    // `startsWithError` must reject it — the trailing "x" is a genuine
+    // syntax complaint, not an OMC diagnostic.
+    expect(() => parse("ErrorLevel x")).toThrow(/unexpected trailing input/);
+    expect(() => parse("ErrorLevel x")).not.toThrow(OmcDiagnosticError);
+  });
+
+  it("expectFloat still reports a shape mismatch for an ident named ErrorLevel, not an OMC diagnostic", () => {
+    // Same `startsWithError` check in `mismatch()`: a bare ident whose name
+    // merely starts with "Error" as a substring, not the whole word, is a
+    // genuine shape mismatch.
+    expect(() => expectFloat(parse("ErrorLevel"))).toThrow(
+      "expected float, got ident",
+    );
+  });
+
+  it("expectFloat still reports a shape mismatch for a dotted class name whose first segment is Error", () => {
+    // `\b` matches between "Error" and "." too, so the boundary alone isn't
+    // enough — `startsWithError` also excludes `.` as a following character.
+    expect(() => expectFloat(parse("Error.Foo"))).toThrow(
+      "expected float, got ident",
+    );
+  });
+
+  it("expectString throws OMC's diagnostic instead of accepting a bare Error ident as a valid string", () => {
+    // `asString` treats any `ident` as a valid unquoted string (OMC returns
+    // several enum-like values that way), so this is the one `expect*` that
+    // doesn't reach `mismatch` through a plain shape check.
+    expect(() => expectString(parse("Error"))).toThrow(OmcDiagnosticError);
+    expect(() => expectString(parse("Error"))).toThrow("Error");
+  });
+
+  it("expectString still returns a non-diagnostic bare ident as a plain string", () => {
+    expect(expectString(parse("NONE"))).toBe("NONE");
+    expect(expectString(parse("ErrorLevel"))).toBe("ErrorLevel");
+  });
+
+  it("expectString throws OMC's diagnostic for a call-shaped reply too", () => {
+    expect(() => expectString(parse('Error("x")'))).toThrow(OmcDiagnosticError);
   });
 });
 

@@ -105,6 +105,22 @@ type Value =
 - Coercion helpers: `asString/asBool/asInt/asFloat/asList/asStringList`
   (return `undefined` on mismatch) and strict `expectString/…` (throw).
 
+A reply OMC meant as a diagnostic rather than a value (text that _starts with_
+the word `Error`, per `startsWithError` in
+[error-buffer.ts](../packages/omc-client/src/error-buffer.ts)) usually isn't
+valid `Value` syntax either. `parse` throws `OmcDiagnosticError` carrying the
+whole reply verbatim when the reply starts with `Error` and either fails to
+parse or leaves trailing input (`Error: Failed to load package Foo`), or when
+it parses cleanly but the unparsed remainder starts with `Error`
+(`false\nError occurred building AST`). A bare `Error` or `Error(...)` parses
+cleanly as an `ident`/`call`, so the `expect*` coercions raise
+`OmcDiagnosticError` for an `ident`/`call` whose name starts with `Error`. For
+an `ident` the message is OMC's text. For a `call`, only the parsed shape is
+left, so the message is rebuilt from the name and args
+(`"Error: no such file: run.mat"`), and OMC never sent that exact string. Text
+that only mentions "Error" partway through still gets the parser's own
+complaint (`"unexpected trailing input at …"`, `"expected float, got ident"`).
+
 This is deliberately **not** the positional string-splitting that OMEdit's
 `StringHandler::getStrings()` does — that approach is the single biggest source of
 inherited annotation bugs. Argument order comes from the Modelica spec (§18.6 for

@@ -32,6 +32,8 @@
  * actually emits.
  */
 
+import { OmcDiagnosticError, startsWithError } from "./error-buffer.js";
+
 export type Value =
   | { kind: "string"; value: string }
   | { kind: "bool"; value: boolean }
@@ -50,14 +52,45 @@ const NULL: Value = { kind: "null" };
  *
  * Trailing newlines and surrounding whitespace are tolerated.
  * Empty/whitespace input yields a null Value.
+ *
+ * Three shapes of "this wasn't really a value" get reclassified as an
+ * {@link OmcDiagnosticError} instead of this function's own complaint about
+ * the syntax, all gated on the diagnostic shape ({@link startsWithError})
+ * appearing at the *start* of either the whole reply or the unparsed
+ * remainder — never merely somewhere inside it:
+ *
+ *   - the whole reply fails to parse and itself starts with `Error ...`
+ *     (the original parse failure is kept as `cause`);
+ *   - the whole reply starts with `Error ...` but still parses cleanly, e.g.
+ *     `Error: Failed to load package Foo` parses `Error` as a bare
+ *     identifier, leaving `: Failed to load package Foo` as trailing input;
+ *   - the reply parses cleanly and only the unparsed remainder starts with
+ *     `Error ...`, e.g. `false\nError occurred building AST`.
+ *
+ * Anchoring every check to the start, not a word-boundary search, keeps a
+ * genuine syntax error in something that merely mentions "Error" partway
+ * through (a string literal, an annotation body, an unterminated quote after
+ * unrelated trailing text) from being swallowed — that case still raises the
+ * parser's own complaint.
  */
 export function parse(src: string): Value {
   const text = src.trim();
   if (text === "") return NULL;
   const p = new Parser(text);
-  const v = p.value();
+  let v: Value;
+  try {
+    v = p.value();
+  } catch (err) {
+    if (startsWithError(text)) {
+      throw new OmcDiagnosticError(text, { cause: err });
+    }
+    throw err;
+  }
   p.skipSpace();
   if (p.pos !== p.src.length) {
+    if (startsWithError(text) || startsWithError(p.src.slice(p.pos))) {
+      throw new OmcDiagnosticError(text);
+    }
     throw new Error(
       `unexpected trailing input at ${p.pos}: ${JSON.stringify(p.peek(20))}`,
     );
@@ -506,33 +539,72 @@ export function asStringList(v: Value): string[] | undefined {
   return out;
 }
 
+/**
+ * A parsed `ident`/`call` whose name starts with OMC's diagnostic shape
+ * (`startsWithError`) is OMC's error reply, not a value of the wrong shape —
+ * the caller's real answer is that text, not "expected X, got ident/call".
+ * Every `expect*` below raises through here so a shape mismatch that is
+ * actually OMC declining the call surfaces that reply instead. Anchoring to
+ * the start keeps a legitimate name that merely contains "Error" as a
+ * segment (a dotted class name, a call) from being misread as a diagnostic.
+ */
+function mismatch(v: Value, expected: string): never {
+  if ((v.kind === "ident" || v.kind === "call") && startsWithError(v.name)) {
+    throw new OmcDiagnosticError(describeErrorValue(v));
+  }
+  throw new Error(`expected ${expected}, got ${v.kind}`);
+}
+
+/**
+ * Renders an `ident`/`call` Value read as an OMC diagnostic back into text.
+ *
+ * For an `ident`, `v.name` already is OMC's reply verbatim. For a `call`,
+ * there is no verbatim text left to hand back — only the parsed name and
+ * args — so this reconstructs a colon-joined message
+ * (`"Error: no such file: run.mat"`) from them; OMC never sent that exact
+ * string.
+ */
+function describeErrorValue(
+  v: Extract<Value, { kind: "ident" | "call" }>,
+): string {
+  if (v.kind === "ident") return v.name;
+  const args = v.args.map((a) => asString(a) ?? JSON.stringify(toJson(a)));
+  return args.length === 0 ? v.name : `${v.name}: ${args.join(", ")}`;
+}
+
 export function expectString(v: Value): string {
+  // `asString` treats a bare `ident` as a valid unquoted string (OMC returns
+  // several enum-like values unquoted) and would never route an OMC
+  // diagnostic ident through `mismatch` on its own, unlike every other
+  // `expect*` here — check the diagnostic shape first.
+  if (v.kind === "ident" && startsWithError(v.name))
+    return mismatch(v, "string");
   const s = asString(v);
-  if (s === undefined) throw new Error(`expected string, got ${v.kind}`);
+  if (s === undefined) return mismatch(v, "string");
   return s;
 }
 
 export function expectBool(v: Value): boolean {
   const b = asBool(v);
-  if (b === undefined) throw new Error(`expected bool, got ${v.kind}`);
+  if (b === undefined) return mismatch(v, "bool");
   return b;
 }
 
 export function expectInt(v: Value): number {
   const n = asInt(v);
-  if (n === undefined) throw new Error(`expected int, got ${v.kind}`);
+  if (n === undefined) return mismatch(v, "int");
   return n;
 }
 
 export function expectFloat(v: Value): number {
   const f = asFloat(v);
-  if (f === undefined) throw new Error(`expected float, got ${v.kind}`);
+  if (f === undefined) return mismatch(v, "float");
   return f;
 }
 
 export function expectList(v: Value): Value[] {
   const l = asList(v);
-  if (l === undefined) throw new Error(`expected list/tuple, got ${v.kind}`);
+  if (l === undefined) return mismatch(v, "list/tuple");
   return l;
 }
 
@@ -540,8 +612,7 @@ export function expectList(v: Value): Value[] {
 export function expectStringList(v: Value): string[] {
   if (v.kind === "null") return [];
   const list = asStringList(v);
-  if (list === undefined)
-    throw new Error(`expected list of strings, got ${v.kind}`);
+  if (list === undefined) return mismatch(v, "list of strings");
   return list;
 }
 

@@ -997,6 +997,30 @@ describe("createClass", () => {
     expect(text(result)).toBe("Parse error near 'end'");
   });
 
+  it("caps OMC's own reason instead of passing a whole-library class dump through", async () => {
+    // A `withinPath` OMC can't resolve answers with "the available classes
+    // were: ..." — every class loaded from the standard library, one per
+    // line. `declareClass`'s reason is OMC's error-buffer text verbatim, so
+    // without capping it this reaches the caller whole.
+    const mcp = await connect();
+    const classNames = Array.from(
+      { length: 500 },
+      (_, i) => `Modelica.Blocks.Examples.Class${i}`,
+    );
+    loadFails = `Error: class "Nope.Missing" not found, the available classes were:\n${classNames.join("\n")}`;
+
+    const result = (await mcp.callTool({
+      name: "createClass",
+      arguments: { name: "X", kind: "model", withinPath: "Nope.Missing" },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    const body = text(result);
+    expect(body.length).toBeLessThan(loadFails.length);
+    expect(body).toContain("\n...\n[+441 more lines elided]");
+    expect(body).not.toContain("Class499");
+  });
+
   it("nests a class under the package the tree's own root declares", async () => {
     const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
     await fsp.writeFile(
@@ -1060,6 +1084,36 @@ describe("createClass", () => {
       expect(text(result)).toContain("more than one top-level class");
       expect(text(result)).toContain("withinPath");
       expect(calls).toEqual([]);
+    } finally {
+      await fsp.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("caps the root-package reason without dropping the refusal's own final sentence", async () => {
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mcp-rootpkg-"));
+    await fsp.writeFile(path.join(root, "package.mo"), "", "utf8");
+    parsedFileClasses = Array.from({ length: 2000 }, (_, i) => `Class${i}`);
+    workspace = {
+      root,
+      writer: { write: () => Promise.resolve() },
+    };
+    const mcp = await connect();
+
+    try {
+      const result = (await mcp.callTool({
+        name: "createClass",
+        arguments: { name: "Circuit", kind: "model" },
+      })) as CallToolResult;
+
+      expect(result.isError).toBe(true);
+      const body = text(result);
+      expect(body).toMatch(
+        /\n\.\.\.\n\[\+\d+ more characters elided\]\. Name the package/,
+      );
+      expect(body).not.toContain("more lines");
+      expect(
+        body.endsWith("Name the package to create it inside with withinPath."),
+      ).toBe(true);
     } finally {
       await fsp.rm(root, { recursive: true, force: true });
     }

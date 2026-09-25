@@ -43,7 +43,7 @@ import {
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
-import { errorDetail } from "./error-detail.js";
+import { capErrorText, errorDetail } from "./error-detail.js";
 import { registerTool } from "./register-tool.js";
 import { refusalForClass } from "./write-gate.js";
 
@@ -156,7 +156,7 @@ async function declareAndPersist(
   }
 
   const declared = await declareClass(client, declaration);
-  if (!declared.ok) return errorResult(declared.reason);
+  if (!declared.ok) return errorResult(capErrorText(declared.reason));
 
   const { workspace } = deps;
   if (workspace === undefined) {
@@ -225,7 +225,7 @@ async function enclosingPackage(
     ? { ok: true, parent: resolved.parent }
     : {
         ok: false,
-        reason: `this source tree's root is a package, so a class cannot be created outside it — ${resolved.reason}. Name the package to create it inside with withinPath.`,
+        reason: `this source tree's root is a package, so a class cannot be created outside it — ${capErrorText(resolved.reason)}. Name the package to create it inside with withinPath.`,
       };
 }
 

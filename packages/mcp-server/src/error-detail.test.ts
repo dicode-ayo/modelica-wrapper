@@ -54,6 +54,81 @@ describe("errorDetail", () => {
   });
 });
 
+describe("errorDetail: caps a large OMC diagnostic", () => {
+  it("passes a short multi-line message through unchanged", () => {
+    const message = "Error: element R already declared\nat line 12";
+    expect(errorDetail(new Error(message))).toBe(message);
+  });
+
+  it("keeps the head and elides the rest, with a count, for a class-dump-sized reply", () => {
+    // Mirrors OMC's "the available classes were: ..." refusal — one loaded
+    // class per line, thousands of lines, hundreds of KB.
+    const lines = Array.from(
+      { length: 6411 },
+      (_, i) => `Modelica.Blocks.Examples.Class${i}`,
+    );
+    const message = `Error: class "Nope.Missing" not found, the available classes were:\n${lines.join("\n")}`;
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail.length).toBeLessThan(message.length);
+    expect(detail.startsWith('Error: class "Nope.Missing" not found')).toBe(
+      true,
+    );
+    expect(detail).toMatch(/\n\.\.\.\n\[\+6352 more lines elided\]$/);
+    expect(detail).not.toContain("Class6410");
+  });
+
+  it("elides a single very long line by character count instead of leaving it whole", () => {
+    const message = "Error: " + "x".repeat(10_000);
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail).toBe(
+      `${message.slice(0, 4000)}\n...\n[+6007 more characters elided]`,
+    );
+  });
+
+  it("caps by character count even when the line count stays under the line cap", () => {
+    // Few lines, each individually huge — under MAX_ERROR_LINES so the line
+    // cap alone would let it through whole; the char cap still has to apply.
+    const message = Array.from({ length: 3 }, () => "x".repeat(5000)).join(
+      "\n",
+    );
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail).toBe(
+      `${message.slice(0, 4000)}\n...\n[+11002 more characters elided]`,
+    );
+  });
+
+  it("singularizes the elision note for exactly one elided line", () => {
+    const message = Array.from({ length: 61 }, () => "x").join("\n");
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail).toBe(
+      `${message.split("\n").slice(0, 60).join("\n")}\n...\n[+1 more line elided]`,
+    );
+  });
+
+  it("combines both counts when the kept lines are themselves over the character cap", () => {
+    // 100 lines trips the line cap; the 60 kept lines (100 chars each) are
+    // still over MAX_ERROR_CHARS on their own, so both bounds have to apply
+    // to the same returned message.
+    const message = Array.from({ length: 100 }, () => "x".repeat(100)).join(
+      "\n",
+    );
+
+    const detail = errorDetail(new Error(message));
+
+    expect(detail).toBe(
+      `${message.slice(0, 4000)}\n...\n[+40 more lines, 2059 more characters elided]`,
+    );
+  });
+});
+
 /**
  * The same three shapes, against `@dicode/omc-client`'s real per-function
  * schemas rather than ones built for this file — the schema `OmcClient.invoke`
