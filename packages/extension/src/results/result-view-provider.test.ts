@@ -564,24 +564,30 @@ describe("ResultViewEditorProvider: refresh with traces", () => {
     fireReady(); // generation 1 — will be superseded before its stats settle
     fireReady(); // generation 2 — the one that should win
 
-    // Two results scanned by missingScan plus one trace read, per generation.
+    // Each generation's missingScan calls `exists()`, which stats fresh every
+    // time (2 + 2). Both generations' trace reads stat the same path through
+    // `fresh()`, which dedupes a concurrent lookup already in flight, so the
+    // second generation's trace stat reuses the first's — 5 total, not 6.
     await vi.waitFor(() => {
-      if (stats.length < 6) throw new Error("not all stats requested yet");
+      if (stats.length < 5) throw new Error("not all stats requested yet");
     });
+    expect(stats).toHaveLength(5);
 
     const resolveStat = (s: (typeof stats)[number]): void =>
       s.resolve(s.path.endsWith("gone.mat") ? undefined : 100);
 
-    // Let generation 2's stats settle first.
-    stats.slice(3, 6).forEach(resolveStat);
+    // Everything after generation 1's `exists()` pair: the shared trace-file
+    // stat and generation 2's pair, all generation 2 needs to fully post.
+    stats.slice(2).forEach(resolveStat);
     await vi.waitFor(() => {
       if (!posted.some((m) => m.type === "missingResults")) {
         throw new Error("generation 2 missingResults not posted yet");
       }
     });
 
-    // Generation 1's stats settle late, after generation 2 already won.
-    stats.slice(0, 3).forEach(resolveStat);
+    // Generation 1's own missingScan pair settles late, after generation 2
+    // already won.
+    stats.slice(0, 2).forEach(resolveStat);
     await new Promise((r) => setTimeout(r, 10));
 
     const missingPosts = posted.filter((m) => m.type === "missingResults");
