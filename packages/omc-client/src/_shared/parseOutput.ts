@@ -75,7 +75,19 @@ export async function readFailure(
  *   - If OMC returns a bool, that's the verdict.
  *   - If OMC returns nothing (null/empty), query `getErrorString()`. An empty
  *     error buffer means success; a non-empty one means failure (and we
- *     surface the diagnostic via a thrown Error).
+ *     surface the diagnostic via a thrown {@link OmcDiagnosticError}).
+ *
+ * The predicate here is deliberately stricter than {@link failureReason}'s
+ * `looksLikeError`: any non-empty buffer counts as failure, rather than only
+ * one containing the literal word "Error". `simulate`/`checkModel` are known
+ * to leave a warning-only buffer behind on a call that still succeeded, but
+ * whether a *mutation* can do the same (leave a warning with nothing else,
+ * on a write that actually landed) is unconfirmed against live OMC — see
+ * issue #723. Aligning the predicate without probing that case first risks
+ * turning a successful mutation into a false failure the other direction.
+ * The thrown *type* is aligned regardless: {@link OmcDiagnosticError} rather
+ * than a bare `Error`, so the dispatcher's failure classification doesn't
+ * depend on which of the two helpers a given wrapper happened to call.
  *
  * @param fnName the OMC function name, for error annotation
  */
@@ -88,7 +100,7 @@ export async function parseMutationSuccess(
   if (isNull(v)) {
     const { errorString } = await ctx.getErrorString();
     if (errorString.length > 0) {
-      throw new Error(`${fnName}: ${errorString}`);
+      throw new OmcDiagnosticError(`${fnName}: ${errorString}`);
     }
     return true;
   }
@@ -96,7 +108,7 @@ export async function parseMutationSuccess(
   if (!ok) {
     const { errorString } = await ctx.getErrorString();
     if (errorString.length > 0) {
-      throw new Error(`${fnName}: ${errorString}`);
+      throw new OmcDiagnosticError(`${fnName}: ${errorString}`);
     }
   }
   return ok;
