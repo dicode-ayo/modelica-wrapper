@@ -77,17 +77,12 @@ export async function readFailure(
  *     error buffer means success; a non-empty one means failure (and we
  *     surface the diagnostic via a thrown {@link OmcDiagnosticError}).
  *
- * The predicate here is deliberately stricter than {@link failureReason}'s
- * `looksLikeError`: any non-empty buffer counts as failure, rather than only
- * one containing the literal word "Error". `simulate`/`checkModel` are known
- * to leave a warning-only buffer behind on a call that still succeeded, but
- * whether a *mutation* can do the same (leave a warning with nothing else,
- * on a write that actually landed) is unconfirmed against live OMC — see
- * issue #723. Aligning the predicate without probing that case first risks
- * turning a successful mutation into a false failure the other direction.
- * The thrown *type* is aligned regardless: {@link OmcDiagnosticError} rather
- * than a bare `Error`, so the dispatcher's failure classification doesn't
- * depend on which of the two helpers a given wrapper happened to call.
+ * Any non-empty buffer counts as failure, which is stricter than
+ * {@link failureReason}'s {@link looksLikeError}. A warning-only buffer is
+ * known to follow a successful `simulate`/`checkModel`, but no successful
+ * mutation has been seen to leave one, so the stricter rule has no known
+ * false failure. It does report a real failure whose buffer lacks the
+ * literal "Error".
  *
  * @param fnName the OMC function name, for error annotation
  */

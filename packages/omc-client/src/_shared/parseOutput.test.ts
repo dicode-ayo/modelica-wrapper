@@ -1,17 +1,12 @@
 /**
- * `parseMutationSuccess` and `failureReason` (`error-buffer.ts`'s
- * `looksLikeError`) answer "did OMC fail this call?" from the same buffer
- * with different predicates — see issue #723. These pin the two behaviors
- * that make that gap safe today:
- *   - `parseMutationSuccess` throws the same {@link OmcDiagnosticError} type
- *     `failureReason`'s callers do, so the MCP dispatcher's classification
- *     doesn't depend on which helper a wrapper used.
- *   - `parseMutationSuccess` still treats *any* non-empty buffer as failure
- *     (stricter than `looksLikeError`'s literal-"Error" check), which is the
- *     current, deliberately-unaligned behavior for a warning-only buffer.
+ * A mutation OMC answers with nothing, or with `false`, puts its reason in
+ * the error buffer. These pin that `parseMutationSuccess` raises that reason
+ * as an {@link OmcDiagnosticError}, the same type `readFailure` raises for a
+ * read, and that any non-empty buffer counts as failure, a warning-only one
+ * included.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { CallContext } from "./callContext.js";
 import { OmcDiagnosticError } from "../error-buffer.js";
@@ -44,13 +39,20 @@ describe("parseMutationSuccess", () => {
     await expect(
       parseMutationSuccess(ctx, "false", "someMutation"),
     ).rejects.toThrow(OmcDiagnosticError);
+    await expect(
+      parseMutationSuccess(ctx, "false", "someMutation"),
+    ).rejects.toThrow("someMutation: Error: something went wrong");
   });
 
-  it("still reports failure for a warning-only buffer (unaligned with looksLikeError; see #723)", async () => {
-    // `looksLikeError` would call this a success (no literal "Error"), but
-    // parseMutationSuccess's stricter predicate has not been aligned onto it
-    // without live-OMC confirmation that a mutation can leave a warning-only
-    // buffer behind on a write that actually succeeded.
+  it("resolves false, without throwing, when OMC answers false and leaves the buffer empty", async () => {
+    const ctx = stubCtx("");
+
+    await expect(
+      parseMutationSuccess(ctx, "false", "someMutation"),
+    ).resolves.toBe(false);
+  });
+
+  it("reports failure for a warning-only buffer, which looksLikeError would pass", async () => {
     const ctx = stubCtx(
       "Warning: the initial conditions are not fully specified.\n",
     );
@@ -70,9 +72,11 @@ describe("parseMutationSuccess", () => {
 
   it("resolves a genuine bool without consulting the buffer at all", async () => {
     const ctx = stubCtx("Error: should never be read");
+    const getErrorString = vi.spyOn(ctx, "getErrorString");
 
     await expect(
       parseMutationSuccess(ctx, "true", "someMutation"),
     ).resolves.toBe(true);
+    expect(getErrorString).not.toHaveBeenCalled();
   });
 });
