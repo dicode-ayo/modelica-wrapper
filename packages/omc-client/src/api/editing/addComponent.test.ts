@@ -8,6 +8,15 @@
  *     used to crash strict `parse()` with "unexpected trailing input")
  *   - the OMC `call(...)` command is shaped correctly: includes the
  *     placement annotation with the `annotate=` prefix
+ *   - the pre-write screen refuses an unresolvable `componentClass` or a
+ *     duplicate `componentName` without ever calling OMC's `addComponent`
+ *   - the screen resolves `componentClass` within `intoTypeName`'s scope
+ *     before checking it exists, so a relative name that's only valid in
+ *     that scope is allowed through rather than falsely refused
+ *   - Modelica's four predefined types skip the `qualifyPath`/`existClass`
+ *     round-trip entirely, since OMC's symbol table doesn't carry them
+ *   - a screening call that throws yields `{ success: false, diagnostic }`
+ *     instead of propagating
  *
  * Uses a stub `CallContext` rather than spinning a real OMC — this
  * is a unit test for the wrapper's response handling, not an
@@ -26,16 +35,45 @@ interface StubLog {
 }
 
 /**
- * Build a CallContext whose `call()` always returns `response` and
- * `getErrorString()` returns an empty buffer. The `log` captures
- * what the wrapper sent so individual tests can assert the command
- * shape without re-coupling to the implementation.
+ * Build a CallContext whose `call()` routes `qualifyPath`/`existClass`/
+ * `getComponents` screening calls and otherwise returns `response` (the
+ * `addComponent` reply). `classExists`/`existingNames` control those screens'
+ * verdicts; `qualifiedPath` overrides `qualifyPath`'s reply, defaulting to
+ * echoing back the `path` argument unchanged. `log` records every command
+ * sent, for asserting command shape and call order.
  */
-function stubCtx(response: string): { ctx: CallContext; log: StubLog } {
+function stubCtx(
+  response: string,
+  opts?: {
+    classExists?: boolean;
+    existingNames?: string[];
+    qualifiedPath?: string;
+  },
+): { ctx: CallContext; log: StubLog } {
+  const classExists = opts?.classExists ?? true;
+  const existingNames = opts?.existingNames ?? [];
   const log: StubLog = { sent: [], errorStringCalls: 0 };
   const ctx: CallContext = {
     async call(cmd) {
       log.sent.push(cmd);
+      if (cmd.startsWith("qualifyPath(")) {
+        if (opts?.qualifiedPath !== undefined) return opts.qualifiedPath;
+        const inner = cmd.slice("qualifyPath(".length, -1);
+        const path = inner.split(", ").at(1);
+        if (path === undefined) {
+          throw new Error(`stub could not parse qualifyPath command: ${cmd}`);
+        }
+        return path;
+      }
+      if (cmd.startsWith("existClass(")) return String(classExists);
+      if (cmd.startsWith("getComponents(")) {
+        if (existingNames.length === 0) return "{}";
+        const rows = existingNames.map(
+          (n) =>
+            `{"Real","${n}","","public",false,false,false,false,"","","",{}}`,
+        );
+        return `{${rows.join(",")}}`;
+      }
       return response;
     },
     async getErrorString() {
@@ -132,12 +170,15 @@ describe("addComponent: outgoing command shape", () => {
   it("formats the call with default placement when annotation is empty", async () => {
     const { ctx, log } = stubCtx("true");
     await addComponent(ctx, {
-      componentName: "x",
-      componentClass: "Real",
+      componentName: "gain1",
+      componentClass: "Modelica.Blocks.Math.Gain",
       intoTypeName: "MyPkg.MyModel",
     });
     expect(log.sent).toEqual([
-      "addComponent(x, Real, MyPkg.MyModel, annotate=Placement())",
+      "qualifyPath(MyPkg.MyModel, Modelica.Blocks.Math.Gain)",
+      "existClass(Modelica.Blocks.Math.Gain)",
+      "getComponents(MyPkg.MyModel, useQuotes=false)",
+      "addComponent(gain1, Modelica.Blocks.Math.Gain, MyPkg.MyModel, annotate=Placement())",
     ]);
   });
 
@@ -150,9 +191,107 @@ describe("addComponent: outgoing command shape", () => {
       annotation:
         "Placement(visible=true, transformation(origin={10, 20}, extent={{-10, -10}, {10, 10}}))",
     });
-    expect(log.sent).toEqual([
+    expect(log.sent.at(-1)).toEqual(
       "addComponent(gain1, Modelica.Blocks.Math.Gain, MyPkg.MyModel, " +
         "annotate=Placement(visible=true, transformation(origin={10, 20}, extent={{-10, -10}, {10, 10}})))",
+    );
+  });
+});
+
+describe("addComponent: pre-write screen", () => {
+  it("refuses without calling OMC's addComponent when componentClass does not resolve", async () => {
+    const { ctx, log } = stubCtx("true", { classExists: false });
+    const out = await addComponent(ctx, {
+      componentName: "gain1",
+      componentClass: "Not.A.Real.Class",
+      intoTypeName: "MyPkg.MyModel",
+    });
+    expect(out).toEqual({
+      success: false,
+      diagnostic: "Not.A.Real.Class does not resolve to a known class",
+    });
+    expect(log.sent.some((cmd) => cmd.startsWith("addComponent("))).toBe(false);
+  });
+
+  it("refuses without calling OMC's addComponent when componentName already exists in intoTypeName", async () => {
+    const { ctx, log } = stubCtx("true", {
+      classExists: true,
+      existingNames: ["gain1"],
+    });
+    const out = await addComponent(ctx, {
+      componentName: "gain1",
+      componentClass: "Modelica.Blocks.Math.Gain",
+      intoTypeName: "MyPkg.MyModel",
+    });
+    expect(out).toEqual({
+      success: false,
+      diagnostic: "MyPkg.MyModel already declares a component named gain1",
+    });
+    expect(log.sent.some((cmd) => cmd.startsWith("addComponent("))).toBe(false);
+  });
+
+  it("allows a componentClass that only resolves within intoTypeName's scope", async () => {
+    // "Sibling.Gain" isn't a name existClass would recognize directly, but
+    // qualifyPath resolves it in MyPkg.MyModel's scope to something that
+    // does exist — the screen must check the qualified name, not the raw one.
+    const { ctx, log } = stubCtx("true", {
+      classExists: true,
+      qualifiedPath: "MyPkg.Sibling.Gain",
+    });
+    const out = await addComponent(ctx, {
+      componentName: "gain1",
+      componentClass: "Sibling.Gain",
+      intoTypeName: "MyPkg.MyModel",
+    });
+    expect(out).toEqual({ success: true });
+    expect(log.sent).toEqual([
+      "qualifyPath(MyPkg.MyModel, Sibling.Gain)",
+      "existClass(MyPkg.Sibling.Gain)",
+      "getComponents(MyPkg.MyModel, useQuotes=false)",
+      "addComponent(gain1, Sibling.Gain, MyPkg.MyModel, annotate=Placement())",
     ]);
+  });
+
+  it.each(["Real", "Integer", "Boolean", "String"])(
+    "allows predefined type %s through without calling qualifyPath or existClass",
+    async (componentClass) => {
+      const { ctx, log } = stubCtx("true");
+      const out = await addComponent(ctx, {
+        componentName: "x",
+        componentClass,
+        intoTypeName: "MyPkg.MyModel",
+      });
+      expect(out).toEqual({ success: true });
+      expect(log.sent).toEqual([
+        "getComponents(MyPkg.MyModel, useQuotes=false)",
+        `addComponent(x, ${componentClass}, MyPkg.MyModel, annotate=Placement())`,
+      ]);
+    },
+  );
+
+  it("returns a diagnostic instead of throwing when a screening call fails", async () => {
+    const ctx: CallContext = {
+      async call(cmd) {
+        if (cmd.startsWith("qualifyPath(")) return "Real";
+        if (cmd.startsWith("existClass(")) return "true";
+        if (cmd.startsWith("getComponents(")) {
+          throw new Error("class MyPkg.DoesNotExist not found");
+        }
+        return "true";
+      },
+      async getErrorString() {
+        return { errorString: "" };
+      },
+    };
+    const out = await addComponent(ctx, {
+      componentName: "x",
+      componentClass: "Real",
+      intoTypeName: "MyPkg.DoesNotExist",
+    });
+    expect(out).toEqual({
+      success: false,
+      diagnostic:
+        "could not verify the write is safe: class MyPkg.DoesNotExist not found",
+    });
   });
 });

@@ -217,7 +217,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
-| `addComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addComponent.html) | |
+| `addComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addComponent.html) | Real OMC (1.27.0) answers `success: true` for a duplicate component name or an unresolvable `componentClass`, leaving the model silently invalid. The wrapper screens both before the write and reports `success: false` itself (issue #721): `qualifyPath` resolves `componentClass` within `intoTypeName`'s scope (confirmed against live OMC 1.27.1, including for a genuinely relative sibling name), `existClass` checks the resolved name, and `getComponents` catches a duplicate `componentName`; the screen only checks `intoTypeName`'s locally-declared components, not ones inherited via `extends`. Modelica's four predefined types (`Real`/`Integer`/`Boolean`/`String`) skip the `qualifyPath`/`existClass` step entirely — OMC 1.27.1's `existClass` reports `false` for them even though the spec guarantees they always resolve, which without this special case wrongly refused every primitive-typed `addComponent` call (confirmed against live OMC 1.27.1 CI). |
 | `deleteComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteComponent.html) | |
 | `renameComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.renameComponent.html) | |
 | `updateComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateComponent.html) | |

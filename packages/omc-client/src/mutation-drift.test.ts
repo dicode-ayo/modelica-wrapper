@@ -144,6 +144,11 @@ async function commandFor(
   const ctx: CallContext = {
     call: (cmd) => {
       sent.push(cmd);
+      // getComponents needs a parseable list reply, not every other probe's
+      // generic "true"; qualifyPath needs a parseable TypeName (a bare
+      // string), not a bool.
+      if (cmd.startsWith("getComponents(")) return Promise.resolve("{}");
+      if (cmd.startsWith("qualifyPath(")) return Promise.resolve("Probe.Other");
       return Promise.resolve("true");
     },
     getErrorString: () => Promise.resolve({ errorString: "" }),
@@ -155,7 +160,7 @@ async function commandFor(
   await (entry.fn as AnyFn)(ctx, entry.inputSchema.parse(input)).catch(
     () => undefined,
   );
-  const [cmd] = sent;
+  const cmd = sent.at(-1);
   if (cmd === undefined) throw new Error(`${fn} sent no command`);
   return cmd;
 }

@@ -920,8 +920,8 @@ export class DiagramEditController {
       );
       const { success, diagnostic } = result;
       // `success: true` can still mean nothing happened — OMC leaves the
-      // real reason (e.g. a duplicate name) in its error buffer rather than
-      // the return value, same as `diagnostic`'s off-spec-reply case.
+      // real reason in its error buffer rather than the return value, same
+      // as `diagnostic`'s off-spec-reply case.
       if (!success || looksLikeError(errorString)) {
         this.reportError(
           `addComponent ${componentClass} failed: ${diagnostic || errorString || "OMC returned success=false"}`,

@@ -408,6 +408,77 @@ end ${pkg};
       expect(components.map((c) => c.name)).not.toContain("y");
     });
 
+    it("addComponent refuses a duplicate component name instead of reporting success", async () => {
+      const first = await client.addComponent({
+        componentName: "x",
+        componentClass: "Real",
+        intoTypeName: fixture.modelClass,
+      });
+      expect(first.success).toBe(true);
+
+      const duplicate = await client.addComponent({
+        componentName: "x",
+        componentClass: "Real",
+        intoTypeName: fixture.modelClass,
+      });
+      expect(duplicate.success).toBe(false);
+
+      const { components } = await client.getComponents({
+        typeName: fixture.modelClass,
+      });
+      expect(components.filter((c) => c.name === "x")).toHaveLength(1);
+
+      const del = await client.deleteComponent({
+        componentName: "x",
+        typeName: fixture.modelClass,
+      });
+      expect(del.success).toBe(true);
+    });
+
+    it("addComponent refuses a componentClass OMC cannot resolve instead of reporting success", async () => {
+      const add = await client.addComponent({
+        componentName: "x",
+        componentClass: "Does.Not.Exist.AtAll",
+        intoTypeName: fixture.modelClass,
+      });
+      expect(add.success).toBe(false);
+
+      const { components } = await client.getComponents({
+        typeName: fixture.modelClass,
+      });
+      expect(components.some((c) => c.name === "x")).toBe(false);
+    });
+
+    it("addComponent resolves a relative componentClass via qualifyPath's live scope walk", async () => {
+      // Proves the scope-resolution fix against real OMC: "Sub" is not a
+      // name existClass would recognize on its own, but qualifyPath resolves
+      // it within P's scope since it's a sibling of the class being edited.
+      const { randomBytes } = await import("node:crypto");
+      const id = randomBytes(4).toString("hex");
+      const pkg = `MwQualify_${id}`;
+      await client.loadString({
+        data: `package ${pkg}
+  model Sub
+    Real x;
+  end Sub;
+  model M
+  end M;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+      try {
+        const add = await client.addComponent({
+          componentName: "s",
+          componentClass: "Sub",
+          intoTypeName: `${pkg}.M`,
+        });
+        expect(add.success).toBe(true);
+      } finally {
+        await client.deleteClass({ typeName: pkg });
+      }
+    });
+
     it("addConnection / updateConnection / deleteConnection roundtrip", async () => {
       await client.addComponent({
         componentName: "uIn",

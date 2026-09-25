@@ -15,6 +15,9 @@ import {
   parseMutationDiagnostic,
   parseOutput,
 } from "../../_shared/parseOutput.js";
+import { existClass } from "../browsing/existClass.js";
+import { getComponents } from "../contents/getComponents.js";
+import { qualifyPath } from "../contents/qualifyPath.js";
 
 export const AddComponentInputSchema = z.strictObject({
   /** Local instance name to give the new component. */
@@ -57,12 +60,74 @@ export const AddComponentOutputSchema = SuccessWithDiagnosticOutput;
 export type AddComponentOutput = z.infer<typeof AddComponentOutputSchema>;
 
 export const AddComponentDescription =
-  "Insert a new component into a class with an optional Placement annotation.";
+  "Insert a new component into a class with an optional Placement annotation; refuses a duplicate component name or an unresolvable componentClass.";
 
+/**
+ * `getComponents` only reports components declared directly in
+ * `intoTypeName`, not ones inherited via `extends`, so a name that collides
+ * with an inherited component is not caught here — see
+ * `docs/diagram-omc-reference.md`'s change-class-filter note, which
+ * documents the same locally-declared-only behavior for `getElements`.
+ *
+ * `qualifyPath`'s scope walk resolves a name declared within `intoTypeName`
+ * itself (nested or sibling classes), but whether it also resolves a name
+ * reachable only through `intoTypeName`'s `import` statements is unconfirmed
+ * — treat that as a likely, not confirmed, limitation.
+ */
+async function screenReasonToRefuse(
+  ctx: CallContext,
+  input: AddComponentInput,
+): Promise<string | undefined> {
+  try {
+    if (!PREDEFINED_TYPES.has(input.componentClass)) {
+      const { qualifiedPath } = await qualifyPath(ctx, {
+        typeName: input.intoTypeName,
+        path: input.componentClass,
+      });
+      const { exists } = await existClass(ctx, { typeName: qualifiedPath });
+      if (!exists) {
+        return `${input.componentClass} does not resolve to a known class`;
+      }
+    }
+
+    const { components } = await getComponents(ctx, {
+      typeName: input.intoTypeName,
+    });
+    if (components.some((c) => c.name === input.componentName)) {
+      return `${input.intoTypeName} already declares a component named ${input.componentName}`;
+    }
+
+    return undefined;
+  } catch (err) {
+    return `could not verify the write is safe: ${detail(err)}`;
+  }
+}
+
+function detail(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Modelica's four predefined types (spec §4.8) are always valid regardless
+ * of what's loaded, but OMC 1.27.1's `existClass` reports `false` for them
+ * — they aren't in the class symbol table the way a user/library class is.
+ */
+const PREDEFINED_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
+
+/**
+ * OMC answers `success: true` for a duplicate component name or an
+ * unresolvable `componentClass` — the write still corrupts the model, it
+ * just doesn't say so.
+ */
 export async function addComponent(
   ctx: CallContext,
   input: AddComponentInput,
 ): Promise<AddComponentOutput> {
+  const refusal = await screenReasonToRefuse(ctx, input);
+  if (refusal !== undefined) {
+    return { success: false, diagnostic: refusal };
+  }
+
   const annotation = input.annotation ?? "";
   const ann =
     annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;
