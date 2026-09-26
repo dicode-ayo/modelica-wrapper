@@ -72,17 +72,15 @@ export async function readFailure(
  * `removeComponentModifiers` and several others on OMC 1.26+).
  *
  * Strategy:
- *   - If OMC returns a bool, that's the verdict.
- *   - If OMC returns nothing (null/empty), query `getErrorString()`. An empty
- *     error buffer means success; a non-empty one means failure (and we
- *     surface the diagnostic via a thrown {@link OmcDiagnosticError}).
+ *   - `true` is trusted outright, without consulting the error buffer.
+ *   - `false`, or no bool at all (a null/empty response), queries
+ *     `getErrorString()`: an empty buffer means the call still succeeded
+ *     (`false` stands as-is, a null response resolves `true`), a non-empty
+ *     one means failure, surfaced as a thrown {@link OmcDiagnosticError}.
  *
- * Any non-empty buffer counts as failure, which is stricter than
- * {@link failureReason}'s {@link looksLikeError}. A warning-only buffer is
- * known to follow a successful `simulate`/`checkModel`, but no successful
- * mutation has been seen to leave one, so the stricter rule has no known
- * false failure. It does report a real failure whose buffer lacks the
- * literal "Error".
+ * Any non-empty buffer counts as failure, stricter than {@link failureReason}'s
+ * {@link looksLikeError}: no successful mutation has been observed leaving
+ * only a warning behind.
  *
  * @param fnName the OMC function name, for error annotation
  */
@@ -92,21 +90,15 @@ export async function parseMutationSuccess(
   fnName: string,
 ): Promise<boolean> {
   const v: Value = parse(raw);
-  if (isNull(v)) {
-    const { errorString } = await ctx.getErrorString();
-    if (errorString.length > 0) {
-      throw new OmcDiagnosticError(`${fnName}: ${errorString}`);
-    }
-    return true;
+  const ok = isNull(v) ? undefined : expectBool(v);
+  if (ok === true) return true;
+  const { errorString } = await ctx.getErrorString();
+  if (errorString.length > 0) {
+    throw new OmcDiagnosticError(
+      `${fnName}: ${errorString.trim() || NO_REASON}`,
+    );
   }
-  const ok = expectBool(v);
-  if (!ok) {
-    const { errorString } = await ctx.getErrorString();
-    if (errorString.length > 0) {
-      throw new OmcDiagnosticError(`${fnName}: ${errorString}`);
-    }
-  }
-  return ok;
+  return ok ?? true;
 }
 
 /**
