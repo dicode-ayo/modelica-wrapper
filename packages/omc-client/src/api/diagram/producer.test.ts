@@ -260,6 +260,33 @@ const TypeAlias: unknown = {
   restriction: "type",
 };
 
+/** Sub-component class that itself nests a sub-component — not a leaf. */
+const CompositeClass: unknown = {
+  name: "Synth.Composite",
+  restriction: "model",
+  elements: [
+    {
+      $kind: "component",
+      name: "inner",
+      type: ProcessorClass,
+      annotation: placementAnno([
+        [-50, -50],
+        [50, 50],
+      ]),
+    },
+  ],
+  annotation: {
+    Icon: {
+      graphics: [
+        rectShape([
+          [-100, -100],
+          [100, 100],
+        ]),
+      ],
+    },
+  },
+};
+
 /** The host model under test. */
 function makeHostModelInstance(): ModelInstance {
   const hostLiteral: unknown = {
@@ -341,6 +368,15 @@ function makeHostModelInstance(): ModelInstance {
         annotation: placementAnno([
           [50, -50],
           [70, -30],
+        ]),
+      },
+      {
+        $kind: "component",
+        name: "composite",
+        type: CompositeClass,
+        annotation: placementAnno([
+          [-90, 60],
+          [-70, 80],
         ]),
       },
       // Modelica `type` alias — must be filtered from components
@@ -595,6 +631,7 @@ describe("produceDiagramLayout: sub-component instances", () => {
   it("registers each named sub-component", () => {
     const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
     expect(Object.keys(layout.components).sort()).toEqual([
+      "composite",
       "gain1",
       "gain2",
       "proc",
@@ -605,6 +642,19 @@ describe("produceDiagramLayout: sub-component instances", () => {
     const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
     expect(layout.components.tau).toBeUndefined();
     expect(layout.classes["Synth.Units.Time"]).toBeUndefined();
+  });
+});
+
+describe("produceDiagramLayout: openable flag (issue #629)", () => {
+  it("marks a component whose class nests a sub-component as openable", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
+    expect(layout.components.composite?.openable).toBe(true);
+  });
+
+  it("leaves a leaf component's openable flag unset", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
+    expect(layout.components.gain1?.openable).toBeUndefined();
+    expect(layout.components.proc?.openable).toBeUndefined();
   });
 });
 

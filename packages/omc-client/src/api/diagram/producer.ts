@@ -551,7 +551,22 @@ function instanceFromSubComponent(
     }
   }
   if (hiddenPorts.length > 0) instance.hiddenPorts = hiddenPorts;
+  if (hasNestedComponents(el.type)) instance.openable = true;
   return instance;
+}
+
+/**
+ * Whether `typeMi` (a sub-component's type) declares any sub-components of
+ * its own, directly or through its extends chain. Walked from the type's
+ * already-fetched `ModelInstance` — the same one `instanceFromSubComponent`
+ * already holds — so this costs no extra OMC round trip. A class with none
+ * is a leaf: opening it on zoom would show an empty box.
+ */
+function hasNestedComponents(typeMi: ModelInstance): boolean {
+  for (const { klass } of walkExtendsChain(typeMi)) {
+    if (ownSubComponents(klass).length > 0) return true;
+  }
+  return false;
 }
 
 /**

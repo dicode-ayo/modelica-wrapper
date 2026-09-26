@@ -2436,6 +2436,58 @@ function diagramRectInstance(extent: number[][]): ModelInstance {
   } as unknown as ModelInstance;
 }
 
+describe("DiagramEditController: nestedDiagramRequest (issue #629)", () => {
+  it("answers with the requested class's own diagram layout", async () => {
+    const { client, invoked } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "nestedDiagramRequest",
+      requestId: "nested-1",
+      className: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(invoked).toContain("getModelInstance");
+    const result = posted.find((m) => m.type === "nestedDiagramResult");
+    if (result?.type !== "nestedDiagramResult")
+      throw new Error("no result posted");
+    expect(result.requestId).toBe("nested-1");
+    expect(result.className).toBe("Modelica.Blocks.Math.Gain");
+    expect(result.layout?.className).toBe("Modelica.Blocks.Math.Gain");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("reports a failed fetch as `error` rather than throwing", async () => {
+    const { client } = makeEditClient({ getModelInstanceThrows: true });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "nestedDiagramRequest",
+      requestId: "nested-2",
+      className: "Modelica.Blocks.Math.Gain",
+    });
+
+    const result = posted.find((m) => m.type === "nestedDiagramResult");
+    if (result?.type !== "nestedDiagramResult")
+      throw new Error("no result posted");
+    expect(result.requestId).toBe("nested-2");
+    expect(result.layout).toBeUndefined();
+    expect(result.error).toContain("getModelInstance failed");
+  });
+});
+
 describe("DiagramEditController: shape properties", () => {
   it("does not open the shape modal on selection alone", async () => {
     const { client } = makeEditClient();
