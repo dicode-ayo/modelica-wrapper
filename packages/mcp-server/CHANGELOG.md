@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.3](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/modelica-mcp-v0.0.2...@dicode/modelica-mcp-v0.0.3) (2026-09-26)
+
+
+### Bug Fixes
+
+* **mcp-server:** gate importFMU's workdir as a caller-named destination ([#737](https://github.com/dicode-ayo/modelica-wrapper/issues/737)) ([6e280f7](https://github.com/dicode-ayo/modelica-wrapper/commit/6e280f7c54c28710003ff4178b27085369dc67e7))
+* **omc-client,mcp-server:** surface OMC's own error text and cap tool-error length ([#741](https://github.com/dicode-ayo/modelica-wrapper/issues/741)) ([e5ef376](https://github.com/dicode-ayo/modelica-wrapper/commit/e5ef3761a793086cd0888a30b82f8d945ddd2f6c))
+* **omc-client:** refuse addComponent writes that would corrupt the model ([#738](https://github.com/dicode-ayo/modelica-wrapper/issues/738)) ([84b7a42](https://github.com/dicode-ayo/modelica-wrapper/commit/84b7a42b292d5807c9f9ad199c57baa7341de984))
+
+
+### Code Refactoring
+
+* **omc-client,mcp-server:** follow-up fixes from [#743](https://github.com/dicode-ayo/modelica-wrapper/issues/743)'s independent review ([#746](https://github.com/dicode-ayo/modelica-wrapper/issues/746)) ([05f9da0](https://github.com/dicode-ayo/modelica-wrapper/commit/05f9da0f5079d3c44fcbd1013ad0c334bd7549f1))
+
 ## [0.0.2](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/modelica-mcp-v0.0.1...@dicode/modelica-mcp-v0.0.2) (2026-09-20)
 
 

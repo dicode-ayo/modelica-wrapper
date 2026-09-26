@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.8](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.7...modelica-wrapper-v0.0.8) (2026-09-26)
+
+
+### Bug Fixes
+
+* **extension:** dedupe concurrent ResultCache lookups for the same file ([#726](https://github.com/dicode-ayo/modelica-wrapper/issues/726)) ([1b5bee3](https://github.com/dicode-ayo/modelica-wrapper/commit/1b5bee392353922b340b07d5900560aab1a776a4))
+* **omc-client:** refuse addComponent writes that would corrupt the model ([#738](https://github.com/dicode-ayo/modelica-wrapper/issues/738)) ([84b7a42](https://github.com/dicode-ayo/modelica-wrapper/commit/84b7a42b292d5807c9f9ad199c57baa7341de984))
+
+
+### Tests
+
+* **extension:** fix ResultCache-dedup mismatch in the generation-drop test ([#742](https://github.com/dicode-ayo/modelica-wrapper/issues/742)) ([246f4d4](https://github.com/dicode-ayo/modelica-wrapper/commit/246f4d4add02ea214dc945110581c58168aa5916))
+
 ## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.6...modelica-wrapper-v0.0.7) (2026-09-20)
 
 
