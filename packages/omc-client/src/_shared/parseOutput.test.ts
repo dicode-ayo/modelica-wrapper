@@ -99,4 +99,34 @@ describe("parseMutationSuccess", () => {
     ).resolves.toBe(true);
     expect(getErrorString).not.toHaveBeenCalled();
   });
+
+  it("annotates a raw diagnostic reply (no bool at all) with fnName, draining the buffer", async () => {
+    const ctx = stubCtx("some unrelated warning left behind\n");
+    const getErrorString = vi.spyOn(ctx, "getErrorString");
+
+    await expect(
+      parseMutationSuccess(ctx, "Error: class Foo not found", "someMutation"),
+    ).rejects.toMatchObject({
+      message: "someMutation: Error: class Foo not found",
+    });
+    expect(getErrorString).toHaveBeenCalledTimes(1);
+  });
+
+  it("annotates a diagnostic reported as a call value (parses cleanly, still an OMC error)", async () => {
+    const ctx = stubCtx("");
+
+    await expect(
+      parseMutationSuccess(ctx, 'Error("boom")', "someMutation"),
+    ).rejects.toMatchObject({
+      message: "someMutation: Error: boom",
+    });
+  });
+
+  it("leaves a genuine shape mismatch (not an OMC diagnostic) unannotated", async () => {
+    const ctx = stubCtx("");
+
+    await expect(
+      parseMutationSuccess(ctx, "42", "someMutation"),
+    ).rejects.toThrow("expected bool, got int");
+  });
 });
