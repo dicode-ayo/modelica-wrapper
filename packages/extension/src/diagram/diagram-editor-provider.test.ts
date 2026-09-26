@@ -638,6 +638,8 @@ function makeEditClient(opts?: {
   setElementTypeSuccess?: boolean;
   setElementTypeThrows?: boolean;
   getModelInstanceThrows?: boolean;
+  /** Make `existClass` report the class as missing, for the simulate action's probe. */
+  classDoesNotExist?: boolean;
   classRestriction?: string;
   classRestrictionThrows?: boolean;
   isPartial?: boolean;
@@ -785,6 +787,18 @@ function makeEditClient(opts?: {
       ops.push("getElementModifierValue");
       const path = input.modifier.slice(input.modifier.indexOf(".") + 1);
       return Promise.resolve({ value: opts?.modifiers?.[path] ?? "" });
+    }),
+    existClass: vi.fn((_input: { typeName: string }) => {
+      return Promise.resolve({ exists: opts?.classDoesNotExist !== true });
+    }),
+    getSimulationOptions: vi.fn((_input: { typeName: string }) => {
+      return Promise.resolve({
+        startTime: 0,
+        stopTime: 1,
+        tolerance: 1e-6,
+        numberOfIntervals: 500,
+        interval: 0.002,
+      });
     }),
     getErrorString: vi.fn(() => {
       const errorString = pendingErrorBuffer ?? "boom";
@@ -2970,6 +2984,25 @@ describe("DiagramEditController: simulate and check actions", () => {
       kind: "simulate",
     });
     expect(writes).toEqual([]);
+  });
+
+  it("reports an error instead of opening a fabricated simulate window for a class OMC doesn't know", async () => {
+    const { client } = makeEditClient({ classDoesNotExist: true });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "actionSimulate" });
+
+    expect(posted.find((m) => m.type === "parametersOpen")).toBeUndefined();
+    expect(posted.find((m) => m.type === "error")).toMatchObject({
+      type: "error",
+      message: expect.stringContaining("class not found: Pkg.M"),
+    });
   });
 
   it("runs simulate on submit without reflecting to the buffer", async () => {

@@ -490,28 +490,32 @@ type GetSimulationOptionsOutput = Awaited<
   ReturnType<OmcClient["getSimulationOptions"]>
 >;
 
+/** Structural client for {@link fetchSimulationOptions}'s missing-class probe. */
+export interface SimulationOptionsClient {
+  existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
+  getSimulationOptions(input: {
+    typeName: string;
+  }): Promise<GetSimulationOptionsOutput>;
+}
+
 /**
  * Resolve the simulate panel's `experiment`-annotation seed values
  * (`startTime`, `stopTime`, `tolerance`, `numberOfIntervals`, `interval`) via
- * `getSimulationOptions`. Some classes (e.g. a freshly-created model with no
- * experiment annotation) make the wrapper throw; OMC's documented defaults are
- * the sensible fallback there, matching the old `buildSimulateForm` behaviour.
+ * `getSimulationOptions`. OMC answers a class with no `experiment` annotation
+ * and a class it has never loaded with the same fallback-input values, so a
+ * missing class can't be told apart from a bare one on `getSimulationOptions`
+ * alone — it's probed for up front and reported as an error rather than
+ * shown as a fabricated `0 → 1 s` window.
  */
 export async function fetchSimulationOptions(
-  client: OmcClient,
+  client: SimulationOptionsClient,
   className: string,
 ): Promise<GetSimulationOptionsOutput> {
-  try {
-    return await client.getSimulationOptions({ typeName: className });
-  } catch {
-    return {
-      startTime: 0,
-      stopTime: 1,
-      tolerance: 1e-6,
-      numberOfIntervals: 500,
-      interval: 0,
-    };
+  const { exists } = await client.existClass({ typeName: className });
+  if (!exists) {
+    throw new Error(`class not found: ${className}`);
   }
+  return client.getSimulationOptions({ typeName: className });
 }
 
 async function fetchResolvedParameters(
