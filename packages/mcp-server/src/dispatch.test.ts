@@ -348,6 +348,34 @@ describe("dispatchByName's logging and failure notification", () => {
     expect(notified).toEqual([]);
   });
 
+  it("notifies a mutation that raised OMC's reason itself, unlike a read", async () => {
+    // parseMutationSuccess throws the same OmcDiagnosticError type a read's
+    // failure does, so `isReadOnlyFunction(fn)` — not the error type — is
+    // what keeps this one from going quiet the way the read above does.
+    const { log, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient({
+      invoke: async () => {
+        throw new OmcDiagnosticError("deleteClass: Demo.Foo is protected");
+      },
+    });
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    const result = await dispatchByName(deps, "deleteClass", {
+      typeName: "Demo.Foo",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(warnings).toHaveLength(1);
+    expect(notified).toHaveLength(1);
+    expect(notified[0]).toContain("is protected");
+  });
+
   it("logs and notifies a write-gate refusal", async () => {
     const { log, warnings } = makeLog();
     const notified: string[] = [];
