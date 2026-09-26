@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CallContext } from "./callContext.js";
 import { OmcDiagnosticError } from "../error-buffer.js";
 
-import { parseMutationSuccess } from "./parseOutput.js";
+import { NO_REASON, parseMutationSuccess } from "./parseOutput.js";
 
 function stubCtx(errorString: string): CallContext {
   return {
@@ -25,7 +25,7 @@ function stubCtx(errorString: string): CallContext {
 }
 
 describe("parseMutationSuccess", () => {
-  it("throws OmcDiagnosticError, not a bare Error, when OMC answers null with a buffered reason", async () => {
+  it("throws OmcDiagnosticError when OMC answers null with a buffered reason", async () => {
     const ctx = stubCtx("Error: something went wrong\n");
 
     await expect(parseMutationSuccess(ctx, "", "someMutation")).rejects.toThrow(
@@ -42,6 +42,26 @@ describe("parseMutationSuccess", () => {
     await expect(
       parseMutationSuccess(ctx, "false", "someMutation"),
     ).rejects.toThrow("someMutation: Error: something went wrong");
+  });
+
+  it("trims trailing whitespace from OMC's reason, like failureReason does", async () => {
+    const ctx = stubCtx("Error: something went wrong\n\n");
+
+    await expect(
+      parseMutationSuccess(ctx, "false", "someMutation"),
+    ).rejects.toMatchObject({
+      message: "someMutation: Error: something went wrong",
+    });
+  });
+
+  it("falls back to NO_REASON when the buffer is failure-worthy but blank after trimming", async () => {
+    const ctx = stubCtx("   \n");
+
+    await expect(
+      parseMutationSuccess(ctx, "false", "someMutation"),
+    ).rejects.toMatchObject({
+      message: `someMutation: ${NO_REASON}`,
+    });
   });
 
   it("resolves false, without throwing, when OMC answers false and leaves the buffer empty", async () => {
