@@ -336,6 +336,16 @@ export interface ComponentInstance {
    * `inner` component pasted plain no longer satisfies its `outer` lookups.
    */
   prefixes?: Prefixes | undefined;
+  /**
+   * Whether this component's class declares any sub-components of its own
+   * (directly or through its extends chain), computed from the type's
+   * already-fetched `ModelInstance` — no extra OMC call. A leaf component
+   * (a `Resistor`, a `Gain`) has nothing to show inside its box at any zoom
+   * level; only a component with `openable: true` is a candidate for
+   * semantic in-place nesting. Absent (rather than `false`) for a leaf,
+   * matching every other instance flag in this interface.
+   */
+  openable?: boolean | undefined;
 }
 
 export interface ConnectorInstance {

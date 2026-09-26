@@ -123,7 +123,19 @@ export type ExtensionToWebview =
       className: string;
       classDef: ClassDef;
     }
-  | { type: "placementCancel" };
+  | { type: "placementCancel" }
+  | {
+      // Answers a `nestedDiagramRequest`, correlated by `requestId`. `layout`
+      // is `className`'s own diagram, fetched with that class as its own
+      // root (not derived from the already-open class's sub-tree — see
+      // issue #628 for why that would resolve no connections). `error` is
+      // set instead when the fetch failed.
+      type: "nestedDiagramResult";
+      requestId: string;
+      className: string;
+      layout?: DiagramLayout;
+      error?: string;
+    };
 
 /**
  * Every {@link ExtensionToWebview} variant, as a lookup. Its type makes the
@@ -145,6 +157,7 @@ const EXTENSION_MESSAGE_TYPES: Readonly<
   placementStart: true,
   placementPreview: true,
   placementCancel: true,
+  nestedDiagramResult: true,
 };
 
 /**
