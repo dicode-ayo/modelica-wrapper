@@ -92,8 +92,8 @@ importers:
   packages/diagram-ui:
     dependencies:
       '@awesome.me/webawesome':
-        specifier: ^3.12.0
-        version: 3.13.0(@floating-ui/utils@0.2.12)(@types/node@24.13.6)(@types/react@19.3.0)
+        specifier: ^3.14.0
+        version: 3.14.0(@floating-ui/utils@0.2.12)(@types/node@24.13.6)(@types/react@19.3.0)
       '@dicode/diagram-svg':
         specifier: workspace:*
         version: link:../diagram-svg
@@ -451,8 +451,8 @@ importers:
   packages/ui-common:
     dependencies:
       '@awesome.me/webawesome':
-        specifier: ^3.12.0
-        version: 3.13.0(@floating-ui/utils@0.2.12)(@types/node@24.13.6)(@types/react@19.3.0)
+        specifier: ^3.14.0
+        version: 3.14.0(@floating-ui/utils@0.2.12)(@types/node@24.13.6)(@types/react@19.3.0)
       lit:
         specifier: ^3.3.3
         version: 3.3.3
@@ -475,8 +475,8 @@ packages:
     peerDependencies:
       '@types/json-schema': ^7.0.15
 
-  '@awesome.me/webawesome@3.13.0':
-    resolution: {integrity: sha512-egDzZAHCMj31xaYW2AFhwxl5XMj4lAFGxh9Q0WMQjRHdC6sy45JofA8ojGl28LuztDhrjfmz6tP5KG4anpjT8w==}
+  '@awesome.me/webawesome@3.14.0':
+    resolution: {integrity: sha512-m5rTGLK/iOvaVFOkYxRjiBOp8lwrBap5tv+zz1gsqLgAxlfwdvElB7BVGjs+Lf9gDps7bWRPTkG0FwZk40mk2A==}
     engines: {node: '>=14.17.0'}
 
   '@azu/format-text@1.0.2':
@@ -4266,7 +4266,7 @@ snapshots:
       js-yaml: 5.4.2
       undici: 8.10.2
 
-  '@awesome.me/webawesome@3.13.0(@floating-ui/utils@0.2.12)(@types/node@24.13.6)(@types/react@19.3.0)':
+  '@awesome.me/webawesome@3.14.0(@floating-ui/utils@0.2.12)(@types/node@24.13.6)(@types/react@19.3.0)':
     dependencies:
       '@ctrl/tinycolor': 4.1.0
       '@floating-ui/dom': 1.8.0
