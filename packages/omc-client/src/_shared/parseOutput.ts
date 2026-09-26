@@ -82,6 +82,13 @@ export async function readFailure(
  * {@link looksLikeError}: no successful mutation has been observed leaving
  * only a warning behind.
  *
+ * `raw` itself can also carry OMC's diagnostic directly — no bool at all,
+ * the whole response is prose (`parse`'s third bullet). `parse`/`expectBool`
+ * raise that as an unannotated {@link OmcDiagnosticError}, since neither
+ * knows the calling function's name; re-thrown here with the same
+ * `${fnName}: ` prefix as the other two paths, draining whatever the buffer
+ * separately holds first since this path never otherwise reads it.
+ *
  * @param fnName the OMC function name, for error annotation
  */
 export async function parseMutationSuccess(
@@ -89,8 +96,23 @@ export async function parseMutationSuccess(
   raw: string,
   fnName: string,
 ): Promise<boolean> {
-  const v: Value = parse(raw);
-  const ok = isNull(v) ? undefined : expectBool(v);
+  let v: Value;
+  let ok: boolean | undefined;
+  try {
+    v = parse(raw);
+    ok = isNull(v) ? undefined : expectBool(v);
+  } catch (err) {
+    // The mutation may have run and left a diagnostic before this parse
+    // failure surfaced, so drain it — otherwise the next turn on this
+    // client's queue inherits a diagnostic that was never its own.
+    await ctx.getErrorString().catch(() => undefined);
+    if (err instanceof OmcDiagnosticError) {
+      throw new OmcDiagnosticError(`${fnName}: ${err.message}`, {
+        cause: err,
+      });
+    }
+    throw err;
+  }
   if (ok === true) return true;
   const { errorString } = await ctx.getErrorString();
   if (errorString.length > 0) {
