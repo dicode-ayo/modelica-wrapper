@@ -160,8 +160,13 @@ async function invokeDrained(
   return result;
 }
 
-/** Either a refusal, or the guarded call's own result — {@link refuseThenInvoke}'s outcome. */
-type GateOutcome = { refusal: string } | { output: unknown };
+/**
+ * {@link refuseThenInvoke}'s outcome — the `ok` discriminant matches
+ * `write-verdict.ts`'s `WriteVerdict` shape rather than a structural check on
+ * which of two differently-named fields is present.
+ */
+type GateOutcome =
+  { ok: true; output: unknown } | { ok: false; refusal: string };
 
 /**
  * Decides whether `fn` may run, then — inside that same turn, if it may —
@@ -193,8 +198,8 @@ async function refuseThenInvoke(
             gateOn.className,
             gateOn.action,
           ));
-    if (refusal !== undefined) return { refusal };
-    return { output: await invokeDrained(client, fn, input) };
+    if (refusal !== undefined) return { ok: false, refusal };
+    return { ok: true, output: await invokeDrained(client, fn, input) };
   });
 }
 
@@ -260,7 +265,7 @@ export async function dispatchByName(
   try {
     const client = await deps.ensureClient();
     const outcome = await refuseThenInvoke(deps, client, fn, input, gateOn);
-    if ("refusal" in outcome) {
+    if (!outcome.ok) {
       log?.warn(`${action} refused: ${outcome.refusal}`);
       notifyFailure?.(`${fn} refused: ${outcome.refusal}`);
       return errorResult(outcome.refusal);
