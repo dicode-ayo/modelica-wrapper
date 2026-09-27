@@ -21,10 +21,12 @@ import { executedCommands } from "../../test-support/vscode-mock.js";
 import {
   applyDiagramEdits,
   fetchIconLayout,
+  fetchSimulationOptions,
   guardAddComponent,
   libraryIconSvg,
   openDiagram,
   type PartialCheckClient,
+  type SimulationOptionsClient,
 } from "./open-diagram.js";
 
 describe("openDiagram", () => {
@@ -234,6 +236,60 @@ describe("guardAddComponent", () => {
       kind: "guard-failed",
       message: "isPartial Pkg.Unknown failed: OMC socket timeout",
     });
+  });
+});
+
+describe("fetchSimulationOptions", () => {
+  const OPTIONS: Awaited<
+    ReturnType<SimulationOptionsClient["getSimulationOptions"]>
+  > = {
+    startTime: 0,
+    stopTime: 0.25,
+    tolerance: 1e-9,
+    numberOfIntervals: 250,
+    interval: 0.001,
+  };
+
+  it("returns the annotation-derived options for an annotated class", async () => {
+    const client: SimulationOptionsClient = {
+      existClass: async () => ({ exists: true }),
+      getSimulationOptions: async () => OPTIONS,
+    };
+    await expect(
+      fetchSimulationOptions(client, "Pkg.Annotated"),
+    ).resolves.toEqual(OPTIONS);
+  });
+
+  it("returns OMC's fallback options for a bare class with no experiment annotation", async () => {
+    const client: SimulationOptionsClient = {
+      existClass: async () => ({ exists: true }),
+      getSimulationOptions: async () => ({
+        startTime: 0,
+        stopTime: 1,
+        tolerance: 1e-6,
+        numberOfIntervals: 500,
+        interval: 0.002,
+      }),
+    };
+    await expect(fetchSimulationOptions(client, "Pkg.Bare")).resolves.toEqual({
+      startTime: 0,
+      stopTime: 1,
+      tolerance: 1e-6,
+      numberOfIntervals: 500,
+      interval: 0.002,
+    });
+  });
+
+  it("rejects a class OMC has never loaded instead of returning fabricated fallback options", async () => {
+    const getSimulationOptions = vi.fn();
+    const client: SimulationOptionsClient = {
+      existClass: async () => ({ exists: false }),
+      getSimulationOptions,
+    };
+    await expect(
+      fetchSimulationOptions(client, "Pkg.DoesNotExist"),
+    ).rejects.toThrow("class not found: Pkg.DoesNotExist");
+    expect(getSimulationOptions).not.toHaveBeenCalled();
   });
 });
 
