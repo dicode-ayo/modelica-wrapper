@@ -22,10 +22,10 @@ import type {
 } from "@dicode/omc-client";
 import {
   OmcDiagnosticError,
+  errorBufferTransaction,
   isReadOnlyFunction,
   looksLikeError,
   runQueued,
-  withErrorBuffer,
 } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ZodError } from "zod";
@@ -141,21 +141,61 @@ const READS_ERROR_BUFFER = new Set<OmcFnName>([
  * Many OMC mutations answer `success: true` (or nothing distinguishing at
  * all) for a call that did nothing, and stash the actual reason in OMC's own
  * error buffer instead of the return value. A `READS_ERROR_BUFFER` call skips
- * the drain but still takes a turn, see {@link runQueued}.
+ * the clear/drain — it IS the read.
+ *
+ * Takes no turn of its own: {@link refuseThenInvoke} is already inside one
+ * when it calls this, and a second `runQueued`/`withErrorBuffer` call on the
+ * same queue from in there would deadlock against itself.
  */
 async function invokeDrained(
   client: McpToolClient,
   fn: OmcFnName,
   input: unknown,
 ): Promise<unknown> {
-  if (READS_ERROR_BUFFER.has(fn)) {
-    return runQueued(client, () => client.invoke(fn, input));
-  }
-  const { result, errorString } = await withErrorBuffer(client, () =>
+  if (READS_ERROR_BUFFER.has(fn)) return client.invoke(fn, input);
+  const { result, errorString } = await errorBufferTransaction(client, () =>
     client.invoke(fn, input),
   );
   if (looksLikeError(errorString)) throw new OmcDiagnosticError(errorString);
   return result;
+}
+
+/** Either a refusal, or the guarded call's own result — {@link refuseThenInvoke}'s outcome. */
+type GateOutcome = { refusal: string } | { output: unknown };
+
+/**
+ * Decides whether `fn` may run, then — inside that same turn, if it may —
+ * runs it. One `runQueued` call for the whole decide-then-act sequence rather
+ * than the gate's checks and the guarded call as two separate turns: an
+ * interleaved call sharing this queue (an ungated `cd` moving OMC's working
+ * directory out from under a destination gate that already read it as safe,
+ * for one) can otherwise run its own turn — cd included — in the window
+ * between them, invalidating a decision the guarded call still acts on
+ * (issue #730). Every dispatched call takes this same turn, gated or not, so
+ * such a call is itself serialized wholly before or wholly after the guarded
+ * call, never in the middle of it.
+ */
+async function refuseThenInvoke(
+  deps: McpToolDeps,
+  client: McpToolClient,
+  fn: OmcFnName,
+  input: unknown,
+  gateOn: GatedClass | undefined,
+): Promise<GateOutcome> {
+  return runQueued(client, async () => {
+    const refusal =
+      (await refusalFor(deps.verdicts, client, fn, input)) ??
+      (gateOn === undefined
+        ? undefined
+        : await refusalForClass(
+            deps.verdicts,
+            client,
+            gateOn.className,
+            gateOn.action,
+          ));
+    if (refusal !== undefined) return { refusal };
+    return { output: await invokeDrained(client, fn, input) };
+  });
 }
 
 /**
@@ -219,25 +259,15 @@ export async function dispatchByName(
   const action = `${fn} ${loggable(input)}`;
   try {
     const client = await deps.ensureClient();
-    const refusal =
-      (await refusalFor(deps.verdicts, client, fn, input)) ??
-      (gateOn === undefined
-        ? undefined
-        : await refusalForClass(
-            deps.verdicts,
-            client,
-            gateOn.className,
-            gateOn.action,
-          ));
-    if (refusal !== undefined) {
-      log?.warn(`${action} refused: ${refusal}`);
-      notifyFailure?.(`${fn} refused: ${refusal}`);
-      return errorResult(refusal);
+    const outcome = await refuseThenInvoke(deps, client, fn, input, gateOn);
+    if ("refusal" in outcome) {
+      log?.warn(`${action} refused: ${outcome.refusal}`);
+      notifyFailure?.(`${fn} refused: ${outcome.refusal}`);
+      return errorResult(outcome.refusal);
     }
 
-    const output = await invokeDrained(client, fn, input);
-    log?.info(`${action} -> ${loggable(output)}`);
-    return textResult(JSON.stringify(output));
+    log?.info(`${action} -> ${loggable(outcome.output)}`);
+    return textResult(JSON.stringify(outcome.output));
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);

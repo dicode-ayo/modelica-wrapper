@@ -66,15 +66,50 @@ function turnQueue(client: ErrorBufferClient): SerialQueue {
 }
 
 /**
- * Runs `run` with `client`'s error buffer cleared immediately before and
- * drained immediately after, the whole transaction serialized against any
- * other call sharing `client` through this same function. Returns `run`'s
- * result alongside whatever text was left in the buffer afterward — `""`
- * when OMC reported nothing.
+ * The clear-run-read transaction {@link withErrorBuffer} performs, without
+ * taking a turn of its own. Split out so a caller that must run something
+ * else turn-serialized immediately around this transaction — e.g.
+ * dispatch.ts's write-gate check, which has to decide from the same OMC
+ * state the guarded call itself runs against — can compose the two inside
+ * one {@link runQueued} call rather than take two separate turns with a
+ * window between them for an unrelated call to land in (issue #730). Calling
+ * this without already holding a turn reintroduces that same race; go
+ * through {@link withErrorBuffer} instead unless composing turn-serialized
+ * steps.
  *
  * The pre-call clear matters as much as the post-call read: without it, a
  * message an unrelated earlier call left behind could be misread as this
- * call's own. Callers that need to read the buffer on purpose (an explicit
+ * call's own.
+ */
+export async function errorBufferTransaction<T>(
+  client: ErrorBufferClient,
+  run: () => Promise<T>,
+): Promise<{ result: T; errorString: string }> {
+  await client.getErrorString();
+  let result: T;
+  try {
+    result = await run();
+  } catch (error) {
+    // OMC can have executed the mutation and left a diagnostic before the
+    // call itself rejected, so still drain it — otherwise the next turn on
+    // this queue (a runQueued read especially, which skips its own clear)
+    // inherits a diagnostic that was never its own. The original rejection
+    // is what the caller needs to see, not a failure from this cleanup.
+    await client.getErrorString().catch(() => undefined);
+    throw error;
+  }
+  const { errorString } = await client.getErrorString();
+  return { result, errorString };
+}
+
+/**
+ * Runs `run` with `client`'s error buffer cleared immediately before and
+ * drained immediately after, the whole transaction serialized against any
+ * other call sharing `client` through this same module. Returns `run`'s
+ * result alongside whatever text was left in the buffer afterward — `""`
+ * when OMC reported nothing.
+ *
+ * Callers that need to read the buffer on purpose (an explicit
  * `getErrorString` or `getMessagesStringInternal`) must not route through
  * here — doing so would drain the very thing they're asking for; use
  * {@link runQueued} instead.
@@ -83,23 +118,7 @@ export function withErrorBuffer<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<{ result: T; errorString: string }> {
-  return turnQueue(client).run(async () => {
-    await client.getErrorString();
-    let result: T;
-    try {
-      result = await run();
-    } catch (error) {
-      // OMC can have executed the mutation and left a diagnostic before the
-      // call itself rejected, so still drain it — otherwise the next turn on
-      // this queue (a runQueued read especially, which skips its own clear)
-      // inherits a diagnostic that was never its own. The original rejection
-      // is what the caller needs to see, not a failure from this cleanup.
-      await client.getErrorString().catch(() => undefined);
-      throw error;
-    }
-    const { errorString } = await client.getErrorString();
-    return { result, errorString };
-  });
+  return turnQueue(client).run(() => errorBufferTransaction(client, run));
 }
 
 /**

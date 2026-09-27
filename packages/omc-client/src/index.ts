@@ -82,6 +82,7 @@ export { pathExists } from "./fs-util.js";
 export {
   OmcDiagnosticError,
   looksLikeError,
+  errorBufferTransaction,
   runQueued,
   withErrorBuffer,
   type ErrorBufferClient,

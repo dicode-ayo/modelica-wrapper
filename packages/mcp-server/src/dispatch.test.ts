@@ -5,8 +5,12 @@
  * `mcp-server.test.ts` drives doesn't give a test.
  */
 
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+
 import { OmcDiagnosticError, REGISTRY } from "@dicode/omc-client";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { z } from "zod";
 
 import {
@@ -428,5 +432,98 @@ describe("dispatchByName's logging and failure notification", () => {
     });
 
     expect(result.isError).toBeFalsy();
+  });
+});
+
+describe("dispatchByName: destination gate origin-check atomicity (issue #730)", () => {
+  // Real directories: `isUnderSystemLibraryRoot` walks them with `fs.realpath`,
+  // and that real I/O is what makes this test deterministic rather than
+  // timing-dependent — see the comment on `cd` below.
+  let workspaceDir: string;
+  let libraryRoot: string;
+
+  beforeEach(async () => {
+    workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "mw-dispatch-ws-"));
+    libraryRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "mw-dispatch-lib-"));
+  });
+
+  afterEach(async () => {
+    await fsp.rm(workspaceDir, { recursive: true, force: true });
+    await fsp.rm(libraryRoot, { recursive: true, force: true });
+  });
+
+  it("does not let an interleaved cd move OMC's cwd between the destination gate's check and the write it guards", async () => {
+    let cwd = workspaceDir;
+    const writes: string[] = [];
+
+    let releaseGateRead: () => void = () => undefined;
+    const gateReadPaused = new Promise<void>((resolve) => {
+      releaseGateRead = resolve;
+    });
+    let signalGateReading: () => void = () => undefined;
+    const gateReading = new Promise<void>((resolve) => {
+      signalGateReading = resolve;
+    });
+
+    const client = baseClient({
+      getModelicaPath: async () => ({ modelicaPath: libraryRoot }),
+      cd: async ({ newWorkingDirectory }) => {
+        if (newWorkingDirectory !== "") {
+          cwd = newWorkingDirectory;
+          return { workingDirectory: cwd };
+        }
+        // The gate's own origin read: answer with the cwd that was actually
+        // current when it was asked, then pause before returning to open the
+        // exact window an interleaved `cd` (issue #730) would use — real
+        // `fsp.realpath` calls inside `isUnderSystemLibraryRoot` open the
+        // same kind of window on every run even without this pause, but not
+        // on a schedule a test can pin.
+        const answeredWith = cwd;
+        signalGateReading();
+        await gateReadPaused;
+        return { workingDirectory: answeredWith };
+      },
+      invoke: async (fn, input) => {
+        if (fn === "cd") {
+          const { newWorkingDirectory } = input as {
+            newWorkingDirectory: string;
+          };
+          cwd = newWorkingDirectory;
+          return { workingDirectory: cwd };
+        }
+        if (fn === "filterSimulationResults") {
+          const { outFile } = input as { outFile: string };
+          // OMC resolves a relative destination against its real, current
+          // working directory at the moment it performs the write — not
+          // whatever the gate observed when it decided the call was safe.
+          writes.push(path.resolve(cwd, outFile));
+          return { fileName: outFile };
+        }
+        return { ok: true };
+      },
+    });
+    const deps: McpToolDeps = { ensureClient: async () => client, verdicts };
+
+    const guarded = dispatchByName(deps, "filterSimulationResults", {
+      inFile: "/workspace/res.mat",
+      outFile: "filtered.mat",
+      vars: ["x"],
+    });
+    await gateReading;
+    // An ungated `cd` dispatch sharing the same client, fired while the
+    // guarded call's own origin check is paused mid-turn — not awaited here:
+    // under the fix it cannot even start until the guarded call's whole turn
+    // (check + write) finishes, so awaiting it before releasing the gate
+    // would deadlock the test against the very property it's proving.
+    const attackerCd = dispatchByName(deps, "cd", {
+      newWorkingDirectory: libraryRoot,
+    });
+    releaseGateRead();
+    const [guardedResult] = await Promise.all([guarded, attackerCd]);
+
+    expect(guardedResult.isError).toBeFalsy();
+    // The write must land where the gate actually checked it (workspaceDir),
+    // never under the library root the interleaved `cd` moved OMC to.
+    expect(writes).toEqual([path.join(workspaceDir, "filtered.mat")]);
   });
 });
