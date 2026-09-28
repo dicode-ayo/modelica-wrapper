@@ -129,6 +129,13 @@ export interface DestinationClient {
  * `setSourceFile` replaces once it reaches disk. Neither is a file anything is
  * stored in, so neither has anything for a binding to evict.
  *
+ * `as: "simflags"` / `"cflags"` mark a flags string OMC forwards to the
+ * simulation executable or the C compiler. The string is not itself a path, but
+ * it can carry one: the flags in {@link SIMFLAG_DESTINATIONS} and
+ * {@link CFLAG_DESTINATIONS} name a file or directory the run writes to. Each
+ * such value is judged like an `"destination"` argument; every other flag is
+ * left alone.
+ *
  * A list judges its arguments left to right over one set of settled targets, so
  * the cheapest verdict is reached first and a target two arguments share is
  * asked about once.
@@ -162,7 +169,7 @@ type Argument<Field extends string> =
     }
   | {
       readonly field: Field;
-      readonly as: "destination";
+      readonly as: "destination" | "simflags" | "cflags";
     };
 
 /**
@@ -230,6 +237,16 @@ const declaresInFiles = <F extends string>(
 const writesTo = <F extends string>(field: F): Argument<F> => ({
   field,
   as: "destination",
+});
+
+const writesViaSimflags = <F extends string>(field: F): Argument<F> => ({
+  field,
+  as: "simflags",
+});
+
+const writesViaCflags = <F extends string>(field: F): Argument<F> => ({
+  field,
+  as: "cflags",
 });
 
 /**
@@ -335,6 +352,10 @@ const DESTINATION_ARGUMENTS = {
   diffSimulationResults: writesTo(
     "diffPrefix",
   ) satisfies GateArgument<"diffSimulationResults">,
+  simulate: [
+    writesViaSimflags("simflags"),
+    writesViaCflags("cflags"),
+  ] satisfies GateArgument<"simulate">,
 };
 
 /**
@@ -361,9 +382,11 @@ const DESTINATION_ARGUMENTS = {
  * wrapper input is `TypeNameInput` alone and exposes no destination argument
  * at all.
  *
- * `simulate`, `buildModel` and `translateModel` are also `"none"` here: their
- * `simflags`/`cflags` arguments can carry a flag-embedded destination (e.g.
- * `-r=<path>`) that this table does not evaluate (issue #728).
+ * `simulate` is `"destination"`: its `simflags` and `cflags` can embed a
+ * destination (`-r=<path>`, `-o <path>`) that `flagDestinations` extracts and
+ * `refusalForDestination` judges. `buildModel` and `translateModel` are
+ * `"none"` — their wrapper input is `TypeNameInput` alone, so no flags string
+ * reaches them.
  */
 export const READ_ONLY_GATE = {
   quit: "none",
@@ -506,7 +529,7 @@ export const READ_ONLY_GATE = {
   checkModel: "none",
   translateModel: "none",
   buildModel: "none",
-  simulate: "none",
+  simulate: "destination",
   buildModelFMU: "none",
   translateModelXML: "none",
   getSimulationOptions: "none",
@@ -676,6 +699,15 @@ async function refusalForArgument(
       if (raw !== undefined && typeof raw !== "string") return undefined;
       return refusalForDestination(client, raw ?? "");
     }
+    case "simflags":
+    case "cflags": {
+      if (typeof raw !== "string") return undefined;
+      for (const destination of flagDestinations(raw, argument.as)) {
+        const refusal = await refusalForDestination(client, destination);
+        if (refusal !== undefined) return refusal;
+      }
+      return undefined;
+    }
     default: {
       const unreachable: never = argument;
       throw new Error(
@@ -683,6 +715,52 @@ async function refusalForArgument(
       );
     }
   }
+}
+
+/**
+ * Simulation-executable flags whose value is a file or directory the run
+ * writes: the result file, the result directory, and the CSV step file.
+ * Flags that only read (`-inputPath`, `-iif`) are not listed.
+ */
+const SIMFLAG_DESTINATIONS = new Set(["r", "outputPath", "csvOstep"]);
+
+/**
+ * C-compiler flags whose value is a file the compiler writes: the output
+ * (`-o`) and the dependency file (`-MF`). Linker pass-through flags such as
+ * `-Wl,-Map=` are not parsed.
+ */
+const CFLAG_DESTINATIONS = new Set(["o", "MF"]);
+
+/**
+ * The destination paths a flags string names, in order. `-r=<path>` and
+ * `-r <path>` both count for a simulation flag; `-o<path>` and `-o <path>`
+ * both count for a compiler flag, because each tool accepts both spellings. A
+ * flag with no value contributes nothing.
+ */
+function flagDestinations(
+  flags: string,
+  kind: "simflags" | "cflags",
+): string[] {
+  const tokens = flags.split(/\s+/).filter((token) => token !== "");
+  const destinations: string[] = [];
+  for (const [index, token] of tokens.entries()) {
+    const next = tokens[index + 1];
+    if (kind === "simflags") {
+      const match = /^--?([A-Za-z]+)(?:=(.*))?$/.exec(token);
+      const [, name, value] = match ?? [];
+      if (name === undefined || !SIMFLAG_DESTINATIONS.has(name)) continue;
+      const destination = value ?? (next?.startsWith("-") ? undefined : next);
+      if (destination !== undefined) destinations.push(destination);
+    } else {
+      const match = /^-(o|MF)(.*)$/.exec(token);
+      const [, name, attached] = match ?? [];
+      if (name === undefined || !CFLAG_DESTINATIONS.has(name)) continue;
+      const destination =
+        attached === "" ? (next?.startsWith("-") ? undefined : next) : attached;
+      if (destination !== undefined) destinations.push(destination);
+    }
+  }
+  return destinations;
 }
 
 /**
