@@ -828,9 +828,12 @@ async function refusalForDeclaredClasses(
  * `system-library.ts`'s `isUnder` (a different check, for a class's own
  * already-existing source file) does not get this same treatment here.
  *
- * The `cd()` read here and the call it guards are two separate turns on
- * `OmcClient`'s queue, not one atomic unit, so an interleaved `cd` to a real
- * path can move OMC's cwd between them (issue #730).
+ * This read and the call it guards are not atomic by anything in this
+ * function alone — `dispatch.ts`'s `refuseThenInvoke` is what makes them so,
+ * running the whole gate check and the guarded call inside one turn on
+ * `OmcClient`'s per-instance queue, so an interleaved `cd` to a real path
+ * cannot move OMC's cwd between them (issue #730). A caller that reaches this
+ * function outside that turn reopens the window.
  */
 async function isUnderSystemLibraryRoot(
   client: DestinationClient,
