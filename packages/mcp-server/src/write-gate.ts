@@ -696,7 +696,7 @@ async function refusalForArgument(
     case "simflags":
     case "cflags": {
       if (typeof raw !== "string") return undefined;
-      if (argument.as === "cflags" && /(?:^|\s)@/.test(raw)) {
+      if (argument.as === "cflags" && /(?:^|[\s,])@/.test(raw)) {
         return "Cannot tell where this would write — cflags carries a response file (@file), whose contents the write gate cannot see.";
       }
       for (const destination of flagDestinations(raw, argument.as)) {

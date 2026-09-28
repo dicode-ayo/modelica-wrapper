@@ -1205,6 +1205,12 @@ describe("a simulate call whose flags name a destination", () => {
     );
   });
 
+  it("refuses a response file forwarded through a linker pass-through", async () => {
+    expect(await refuse({ cflags: "-Wl,@/workspace/flags.rsp" })).toMatch(
+      /response file/,
+    );
+  });
+
   it("judges every destination, not just the first", async () => {
     expect(
       await refuse({
