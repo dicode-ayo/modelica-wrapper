@@ -1140,6 +1140,8 @@ describe("a simulate call whose flags name a destination", () => {
     [`-lv=LOG_STATS -r ${FLAG_ROOT}/res.mat`, `${FLAG_ROOT}/res.mat`],
     [`--outputPath=${FLAG_ROOT}/out`, `${FLAG_ROOT}/out`],
     [`-csvOstep=${FLAG_ROOT}/steps.csv`, `${FLAG_ROOT}/steps.csv`],
+    [`-outputPath ${FLAG_ROOT}/out`, `${FLAG_ROOT}/out`],
+    [`--r ${FLAG_ROOT}/res.mat`, `${FLAG_ROOT}/res.mat`],
   ])(
     "refuses simflags %s under a MODELICAPATH root",
     async (simflags, path) => {
@@ -1153,6 +1155,14 @@ describe("a simulate call whose flags name a destination", () => {
     [`-o ${FLAG_ROOT}/a.out`, `${FLAG_ROOT}/a.out`],
     [`-o${FLAG_ROOT}/a.out`, `${FLAG_ROOT}/a.out`],
     [`-O2 -MF ${FLAG_ROOT}/a.d`, `${FLAG_ROOT}/a.d`],
+    [`-MF${FLAG_ROOT}/a.d`, `${FLAG_ROOT}/a.d`],
+    [`--output=${FLAG_ROOT}/a.out`, `${FLAG_ROOT}/a.out`],
+    [`-Wl,-Map=${FLAG_ROOT}/a.map`, `${FLAG_ROOT}/a.map`],
+    [`-Wl,-o,${FLAG_ROOT}/a.out`, `${FLAG_ROOT}/a.out`],
+    [`-Wp,-MD,${FLAG_ROOT}/a.d`, `${FLAG_ROOT}/a.d`],
+    [`-Xlinker -Map=${FLAG_ROOT}/a.map`, `${FLAG_ROOT}/a.map`],
+    [`-save-temps=${FLAG_ROOT}/t`, `${FLAG_ROOT}/t`],
+    [`-MJ ${FLAG_ROOT}/a.json`, `${FLAG_ROOT}/a.json`],
   ])("refuses cflags %s under a MODELICAPATH root", async (cflags, path) => {
     expect(await refuse({ cflags })).toBe(
       `Cannot write to ${path} — it is inside a read-only system library directory.`,
@@ -1184,6 +1194,27 @@ describe("a simulate call whose flags name a destination", () => {
         typeName: "M",
         simflags: "-lv=LOG_STATS -r -inputPath=/lib/in.csv -override=x[1]=2",
         cflags: "-O2 -fomit-frame-pointer -I/lib/include",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("judges every destination, not just the first", async () => {
+    expect(
+      await refuse({
+        simflags: `-r=/workspace/a.mat -csvOstep=${FLAG_ROOT}/s.csv`,
+      }),
+    ).toBe(
+      `Cannot write to ${FLAG_ROOT}/s.csv — it is inside a read-only system library directory.`,
+    );
+  });
+
+  it("does not mistake an -o-prefixed option or an empty value for a destination", async () => {
+    const inLibrary = withModelicaPath(FLAG_ROOT, FLAG_ROOT);
+    expect(
+      await refusalFor(verdicts(), inLibrary, "simulate", {
+        typeName: "M",
+        simflags: "-r=",
+        cflags: "-openmp -o",
       }),
     ).toBeUndefined();
   });

@@ -132,7 +132,7 @@ export interface DestinationClient {
  * `as: "simflags"` / `"cflags"` mark a flags string OMC forwards to the
  * simulation executable or the C compiler. The string is not itself a path, but
  * it can carry one: the flags in {@link SIMFLAG_DESTINATIONS} and
- * {@link CFLAG_DESTINATIONS} name a file or directory the run writes to. Each
+ * {@link CFLAG_NEXT_WORD} name a file or directory the run writes to. Each
  * such value is judged like an `"destination"` argument; every other flag is
  * left alone.
  *
@@ -725,17 +725,57 @@ async function refusalForArgument(
 const SIMFLAG_DESTINATIONS = new Set(["r", "outputPath", "csvOstep"]);
 
 /**
- * C-compiler flags whose value is a file the compiler writes: the output
- * (`-o`) and the dependency file (`-MF`). Linker pass-through flags such as
- * `-Wl,-Map=` are not parsed.
+ * C-compiler and linker options that take the file they write as the next
+ * word. `-MD`/`-MMD` only take one through a `-Wp,` pass-through.
  */
-const CFLAG_DESTINATIONS = new Set(["o", "MF"]);
+const CFLAG_NEXT_WORD = new Set([
+  "-o",
+  "-MF",
+  "-MJ",
+  "-aux-info",
+  "-dumpdir",
+  "-Map",
+]);
+const PREPROCESSOR_NEXT_WORD = new Set([...CFLAG_NEXT_WORD, "-MD", "-MMD"]);
 
 /**
- * The destination paths a flags string names, in order. `-r=<path>` and
- * `-r <path>` both count for a simulation flag; `-o<path>` and `-o <path>`
- * both count for a compiler flag, because each tool accepts both spellings. A
- * flag with no value contributes nothing.
+ * Compiler options that carry the file they write in the same word. `-o` and
+ * `-MF` only count when the value reads as a path, so `-openmp`-style options
+ * are not mistaken for one.
+ */
+const CFLAG_ATTACHED =
+  /^(?:-(?:o|MF|MJ)(?=[/.~])|--output=|-save-temps=|-dumpdir=|-Map=)(.+)$/;
+
+/**
+ * A flags string's words, with the `-Wl,` and `-Wp,` pass-throughs unpacked
+ * into the options they forward. The flag charset admits `,` and `=`, so a
+ * linker map or dependency file can be named that way.
+ */
+function cflagWords(
+  tokens: string[],
+): { word: string; nextWords: Set<string> }[] {
+  return tokens.flatMap((token) => {
+    if (token.startsWith("-Wl,") || token.startsWith("-Wp,")) {
+      const nextWords = token.startsWith("-Wl,")
+        ? CFLAG_NEXT_WORD
+        : PREPROCESSOR_NEXT_WORD;
+      return token
+        .slice(4)
+        .split(",")
+        .map((word) => ({ word, nextWords }));
+    }
+    return [{ word: token, nextWords: CFLAG_NEXT_WORD }];
+  });
+}
+
+/**
+ * The destination paths a flags string names, in order. A simulation flag
+ * counts as `-r=<path>` or `-r <path>`; a compiler option as its attached or
+ * next-word spelling, because each tool accepts both. A flag with no value, or
+ * an empty one, contributes nothing.
+ *
+ * The compiler list is the file-writing options this gate knows of, not every
+ * spelling gcc accepts.
  */
 function flagDestinations(
   flags: string,
@@ -743,21 +783,26 @@ function flagDestinations(
 ): string[] {
   const tokens = flags.split(/\s+/).filter((token) => token !== "");
   const destinations: string[] = [];
-  for (const [index, token] of tokens.entries()) {
-    const next = tokens[index + 1];
-    if (kind === "simflags") {
-      const match = /^--?([A-Za-z]+)(?:=(.*))?$/.exec(token);
-      const [, name, value] = match ?? [];
+  const push = (value: string | undefined) => {
+    if (value !== undefined && value !== "") destinations.push(value);
+  };
+  if (kind === "simflags") {
+    for (const [index, token] of tokens.entries()) {
+      const [, name, value] = /^--?([A-Za-z]+)(?:=(.*))?$/.exec(token) ?? [];
       if (name === undefined || !SIMFLAG_DESTINATIONS.has(name)) continue;
-      const destination = value ?? (next?.startsWith("-") ? undefined : next);
-      if (destination !== undefined) destinations.push(destination);
-    } else {
-      const match = /^-(o|MF)(.*)$/.exec(token);
-      const [, name, attached] = match ?? [];
-      if (name === undefined || !CFLAG_DESTINATIONS.has(name)) continue;
-      const destination =
-        attached === "" ? (next?.startsWith("-") ? undefined : next) : attached;
-      if (destination !== undefined) destinations.push(destination);
+      const next = tokens[index + 1];
+      push(value ?? (next?.startsWith("-") ? undefined : next));
+    }
+    return destinations;
+  }
+  const words = cflagWords(tokens);
+  for (const [index, { word, nextWords }] of words.entries()) {
+    const [, attached] = CFLAG_ATTACHED.exec(word) ?? [];
+    if (attached !== undefined) {
+      push(attached);
+    } else if (nextWords.has(word)) {
+      const next = words[index + 1]?.word;
+      push(next?.startsWith("-") ? undefined : next);
     }
   }
   return destinations;
