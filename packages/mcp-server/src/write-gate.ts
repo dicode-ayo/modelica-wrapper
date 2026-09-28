@@ -133,7 +133,7 @@ export interface DestinationClient {
  * simulation executable or the C compiler. The string is not itself a path, but
  * it can carry one: the flags in {@link SIMFLAG_DESTINATIONS} and
  * {@link CFLAG_NEXT_WORD} name a file or directory the run writes to. Each
- * such value is judged like an `"destination"` argument; every other flag is
+ * such value is judged like a `"destination"` argument; every other flag is
  * left alone.
  *
  * A list judges its arguments left to right over one set of settled targets, so
@@ -239,15 +239,9 @@ const writesTo = <F extends string>(field: F): Argument<F> => ({
   as: "destination",
 });
 
-const writesViaSimflags = <F extends string>(field: F): Argument<F> => ({
-  field,
-  as: "simflags",
-});
-
-const writesViaCflags = <F extends string>(field: F): Argument<F> => ({
-  field,
-  as: "cflags",
-});
+const writesViaFlags = <F extends "simflags" | "cflags">(
+  field: F,
+): Argument<F> => ({ field, as: field });
 
 /**
  * `copyClass`'s `within` and `newModel`'s `withinPath` are empty for a
@@ -353,8 +347,8 @@ const DESTINATION_ARGUMENTS = {
     "diffPrefix",
   ) satisfies GateArgument<"diffSimulationResults">,
   simulate: [
-    writesViaSimflags("simflags"),
-    writesViaCflags("cflags"),
+    writesViaFlags("simflags"),
+    writesViaFlags("cflags"),
   ] satisfies GateArgument<"simulate">,
 };
 
@@ -702,6 +696,9 @@ async function refusalForArgument(
     case "simflags":
     case "cflags": {
       if (typeof raw !== "string") return undefined;
+      if (argument.as === "cflags" && /(?:^|\s)@/.test(raw)) {
+        return "Cannot tell where this would write — cflags carries a response file (@file), whose contents the write gate cannot see.";
+      }
       for (const destination of flagDestinations(raw, argument.as)) {
         const refusal = await refusalForDestination(client, destination);
         if (refusal !== undefined) return refusal;
@@ -744,7 +741,7 @@ const PREPROCESSOR_NEXT_WORD = new Set([...CFLAG_NEXT_WORD, "-MD", "-MMD"]);
  * are not mistaken for one.
  */
 const CFLAG_ATTACHED =
-  /^(?:-(?:o|MF|MJ)(?=[/.~])|--output=|-save-temps=|-dumpdir=|-Map=)(.+)$/;
+  /^(?:-(?:o|MF|MJ)(?=[/.~])|--output=|-save-temps=|-dumpdir=|-Map=|-fprofile-generate=|-fprofile-dir=)(.+)$/;
 
 /**
  * A flags string's words, with the `-Wl,` and `-Wp,` pass-throughs unpacked

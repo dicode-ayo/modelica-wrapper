@@ -1163,6 +1163,7 @@ describe("a simulate call whose flags name a destination", () => {
     [`-Xlinker -Map=${FLAG_ROOT}/a.map`, `${FLAG_ROOT}/a.map`],
     [`-save-temps=${FLAG_ROOT}/t`, `${FLAG_ROOT}/t`],
     [`-MJ ${FLAG_ROOT}/a.json`, `${FLAG_ROOT}/a.json`],
+    [`-fprofile-generate=${FLAG_ROOT}/p`, `${FLAG_ROOT}/p`],
   ])("refuses cflags %s under a MODELICAPATH root", async (cflags, path) => {
     expect(await refuse({ cflags })).toBe(
       `Cannot write to ${path} — it is inside a read-only system library directory.`,
@@ -1196,6 +1197,12 @@ describe("a simulate call whose flags name a destination", () => {
         cflags: "-O2 -fomit-frame-pointer -I/lib/include",
       }),
     ).toBeUndefined();
+  });
+
+  it("refuses a cflags response file, whose contents the gate cannot see", async () => {
+    expect(await refuse({ cflags: "-O2 @/workspace/flags.rsp" })).toBe(
+      "Cannot tell where this would write — cflags carries a response file (@file), whose contents the write gate cannot see.",
+    );
   });
 
   it("judges every destination, not just the first", async () => {
