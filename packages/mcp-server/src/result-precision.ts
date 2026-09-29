@@ -1,10 +1,10 @@
 /**
  * Significant digits kept on a simulation result's numbers. Six reads a
- * waveform against theory and stays inside the 1e-6 solver tolerance
- * `simulate` defaults to; everything past it is IEEE-754 repr noise the model
- * pays tokens for.
+ * waveform against theory, and the digits past it sit below the 1e-6 solver
+ * tolerance `simulate` defaults to, so they cost the model tokens for values
+ * the solver does not vouch for.
  */
-export const RESULT_SIGNIFICANT_DIGITS = 6;
+const RESULT_SIGNIFICANT_DIGITS = 6;
 
 /**
  * Significant digits rather than decimal places: a decimal-place round would
@@ -19,16 +19,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * `output` with every number in a `readSimulationResult` matrix rounded. Any
- * other shape is returned untouched, so a surprise in OMC's answer reaches the
- * model as it is rather than as a rounding artifact.
+ * `output` with every number rounded except the `time` row: at 6 digits the
+ * timestamps of a long run collapse into duplicates, and the axis is what
+ * every other row is indexed by. `variables` names the rows in order. Any
+ * other shape is returned untouched.
  */
-export function roundResultOutput(output: unknown): unknown {
+export function roundResultOutput(
+  output: unknown,
+  variables: readonly unknown[],
+): unknown {
   if (!isRecord(output) || !Array.isArray(output["result"])) return output;
   return {
     ...output,
-    result: output["result"].map((row: unknown) =>
-      Array.isArray(row)
+    result: output["result"].map((row: unknown, i: number) =>
+      Array.isArray(row) && variables[i] !== "time"
         ? row.map((v: unknown) =>
             typeof v === "number" ? roundSignificant(v) : v,
           )

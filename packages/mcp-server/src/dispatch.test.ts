@@ -537,13 +537,18 @@ describe("dispatchByName: simulation result precision (issue #719)", () => {
   it("sends readSimulationResult's numbers without float-repr tail digits", async () => {
     const result = await dispatchByName(
       deps(async () => ({
-        result: [[0.1 + 0.2, 0.00030000000000000003, 1.23456789e-9]],
+        result: [
+          [1234567.1, 1234567.2],
+          [0.1 + 0.2, 0.00030000000000000003, 1.23456789e-9],
+        ],
       })),
       "readSimulationResult",
-      { filename: "r.mat", variables: ["time"] },
+      { filename: "r.mat", variables: ["time", "i"] },
     );
 
-    expect(text(result)).toBe('{"result":[[0.3,0.0003,1.23457e-9]]}');
+    expect(text(result)).toBe(
+      '{"result":[[1234567.1,1234567.2],[0.3,0.0003,1.23457e-9]]}',
+    );
   });
 
   it("leaves another function's numbers at full precision", async () => {

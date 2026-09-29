@@ -223,6 +223,12 @@ function loggable(value: unknown): string {
     : text;
 }
 
+function requestedVariables(input: unknown): readonly unknown[] {
+  if (typeof input !== "object" || input === null) return [];
+  const variables: unknown = Reflect.get(input, "variables");
+  return Array.isArray(variables) ? variables : [];
+}
+
 /**
  * Run `fn` with `input`, refusing first if the class it would write is not the
  * user's to change.
@@ -274,7 +280,7 @@ export async function dispatchByName(
 
     const output =
       fn === "readSimulationResult"
-        ? roundResultOutput(outcome.output)
+        ? roundResultOutput(outcome.output, requestedVariables(input))
         : outcome.output;
     log?.info(`${action} -> ${loggable(output)}`);
     return textResult(JSON.stringify(output));

@@ -24,15 +24,25 @@ describe("roundSignificant", () => {
 describe("roundResultOutput", () => {
   it("rounds every value of every row", () => {
     expect(
-      roundResultOutput({
-        result: [[0.1 + 0.2, 0.0006000000000000001], [0.0007000000000000001]],
-      }),
+      roundResultOutput(
+        {
+          result: [[0.1 + 0.2, 0.0006000000000000001], [0.0007000000000000001]],
+        },
+        ["a", "b"],
+      ),
     ).toEqual({ result: [[0.3, 0.0006], [0.0007]] });
   });
 
   it("leaves a shape it does not recognise alone", () => {
     const odd = { result: "nope" };
-    expect(roundResultOutput(odd)).toBe(odd);
-    expect(roundResultOutput(undefined)).toBeUndefined();
+    expect(roundResultOutput(odd, [])).toBe(odd);
+    expect(roundResultOutput(undefined, [])).toBeUndefined();
+  });
+
+  it("keeps the time row at full precision so a long run's timestamps stay distinct", () => {
+    const time = [1234567.1, 1234567.2];
+    expect(
+      roundResultOutput({ result: [time, [0.1 + 0.2, 1]] }, ["time", "x"]),
+    ).toEqual({ result: [time, [0.3, 1]] });
   });
 });

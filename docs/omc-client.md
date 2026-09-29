@@ -191,9 +191,9 @@ see the module docstring there for the OMC behavior it works around.
 `@dicode/omc-client` returns a result's numbers exactly as OMC printed them,
 which the extension's plots rely on. The MCP server (`dispatchByName` in
 [dispatch.ts](../packages/mcp-server/src/dispatch.ts)) rounds a
-`readSimulationResult` answer to 6 significant digits on the way out
+`readSimulationResult` answer to 6 significant digits on the way out, except the `time` row (rounding it would make long runs' timestamps collide)
 ([result-precision.ts](../packages/mcp-server/src/result-precision.ts)):
-the digits past that are IEEE-754 repr noise that costs an agent tokens on
+the digits past that sit below the default 1e-6 solver tolerance and cost an agent tokens on
 every read. Significant digits, not decimal places, so a 1e-9 signal is not
 flattened to zero.
 

@@ -30,7 +30,7 @@ Building a model — two ways, pick by what the user needs to see:
 Reading results:
 - readSimulationResult returns whole series in one call; val samples one
   variable at one time. Prefer readSimulationResult for anything but a spot
-  check. Its numbers carry 6 significant digits, not full float repr.
+  check. Its numbers (time excepted) carry 6 significant digits.
 
 Arguments are this API's names, not the ones in the OMC scripting docs: it is
 typeName rather than cl, fileName rather than filename. omc_describe_function
