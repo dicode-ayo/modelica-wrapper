@@ -1126,6 +1126,117 @@ describe("a call naming a destination path", () => {
   });
 });
 
+describe("a simulate call whose flags name a destination", () => {
+  // A flag value is one whitespace-delimited token, so the root carries no space.
+  const FLAG_ROOT = "/opt/omc/libraries/Modelica";
+  const refuse = (input: { simflags?: string; cflags?: string }) =>
+    refusalFor(verdicts(), withModelicaPath(FLAG_ROOT), "simulate", {
+      typeName: "M",
+      ...input,
+    });
+
+  it.each([
+    [`-r=${FLAG_ROOT}/Blocks/res.mat`, `${FLAG_ROOT}/Blocks/res.mat`],
+    [`-lv=LOG_STATS -r ${FLAG_ROOT}/res.mat`, `${FLAG_ROOT}/res.mat`],
+    [`--outputPath=${FLAG_ROOT}/out`, `${FLAG_ROOT}/out`],
+    [`-csvOstep=${FLAG_ROOT}/steps.csv`, `${FLAG_ROOT}/steps.csv`],
+    [`-outputPath ${FLAG_ROOT}/out`, `${FLAG_ROOT}/out`],
+    [`--r ${FLAG_ROOT}/res.mat`, `${FLAG_ROOT}/res.mat`],
+  ])(
+    "refuses simflags %s under a MODELICAPATH root",
+    async (simflags, path) => {
+      expect(await refuse({ simflags })).toBe(
+        `Cannot write to ${path} — it is inside a read-only system library directory.`,
+      );
+    },
+  );
+
+  it.each([
+    [`-o ${FLAG_ROOT}/a.out`, `${FLAG_ROOT}/a.out`],
+    [`-o${FLAG_ROOT}/a.out`, `${FLAG_ROOT}/a.out`],
+    [`-O2 -MF ${FLAG_ROOT}/a.d`, `${FLAG_ROOT}/a.d`],
+    [`-MF${FLAG_ROOT}/a.d`, `${FLAG_ROOT}/a.d`],
+    [`--output=${FLAG_ROOT}/a.out`, `${FLAG_ROOT}/a.out`],
+    [`-Wl,-Map=${FLAG_ROOT}/a.map`, `${FLAG_ROOT}/a.map`],
+    [`-Wl,-o,${FLAG_ROOT}/a.out`, `${FLAG_ROOT}/a.out`],
+    [`-Wp,-MD,${FLAG_ROOT}/a.d`, `${FLAG_ROOT}/a.d`],
+    [`-Xlinker -Map=${FLAG_ROOT}/a.map`, `${FLAG_ROOT}/a.map`],
+    [`-save-temps=${FLAG_ROOT}/t`, `${FLAG_ROOT}/t`],
+    [`-MJ ${FLAG_ROOT}/a.json`, `${FLAG_ROOT}/a.json`],
+    [`-fprofile-generate=${FLAG_ROOT}/p`, `${FLAG_ROOT}/p`],
+  ])("refuses cflags %s under a MODELICAPATH root", async (cflags, path) => {
+    expect(await refuse({ cflags })).toBe(
+      `Cannot write to ${path} — it is inside a read-only system library directory.`,
+    );
+  });
+
+  it("resolves a relative flag destination against OMC's own cwd", async () => {
+    const refusal = await refusalFor(
+      verdicts(),
+      withModelicaPath(FLAG_ROOT, `${FLAG_ROOT}/Blocks`),
+      "simulate",
+      { typeName: "M", simflags: "-r=res.mat" },
+    );
+
+    expect(refusal).toBe(
+      "Cannot write to res.mat — it is inside a read-only system library directory.",
+    );
+  });
+
+  it("lets a destination outside every MODELICAPATH root through", async () => {
+    expect(
+      await refuse({ simflags: "-r=/workspace/res.mat", cflags: "-o /tmp/x" }),
+    ).toBeUndefined();
+  });
+
+  it("lets flags that name no destination through without asking OMC", async () => {
+    expect(
+      await refusalFor(verdicts(), client, "simulate", {
+        typeName: "M",
+        simflags: "-lv=LOG_STATS -r -inputPath=/lib/in.csv -override=x[1]=2",
+        cflags: "-O2 -fomit-frame-pointer -I/lib/include",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("refuses a cflags response file, whose contents the gate cannot see", async () => {
+    expect(await refuse({ cflags: "-O2 @/workspace/flags.rsp" })).toBe(
+      "Cannot tell where this would write — cflags carries a response file (@file), whose contents the write gate cannot see.",
+    );
+  });
+
+  it("refuses a response file forwarded through a linker pass-through", async () => {
+    expect(await refuse({ cflags: "-Wl,@/workspace/flags.rsp" })).toMatch(
+      /response file/,
+    );
+  });
+
+  it("judges every destination, not just the first", async () => {
+    expect(
+      await refuse({
+        simflags: `-r=/workspace/a.mat -csvOstep=${FLAG_ROOT}/s.csv`,
+      }),
+    ).toBe(
+      `Cannot write to ${FLAG_ROOT}/s.csv — it is inside a read-only system library directory.`,
+    );
+  });
+
+  it("does not mistake an -o-prefixed option or an empty value for a destination", async () => {
+    const inLibrary = withModelicaPath(FLAG_ROOT, FLAG_ROOT);
+    expect(
+      await refusalFor(verdicts(), inLibrary, "simulate", {
+        typeName: "M",
+        simflags: "-r=",
+        cflags: "-openmp -o",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("lets a call that omits the flags through", async () => {
+    expect(await refuse({})).toBeUndefined();
+  });
+});
+
 describe("a destination path reached through a symlink", () => {
   let tmp: string;
 
@@ -1199,11 +1310,12 @@ describe("READ_ONLY_GATE", () => {
     expect(flagged("ownFile")).toEqual(["save"]);
   });
 
-  it("pins filterSimulationResults and diffSimulationResults as the readOnly functions with a gated destination", () => {
+  it("pins filterSimulationResults, diffSimulationResults and simulate as the readOnly functions with a gated destination", () => {
     // A new "destination" here means a readOnly MUTATIONS entry now takes a
     // caller-named destination path; give it a BY_NAME row, then extend this
     // list.
     expect(flagged("destination")).toEqual([
+      "simulate",
       "filterSimulationResults",
       "diffSimulationResults",
     ]);

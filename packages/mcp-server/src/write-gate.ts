@@ -129,6 +129,13 @@ export interface DestinationClient {
  * `setSourceFile` replaces once it reaches disk. Neither is a file anything is
  * stored in, so neither has anything for a binding to evict.
  *
+ * `as: "simflags"` / `"cflags"` mark a flags string OMC forwards to the
+ * simulation executable or the C compiler. The string is not itself a path, but
+ * it can carry one: the flags in {@link SIMFLAG_DESTINATIONS} and
+ * {@link CFLAG_NEXT_WORD} name a file or directory the run writes to. Each
+ * such value is judged like a `"destination"` argument; every other flag is
+ * left alone.
+ *
  * A list judges its arguments left to right over one set of settled targets, so
  * the cheapest verdict is reached first and a target two arguments share is
  * asked about once.
@@ -162,7 +169,7 @@ type Argument<Field extends string> =
     }
   | {
       readonly field: Field;
-      readonly as: "destination";
+      readonly as: "destination" | "simflags" | "cflags";
     };
 
 /**
@@ -231,6 +238,10 @@ const writesTo = <F extends string>(field: F): Argument<F> => ({
   field,
   as: "destination",
 });
+
+const writesViaFlags = <F extends "simflags" | "cflags">(
+  field: F,
+): Argument<F> => ({ field, as: field });
 
 /**
  * `copyClass`'s `within` and `newModel`'s `withinPath` are empty for a
@@ -335,6 +346,10 @@ const DESTINATION_ARGUMENTS = {
   diffSimulationResults: writesTo(
     "diffPrefix",
   ) satisfies GateArgument<"diffSimulationResults">,
+  simulate: [
+    writesViaFlags("simflags"),
+    writesViaFlags("cflags"),
+  ] satisfies GateArgument<"simulate">,
 };
 
 /**
@@ -361,9 +376,11 @@ const DESTINATION_ARGUMENTS = {
  * wrapper input is `TypeNameInput` alone and exposes no destination argument
  * at all.
  *
- * `simulate`, `buildModel` and `translateModel` are also `"none"` here: their
- * `simflags`/`cflags` arguments can carry a flag-embedded destination (e.g.
- * `-r=<path>`) that this table does not evaluate (issue #728).
+ * `simulate` is `"destination"`: its `simflags` and `cflags` can embed a
+ * destination (`-r=<path>`, `-o <path>`) that `flagDestinations` extracts and
+ * `refusalForDestination` judges. `buildModel` and `translateModel` are
+ * `"none"` — their wrapper input is `TypeNameInput` alone, so no flags string
+ * reaches them.
  */
 export const READ_ONLY_GATE = {
   quit: "none",
@@ -506,7 +523,7 @@ export const READ_ONLY_GATE = {
   checkModel: "none",
   translateModel: "none",
   buildModel: "none",
-  simulate: "none",
+  simulate: "destination",
   buildModelFMU: "none",
   translateModelXML: "none",
   getSimulationOptions: "none",
@@ -676,6 +693,18 @@ async function refusalForArgument(
       if (raw !== undefined && typeof raw !== "string") return undefined;
       return refusalForDestination(client, raw ?? "");
     }
+    case "simflags":
+    case "cflags": {
+      if (typeof raw !== "string") return undefined;
+      if (argument.as === "cflags" && /(?:^|[\s,])@/.test(raw)) {
+        return "Cannot tell where this would write — cflags carries a response file (@file), whose contents the write gate cannot see.";
+      }
+      for (const destination of flagDestinations(raw, argument.as)) {
+        const refusal = await refusalForDestination(client, destination);
+        if (refusal !== undefined) return refusal;
+      }
+      return undefined;
+    }
     default: {
       const unreachable: never = argument;
       throw new Error(
@@ -683,6 +712,97 @@ async function refusalForArgument(
       );
     }
   }
+}
+
+/**
+ * Simulation-executable flags whose value is a file or directory the run
+ * writes: the result file, the result directory, and the CSV step file.
+ * Flags that only read (`-inputPath`, `-iif`) are not listed.
+ */
+const SIMFLAG_DESTINATIONS = new Set(["r", "outputPath", "csvOstep"]);
+
+/**
+ * C-compiler and linker options that take the file they write as the next
+ * word. `-MD`/`-MMD` only take one through a `-Wp,` pass-through.
+ */
+const CFLAG_NEXT_WORD = new Set([
+  "-o",
+  "-MF",
+  "-MJ",
+  "-aux-info",
+  "-dumpdir",
+  "-Map",
+]);
+const PREPROCESSOR_NEXT_WORD = new Set([...CFLAG_NEXT_WORD, "-MD", "-MMD"]);
+
+/**
+ * Compiler options that carry the file they write in the same word. `-o` and
+ * `-MF` only count when the value reads as a path, so `-openmp`-style options
+ * are not mistaken for one.
+ */
+const CFLAG_ATTACHED =
+  /^(?:-(?:o|MF|MJ)(?=[/.~])|--output=|-save-temps=|-dumpdir=|-Map=|-fprofile-generate=|-fprofile-dir=)(.+)$/;
+
+/**
+ * A flags string's words, with the `-Wl,` and `-Wp,` pass-throughs unpacked
+ * into the options they forward. The flag charset admits `,` and `=`, so a
+ * linker map or dependency file can be named that way.
+ */
+function cflagWords(
+  tokens: string[],
+): { word: string; nextWords: Set<string> }[] {
+  return tokens.flatMap((token) => {
+    if (token.startsWith("-Wl,") || token.startsWith("-Wp,")) {
+      const nextWords = token.startsWith("-Wl,")
+        ? CFLAG_NEXT_WORD
+        : PREPROCESSOR_NEXT_WORD;
+      return token
+        .slice(4)
+        .split(",")
+        .map((word) => ({ word, nextWords }));
+    }
+    return [{ word: token, nextWords: CFLAG_NEXT_WORD }];
+  });
+}
+
+/**
+ * The destination paths a flags string names, in order. A simulation flag
+ * counts as `-r=<path>` or `-r <path>`; a compiler option as its attached or
+ * next-word spelling, because each tool accepts both. A flag with no value, or
+ * an empty one, contributes nothing.
+ *
+ * The compiler list is the file-writing options this gate knows of, not every
+ * spelling gcc accepts.
+ */
+function flagDestinations(
+  flags: string,
+  kind: "simflags" | "cflags",
+): string[] {
+  const tokens = flags.split(/\s+/).filter((token) => token !== "");
+  const destinations: string[] = [];
+  const push = (value: string | undefined) => {
+    if (value !== undefined && value !== "") destinations.push(value);
+  };
+  if (kind === "simflags") {
+    for (const [index, token] of tokens.entries()) {
+      const [, name, value] = /^--?([A-Za-z]+)(?:=(.*))?$/.exec(token) ?? [];
+      if (name === undefined || !SIMFLAG_DESTINATIONS.has(name)) continue;
+      const next = tokens[index + 1];
+      push(value ?? (next?.startsWith("-") ? undefined : next));
+    }
+    return destinations;
+  }
+  const words = cflagWords(tokens);
+  for (const [index, { word, nextWords }] of words.entries()) {
+    const [, attached] = CFLAG_ATTACHED.exec(word) ?? [];
+    if (attached !== undefined) {
+      push(attached);
+    } else if (nextWords.has(word)) {
+      const next = words[index + 1]?.word;
+      push(next?.startsWith("-") ? undefined : next);
+    }
+  }
+  return destinations;
 }
 
 /**
