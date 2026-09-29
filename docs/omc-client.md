@@ -186,6 +186,17 @@ A result file's row count is solver-dependent — roughly `numberOfIntervals +
 resolves an omitted or `0` `size` through `readSimulationResultSize` itself;
 see the module docstring there for the OMC behavior it works around.
 
+### Result precision over MCP
+
+`@dicode/omc-client` returns a result's numbers exactly as OMC printed them,
+which the extension's plots rely on. The MCP server (`dispatchByName` in
+[dispatch.ts](../packages/mcp-server/src/dispatch.ts)) rounds a
+`readSimulationResult` answer to 6 significant digits on the way out
+([result-precision.ts](../packages/mcp-server/src/result-precision.ts)):
+the digits past that are IEEE-754 repr noise that costs an agent tokens on
+every read. Significant digits, not decimal places, so a 1e-9 signal is not
+flattened to zero.
+
 ### The model-instance read path
 
 `getModelInstance(className, modifier="", prettyPrint=false)` returns the whole
