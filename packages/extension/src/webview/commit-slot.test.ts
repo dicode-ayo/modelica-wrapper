@@ -198,6 +198,7 @@ describe("CommitSlot ordering", () => {
     selectionChange: "uiOnly",
     inputFocus: "uiOnly",
     goToSource: "uiOnly",
+    nestedDiagramRequest: "uiOnly",
     change: "afterCommit",
     connectionCreate: "afterCommit",
     actionCheck: "afterCommit",

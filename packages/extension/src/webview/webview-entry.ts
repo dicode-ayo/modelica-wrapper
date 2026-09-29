@@ -41,6 +41,7 @@ import {
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 
 import { CommitSlot } from "./commit-slot.js";
+import { NestedDiagramRequests } from "./nested-diagram-requests.js";
 import { panelReadonly } from "./panel-readonly.js";
 import { isExtensionMessage } from "./protocol.js";
 import type {
@@ -120,6 +121,14 @@ class OmWebviewRoot extends LitElement {
 
   private readonly commits = new CommitSlot((layout, basedOn) =>
     this.vscode?.postMessage({ type: "change", layout, basedOn }),
+  );
+
+  /** Correlates `nestedDiagramRequest`/`nestedDiagramResult` — the semantic
+   *  in-place nesting zoom feature's fetch of a component's own class
+   *  diagram (issue #629). Not yet called from the renderer; the nested-box
+   *  zoom trigger lands separately. */
+  private readonly nestedDiagramRequests = new NestedDiagramRequests((msg) =>
+    this.post(msg),
   );
 
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
@@ -304,6 +313,9 @@ class OmWebviewRoot extends LitElement {
         return;
       case "error":
         console.error("[diagram-ui] backend error:", message.message);
+        return;
+      case "nestedDiagramResult":
+        this.nestedDiagramRequests.handleResult(message);
         return;
       default:
         assertUnreachable(message, "ExtensionToWebview");

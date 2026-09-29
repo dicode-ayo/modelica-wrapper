@@ -21,7 +21,10 @@ separate webviews with protocols of their own
 [documentation-protocol.ts](../packages/extension/src/webview/documentation-protocol.ts),
 [postprocessing-protocol.ts](../packages/extension/src/webview/postprocessing-protocol.ts)).
 Only the request/response idiom the library browser uses is described here, at
-the bottom — the diagram protocol is fire-and-forget throughout.
+the bottom — the diagram protocol is fire-and-forget throughout, with one
+exception: `nestedDiagramRequest`/`nestedDiagramResult` (below), correlated by
+`requestId` the same way, for the semantic in-place nesting zoom feature
+(issue #629).
 
 ```mermaid
 flowchart LR
@@ -113,6 +116,7 @@ answer all four.
 | `copySelection` | `{ keys }` | Copy — the host owns the window-wide clipboard and resolves the keys itself. |
 | `goToSource` | `{ source, fallbackClassName }` | Open an entity's source in a text editor. `source` is the OMC-reported `SourceLocation` the webview already holds on the layout entity (the type's class for go-to-definition, the declaration for go-to-declaration); `fallbackClassName` names the class whose `modelica-source:` view opens when `source.filename` is not a real file on disk. |
 | `paste` | — | Paste the host clipboard into this diagram. |
+| `nestedDiagramRequest` | `{ requestId, className }` | Request `className`'s own diagram layout — the semantic in-place nesting zoom feature's box content (issue #629). Read-only and unrelated to the bound class, so a queued commit may stay queued. Answered by `nestedDiagramResult`. |
 
 Each gesture's ordering and icon-mode answers live on its entry in
 `gestures.ts` and are not repeated here — a second copy can only fall out of
@@ -147,6 +151,7 @@ a misspelled one is rejected at the boundary rather than routed nowhere.
 | `placementStart` | `{ className }` | A library row was dragged toward the canvas; arm the cursor-tracking ghost. |
 | `placementPreview` | `{ className, classDef }` | The armed class resolved — upgrade the crosshair to the real preview node. |
 | `placementCancel` | — | Disarm placement. |
+| `nestedDiagramResult` | `{ requestId, className, layout?, error? }` | Answers `nestedDiagramRequest`, correlated by `requestId`. `layout` is `className` fetched as its own root (not derived from the bound class's sub-tree — see issue #628 for why that resolves no connections); `error` is set instead when the fetch failed. |
 
 ### Both boundaries validate
 

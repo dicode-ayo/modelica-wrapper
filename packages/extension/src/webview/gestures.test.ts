@@ -63,6 +63,7 @@ const SAMPLES: WebviewToExtension[] = [
   },
   { type: "copySelection", keys: ["a"] },
   { type: "paste" },
+  { type: "nestedDiagramRequest", requestId: "nested-1", className: "A.B" },
 ];
 
 describe("isGestureMessage", () => {
@@ -180,6 +181,19 @@ describe("isGestureMessage", () => {
       expect.stringContaining("change.basedOn"),
     );
   });
+
+  it("rejects a nestedDiagramRequest whose className is not a string", () => {
+    const reject = vi.fn();
+    expect(
+      isGestureMessage(
+        { type: "nestedDiagramRequest", requestId: "nested-1", className: 1 },
+        reject,
+      ),
+    ).toBe(false);
+    expect(reject).toHaveBeenCalledWith(
+      expect.stringContaining("nestedDiagramRequest.className"),
+    );
+  });
 });
 
 describe("iconHonorsGesture", () => {
@@ -214,6 +228,13 @@ describe("iconHonorsGesture", () => {
         fromKey: "a",
         toKey: "b",
         waypoints: [],
+      }),
+    ).toBe(false);
+    expect(
+      iconHonorsGesture({
+        type: "nestedDiagramRequest",
+        requestId: "nested-1",
+        className: "A.B",
       }),
     ).toBe(false);
   });

@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./command-ids": "./src/commands/command-ids.ts",
-    "./entity-keys": "./src/interaction/entity-keys.ts"
+    "./entity-keys": "./src/interaction/entity-keys.ts",
+    "./lru-cache": "./src/lru-cache.ts"
   },
   "files": [
     "dist"

@@ -322,6 +322,19 @@ const GESTURES = {
     ordering: "afterCommit",
     icon: "honored",
   }),
+
+  /**
+   * Request a class's own diagram layout, fetched with that class as its own
+   * root — the semantic-nesting zoom feature's box content. Read-only and
+   * unrelated to the bound class, so a queued commit may stay queued.
+   * `requestId`-correlated: the host answers with `nestedDiagramResult`
+   * carrying the same id, mirroring the library sidebar's channel.
+   */
+  nestedDiagramRequest: gesture({
+    payload: { requestId: isString, className: isString },
+    ordering: "uiOnly",
+    icon: "ignored",
+  }),
 };
 
 type GestureTable = typeof GESTURES;

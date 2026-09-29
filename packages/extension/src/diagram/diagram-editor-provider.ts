@@ -61,6 +61,7 @@ import {
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
 import { parseKey } from "@dicode/diagram-ui/entity-keys";
 import { LibrarySource } from "./library-source.js";
+import { nestedDiagramCache } from "./nested-diagram-cache.js";
 import {
   applyClassParameterEdits,
   applyComponentParameterEdits,
@@ -730,6 +731,9 @@ export class DiagramEditController {
       case "paste":
         await this.onPaste();
         return;
+      case "nestedDiagramRequest":
+        await this.onNestedDiagramRequest(msg.requestId, msg.className);
+        return;
       case "ready":
       case "inputFocus":
         // Session-scoped: answered in `resolveDiagramEditor`, which exists
@@ -1149,6 +1153,31 @@ export class DiagramEditController {
       this.reportError(
         `could not open parameters for ${componentName}: ${(err as Error).message}`,
       );
+    }
+  }
+
+  /**
+   * Answer a `nestedDiagramRequest` (issue #629): fetch `className` as its
+   * own root through the session-wide {@link nestedDiagramCache} and send
+   * the correlated result back. Best-effort — a failed fetch (a class that
+   * no longer parses, an OMC hiccup) reports `error` rather than throwing,
+   * so one bad nested class doesn't take down the bound diagram.
+   */
+  private async onNestedDiagramRequest(
+    requestId: string,
+    className: string,
+  ): Promise<void> {
+    const { client, gate } = this.deps;
+    try {
+      const layout = await nestedDiagramCache(client).get(className);
+      gate.send({ type: "nestedDiagramResult", requestId, className, layout });
+    } catch (err) {
+      gate.send({
+        type: "nestedDiagramResult",
+        requestId,
+        className,
+        error: (err as Error).message,
+      });
     }
   }
 
