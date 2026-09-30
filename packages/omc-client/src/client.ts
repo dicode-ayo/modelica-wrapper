@@ -13,7 +13,7 @@
 
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
-import { READS_ERROR_BUFFER, runInTurn } from "./error-buffer.js";
+import { runInTurn } from "./error-buffer.js";
 import { mutationFor, type OmcMutation } from "./mutation.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
@@ -145,11 +145,10 @@ export class OmcClient implements CallContext {
     // we erase to a generic call shape and re-tag the result.
     type AnyFn = (ctx: CallContext, input: unknown) => Promise<unknown>;
     const exec = (): Promise<unknown> => (entry.fn as AnyFn)(this, validated);
-    // A bare read of the buffer must not land inside another caller's
-    // clear/run/read transaction.
-    const result = READS_ERROR_BUFFER.has(fn)
-      ? await runInTurn(this, exec)
-      : await exec();
+    // A wrapper's command and its own read of the error buffer must not
+    // straddle another caller's clear/run/read transaction, and a bare read
+    // must not land inside one.
+    const result = await runInTurn(this, exec);
     return result as OmcOutput<K>;
   }
 

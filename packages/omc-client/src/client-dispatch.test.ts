@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { OmcClient } from "./client.js";
-import { runQueued } from "./error-buffer.js";
+import { runQueued, withErrorBuffer } from "./error-buffer.js";
 
 const CLIENT = join(dirname(fileURLToPath(import.meta.url)), "client.ts");
 
@@ -70,5 +70,38 @@ describe("OmcClient's error-buffer readers", () => {
     expect(await turn).toBe("Error: queued mutation");
     expect(await viaMethod).toEqual({ errorString: "" });
     expect(await viaInvoke).toEqual({ errorString: "" });
+  });
+
+  it("surface a bare mutation's diagnostic on the mutation, not on a turn it overlaps", async () => {
+    const client = Object.create(OmcClient.prototype) as OmcClient;
+    let buffer = "";
+    client.call = async (cmd: string) => {
+      if (cmd.startsWith("getErrorString")) {
+        const reply = JSON.stringify(buffer);
+        buffer = "";
+        return reply;
+      }
+      buffer = "Error: bare delete failed";
+      return "false";
+    };
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+
+    const turn = withErrorBuffer(client, async () => {
+      reached();
+      await gate;
+    });
+    await reachedGate;
+    const bare = client.deleteClass({ typeName: "A" });
+    release();
+
+    await expect(bare).rejects.toThrow("bare delete failed");
+    expect((await turn).errorString).toBe("");
   });
 });

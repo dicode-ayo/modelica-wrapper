@@ -25,7 +25,6 @@ import {
   errorBufferTransaction,
   isReadOnlyFunction,
   looksLikeError,
-  READS_ERROR_BUFFER,
   runQueued,
 } from "@dicode/omc-client";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -128,6 +127,15 @@ export function textResult(text: string): CallToolResult {
 export function errorResult(message: string): CallToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
 }
+
+/**
+ * Functions that read OMC's own error buffer rather than mutate a model.
+ * Draining around either would clear the very thing the caller asked to read.
+ */
+const READS_ERROR_BUFFER = new Set<OmcFnName>([
+  "getErrorString",
+  "getMessagesStringInternal",
+]);
 
 /**
  * Many OMC mutations answer `success: true` (or nothing distinguishing at

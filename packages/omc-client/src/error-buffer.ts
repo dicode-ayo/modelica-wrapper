@@ -69,15 +69,6 @@ const heldTurns = new AsyncLocalStorage<
   ReadonlyMap<ErrorBufferClient, { held: boolean }>
 >();
 
-/**
- * Functions that read OMC's own error buffer rather than mutate a model.
- * Draining around either would clear the very thing the caller asked to read.
- */
-export const READS_ERROR_BUFFER: ReadonlySet<string> = new Set([
-  "getErrorString",
-  "getMessagesStringInternal",
-]);
-
 function turnQueue(client: ErrorBufferClient): SerialQueue {
   let queue = turns.get(client);
   if (queue === undefined) {
@@ -128,6 +119,11 @@ function takeTurn<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<T> {
+  if (heldTurns.getStore()?.get(client)?.held === true) {
+    return Promise.reject(
+      new Error("error-buffer turn requested while already holding it"),
+    );
+  }
   return turnQueue(client).run(async () => {
     // Async context outlives the turn for work the turn left running, so the
     // token is what says whether the turn is still held.

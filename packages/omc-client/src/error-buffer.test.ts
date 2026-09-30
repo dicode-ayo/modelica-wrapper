@@ -226,6 +226,16 @@ describe("runQueued", () => {
   });
 });
 
+describe("a nested turn", () => {
+  it("rejects instead of waiting on the turn its caller already holds", async () => {
+    const client = { getErrorString: async () => ({ errorString: "" }) };
+
+    await expect(
+      runQueued(client, () => runQueued(client, async () => "inner")),
+    ).rejects.toThrow("already holding");
+  });
+});
+
 describe("runInTurn", () => {
   function bufferClient() {
     const state = { buffer: "" };
