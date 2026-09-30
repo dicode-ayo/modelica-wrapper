@@ -33,3 +33,14 @@ describe("every OmcClient method taking an input", () => {
     expect(bypassing).toEqual([]);
   });
 });
+
+describe("OmcClient's error-buffer readers", () => {
+  it("take a turn, so a bare read cannot land inside another caller's transaction", async () => {
+    const src = await readFile(CLIENT, "utf8");
+
+    for (const fn of ["getErrorString", "getMessagesStringInternal"]) {
+      const body = new RegExp(`\\n  ${fn}\\([\\s\\S]*?\\n  }\\n`).exec(src);
+      expect(body?.[0], fn).toContain("runInTurn(this");
+    }
+  });
+});

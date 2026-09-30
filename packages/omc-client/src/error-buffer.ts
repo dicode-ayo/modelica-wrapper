@@ -11,8 +11,11 @@
  * below is keyed by client instance so every caller routed through this
  * module serializes against the others. A `getErrorString` or
  * `getMessagesStringInternal` call made directly on the client does not take
- * a turn and can still land inside one.
+ * a turn and can still land inside one, unless the client routes its own
+ * buffer readers through {@link runInTurn}, as `OmcClient` does.
  */
+
+import { AsyncLocalStorage } from "node:async_hooks";
 
 import { SerialQueue } from "./queue.js";
 
@@ -55,6 +58,14 @@ export class OmcDiagnosticError extends Error {}
  * unrelated `OmcClient` instances — e.g. one per test — never share a queue.
  */
 const turns = new WeakMap<ErrorBufferClient, SerialQueue>();
+
+/**
+ * The clients whose turn the running async chain already holds. A buffer
+ * reader invoked from inside a turn (`withErrorBuffer` draining its own
+ * transaction, a wrapper's `parseOutput`) must run directly: queueing behind
+ * the turn it is part of would wait on itself.
+ */
+const heldTurns = new AsyncLocalStorage<ReadonlySet<object>>();
 
 function turnQueue(client: ErrorBufferClient): SerialQueue {
   let queue = turns.get(client);
@@ -102,6 +113,15 @@ export async function errorBufferTransaction<T>(
   return { result, errorString };
 }
 
+function takeTurn<T>(
+  client: ErrorBufferClient,
+  run: () => Promise<T>,
+): Promise<T> {
+  return turnQueue(client).run(() =>
+    heldTurns.run(new Set([...(heldTurns.getStore() ?? []), client]), run),
+  );
+}
+
 /**
  * Runs `run` with `client`'s error buffer cleared immediately before and
  * drained immediately after, the whole transaction serialized against any
@@ -118,7 +138,7 @@ export function withErrorBuffer<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<{ result: T; errorString: string }> {
-  return turnQueue(client).run(() => errorBufferTransaction(client, run));
+  return takeTurn(client, () => errorBufferTransaction(client, run));
 }
 
 /**
@@ -132,5 +152,20 @@ export function runQueued<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<T> {
-  return turnQueue(client).run(run);
+  return takeTurn(client, run);
+}
+
+/**
+ * {@link runQueued} for a client's own buffer readers: takes a turn unless the
+ * caller already holds one on `client`, in which case `run` goes straight
+ * through. This is what lets a bare `getErrorString` wait out an in-flight
+ * mutation's turn without the mutation's own drain deadlocking on itself.
+ */
+export function runInTurn<T>(
+  client: ErrorBufferClient,
+  run: () => Promise<T>,
+): Promise<T> {
+  return heldTurns.getStore()?.has(client) === true
+    ? run()
+    : takeTurn(client, run);
 }

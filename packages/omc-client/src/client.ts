@@ -13,6 +13,7 @@
 
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
+import { runInTurn } from "./error-buffer.js";
 import { mutationFor, type OmcMutation } from "./mutation.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
@@ -278,13 +279,15 @@ export class OmcClient implements CallContext {
   getErrorString(
     input: browsing.GetErrorStringInput = {},
   ): Promise<browsing.GetErrorStringOutput> {
-    return this.invoke("getErrorString", input);
+    return runInTurn(this, () => this.invoke("getErrorString", input));
   }
 
   getMessagesStringInternal(
     input: browsing.GetMessagesStringInternalInput = {},
   ): Promise<browsing.GetMessagesStringInternalOutput> {
-    return this.invoke("getMessagesStringInternal", input);
+    return runInTurn(this, () =>
+      this.invoke("getMessagesStringInternal", input),
+    );
   }
 
   existModel(

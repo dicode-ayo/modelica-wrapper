@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikeError, runQueued, withErrorBuffer } from "./error-buffer.js";
+import {
+  looksLikeError,
+  runInTurn,
+  runQueued,
+  withErrorBuffer,
+} from "./error-buffer.js";
 
 describe("looksLikeError", () => {
   it("treats the literal word Error as a hard failure", () => {
@@ -218,5 +223,85 @@ describe("runQueued", () => {
     // Queued behind the mutation's own drain, so the read only reaches the
     // buffer after that drain already consumed the diagnostic.
     expect(readResult).toEqual({ errorString: "" });
+  });
+});
+
+describe("runInTurn", () => {
+  function bufferClient() {
+    const state = { buffer: "" };
+    const client = {
+      getErrorString: () =>
+        runInTurn(client, async () => {
+          const errorString = state.buffer;
+          state.buffer = "";
+          return { errorString };
+        }),
+    };
+    return { client, state };
+  }
+
+  it("makes a bare read wait for an in-flight turn instead of stealing its diagnostic", async () => {
+    const { client, state } = bufferClient();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+
+    const mutation = withErrorBuffer(client, async () => {
+      state.buffer = "Error: from the mutation";
+      reached();
+      await gate;
+    });
+    await reachedGate;
+    const bareRead = client.getErrorString();
+    release();
+
+    const [{ errorString }, stolen] = await Promise.all([mutation, bareRead]);
+    expect(errorString).toBe("Error: from the mutation");
+    expect(stolen).toEqual({ errorString: "" });
+  });
+
+  it("lets a turn's own drain through without waiting on itself", async () => {
+    const { client, state } = bufferClient();
+
+    const { errorString } = await withErrorBuffer(client, async () => {
+      state.buffer = "Error: inside";
+    });
+
+    expect(errorString).toBe("Error: inside");
+  });
+
+  it("does not let one client's turn satisfy another's", async () => {
+    const a = bufferClient();
+    const b = bufferClient();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+
+    const held = withErrorBuffer(a.client, async () => {
+      reached();
+      await gate;
+    });
+    await reachedGate;
+    const order: string[] = [];
+    const inner = withErrorBuffer(a.client, async () => {
+      order.push("a-second");
+    });
+    await withErrorBuffer(b.client, async () => {
+      order.push("b");
+    });
+    release();
+    await Promise.all([held, inner]);
+
+    expect(order).toEqual(["b", "a-second"]);
   });
 });
