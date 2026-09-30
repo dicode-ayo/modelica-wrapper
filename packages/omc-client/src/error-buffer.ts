@@ -65,7 +65,18 @@ const turns = new WeakMap<ErrorBufferClient, SerialQueue>();
  * transaction, a wrapper's `parseOutput`) must run directly: queueing behind
  * the turn it is part of would wait on itself.
  */
-const heldTurns = new AsyncLocalStorage<ReadonlySet<object>>();
+const heldTurns = new AsyncLocalStorage<
+  ReadonlyMap<ErrorBufferClient, { held: boolean }>
+>();
+
+/**
+ * Functions that read OMC's own error buffer rather than mutate a model.
+ * Draining around either would clear the very thing the caller asked to read.
+ */
+export const READS_ERROR_BUFFER: ReadonlySet<string> = new Set([
+  "getErrorString",
+  "getMessagesStringInternal",
+]);
 
 function turnQueue(client: ErrorBufferClient): SerialQueue {
   let queue = turns.get(client);
@@ -117,9 +128,19 @@ function takeTurn<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<T> {
-  return turnQueue(client).run(() =>
-    heldTurns.run(new Set([...(heldTurns.getStore() ?? []), client]), run),
-  );
+  return turnQueue(client).run(async () => {
+    // Async context outlives the turn for work the turn left running, so the
+    // token is what says whether the turn is still held.
+    const token = { held: true };
+    try {
+      return await heldTurns.run(
+        new Map([...(heldTurns.getStore() ?? []), [client, token]]),
+        run,
+      );
+    } finally {
+      token.held = false;
+    }
+  });
 }
 
 /**
@@ -165,7 +186,7 @@ export function runInTurn<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<T> {
-  return heldTurns.getStore()?.has(client) === true
+  return heldTurns.getStore()?.get(client)?.held === true
     ? run()
     : takeTurn(client, run);
 }

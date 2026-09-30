@@ -13,7 +13,7 @@
 
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
-import { runInTurn } from "./error-buffer.js";
+import { READS_ERROR_BUFFER, runInTurn } from "./error-buffer.js";
 import { mutationFor, type OmcMutation } from "./mutation.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
@@ -144,7 +144,12 @@ export class OmcClient implements CallContext {
     // construction; TS's indexed-access generic narrowing can't see that, so
     // we erase to a generic call shape and re-tag the result.
     type AnyFn = (ctx: CallContext, input: unknown) => Promise<unknown>;
-    const result = await (entry.fn as AnyFn)(this, validated);
+    const exec = (): Promise<unknown> => (entry.fn as AnyFn)(this, validated);
+    // A bare read of the buffer must not land inside another caller's
+    // clear/run/read transaction.
+    const result = READS_ERROR_BUFFER.has(fn)
+      ? await runInTurn(this, exec)
+      : await exec();
     return result as OmcOutput<K>;
   }
 
@@ -279,15 +284,13 @@ export class OmcClient implements CallContext {
   getErrorString(
     input: browsing.GetErrorStringInput = {},
   ): Promise<browsing.GetErrorStringOutput> {
-    return runInTurn(this, () => this.invoke("getErrorString", input));
+    return this.invoke("getErrorString", input);
   }
 
   getMessagesStringInternal(
     input: browsing.GetMessagesStringInternalInput = {},
   ): Promise<browsing.GetMessagesStringInternalOutput> {
-    return runInTurn(this, () =>
-      this.invoke("getMessagesStringInternal", input),
-    );
+    return this.invoke("getMessagesStringInternal", input);
   }
 
   existModel(

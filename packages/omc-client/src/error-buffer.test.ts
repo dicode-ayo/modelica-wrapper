@@ -260,9 +260,12 @@ describe("runInTurn", () => {
     const bareRead = client.getErrorString();
     release();
 
-    const [{ errorString }, stolen] = await Promise.all([mutation, bareRead]);
+    const [{ errorString }, bareReadResult] = await Promise.all([
+      mutation,
+      bareRead,
+    ]);
     expect(errorString).toBe("Error: from the mutation");
-    expect(stolen).toEqual({ errorString: "" });
+    expect(bareReadResult).toEqual({ errorString: "" });
   });
 
   it("lets a turn's own drain through without waiting on itself", async () => {
@@ -275,9 +278,43 @@ describe("runInTurn", () => {
     expect(errorString).toBe("Error: inside");
   });
 
-  it("does not let one client's turn satisfy another's", async () => {
+  it("still queues a read on another client while holding this client's turn", async () => {
     const a = bufferClient();
     const b = bufferClient();
+    b.state.buffer = "Error: b's diagnostic";
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const bTurn = withErrorBuffer(b.client, async () => {
+      reached();
+      await gate;
+    });
+    await reachedGate;
+
+    const order: string[] = [];
+    const crossRead = withErrorBuffer(a.client, async () => {
+      const read = await b.client.getErrorString();
+      order.push("read");
+      return read;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    order.push("released");
+    release();
+    await bTurn;
+    const { result } = await crossRead;
+
+    expect(order).toEqual(["released", "read"]);
+    expect(result).toEqual({ errorString: "" });
+  });
+
+  it("does not treat a finished turn as still held by work it left running", async () => {
+    const { client, state } = bufferClient();
+    let leaked: Promise<{ errorString: string }> | undefined;
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -287,21 +324,21 @@ describe("runInTurn", () => {
       reached = resolve;
     });
 
-    const held = withErrorBuffer(a.client, async () => {
+    await withErrorBuffer(client, async () => {
+      setTimeout(() => {
+        leaked = client.getErrorString();
+      }, 0);
+    });
+    const second = withErrorBuffer(client, async () => {
+      state.buffer = "Error: second turn";
       reached();
       await gate;
     });
     await reachedGate;
-    const order: string[] = [];
-    const inner = withErrorBuffer(a.client, async () => {
-      order.push("a-second");
-    });
-    await withErrorBuffer(b.client, async () => {
-      order.push("b");
-    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
     release();
-    await Promise.all([held, inner]);
+    await second;
 
-    expect(order).toEqual(["b", "a-second"]);
+    expect(await leaked).toEqual({ errorString: "" });
   });
 });
