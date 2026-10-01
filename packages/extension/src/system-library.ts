@@ -8,7 +8,8 @@
  * the same distinction OMEdit draws with `isSystemLibrary`.
  *
  * This is one half of a write verdict; `write-verdict.ts` combines it with the
- * file permission and owns the memo callers see.
+ * file permission and owns the per-class memo callers see. The `MODELICAPATH`
+ * read underneath is shared per client.
  */
 
 import * as path from "node:path";
