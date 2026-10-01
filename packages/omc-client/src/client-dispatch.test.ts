@@ -11,6 +11,9 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { OmcClient } from "./client.js";
+import { runQueued, withErrorBuffer } from "./error-buffer.js";
+
 const CLIENT = join(dirname(fileURLToPath(import.meta.url)), "client.ts");
 
 /**
@@ -31,5 +34,74 @@ describe("every OmcClient method taking an input", () => {
     );
 
     expect(bypassing).toEqual([]);
+  });
+});
+
+describe("OmcClient's error-buffer readers", () => {
+  it("wait for a held turn, whichever spelling reaches them", async () => {
+    const client = Object.create(OmcClient.prototype) as OmcClient;
+    let buffer = "";
+    client.call = async (cmd: string) => {
+      if (!cmd.startsWith("getErrorString")) return "true";
+      const reply = JSON.stringify(buffer);
+      buffer = "";
+      return reply;
+    };
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+
+    const turn = runQueued(client, async () => {
+      buffer = "Error: queued mutation";
+      reached();
+      await gate;
+      return (await client.invoke("getErrorString", {})).errorString;
+    });
+    await reachedGate;
+    const viaMethod = client.getErrorString();
+    const viaInvoke = client.invoke("getErrorString", {});
+    release();
+
+    expect(await turn).toBe("Error: queued mutation");
+    expect(await viaMethod).toEqual({ errorString: "" });
+    expect(await viaInvoke).toEqual({ errorString: "" });
+  });
+
+  it("surface a bare mutation's diagnostic on the mutation, not on a turn it overlaps", async () => {
+    const client = Object.create(OmcClient.prototype) as OmcClient;
+    let buffer = "";
+    client.call = async (cmd: string) => {
+      if (cmd.startsWith("getErrorString")) {
+        const reply = JSON.stringify(buffer);
+        buffer = "";
+        return reply;
+      }
+      buffer = "Error: bare delete failed";
+      return "false";
+    };
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+
+    const turn = withErrorBuffer(client, async () => {
+      reached();
+      await gate;
+    });
+    await reachedGate;
+    const bare = client.deleteClass({ typeName: "A" });
+    release();
+
+    await expect(bare).rejects.toThrow("bare delete failed");
+    expect((await turn).errorString).toBe("");
   });
 });

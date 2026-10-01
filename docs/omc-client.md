@@ -178,6 +178,21 @@ There is also a generic dispatcher (`REGISTRY`, `invoke(fn, input)`) and the
 namespaced functional API (`browsing.*`, `contents.*`, … exported from
 [index.ts](../packages/omc-client/src/index.ts)).
 
+### The error buffer is shared, so its readers take turns
+
+OMC reports some mutation failures only through its error buffer, and the
+buffer is one per process. `withErrorBuffer` and `runQueued`
+([error-buffer.ts](../packages/omc-client/src/error-buffer.ts)) serialize a
+clear/run/read transaction per `OmcClient`. `OmcClient.invoke` takes a turn itself, so a bare call anywhere (a read of the
+buffer, or a mutation whose wrapper checks it) waits for an in-flight
+transaction instead of consuming its diagnostic or having its own consumed.
+A call made from inside a turn (the transaction's own drain, a wrapper's
+`parseOutput`) runs directly; the turn is tracked with `AsyncLocalStorage`, so
+it is not passed around by hand. Asking for a second turn from inside one
+rejects rather than waiting on itself. A caller that does its own clear/run/read
+across several calls (for example `live-check`) is still not atomic against
+other callers unless it wraps that sequence in `runQueued`.
+
 ### Reading a simulation result's row count
 
 A result file's row count is solver-dependent — roughly `numberOfIntervals +
