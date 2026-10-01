@@ -32,6 +32,7 @@ import { ZodError } from "zod";
 
 import { errorDetail } from "./error-detail.js";
 import type { McpLog } from "./log.js";
+import { roundResultOutput } from "./result-precision.js";
 import type {
   WriteAction,
   WriteVerdictClient,
@@ -222,6 +223,12 @@ function loggable(value: unknown): string {
     : text;
 }
 
+function requestedVariables(input: unknown): readonly unknown[] {
+  if (typeof input !== "object" || input === null) return [];
+  const variables: unknown = Reflect.get(input, "variables");
+  return Array.isArray(variables) ? variables : [];
+}
+
 /**
  * Run `fn` with `input`, refusing first if the class it would write is not the
  * user's to change.
@@ -271,8 +278,12 @@ export async function dispatchByName(
       return errorResult(outcome.refusal);
     }
 
-    log?.info(`${action} -> ${loggable(outcome.output)}`);
-    return textResult(JSON.stringify(outcome.output));
+    const output =
+      fn === "readSimulationResult"
+        ? roundResultOutput(outcome.output, requestedVariables(input))
+        : outcome.output;
+    log?.info(`${action} -> ${loggable(output)}`);
+    return textResult(JSON.stringify(output));
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);

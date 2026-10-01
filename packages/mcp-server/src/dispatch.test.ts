@@ -527,3 +527,37 @@ describe("dispatchByName: destination gate origin-check atomicity (issue #730)",
     expect(writes).toEqual([path.join(workspaceDir, "filtered.mat")]);
   });
 });
+
+describe("dispatchByName: simulation result precision (issue #719)", () => {
+  const deps = (invoke: McpToolClient["invoke"]): McpToolDeps => ({
+    ensureClient: async () => baseClient({ invoke }),
+    verdicts,
+  });
+
+  it("sends readSimulationResult's numbers without float-repr tail digits", async () => {
+    const result = await dispatchByName(
+      deps(async () => ({
+        result: [
+          [1234567.1, 1234567.2],
+          [0.1 + 0.2, 0.00030000000000000003, 1.23456789e-9],
+        ],
+      })),
+      "readSimulationResult",
+      { filename: "r.mat", variables: ["time", "i"] },
+    );
+
+    expect(text(result)).toBe(
+      '{"result":[[1234567.1,1234567.2],[0.3,0.0003,1.23457e-9]]}',
+    );
+  });
+
+  it("leaves another function's numbers at full precision", async () => {
+    const result = await dispatchByName(
+      deps(async () => ({ result: [[0.1 + 0.2]] })),
+      "val",
+      { varName: "x", timeStamp: 0 },
+    );
+
+    expect(text(result)).toBe(`{"result":[[${0.1 + 0.2}]]}`);
+  });
+});
