@@ -8,7 +8,8 @@
  * the same distinction OMEdit draws with `isSystemLibrary`.
  *
  * This is one half of a write verdict; `write-verdict.ts` combines it with the
- * file permission and owns the memo callers see.
+ * file permission and owns the per-class memo callers see. The `MODELICAPATH`
+ * read underneath is shared per client.
  */
 
 import * as path from "node:path";
@@ -18,6 +19,29 @@ import { isLikelyDiskPath } from "@dicode/omc-client";
 export interface SystemLibraryClient {
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
   getModelicaPath(): Promise<{ modelicaPath: string }>;
+}
+
+/**
+ * `MODELICAPATH` is an OMC session global that no wrapper here can change, so
+ * one read per client serves every class. A rejected read is dropped so the
+ * next verdict asks again.
+ */
+const rootsByClient = new WeakMap<SystemLibraryClient, Promise<string[]>>();
+
+function modelicaPathRoots(client: SystemLibraryClient): Promise<string[]> {
+  const cached = rootsByClient.get(client);
+  if (cached) return cached;
+  const roots = client.getModelicaPath().then(({ modelicaPath }) =>
+    modelicaPath
+      .split(path.delimiter)
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0),
+  );
+  rootsByClient.set(client, roots);
+  roots.catch(() => {
+    if (rootsByClient.get(client) === roots) rootsByClient.delete(client);
+  });
+  return roots;
 }
 
 /**
@@ -37,11 +61,7 @@ export async function systemLibraryVerdict(
 ): Promise<boolean | undefined> {
   const { fileName } = await client.getSourceFile({ typeName: className });
   if (!isLikelyDiskPath(fileName)) return undefined;
-  const { modelicaPath } = await client.getModelicaPath();
-  const roots = modelicaPath
-    .split(path.delimiter)
-    .map((r) => r.trim())
-    .filter((r) => r.length > 0);
+  const roots = await modelicaPathRoots(client);
   const file = path.resolve(fileName);
   return roots.some((root) => isUnder(file, path.resolve(root)));
 }

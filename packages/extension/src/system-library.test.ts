@@ -49,4 +49,36 @@ describe("systemLibraryVerdict", () => {
       undefined,
     );
   });
+
+  it("reads MODELICAPATH once per client across classes", async () => {
+    const client = makeClient("/home/u/project/MyLib/A.mo");
+    await systemLibraryVerdict(client, "MyLib.A");
+    await systemLibraryVerdict(client, "MyLib.B");
+    expect(client.getModelicaPath).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares one in-flight read between concurrent verdicts", async () => {
+    const client = makeClient("/home/u/project/MyLib/A.mo");
+    await Promise.all([
+      systemLibraryVerdict(client, "MyLib.A"),
+      systemLibraryVerdict(client, "MyLib.B"),
+    ]);
+    expect(client.getModelicaPath).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cache a failed read", async () => {
+    const client = makeClient("/home/u/project/MyLib/A.mo");
+    client.getModelicaPath.mockRejectedValueOnce(new Error("omc gone"));
+    await expect(systemLibraryVerdict(client, "MyLib.A")).rejects.toThrow(
+      "omc gone",
+    );
+    expect(await systemLibraryVerdict(client, "MyLib.A")).toBe(false);
+    expect(client.getModelicaPath).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not ask for MODELICAPATH when the class has no disk source", async () => {
+    const client = makeClient("");
+    await systemLibraryVerdict(client, "Scratch");
+    expect(client.getModelicaPath).not.toHaveBeenCalled();
+  });
 });
