@@ -533,7 +533,7 @@
     "@dicode/omc-client": "workspace:*",
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "lit": "^3.3.3",
     "web-tree-sitter": "^0.27.0",
     "zeromq": "^6.8.0",
