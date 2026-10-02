@@ -149,4 +149,51 @@ describe("resolveGroupImages", () => {
     expect(await resolveGroupImages({ uriToFilename }, model)).toBe(model);
     expect(uriToFilename).not.toHaveBeenCalled();
   });
+
+  it("drops an image over the 2 MiB cap without reading it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "om-doc-res-"));
+    const big = join(dir, "big.png");
+    writeFileSync(big, Buffer.alloc(2 * 1024 * 1024 + 1));
+    const out = await resolveGroupImages(
+      { uriToFilename: vi.fn(() => Promise.resolve({ filename: big })) },
+      modelWith([URI]),
+    );
+    expect("groupImage" in (out.fields[0]?.dialog ?? {})).toBe(false);
+  });
+
+  it("drops non-modelica schemes and `..` traversal before asking OMC", async () => {
+    const uriToFilename = vi.fn(() => Promise.resolve({ filename: tempPng() }));
+    const out = await resolveGroupImages(
+      { uriToFilename },
+      modelWith([
+        "file:///etc/logo.png",
+        "modelica://Modelica/../../secret/logo.png",
+        "modelica://Modelica/%2e%2e/secret/logo.png",
+        URI,
+      ]),
+    );
+    expect(uriToFilename).toHaveBeenCalledTimes(1);
+    expect(uriToFilename).toHaveBeenCalledWith({ uri: URI });
+    for (const i of [0, 1, 2]) {
+      expect("groupImage" in (out.fields[i]?.dialog ?? {})).toBe(false);
+    }
+    expect(out.fields[3]?.dialog.groupImage).toMatch(/^data:image\/png/);
+  });
+
+  it("resolves distinct URIs concurrently", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const uriToFilename = vi.fn(async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await Promise.resolve();
+      inFlight--;
+      return { filename: tempPng() };
+    });
+    await resolveGroupImages(
+      { uriToFilename },
+      modelWith([URI, `${URI}?b`, "modelica://Modelica/Resources/c.png"]),
+    );
+    expect(peak).toBe(3);
+  });
 });

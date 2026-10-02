@@ -171,7 +171,9 @@ help, a separate concern.)
   `groupImage` is rendered: the producer carries it on `dialog.groupImage`; the
   extension host resolves it through the documentation `modelica://` resolver
   (`resolveGroupImages`, inlined `data:` URI, which the webview CSP's
-  `img-src data:` allows) and drops it when unresolvable; the form shows it in
+  `img-src data:` allows) and drops it when unresolvable, when the scheme is not
+  `modelica://`, when the URI has a `..` segment, or when the file exceeds
+  2 MiB; the form shows it in
   the group header. The spec declares `groupImage` per parameter, so a group may
   see several — the first parameter in declaration order that carries one wins.
 - **Simulation — only partly standardized.** The Modelica-standard part is the

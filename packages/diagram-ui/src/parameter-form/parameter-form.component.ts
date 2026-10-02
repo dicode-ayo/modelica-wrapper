@@ -309,7 +309,8 @@ export class OmParameterForm extends LitElement {
       .group-image {
         display: block;
         max-width: 100%;
-        max-height: 160px;
+        /* rem, not px: the cap must scale with the user's font size. */
+        max-height: 10rem;
         margin: 0 auto var(--om-space-sm);
         object-fit: contain;
       }

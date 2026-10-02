@@ -18,6 +18,7 @@ import type {
   DiagramLayout,
   ModelInstance,
   OmcClient,
+  ParameterModel,
 } from "@dicode/omc-client";
 
 import * as vscodeMock from "../../test-support/vscode-mock.js";
@@ -38,6 +39,27 @@ vi.mock("./library-source.js", () => ({
   },
   SearchAbortedError: class extends Error {},
 }));
+// Passes through to the real resolver unless a test installs a slower one.
+const resolveGroupImages = vi.hoisted(() => vi.fn());
+vi.mock(
+  "../documentation/documentation-resources.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../documentation/documentation-resources.js")
+      >();
+    resolveGroupImages.mockImplementation(actual.resolveGroupImages);
+    return {
+      ...actual,
+      resolveGroupImages: (
+        ...args: Parameters<typeof actual.resolveGroupImages>
+      ) =>
+        resolveGroupImages(...args) as ReturnType<
+          typeof actual.resolveGroupImages
+        >,
+    };
+  },
+);
 // `reportError` mirrors into the REPL the same way Check Model does
 // (`createReplLog`, which the parameter-edit path already uses) — stub only
 // `showInRepl` so a test can assert the mirror happened without a real
@@ -2321,6 +2343,49 @@ describe("DiagramEditController: parameter editing", () => {
       elementName: "PI.k",
     });
     expect(writes).toContain(LISTED_SOURCE);
+  });
+
+  it("commits component param state only together with the modal post, after images resolve", async () => {
+    const { client } = makeEditClient({ instance: componentInstance() });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+    const state = controller as unknown as {
+      componentParamRefs: Record<string, unknown>;
+      componentParamComponentName: string | null;
+    };
+
+    resolveGroupImages.mockClear();
+    let release: () => void = () => undefined;
+    resolveGroupImages.mockImplementationOnce(
+      async (_c: unknown, model: ParameterModel) => {
+        await new Promise<void>((r) => {
+          release = r;
+        });
+        return model;
+      },
+    );
+    const open = controller.handle({
+      type: "editComponent",
+      componentName: "PI",
+    });
+    await vi.waitFor(() => expect(resolveGroupImages).toHaveBeenCalled());
+
+    // A later open (or reset) that interleaves here must not see half-committed
+    // state from this one.
+    expect(state.componentParamComponentName).toBeNull();
+    expect(state.componentParamRefs).toEqual({});
+    expect(posted.some((m) => m.type === "parametersOpen")).toBe(false);
+
+    release();
+    await open;
+    expect(state.componentParamComponentName).toBe("PI");
+    expect(Object.keys(state.componentParamRefs)).not.toEqual([]);
+    expect(posted.some((m) => m.type === "parametersOpen")).toBe(true);
   });
 
   it("resets a component's modifiers (keepRedeclares) and re-opens the modal", async () => {
