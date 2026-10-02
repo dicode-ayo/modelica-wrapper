@@ -97,6 +97,8 @@ export interface ParameterField {
    */
   tab: string | undefined;
   group: string | undefined;
+  /** Loadable image URI (a `data:` URI from the host) for the group header. */
+  groupImage: string | undefined;
   /**
    * Raw `Dialog.enable` expression AST. Evaluated by the form against live
    * working values so the control goes `disabled` when the condition is false.
@@ -141,6 +143,20 @@ export function parameterFieldsFromModel(
   return model.fields.map(fieldFromModelField);
 }
 
+/**
+ * The image a group header shows: the first field in the group that carries
+ * one. Modelica declares `groupImage` per parameter, so a group can see several;
+ * declaration order picks a stable winner.
+ */
+export function firstGroupImage(
+  fields: ReadonlyArray<ParameterField>,
+): string | undefined {
+  for (const f of fields) {
+    if (f.groupImage !== undefined) return f.groupImage;
+  }
+  return undefined;
+}
+
 function fieldFromModelField(f: ModelField): ParameterField {
   return {
     name: f.name,
@@ -153,6 +169,7 @@ function fieldFromModelField(f: ModelField): ParameterField {
     itemKind: undefined,
     tab: f.dialog.tab,
     group: f.dialog.group,
+    groupImage: f.dialog.groupImage,
     enable: f.dialog.enable,
     enumTypeName: f.enumTypeName,
     unit: f.unit,

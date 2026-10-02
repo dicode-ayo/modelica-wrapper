@@ -1,6 +1,8 @@
 import { promises as fsp } from "node:fs";
 import * as path from "node:path";
 
+import type { ParameterModel } from "@dicode/omc-client";
+
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 
@@ -57,6 +59,28 @@ async function fileToDataUri(filename: string): Promise<string | undefined> {
 }
 
 /**
+ * Resolve one `modelica://` / `file://` URI to an inlined `data:` URI. Returns
+ * `undefined` for an unresolvable URI, an unknown image type, or an OMC
+ * failure, so a single broken image never blocks the surrounding render.
+ */
+export async function resolveImageUri(
+  client: UriResolveClient,
+  uri: string,
+): Promise<string | undefined> {
+  try {
+    const { filename } = await client.uriToFilename({ uri });
+    if (filename.length === 0) return undefined;
+    return await fileToDataUri(filename);
+  } catch (err) {
+    log.warn(
+      "documentationResources",
+      `resolve ${uri} failed: ${errorDetail(err)}`,
+    );
+    return undefined;
+  }
+}
+
+/**
  * Resolve every `modelica://` / `file://` image `src` in a `Documentation(info)`
  * string to an inlined `data:` URI the webview can render. `modelica://` URIs
  * only resolve when the referenced class is loaded; an unresolvable URI (or an
@@ -70,18 +94,41 @@ export async function resolveDocResources(
 ): Promise<ResourceMap> {
   const out: ResourceMap = {};
   for (const uri of imageUrisIn(info)) {
-    try {
-      const { filename } = await client.uriToFilename({ uri });
-      if (filename.length === 0) continue;
-      const dataUri = await fileToDataUri(filename);
-      if (dataUri !== undefined) out[uri] = dataUri;
-    } catch (err) {
-      // One broken image must not take the whole (already-fetched) doc down.
-      log.warn(
-        "documentationResources",
-        `resolve ${uri} failed: ${errorDetail(err)}`,
-      );
-    }
+    const dataUri = await resolveImageUri(client, uri);
+    if (dataUri !== undefined) out[uri] = dataUri;
   }
   return out;
+}
+
+/**
+ * Resolve each distinct `Dialog(groupImage)` URI on a parameter model to a
+ * `data:` URI through the documentation resolver. A field whose image cannot be
+ * resolved loses `groupImage`, so the webview only ever sees loadable URIs.
+ * Returns the input untouched when no field carries one.
+ */
+export async function resolveGroupImages(
+  client: UriResolveClient,
+  model: ParameterModel,
+): Promise<ParameterModel> {
+  const uris = new Set<string>();
+  for (const f of model.fields) {
+    if (f.dialog.groupImage !== undefined) uris.add(f.dialog.groupImage);
+  }
+  if (uris.size === 0) return model;
+  const resolved = new Map<string, string | undefined>();
+  for (const uri of uris) resolved.set(uri, await resolveImageUri(client, uri));
+  return {
+    ...model,
+    fields: model.fields.map((f) => {
+      const uri = f.dialog.groupImage;
+      if (uri === undefined) return f;
+      const { groupImage: _drop, ...dialog } = f.dialog;
+      const dataUri = resolved.get(uri);
+      return {
+        ...f,
+        dialog:
+          dataUri === undefined ? dialog : { ...dialog, groupImage: dataUri },
+      };
+    }),
+  };
 }

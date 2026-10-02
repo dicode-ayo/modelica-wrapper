@@ -70,7 +70,7 @@ interface ParameterField {
   defaultValue?: Expression | string | number | boolean;  // type default — for dirty-detection / reset
   enumChoices?: string[];
   enumTypeName?: string;        // qualifies a leaf ("PI") to <typeName>.PI on submit / for Dialog.enable
-  dialog: { tab: string; group: string; enable?: Expression };  // tab/group always set (spec §18.7 defaults)
+  dialog: { tab: string; group: string; enable?: Expression; groupImage?: string };  // tab/group always set (spec §18.7 defaults)
   unit?: string;                // base unit from the AST
   displayUnit?: string;         // displayUnit modifier from the AST, if any
   inheritedFrom?: string;       // direct extends base (write routing for class params)
@@ -168,6 +168,12 @@ help, a separate concern.)
   widgets not rendered yet (the `*Selector` pickers, `colorSelector`,
   `showStartAttribute`, `connectorSizing`) and the numeric attributes
   (`min/max/nominal/start/fixed`) slot in later without a rename.
+  `groupImage` is rendered: the producer carries it on `dialog.groupImage`; the
+  extension host resolves it through the documentation `modelica://` resolver
+  (`resolveGroupImages`, inlined `data:` URI, which the webview CSP's
+  `img-src data:` allows) and drops it when unresolvable; the form shows it in
+  the group header. The spec declares `groupImage` per parameter, so a group may
+  see several — the first parameter in declaration order that carries one wins.
 - **Simulation — only partly standardized.** The Modelica-standard part is the
   `experiment` annotation (**§18.4**): `StartTime, StopTime, Interval, Tolerance` —
   nothing else. There is **no** Modelica-standard "simulation setup" class. The

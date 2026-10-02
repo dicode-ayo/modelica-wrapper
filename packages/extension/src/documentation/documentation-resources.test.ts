@@ -12,8 +12,11 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import type { ParameterModel } from "@dicode/omc-client";
+
 import {
   resolveDocResources,
+  resolveGroupImages,
   type UriResolveClient,
 } from "./documentation-resources.js";
 
@@ -97,5 +100,53 @@ describe("resolveDocResources", () => {
     );
     expect(map[URI]).toBeUndefined();
     expect(map[ok]).toMatch(/^data:image\/png;base64,/);
+  });
+});
+
+describe("resolveGroupImages", () => {
+  function modelWith(images: Array<string | undefined>): ParameterModel {
+    return {
+      className: "M",
+      fields: images.map((groupImage, i) => ({
+        name: `p${i}`,
+        label: `p${i}`,
+        kind: "number" as const,
+        value: 1,
+        dialog: { tab: "General", group: "G", groupImage },
+        unitOptions: [],
+      })),
+    };
+  }
+
+  it("replaces a modelica:// groupImage with an inlined data: URI, resolving each URI once", async () => {
+    const file = tempPng();
+    const uriToFilename = vi.fn(() => Promise.resolve({ filename: file }));
+    const out = await resolveGroupImages(
+      { uriToFilename },
+      modelWith([URI, URI, undefined]),
+    );
+    expect(uriToFilename).toHaveBeenCalledTimes(1);
+    expect(out.fields[0]?.dialog.groupImage).toMatch(
+      /^data:image\/png;base64,/,
+    );
+    expect(out.fields[1]?.dialog.groupImage).toBe(
+      out.fields[0]?.dialog.groupImage,
+    );
+    expect(out.fields[2]?.dialog.groupImage).toBeUndefined();
+  });
+
+  it("drops an unresolvable groupImage instead of throwing", async () => {
+    const out = await resolveGroupImages(
+      { uriToFilename: vi.fn(() => Promise.reject(new Error("boom"))) },
+      modelWith([URI]),
+    );
+    expect("groupImage" in (out.fields[0]?.dialog ?? {})).toBe(false);
+  });
+
+  it("returns the model untouched when no field carries an image", async () => {
+    const uriToFilename = vi.fn();
+    const model = modelWith([undefined]);
+    expect(await resolveGroupImages({ uriToFilename }, model)).toBe(model);
+    expect(uriToFilename).not.toHaveBeenCalled();
   });
 });

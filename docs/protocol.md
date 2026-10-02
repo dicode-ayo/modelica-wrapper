@@ -145,7 +145,7 @@ a misspelled one is rejected at the boundary rather than routed nowhere.
 | `select` | `{ keys }` | Replace the selection — sent after a paste, so the fresh components are the ones under the next drag. |
 | `error` | `{ message }` | Surface a backend error. |
 | `renderError` | `{ className, mode, detail }` | The initial layout fetch failed; the webview replaces the canvas with a full error state. |
-| `parametersOpen` | `{ kind, model, title, submitLabel?, crefPrefix? }` | Open the parameter modal on a `ParameterModel`. `kind` routes the eventual submit and gates read-only; `crefPrefix` is the sub-component instance name the `Dialog.enable` evaluator strips. |
+| `parametersOpen` | `{ kind, model, title, submitLabel?, crefPrefix? }` | Open the parameter modal on a `ParameterModel`. `kind` routes the eventual submit and gates read-only; `crefPrefix` is the sub-component instance name the `Dialog.enable` evaluator strips. For parameter kinds, each field's `dialog.groupImage` has already been resolved host-side to an inlined `data:` URI (or dropped when unresolvable); the webview never sees a `modelica://` URI. |
 | `parametersClose` | — | Dismiss the parameter modal. |
 | `runCommand` | `{ commandId }` | A VSCode keybinding fired while the diagram panel was focused; the webview runs it through its own command registry. |
 | `placementStart` | `{ className }` | A library row was dragged toward the canvas; arm the cursor-tracking ghost. |

@@ -14,6 +14,7 @@ import type {
 import {
   buildEnableScope,
   enabledValues,
+  firstGroupImage,
   initialValuesFromFields,
   isComplete,
   isFieldEnabled,
@@ -468,5 +469,35 @@ describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", (
     const fields = gatedFields();
     expect(buildEnableScope(fields, { a: 9 }).lookup(["a"])).toBe(9);
     expect(buildEnableScope(fields, {}).lookup(["a"])).toBe(1);
+  });
+});
+
+describe("groupImage", () => {
+  it("is carried from the model field's dialog", () => {
+    const [f] = parameterFieldsFromModel(
+      model([
+        {
+          name: "a",
+          dialog: {
+            tab: "T",
+            group: "G",
+            groupImage: "data:image/png;base64,AA",
+          },
+        },
+      ]),
+    );
+    expect(f?.groupImage).toBe("data:image/png;base64,AA");
+  });
+
+  it("firstGroupImage picks the first field carrying one, in declaration order", () => {
+    const fields = parameterFieldsFromModel(
+      model([
+        { name: "a" },
+        { name: "b", dialog: { tab: "T", group: "G", groupImage: "data:b" } },
+        { name: "c", dialog: { tab: "T", group: "G", groupImage: "data:c" } },
+      ]),
+    );
+    expect(firstGroupImage(fields)).toBe("data:b");
+    expect(firstGroupImage(fields.slice(0, 1))).toBeUndefined();
   });
 });

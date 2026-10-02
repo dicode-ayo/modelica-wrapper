@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 
+import { resolveGroupImages } from "../documentation/documentation-resources.js";
 import type {
   ClassDef,
   ComponentElement,
@@ -1108,7 +1109,7 @@ export class DiagramEditController {
       gate.send({
         type: "parametersOpen",
         kind: "classParams",
-        model: form.model,
+        model: await resolveGroupImages(client, form.model),
         title: `Parameters: ${className}`,
         submitLabel: "Apply",
       });
@@ -1144,7 +1145,7 @@ export class DiagramEditController {
       gate.send({
         type: "parametersOpen",
         kind: "componentParams",
-        model: form.model,
+        model: await resolveGroupImages(client, form.model),
         title: `Parameters: ${componentName}${componentTypeSuffix(component)}`,
         submitLabel: "Apply",
         crefPrefix: componentName,
@@ -1498,7 +1499,7 @@ export class DiagramEditController {
       gate.send({
         type: "parametersOpen",
         kind: "componentParams",
-        model: form.model,
+        model: await resolveGroupImages(client, form.model),
         title: `Parameters: ${componentName}${componentTypeSuffix(component)}`,
         submitLabel: "Apply",
         crefPrefix: componentName,
