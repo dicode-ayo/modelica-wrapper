@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/ui-common-v0.0.6...@dicode/ui-common-v0.0.7) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** update dependency [@awesome](https://github.com/awesome).me/webawesome to ^3.14.0 ([#736](https://github.com/dicode-ayo/modelica-wrapper/issues/736)) ([52e80ed](https://github.com/dicode-ayo/modelica-wrapper/commit/52e80ed908d54c8e41e6dd1465581a7173a4dbc0))
+
 ## [0.0.6](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/ui-common-v0.0.5...@dicode/ui-common-v0.0.6) (2026-09-12)
 
 
