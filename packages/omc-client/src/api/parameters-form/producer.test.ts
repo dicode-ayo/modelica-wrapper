@@ -215,6 +215,30 @@ describe("produceParameterModel — class params", () => {
     expect("enable" in fieldByName(model, "use_reset").dialog).toBe(false);
   });
 
+  it("carries Dialog.groupImage per field and omits it when absent or empty", () => {
+    const img = "modelica://Modelica/Resources/Images/Blocks/PID.png";
+    const mk = (name: string, dialog?: unknown): unknown => ({
+      $kind: "component",
+      name,
+      type: "Real",
+      value: { binding: 1 },
+      prefixes: { variability: "parameter" },
+      ...(dialog === undefined ? {} : { annotation: { Dialog: dialog } }),
+    });
+    const model = produceParameterModel(
+      instance([
+        mk("a", { group: "G", groupImage: img }),
+        mk("b", { group: "G", groupImage: "" }),
+        mk("c", { group: "G" }),
+        mk("d"),
+      ]),
+    );
+    expect(fieldByName(model, "a").dialog.groupImage).toBe(img);
+    for (const n of ["b", "c", "d"]) {
+      expect("groupImage" in fieldByName(model, n).dialog).toBe(false);
+    }
+  });
+
   it("reads Dialog tab + group from the annotation, with spec defaults", () => {
     const mi = instance([
       {

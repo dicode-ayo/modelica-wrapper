@@ -59,6 +59,7 @@ import { omTokens } from "@dicode/ui-common";
 
 import {
   enabledValues,
+  firstGroupImage,
   initialValuesFromFields,
   isComplete,
   isFieldEnabled,
@@ -76,6 +77,7 @@ interface GroupBucket {
   /** Group name from the Dialog annotation. The producers always set a
    *  group (spec §18.7 default), so this is normally defined. */
   group: string | undefined;
+  image: string | undefined;
   fields: ParameterField[];
 }
 
@@ -112,7 +114,7 @@ function bucketByTab(fields: ReadonlyArray<ParameterField>): TabBucket[] {
     const groupsMap = byTab.get(tab)!;
     const groups: GroupBucket[] = [];
     for (const [group, list] of groupsMap.entries()) {
-      groups.push({ group, fields: list });
+      groups.push({ group, image: firstGroupImage(list), fields: list });
     }
     return { tab, groups };
   });
@@ -302,6 +304,15 @@ export class OmParameterForm extends LitElement {
         margin: 0 0 var(--om-space-sm) 0;
         padding-bottom: var(--om-space-xs);
         border-bottom: 1px solid var(--vscode-input-border, #e0e0e0);
+      }
+
+      .group-image {
+        display: block;
+        max-width: 100%;
+        /* rem, not px: the cap must scale with the user's font size. */
+        max-height: 10rem;
+        margin: 0 auto var(--om-space-sm);
+        object-fit: contain;
       }
 
       wa-tab-panel {
@@ -544,6 +555,11 @@ export class OmParameterForm extends LitElement {
           ${
             g.group !== undefined
               ? html`<div class="group-title">${g.group}</div>`
+              : nothing
+          }
+          ${
+            g.image !== undefined
+              ? html`<img class="group-image" src=${g.image} alt="" />`
               : nothing
           }
           ${g.fields.map((f) => this.renderField(f))}

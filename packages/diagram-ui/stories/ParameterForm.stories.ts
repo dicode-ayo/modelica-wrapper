@@ -313,3 +313,49 @@ export const RequiredFieldGating: Story = {
     },
   },
 };
+
+// Stands in for the block-diagram a library ships via
+// `Dialog(groupImage="modelica://...")`, which the host inlines as a data: URI.
+const GROUP_IMAGE_SVG =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80" viewBox="0 0 240 80"><rect x="2" y="2" width="236" height="76" rx="6" fill="#eef3fb" stroke="#4a6fa5" stroke-width="2"/><text x="120" y="46" font-family="sans-serif" font-size="16" text-anchor="middle" fill="#2d4a73">u -> [ k ] -> y</text></svg>`,
+  );
+
+/** A group whose header carries its `Dialog(groupImage)`, next to an image-less group. */
+export const GroupWithImage: Story = {
+  args: {
+    title: "Parameters: gain",
+    model: {
+      className: "Modelica.Blocks.Math.Gain",
+      fields: [
+        {
+          name: "k",
+          label: "Gain",
+          kind: "number",
+          value: 1,
+          defaultValue: 1,
+          dialog: { ...G, group: "Gain", groupImage: GROUP_IMAGE_SVG },
+          unitOptions: [],
+        },
+        {
+          name: "offset",
+          label: "Offset",
+          kind: "number",
+          value: 0,
+          defaultValue: 0,
+          dialog: { ...G, group: "Gain" },
+          unitOptions: [],
+        },
+        {
+          name: "label",
+          label: "Label",
+          kind: "string",
+          value: "",
+          dialog: { ...G, group: "Display" },
+          unitOptions: [],
+        },
+      ],
+    },
+  },
+};

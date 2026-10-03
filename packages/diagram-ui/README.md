@@ -116,8 +116,10 @@ registry and keymap regardless of who triggers the dispatch.
 (`ParameterModel`), `heading`, `open`, and (optionally) `show-reset`, and it
 renders one row per field — text/number/boolean/enum/array widgets, optional unit
 dropdowns with affine conversion, `Dialog` tab/group layout, and `Dialog.enable`
-gating. On submit it back-converts display units to base units and drops disabled
-fields.
+gating. A group's header shows the first `Dialog(groupImage)` among its fields,
+as an `<img>` whose `src` must already be loadable (the extension host inlines
+`modelica://` URIs as `data:` URIs). On submit it back-converts display units to
+base units and drops disabled fields.
 
 It does not position itself — the host is a plain flow box, so the embedder
 places and clamps it. `<om-overlay-stack>` is that container: a corner rail

@@ -27,6 +27,7 @@ function field(over: Partial<ParameterField>): ParameterField {
     itemKind: undefined,
     tab: undefined,
     group: undefined,
+    groupImage: undefined,
     enable: undefined,
     enumTypeName: undefined,
     unit: undefined,

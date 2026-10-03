@@ -1,6 +1,8 @@
 import { promises as fsp } from "node:fs";
 import * as path from "node:path";
 
+import type { ParameterModel } from "@dicode/omc-client";
+
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 
@@ -41,16 +43,55 @@ function imageUrisIn(info: string): string[] {
   return [...seen];
 }
 
-async function fileToDataUri(filename: string): Promise<string | undefined> {
+/** Group images are inlined into every `parametersOpen`, so they stay small. */
+const GROUP_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+
+async function fileToDataUri(
+  filename: string,
+  maxBytes?: number,
+): Promise<string | undefined> {
   const mime = MIME_BY_EXT[path.extname(filename).toLowerCase()];
   if (mime === undefined) return undefined;
   try {
+    if (maxBytes !== undefined) {
+      const { size } = await fsp.stat(filename);
+      if (size > maxBytes) {
+        log.warn(
+          "documentationResources",
+          `skip ${filename}: ${size} bytes exceeds ${maxBytes}`,
+        );
+        return undefined;
+      }
+    }
     const bytes = await fsp.readFile(filename);
     return `data:${mime};base64,${bytes.toString("base64")}`;
   } catch (err) {
     log.warn(
       "documentationResources",
       `read ${filename} failed: ${errorDetail(err)}`,
+    );
+    return undefined;
+  }
+}
+
+/**
+ * Resolve one `modelica://` / `file://` URI to an inlined `data:` URI. Returns
+ * `undefined` for an unresolvable URI, an unknown image type, a file over
+ * `maxBytes` (when given), or an OMC failure, so a single broken image never blocks the surrounding render.
+ */
+async function resolveImageUri(
+  client: UriResolveClient,
+  uri: string,
+  maxBytes?: number,
+): Promise<string | undefined> {
+  try {
+    const { filename } = await client.uriToFilename({ uri });
+    if (filename.length === 0) return undefined;
+    return await fileToDataUri(filename, maxBytes);
+  } catch (err) {
+    log.warn(
+      "documentationResources",
+      `resolve ${uri} failed: ${errorDetail(err)}`,
     );
     return undefined;
   }
@@ -70,18 +111,69 @@ export async function resolveDocResources(
 ): Promise<ResourceMap> {
   const out: ResourceMap = {};
   for (const uri of imageUrisIn(info)) {
-    try {
-      const { filename } = await client.uriToFilename({ uri });
-      if (filename.length === 0) continue;
-      const dataUri = await fileToDataUri(filename);
-      if (dataUri !== undefined) out[uri] = dataUri;
-    } catch (err) {
-      // One broken image must not take the whole (already-fetched) doc down.
-      log.warn(
-        "documentationResources",
-        `resolve ${uri} failed: ${errorDetail(err)}`,
-      );
-    }
+    const dataUri = await resolveImageUri(client, uri);
+    if (dataUri !== undefined) out[uri] = dataUri;
   }
   return out;
+}
+
+/**
+ * `groupImage` comes from model source, so only `modelica://` is accepted (no
+ * `file://` reads of arbitrary paths) and `..` segments are refused so the URI
+ * cannot climb out of the referenced package's resources.
+ */
+function isSafeGroupImageUri(uri: string): boolean {
+  if (!/^modelica:\/\//i.test(uri)) return false;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(uri);
+  } catch {
+    return false;
+  }
+  return !decoded.split(/[/\\]/).includes("..");
+}
+
+/**
+ * Resolve each distinct `Dialog(groupImage)` URI on a parameter model to a
+ * `data:` URI through the documentation resolver. A field whose image cannot be
+ * resolved, is not a safe `modelica://` URI, or exceeds 2 MiB loses
+ * `groupImage`, so the webview only ever sees loadable URIs. Returns the input
+ * untouched when no field carries one.
+ */
+export async function resolveGroupImages(
+  client: UriResolveClient,
+  model: ParameterModel,
+): Promise<ParameterModel> {
+  const uris = new Set<string>();
+  for (const f of model.fields) {
+    if (f.dialog.groupImage !== undefined) uris.add(f.dialog.groupImage);
+  }
+  if (uris.size === 0) return model;
+  const resolved = new Map(
+    await Promise.all(
+      [...uris].map(
+        async (uri) =>
+          [
+            uri,
+            isSafeGroupImageUri(uri)
+              ? await resolveImageUri(client, uri, GROUP_IMAGE_MAX_BYTES)
+              : undefined,
+          ] as const,
+      ),
+    ),
+  );
+  return {
+    ...model,
+    fields: model.fields.map((f) => {
+      const uri = f.dialog.groupImage;
+      if (uri === undefined) return f;
+      const { groupImage: _drop, ...dialog } = f.dialog;
+      const dataUri = resolved.get(uri);
+      return {
+        ...f,
+        dialog:
+          dataUri === undefined ? dialog : { ...dialog, groupImage: dataUri },
+      };
+    }),
+  };
 }

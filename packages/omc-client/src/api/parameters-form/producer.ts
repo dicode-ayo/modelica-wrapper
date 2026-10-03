@@ -475,6 +475,7 @@ function readDialogInfo(annotation: Annotation | undefined): {
   tab: string;
   group: string;
   enable?: Expression | undefined;
+  groupImage?: string | undefined;
 } {
   if (!annotation) {
     return { tab: DEFAULT_DIALOG_TAB, group: DEFAULT_DIALOG_GROUP };
@@ -483,8 +484,18 @@ function readDialogInfo(annotation: Annotation | undefined): {
   if (!dlg || typeof dlg !== "object" || Array.isArray(dlg)) {
     return { tab: DEFAULT_DIALOG_TAB, group: DEFAULT_DIALOG_GROUP };
   }
-  const obj = dlg as { tab?: unknown; group?: unknown; enable?: unknown };
-  const out: { tab: string; group: string; enable?: Expression | undefined } = {
+  const obj = dlg as {
+    tab?: unknown;
+    group?: unknown;
+    enable?: unknown;
+    groupImage?: unknown;
+  };
+  const out: {
+    tab: string;
+    group: string;
+    enable?: Expression | undefined;
+    groupImage?: string | undefined;
+  } = {
     tab: typeof obj.tab === "string" ? obj.tab : DEFAULT_DIALOG_TAB,
     group: typeof obj.group === "string" ? obj.group : DEFAULT_DIALOG_GROUP,
   };
@@ -492,6 +503,9 @@ function readDialogInfo(annotation: Annotation | undefined): {
   // through untouched; the form's evaluator handles every shape. Only set the
   // key when present so own-vs-enable refs stay clean.
   if (obj.enable !== undefined) out.enable = obj.enable as Expression;
+  if (typeof obj.groupImage === "string" && obj.groupImage.length > 0) {
+    out.groupImage = obj.groupImage;
+  }
   return out;
 }
 

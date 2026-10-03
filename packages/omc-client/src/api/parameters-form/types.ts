@@ -129,6 +129,13 @@ export interface ParameterField {
      * here. `undefined` means "always enabled".
      */
     enable?: Expression | undefined;
+    /**
+     * Raw `Dialog.groupImage` URI (typically `modelica://…`) as declared on this
+     * parameter. A group's header shows the first parameter's image that has
+     * one. The extension host swaps it for an inlined `data:` URI before the
+     * model reaches the webview, dropping it when unresolvable.
+     */
+    groupImage?: string | undefined;
   };
   /** Base unit from the AST (e.g. `"kg.m2"`, `"rad"`). Absent for unit-less params. */
   unit?: string | undefined;

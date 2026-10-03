@@ -124,3 +124,37 @@ describe("<om-parameter-form> dirty tracking", () => {
     el.remove();
   });
 });
+
+describe("<om-parameter-form> group image", () => {
+  function imageModel(): ParameterModel {
+    const field = (name: string, group: string, groupImage?: string) => ({
+      name,
+      label: name,
+      kind: "string" as const,
+      value: "",
+      dialog: { tab: "T", group, groupImage },
+      unitOptions: [],
+    });
+    return {
+      className: "X",
+      fields: [
+        field("a", "With", "data:image/png;base64,AAAA"),
+        field("b", "With", "data:image/png;base64,BBBB"),
+        field("c", "Without"),
+      ],
+    };
+  }
+
+  it("renders the first image of a group in its header and none for an image-less group", async () => {
+    const el = await mount(imageModel());
+    const groups = [...(el.shadowRoot?.querySelectorAll(".group") ?? [])];
+    expect(groups).toHaveLength(2);
+    const imgs = groups.map((g) => g.querySelectorAll("img.group-image"));
+    expect(imgs[0]).toHaveLength(1);
+    expect(imgs[0]?.[0]?.getAttribute("src")).toBe(
+      "data:image/png;base64,AAAA",
+    );
+    expect(imgs[1]).toHaveLength(0);
+    el.remove();
+  });
+});
