@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-ui-v0.0.6...@dicode/diagram-ui-v0.0.7) (2026-10-03)
+
+
+### Features
+
+* **diagram-ui:** render Dialog(groupImage) in the parameter form ([#754](https://github.com/dicode-ayo/modelica-wrapper/issues/754)) ([0a9f276](https://github.com/dicode-ayo/modelica-wrapper/commit/0a9f2764058407c4fbda165d68f3de18e119e91e))
+* **diagram:** host+protocol for semantic in-place nesting on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#745](https://github.com/dicode-ayo/modelica-wrapper/issues/745)) ([b7fd25b](https://github.com/dicode-ayo/modelica-wrapper/commit/b7fd25b6902d824095cd88ef3fab44244f7b7eb7))
+
+
+### Bug Fixes
+
+* **deps:** update dependency [@awesome](https://github.com/awesome).me/webawesome to ^3.14.0 ([#736](https://github.com/dicode-ayo/modelica-wrapper/issues/736)) ([52e80ed](https://github.com/dicode-ayo/modelica-wrapper/commit/52e80ed908d54c8e41e6dd1465581a7173a4dbc0))
+
 ## [0.0.6](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-ui-v0.0.5...@dicode/diagram-ui-v0.0.6) (2026-09-20)
 
 

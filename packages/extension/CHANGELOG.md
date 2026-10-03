@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.0.8](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.7...modelica-wrapper-v0.0.8) (2026-10-03)
+
+
+### Features
+
+* **diagram-ui:** render Dialog(groupImage) in the parameter form ([#754](https://github.com/dicode-ayo/modelica-wrapper/issues/754)) ([0a9f276](https://github.com/dicode-ayo/modelica-wrapper/commit/0a9f2764058407c4fbda165d68f3de18e119e91e))
+* **diagram:** host+protocol for semantic in-place nesting on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#745](https://github.com/dicode-ayo/modelica-wrapper/issues/745)) ([b7fd25b](https://github.com/dicode-ayo/modelica-wrapper/commit/b7fd25b6902d824095cd88ef3fab44244f7b7eb7))
+
+
+### Bug Fixes
+
+* **deps:** update dependency @modelcontextprotocol/sdk to ^1.32.0 ([#749](https://github.com/dicode-ayo/modelica-wrapper/issues/749)) ([0d6b257](https://github.com/dicode-ayo/modelica-wrapper/commit/0d6b2571cfd27219495008d01c1514f4ece71742))
+* **extension:** dedupe concurrent ResultCache lookups for the same file ([#726](https://github.com/dicode-ayo/modelica-wrapper/issues/726)) ([1b5bee3](https://github.com/dicode-ayo/modelica-wrapper/commit/1b5bee392353922b340b07d5900560aab1a776a4))
+* **extension:** probe existClass before fetchSimulationOptions ([#747](https://github.com/dicode-ayo/modelica-wrapper/issues/747)) ([a76aeea](https://github.com/dicode-ayo/modelica-wrapper/commit/a76aeeabbfd3d4653405a542eae170126a2c4a07))
+* **omc-client:** refuse addComponent writes that would corrupt the model ([#738](https://github.com/dicode-ayo/modelica-wrapper/issues/738)) ([84b7a42](https://github.com/dicode-ayo/modelica-wrapper/commit/84b7a42b292d5807c9f9ad199c57baa7341de984))
+
+
+### Performance Improvements
+
+* **extension:** read MODELICAPATH once per client, not per class verdict ([#753](https://github.com/dicode-ayo/modelica-wrapper/issues/753)) ([a8191f9](https://github.com/dicode-ayo/modelica-wrapper/commit/a8191f9482d0026cb1505c64bd8ce1a529ac45b3))
+
+
+### Tests
+
+* **extension:** fix ResultCache-dedup mismatch in the generation-drop test ([#742](https://github.com/dicode-ayo/modelica-wrapper/issues/742)) ([246f4d4](https://github.com/dicode-ayo/modelica-wrapper/commit/246f4d4add02ea214dc945110581c58168aa5916))
+
 ## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.6...modelica-wrapper-v0.0.7) (2026-09-20)
 
 
