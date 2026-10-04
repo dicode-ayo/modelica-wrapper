@@ -40,6 +40,8 @@ import {
   isLikelyDiskPath,
   linkPersistedClass,
   persistClass,
+  runQueued,
+  withErrorBuffer,
   type OmcClient,
 } from "@dicode/omc-client";
 
@@ -173,42 +175,45 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     // reconstructs the file from one class and drops the rest (#452). A file
     // OMC cannot parse falls through — refusing there would block saving a fix
     // over a corrupted file, and the buffer screen still holds.
-    if (onDisk) {
-      const inFile = await multipleTopLevelClasses(client, info.fileName);
-      if (inFile) {
-        throw vscode.FileSystemError.Unavailable(
-          multiEntityMessage(info.fileName, inFile),
-        );
-      }
-    }
     // OMC keys a class to its file, so a class stored inline in a shared
     // `package.mo` stays in place with its siblings — passing a per-class
     // pseudo-filename evicts it from that file. A memory-only class has no
     // disk path yet, so it carries the buffer URI until `setSourceFile`. Both
-    // the buffer screen above and the `loadString` below key off this same
+    // the buffer screen and the `loadString` below key off this same
     // filename: the screen exists to predict what `loadString` binds to.
     const bindFilename = onDisk ? info.fileName : uri.toString();
-    const refusal = await bufferRefusal(client, {
-      data: text,
-      filename: bindFilename,
-      expected: typeName,
-      label: onDisk ? info.fileName : typeName,
+    // The screens can leave a diagnostic in OMC's error buffer; running them
+    // in one turn keeps another caller's buffer read from consuming it.
+    const { inFile, refusal } = await runQueued(client, async () => {
+      const inFile = onDisk
+        ? await multipleTopLevelClasses(client, info.fileName)
+        : undefined;
+      if (inFile) return { inFile, refusal: undefined };
+      const refusal = await bufferRefusal(client, {
+        data: text,
+        filename: bindFilename,
+        expected: typeName,
+        label: onDisk ? info.fileName : typeName,
+      });
+      return { inFile, refusal };
     });
+    if (inFile) {
+      throw vscode.FileSystemError.Unavailable(
+        multiEntityMessage(info.fileName, inFile),
+      );
+    }
     if (refusal !== undefined) {
       throw vscode.FileSystemError.Unavailable(refusal);
     }
 
-    // Drain any stale errors so the post-loadString check below only sees
-    // diagnostics produced by this save.
-    await client.getErrorString();
-
     // Update OMC's in-memory AST, under the same filename the screen above
     // just checked the buffer against.
-    const { success } = await client.loadString({
-      data: text,
-      filename: bindFilename,
-    });
-    const { errorString } = await client.getErrorString();
+    const {
+      result: { success },
+      errorString,
+    } = await withErrorBuffer(client, () =>
+      client.loadString({ data: text, filename: bindFilename }),
+    );
     if (!success || (errorString.length > 0 && /error/i.test(errorString))) {
       // Surface to VSCode so the editor keeps the dirty state and the user
       // sees a banner; the live-check pipeline will also pin the precise

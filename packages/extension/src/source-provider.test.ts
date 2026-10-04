@@ -11,7 +11,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import type { OmcClient } from "@dicode/omc-client";
+import { runQueued, withErrorBuffer, type OmcClient } from "@dicode/omc-client";
 
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
@@ -382,5 +382,72 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     ).rejects.toThrow(/now declares A2/);
     expect(loadString).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe("ModelicaSourceProvider: save screens share the error-buffer queue", () => {
+  it("keeps a concurrent withErrorBuffer turn from reading a diagnostic a screen left", async () => {
+    let buffer = "";
+    let releaseMutation: () => void = () => undefined;
+    const mutationGate = new Promise<void>((resolve) => {
+      releaseMutation = resolve;
+    });
+    let signalMutationRunning: () => void = () => undefined;
+    const mutationRunning = new Promise<void>((resolve) => {
+      signalMutationRunning = resolve;
+    });
+    const client: OmcClient = {
+      parseFile: vi.fn(() => {
+        buffer = "Error: malformed input near line 3";
+        return Promise.resolve({ classNames: ["Pkg.M"] });
+      }),
+      parseString: vi.fn(() => Promise.resolve({ classNames: ["M"] })),
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({ fileName: "/ws/Pkg/M.mo", fileReadOnly: false }),
+      ),
+      getSourceFile: vi.fn(() => Promise.resolve({ fileName: "/ws/Pkg/M.mo" })),
+      listFile: vi.fn(() => Promise.resolve({ contents: "model M end M;" })),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+      ),
+      loadString: vi.fn(() => Promise.resolve({ success: true })),
+      // Waits out an in-flight turn like `OmcClient`'s own buffer readers; a
+      // read from inside a turn rejects in `runQueued` and runs directly.
+      getErrorString: vi.fn(() => {
+        const read = () => {
+          const errorString = buffer;
+          buffer = "";
+          return { errorString };
+        };
+        return runQueued(client, () => Promise.resolve(read())).catch(read);
+      }),
+    } as unknown as OmcClient;
+    const guard: SelfWriteGuard = {
+      record: vi.fn(),
+      claim: () => false,
+      write: vi.fn(() => Promise.resolve()),
+    };
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+      new WriteVerdicts(),
+    );
+
+    const mutation = withErrorBuffer(client, async () => {
+      signalMutationRunning();
+      await mutationGate;
+      return "unrelated mutation";
+    });
+    await mutationRunning;
+    const save = provider.writeFile(URI, Buffer.from("model M end M;"));
+    // Let the save reach its screens while the mutation's turn is still open.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    releaseMutation();
+
+    const [mutationResult] = await Promise.all([mutation, save]);
+
+    // The screens queue behind the mutation's whole turn, so its drain reads
+    // an empty buffer rather than the screen's diagnostic.
+    expect(mutationResult.errorString).toBe("");
   });
 });
