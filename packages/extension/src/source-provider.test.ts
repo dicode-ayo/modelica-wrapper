@@ -386,7 +386,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
 });
 
 describe("ModelicaSourceProvider: save screens share the error-buffer queue", () => {
-  it("keeps a concurrent withErrorBuffer turn from reading a diagnostic a screen left", async () => {
+  function setup() {
     let buffer = "";
     let releaseMutation: () => void = () => undefined;
     const mutationGate = new Promise<void>((resolve) => {
@@ -396,10 +396,21 @@ describe("ModelicaSourceProvider: save screens share the error-buffer queue", ()
     const mutationRunning = new Promise<void>((resolve) => {
       signalMutationRunning = resolve;
     });
+    let releaseScreen: () => void = () => undefined;
+    const screenGate = new Promise<void>((resolve) => {
+      releaseScreen = resolve;
+    });
+    let signalScreenRunning: () => void = () => undefined;
+    const screenRunning = new Promise<void>((resolve) => {
+      signalScreenRunning = resolve;
+    });
+    const write = vi.fn(() => Promise.resolve());
     const client: OmcClient = {
-      parseFile: vi.fn(() => {
+      parseFile: vi.fn(async () => {
         buffer = "Error: malformed input near line 3";
-        return Promise.resolve({ classNames: ["Pkg.M"] });
+        signalScreenRunning();
+        await screenGate;
+        return { classNames: ["Pkg.M"] };
       }),
       parseString: vi.fn(() => Promise.resolve({ classNames: ["M"] })),
       getClassInformation: vi.fn(() =>
@@ -412,42 +423,88 @@ describe("ModelicaSourceProvider: save screens share the error-buffer queue", ()
       ),
       loadString: vi.fn(() => Promise.resolve({ success: true })),
       // Waits out an in-flight turn like `OmcClient`'s own buffer readers; a
-      // read from inside a turn rejects in `runQueued` and runs directly.
+      // read from inside a turn is rejected by `runQueued` and runs directly.
       getErrorString: vi.fn(() => {
         const read = () => {
           const errorString = buffer;
           buffer = "";
           return { errorString };
         };
-        return runQueued(client, () => Promise.resolve(read())).catch(read);
+        return runQueued(client, () => Promise.resolve(read())).catch(
+          (error: unknown) => {
+            if (
+              error instanceof Error &&
+              error.message.includes("already holding it")
+            ) {
+              return read();
+            }
+            throw error;
+          },
+        );
       }),
     } as unknown as OmcClient;
     const guard: SelfWriteGuard = {
       record: vi.fn(),
       claim: () => false,
-      write: vi.fn(() => Promise.resolve()),
+      write,
     };
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       guard,
       new WriteVerdicts(),
     );
+    return {
+      client,
+      provider,
+      write,
+      releaseMutation,
+      mutationGate,
+      mutationRunning,
+      signalMutationRunning,
+      releaseScreen,
+      screenRunning,
+    };
+  }
 
-    const mutation = withErrorBuffer(client, async () => {
-      signalMutationRunning();
-      await mutationGate;
+  it("keeps a concurrent withErrorBuffer turn from reading a diagnostic a screen left", async () => {
+    const t = setup();
+    // The screen gate only blocks a screen that has started; this test never
+    // reaches one before the mutation's turn ends.
+    t.releaseScreen();
+
+    const mutation = withErrorBuffer(t.client, async () => {
+      t.signalMutationRunning();
+      await t.mutationGate;
       return "unrelated mutation";
     });
-    await mutationRunning;
-    const save = provider.writeFile(URI, Buffer.from("model M end M;"));
-    // Let the save reach its screens while the mutation's turn is still open.
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    releaseMutation();
+    await t.mutationRunning;
+    const save = t.provider.writeFile(URI, Buffer.from("model M end M;"));
+    await vi.waitFor(() => {
+      expect(t.client.getClassInformation).toHaveBeenCalled();
+    });
+    // The save has reached its screens, which wait on the mutation's turn.
+    expect(t.client.parseFile).not.toHaveBeenCalled();
+    t.releaseMutation();
 
     const [mutationResult] = await Promise.all([mutation, save]);
 
-    // The screens queue behind the mutation's whole turn, so its drain reads
-    // an empty buffer rather than the screen's diagnostic.
+    expect(t.client.parseFile).toHaveBeenCalled();
     expect(mutationResult.errorString).toBe("");
+    expect(t.write).toHaveBeenCalled();
+  });
+
+  it("drains a screen's diagnostic before a bare getErrorString queued behind it reads", async () => {
+    const t = setup();
+
+    const save = t.provider.writeFile(URI, Buffer.from("model M end M;"));
+    await t.screenRunning;
+    // Queues behind the screen turn, ahead of the load's own turn.
+    const bare = t.client.getErrorString();
+    t.releaseScreen();
+
+    const [{ errorString }] = await Promise.all([bare, save]);
+
+    expect(errorString).toBe("");
+    expect(t.write).toHaveBeenCalled();
   });
 });

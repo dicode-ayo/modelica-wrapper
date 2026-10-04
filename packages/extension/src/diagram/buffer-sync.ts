@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { looksLikeError, runQueued, withErrorBuffer } from "@dicode/omc-client";
+import { looksLikeError, withErrorBuffer } from "@dicode/omc-client";
 
 import {
   bufferRefusal,
@@ -84,10 +84,10 @@ export type ReloadResult = { ok: true } | { ok: false; message: string };
 /**
  * Reload `document`'s text into OMC, replacing the class. The screens ahead
  * of the load — resolving a filename and reading the buffer's own class names
- * via `parseString` — run inside their own turn on the client's queue, since
- * `parseString` can leave a diagnostic in OMC's buffer without throwing; only
- * the load's own turn also clears and drains that buffer, to catch a
- * diagnostic against `loadString` itself rather than an unrelated screen.
+ * via `parseString` — run in their own `withErrorBuffer` turn, since
+ * `parseString` can leave a diagnostic in OMC's buffer without throwing;
+ * draining it there keeps it from reaching a caller queued before the load's
+ * turn, and from being misread as a diagnostic against `loadString` itself.
  *
  * `expectedClassName` is the class OMC currently holds for this buffer, the
  * one the caller opened its editor on. The rename screen compares what the
@@ -100,7 +100,9 @@ export async function reloadBufferIntoOmc(
   expectedClassName: string,
 ): Promise<ReloadResult> {
   const data = document.getText();
-  const { filename, refusal } = await runQueued(client, async () => {
+  const {
+    result: { filename, refusal },
+  } = await withErrorBuffer(client, async () => {
     const filename = await omcFilenameForDocument(client, document.uri);
     const refusal = await bufferRefusal(client, {
       data,

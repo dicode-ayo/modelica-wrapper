@@ -192,9 +192,10 @@ it is not passed around by hand. Asking for a second turn from inside one
 rejects rather than waiting on itself. A caller that does its own clear/run/read
 across several calls (for example `live-check`) is still not atomic against
 other callers unless it wraps that sequence in `runQueued`. The save path in
-`source-provider.ts` does so: its single-entity screens (`parseFile`,
-`parseString`) take one `runQueued` turn, then `loadString` runs under
-`withErrorBuffer`.
+`source-provider.ts` and `reloadBufferIntoOmc` in `diagram/buffer-sync.ts` run
+their screens (`parseFile`, `parseString`) under `withErrorBuffer` and discard
+its `errorString`, so a screen's diagnostic is drained in its own turn; then
+`loadString` runs under its own `withErrorBuffer`.
 
 ### Reading a simulation result's row count
 
