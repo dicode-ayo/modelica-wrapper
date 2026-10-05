@@ -1,17 +1,22 @@
-import { html, nothing, type TemplateResult } from "lit";
+import { html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { guard } from "lit/directives/guard.js";
 import { ContextProvider } from "@lit/context";
 import type { TextSubstitutions } from "@dicode/diagram-svg";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import { OmShapeElement } from "../base/shape-element.js";
 import "../base/layer-group.component.js";
-import { applyPlacement, coordSystemSize } from "../base/placement-math.js";
+import {
+  applyPlacement,
+  coordSystemSize,
+  type Box,
+} from "../base/placement-math.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
 import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
 import { nestingProgress } from "../nesting/nesting-math.js";
 import "../nesting/nested-diagram.component.js";
-import { renderLayers } from "../primitives/render-shape.js";
+import { extentToRect } from "../primitives/shape-utils.js";
 
 /**
  * `<om-component>` — renders a Modelica `ComponentInstance` as an icon
@@ -77,6 +82,12 @@ export class OmComponent extends OmShapeElement {
   /** The class whose fetch this element has issued, so it asks once. */
   private requestedClass: string | null = null;
 
+  /** The box the nested view fills, and the signed scale it is placed at.
+   *  Derived from `placement` / `coordinateSystem` and kept by reference, so
+   *  a progress-only render leaves the nested view's inputs unchanged. */
+  private nestedBox: Box = coordSystemSize(undefined);
+  private nestedBoxScale = { x: 1, y: 1 };
+
   private readonly substitutionsProvider = new ContextProvider(this, {
     context: substitutionsContext,
     initialValue: null as TextSubstitutions | null,
@@ -86,24 +97,23 @@ export class OmComponent extends OmShapeElement {
     return this.nodeId ? `om-component:${this.nodeId}` : "om-component";
   }
 
-  override render(): TemplateResult {
-    if (!this.nestedSource) return super.render();
+  protected override renderIcon(): unknown {
+    if (!this.nestedSource) return super.renderIcon();
+    // The icon stays opaque until the diagram has arrived.
     const open = this.nestedLayout ? this.nestingOpen : 0;
     return html`<om-layer-group .alpha=${1 - open}
-        >${renderLayers(this.layers)}</om-layer-group
+        >${guard([this.layers], () => super.renderIcon())}</om-layer-group
       >${
-        this.nestedLayout && open > 0
+        open > 0
           ? html`<om-nested-diagram
               .layout=${this.nestedLayout}
-              .box=${coordSystemSize(this.coordinateSystem)}
-              .boxScale=${
-                applyPlacement(this.placement, this.coordinateSystem).scale
-              }
+              .box=${this.nestedBox}
+              .boxScale=${this.nestedBoxScale}
               .progress=${open}
               .worldPerPixel=${this.openWorldPerPixel}
             ></om-nested-diagram>`
           : nothing
-      }<slot></slot>`;
+      }`;
   }
 
   override willUpdate(changed: Map<string, unknown>): void {
@@ -111,6 +121,16 @@ export class OmComponent extends OmShapeElement {
     if (changed.has("classRef") || changed.has("nestedSource")) {
       this.nestedLayout = null;
       this.requestedClass = null;
+    }
+    if (changed.has("coordinateSystem")) {
+      this.nestedBox = coordSystemSize(this.coordinateSystem);
+    }
+    if (changed.has("placement") || changed.has("coordinateSystem")) {
+      const { scale } = applyPlacement(this.placement, this.coordinateSystem);
+      const current = this.nestedBoxScale;
+      if (scale.x !== current.x || scale.y !== current.y) {
+        this.nestedBoxScale = scale;
+      }
     }
     if (changed.has("nestedSource") || changed.has("placement")) {
       this.syncNesting();
@@ -143,10 +163,8 @@ export class OmComponent extends OmShapeElement {
       return;
     }
     const worldPerPixel = ctx.worldPerPixel();
-    const [[x1, y1], [x2, y2]] = this.placement.extent;
-    const boxPx =
-      Math.min(Math.abs(x2 - x1), Math.abs(y2 - y1)) / worldPerPixel;
-    const open = nestingProgress(boxPx);
+    const { width, height } = extentToRect(this.placement.extent);
+    const open = nestingProgress(Math.min(width, height) / worldPerPixel);
     this.nestingOpen = open;
     if (open === 0) {
       if (this.nestedLayout === null) this.requestedClass = null;
@@ -166,8 +184,8 @@ export class OmComponent extends OmShapeElement {
     source(className).then(
       (layout) => {
         if (this.nestedSource === source && this.classRef === className) {
-          this.openWorldPerPixel = this.sceneCtx?.worldPerPixel() ?? 1;
           this.nestedLayout = layout;
+          this.syncNesting();
         }
       },
       () => {

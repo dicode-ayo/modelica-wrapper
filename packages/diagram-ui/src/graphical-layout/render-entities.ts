@@ -41,18 +41,6 @@ import { renderShape } from "../primitives/render-shape.js";
  */
 export const HOST_SHAPE_Z_BIAS = 0.5;
 
-interface EntityRenderOptions {
-  selected: boolean;
-  readonly: boolean;
-  lineThicknessScale: number | undefined;
-}
-
-interface ComponentRenderOptions extends EntityRenderOptions {
-  /** Fetches the class diagram an openable component shows on zoom. `null`
-   *  keeps every component an icon at every zoom level. */
-  nestedSource: NestedDiagramSource | null;
-}
-
 export interface LayoutContentOptions {
   /** Entity keys drawn selected. */
   selectedKeys: Set<string>;
@@ -63,7 +51,8 @@ export interface LayoutContentOptions {
    */
   editableShapes: boolean;
   lineThicknessScale: number | undefined;
-  /** Fetches the class diagram an openable component shows on zoom. */
+  /** Fetches the class diagram an openable component shows on zoom. `null`
+   *  keeps every component an icon at every zoom level. */
   nestedSource: NestedDiagramSource | null;
 }
 
@@ -80,32 +69,20 @@ export function renderLayoutContent(
   layout: DiagramLayout,
   opts: LayoutContentOptions,
 ): TemplateResult {
-  const entity = {
-    readonly: opts.readonly,
-    lineThicknessScale: opts.lineThicknessScale,
-  };
   return html`
     ${renderHostShapes(layout, opts)}
     ${repeat(visibleComponents(layout), componentRepeatKey, ([id, comp]) =>
-      renderComponent(id, comp, layout, {
-        ...entity,
-        selected: opts.selectedKeys.has(formatComponentKey(id)),
-        nestedSource: opts.nestedSource,
-      }),
+      renderComponent(id, comp, layout, opts),
     )}
     ${repeat(
       Object.entries(layout.connectors),
       ([id]) => id,
-      ([id, conn]) =>
-        renderStandaloneConnector(id, conn, layout, {
-          ...entity,
-          selected: opts.selectedKeys.has(formatConnectorKey(null, id)),
-        }),
+      ([id, conn]) => renderStandaloneConnector(id, conn, layout, opts),
     )}
     ${repeat(
       layout.connections,
       (_, idx) => `conn:${idx}`,
-      (conn, idx) => renderConnection(conn, idx, layout, opts.selectedKeys),
+      (conn, idx) => renderConnection(conn, idx, layout, opts),
     )}
   `;
 }
@@ -197,14 +174,14 @@ function renderConnection(
   conn: ConnectionLayout,
   idx: number,
   layout: DiagramLayout,
-  selectedKeys: Set<string>,
+  opts: LayoutContentOptions,
 ): TemplateResult {
   return html`<om-connection
     .nodeId=${String(idx)}
     .path=${resolveConnectionWaypoints(layout, conn)}
     .smooth=${conn.smooth}
     .stroke=${conn.color ? colorToCss(conn.color) : undefined}
-    .selectedKeys=${selectedKeys}
+    .selectedKeys=${opts.selectedKeys}
   ></om-connection>`;
 }
 
@@ -213,7 +190,7 @@ function renderComponent(
   id: string,
   comp: ComponentInstance,
   layout: DiagramLayout,
-  opts: ComponentRenderOptions,
+  opts: LayoutContentOptions,
 ): TemplateResult {
   const cls = layout.classes[comp.classRef];
   const substitutions = buildSubstitutions(
@@ -230,7 +207,7 @@ function renderComponent(
     .coordinateSystem=${cls?.coordinateSystem ?? undefined}
     .lineThicknessScale=${opts.lineThicknessScale}
     .substitutions=${substitutions}
-    ?selected=${opts.selected}
+    ?selected=${opts.selectedKeys.has(formatComponentKey(id))}
     ?readonly=${opts.readonly}
   >
     ${
@@ -265,7 +242,7 @@ function renderStandaloneConnector(
   id: string,
   conn: ConnectorInstance,
   layout: DiagramLayout,
-  opts: EntityRenderOptions,
+  opts: LayoutContentOptions,
 ): TemplateResult {
   const cls = layout.classes[conn.classRef];
   // A diagram view shows the connector class's own diagram layer when it
@@ -288,7 +265,7 @@ function renderStandaloneConnector(
     .layers=${withNoIconFallback(layers)}
     .coordinateSystem=${coordinateSystem ?? undefined}
     .lineThicknessScale=${opts.lineThicknessScale}
-    ?selected=${opts.selected}
+    ?selected=${opts.selectedKeys.has(formatConnectorKey(null, id))}
     ?readonly=${opts.readonly}
   ></om-connector>`;
 }

@@ -1,40 +1,38 @@
 import { describe, expect, it } from "vitest";
+import type { Box } from "../base/placement-math.js";
 import {
   NESTING_THRESHOLDS,
   letterbox,
   nestingProgress,
-  type Box,
 } from "./nesting-math.js";
 
 const SQUARE: Box = { width: 200, height: 200, cx: 0, cy: 0 };
 
 describe("nestingProgress", () => {
-  const t = { enterPx: 200, exitPx: 140 };
-
   it("is closed at and below the exit size", () => {
-    expect(nestingProgress(140, t)).toBe(0);
-    expect(nestingProgress(10, t)).toBe(0);
+    expect(nestingProgress(140)).toBe(0);
+    expect(nestingProgress(10)).toBe(0);
   });
 
   it("is fully open at and above the enter size", () => {
-    expect(nestingProgress(200, t)).toBe(1);
-    expect(nestingProgress(5000, t)).toBe(1);
+    expect(nestingProgress(200)).toBe(1);
+    expect(nestingProgress(5000)).toBe(1);
   });
 
   it("sits at one half mid-band", () => {
-    expect(nestingProgress(170, t)).toBeCloseTo(0.5);
+    expect(nestingProgress(170)).toBeCloseTo(0.5);
   });
 
   it("depends on size alone, so reversing a zoom retraces the same values", () => {
     const sizes = [120, 150, 175, 199, 230];
-    const forward = sizes.map((s) => nestingProgress(s, t));
-    const backward = [...sizes].reverse().map((s) => nestingProgress(s, t));
+    const forward = sizes.map((s) => nestingProgress(s));
+    const backward = [...sizes].reverse().map((s) => nestingProgress(s));
     expect(backward).toEqual([...forward].reverse());
   });
 
   it("treats a non-finite size as closed", () => {
-    expect(nestingProgress(Number.NaN, t)).toBe(0);
-    expect(nestingProgress(Number.POSITIVE_INFINITY, t)).toBe(0);
+    expect(nestingProgress(Number.NaN)).toBe(0);
+    expect(nestingProgress(Number.POSITIVE_INFINITY)).toBe(0);
   });
 
   it("ships an enter size above its exit size", () => {

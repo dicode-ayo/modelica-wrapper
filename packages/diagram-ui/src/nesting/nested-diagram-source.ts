@@ -5,7 +5,7 @@ import { LruCache } from "../lru-cache.js";
 /** Fetches `className`'s own diagram layout, with that class as its root. */
 export type NestedDiagramSource = (className: string) => Promise<DiagramLayout>;
 
-/** Classes kept, in flight or settled; matches the host's cache bound. */
+/** Bound on the class layouts one layout element keeps resident. */
 const CAPACITY = 64;
 
 /**

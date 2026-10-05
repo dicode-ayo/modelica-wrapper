@@ -7,46 +7,29 @@
 import { OVERLAY_BLUE } from "../base/overlay-mesh.js";
 import type { Box } from "../base/placement-math.js";
 
-export type { Box };
-
-export interface NestingThresholds {
-  /** On-screen box size (CSS px) at and above which the box is fully open. */
-  enterPx: number;
-  /** On-screen box size (CSS px) at and below which only the icon shows. */
-  exitPx: number;
-}
-
-export const NESTING_THRESHOLDS: NestingThresholds = {
+/** On-screen box sizes (CSS px): fully open at and above `enterPx`, icon
+ *  only at and below `exitPx`. */
+export const NESTING_THRESHOLDS = {
   enterPx: 200,
   exitPx: 140,
-};
+} as const;
 
 /** Look of the boundary drawn round an opened box. Widths are CSS px. */
-export interface NestingChromeStyle {
-  strokeWidthPx: number;
-  strokeColor: number;
-  fillColor: number;
-  fillOpacity: number;
-}
-
-export const NESTING_CHROME: NestingChromeStyle = {
+export const NESTING_CHROME = {
   strokeWidthPx: 1.5,
   strokeColor: OVERLAY_BLUE,
   fillColor: OVERLAY_BLUE,
   fillOpacity: 0.04,
-};
+} as const;
 
 /**
  * Open fraction in `[0, 1]` for a box `sizePx` wide on screen. A function of
  * size alone, with no hysteresis state, so scrolling back retraces the same
  * fade and no threshold can flicker.
  */
-export function nestingProgress(
-  sizePx: number,
-  thresholds: NestingThresholds = NESTING_THRESHOLDS,
-): number {
+export function nestingProgress(sizePx: number): number {
   if (!Number.isFinite(sizePx)) return 0;
-  const { enterPx, exitPx } = thresholds;
+  const { enterPx, exitPx } = NESTING_THRESHOLDS;
   if (sizePx <= exitPx) return 0;
   if (sizePx >= enterPx) return 1;
   return (sizePx - exitPx) / (enterPx - exitPx);

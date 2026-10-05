@@ -32,10 +32,10 @@ export class OmLayerGroup extends LitElement {
     initialValue: null,
   });
 
-  private group = new Container({ label: "om-layer-group" });
+  private group: Container | null = null;
 
   /** The container the slotted primitives attach to. */
-  get container(): Container {
+  get container(): Container | null {
     return this.group;
   }
 
@@ -45,25 +45,27 @@ export class OmLayerGroup extends LitElement {
 
   override updated(): void {
     const parent = this.parentTransform;
-    // The parent entity destroys its children with it on disconnect.
-    if (this.group.destroyed) {
-      this.group = new Container({ label: "om-layer-group" });
+    // Lit flushes a pending update after disconnect; by then the parent
+    // entity has destroyed its children, this group among them.
+    if (!parent || !this.isConnected) return;
+    const group = this.group ?? new Container({ label: "om-layer-group" });
+    if (group.parent !== parent) {
+      group.sortableChildren = true;
+      parent.addChild(group);
     }
-    if (parent && this.group.parent !== parent) {
-      this.group.sortableChildren = true;
-      parent.addChild(this.group);
-    }
+    this.group = group;
     // Provided only once parented: primitives size their strokes from the
     // world scale of the container they attach to.
-    this.provider.setValue(parent ? this.group : null);
-    this.group.alpha = this.alpha;
-    this.group.visible = this.alpha > 0;
+    this.provider.setValue(group);
+    group.alpha = this.alpha;
+    group.visible = this.alpha > 0;
     this.sceneCtx?.requestRender();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.group.removeFromParent();
+    this.group?.removeFromParent();
+    this.group = null;
     this.provider.setValue(null);
   }
 }

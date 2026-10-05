@@ -16,24 +16,15 @@ import type { ModelInstance } from "@dicode/omc-client";
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { NestedDiagramSource } from "../src/nesting/nested-diagram-source.js";
 
-import { pidLayout } from "./fixtures/pid-layout.js";
-import pidFixture from "./fixtures/pidController.modelInstance.json";
-
-interface ComponentElement {
-  $kind?: string;
-  type?: unknown;
-}
-
-function isModelInstance(type: unknown): type is ModelInstance {
-  return typeof type === "object" && type !== null && "name" in type;
-}
+import { pidInstance, pidLayout } from "./fixtures/pid-layout.js";
 
 const subtreeSource: NestedDiagramSource = (className) => {
-  const elements = (pidFixture as { elements?: ComponentElement[] }).elements;
-  const type = elements
-    ?.map((e) => e.type)
-    .find((t) => isModelInstance(t) && t.name === className);
-  return isModelInstance(type)
+  const type = pidInstance.elements
+    ?.map((e) => (e.$kind === "component" ? e.type : undefined))
+    .find(
+      (t): t is ModelInstance => typeof t === "object" && t.name === className,
+    );
+  return type
     ? Promise.resolve(produceDiagramLayout(type, "diagram"))
     : Promise.reject(new Error(`${className} is not in the fixture`));
 };

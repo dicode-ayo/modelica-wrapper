@@ -137,8 +137,13 @@ export abstract class OmShapeElement extends LitElement {
     return 0;
   }
 
+  /** The icon's shape primitives; subclasses wrap or replace just this. */
+  protected renderIcon(): unknown {
+    return renderLayers(this.layers);
+  }
+
   override render(): TemplateResult {
-    return html`${renderLayers(this.layers)}<slot></slot>`;
+    return html`${this.renderIcon()}<slot></slot>`;
   }
 
   override updated(_changed: Map<string, unknown>): void {

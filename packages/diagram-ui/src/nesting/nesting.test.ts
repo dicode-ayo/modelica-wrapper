@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { ClassDef, DiagramLayout } from "@dicode/omc-client";
+import type { ClassDef, DiagramLayout, Placement } from "@dicode/omc-client";
 
 import type { OmComponent } from "../component/component.component.js";
 import type { OmLayerGroup } from "../base/layer-group.component.js";
@@ -47,11 +47,11 @@ function blockClass(name: string, overrides: Partial<ClassDef> = {}): ClassDef {
   };
 }
 
-const BOX = {
+const BOX: Placement = {
   extent: [
     [-10, -10],
     [10, 10],
-  ] as [[number, number], [number, number]],
+  ],
 };
 
 function hostLayout(
@@ -135,12 +135,18 @@ async function mountWithSource(
   return el;
 }
 
+function scene(el: OmGraphicalLayout): OmScene {
+  const found = el.shadowRoot?.querySelector("om-scene");
+  if (!found) throw new Error("no om-scene");
+  return found;
+}
+
 async function zoomTo(el: OmGraphicalLayout, zoom: number): Promise<void> {
-  const scene = el.shadowRoot?.querySelector("om-scene") as OmScene;
-  scene.panX = 0;
-  scene.panY = 0;
-  scene.zoom = zoom;
-  await scene.updateComplete;
+  const view = scene(el);
+  view.panX = 0;
+  view.panY = 0;
+  view.zoom = zoom;
+  await view.updateComplete;
   await settle(el);
 }
 
@@ -212,7 +218,7 @@ describe("semantic in-place nesting", () => {
     const view = nested(el);
     expect(view?.container?.alpha).toBe(1);
     expect(view?.container?.visible).toBe(true);
-    expect(iconGroup(el).container.alpha).toBe(0);
+    expect(iconGroup(el).container?.alpha).toBe(0);
   });
 
   it("cross-fades icon and diagram as exact complements mid-band", async () => {
@@ -220,7 +226,7 @@ describe("semantic in-place nesting", () => {
     await zoomTo(el, OPEN);
     await zoomTo(el, MID);
     expect(nested(el)?.container?.alpha).toBeCloseTo(0.5);
-    expect(iconGroup(el).container.alpha).toBeCloseTo(0.5);
+    expect(iconGroup(el).container?.alpha).toBeCloseTo(0.5);
   });
 
   it("retraces the fade when the zoom reverses, back to the bare icon", async () => {
@@ -230,8 +236,8 @@ describe("semantic in-place nesting", () => {
     expect(nested(el)?.container?.alpha).toBeCloseTo(0.5);
     await zoomTo(el, CLOSED);
     expect(nested(el)).toBeNull();
-    expect(iconGroup(el).container.alpha).toBe(1);
-    expect(iconGroup(el).container.visible).toBe(true);
+    expect(iconGroup(el).container?.alpha).toBe(1);
+    expect(iconGroup(el).container?.visible).toBe(true);
   });
 
   it("never opens a leaf component, however far it is zoomed", async () => {
@@ -338,8 +344,7 @@ describe("semantic in-place nesting", () => {
     expect(view?.container?.interactiveChildren).toBe(false);
 
     // A pick on nested addP's on-screen spot still lands on the host's `pid`.
-    const scene = el.shadowRoot?.querySelector("om-scene") as OmScene;
-    const ctx = scene.sceneContextValue;
+    const ctx = scene(el).sceneContextValue;
     if (!ctx) throw new Error("expected a scene context");
     const addPx = 400 + (-4 * 600) / (2 * OPEN);
     const hit = ctx.pick(addPx, 300);
@@ -372,7 +377,7 @@ describe("semantic in-place nesting", () => {
     const el = await mountWithSource(source);
     await zoomTo(el, OPEN);
     expect(nested(el)).toBeNull();
-    expect(iconGroup(el).container.alpha).toBe(1);
+    expect(iconGroup(el).container?.alpha).toBe(1);
 
     // Panning and zooming inside the band does not retry.
     await zoomTo(el, MID);

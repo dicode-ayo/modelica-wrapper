@@ -1,19 +1,40 @@
 import { LitElement, css, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { guard } from "lit/directives/guard.js";
 import { ContextProvider, consume } from "@lit/context";
 import { Container, Graphics } from "pixi.js";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
-import { coordSystemSize } from "../base/placement-math.js";
-import { renderLayoutContent } from "../graphical-layout/render-entities.js";
+import { coordSystemSize, type Box } from "../base/placement-math.js";
+import {
+  renderLayoutContent,
+  type LayoutContentOptions,
+} from "../graphical-layout/render-entities.js";
 import { interactionStateContext } from "../interaction/interaction-state.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
-import { NESTING_CHROME, letterbox, type Box } from "./nesting-math.js";
+import { NESTING_CHROME, letterbox } from "./nesting-math.js";
 import "../connection/connection.component.js";
 import "../connector/connector.component.js";
 
-const NO_SELECTION: Set<string> = new Set();
+/** View-only content: plain host shapes, nothing selected, no deeper nesting.
+ *  One shared instance so `.selectedKeys` keeps its identity across renders. */
+const VIEW_ONLY: LayoutContentOptions = {
+  selectedKeys: new Set(),
+  readonly: true,
+  editableShapes: false,
+  lineThicknessScale: undefined,
+  nestedSource: null,
+};
+
+interface Mounted {
+  root: Container;
+  /** Holds the frame in the parent's placement space, so its stroke is one
+   *  width on both axes however the box is squashed. */
+  frameSpace: Container;
+  frame: Graphics;
+  content: Container;
+}
 
 /**
  * `<om-nested-diagram>` — a class's own diagram drawn inside the box of a
@@ -72,12 +93,7 @@ export class OmNestedDiagram extends LitElement {
     });
   }
 
-  private root: Container | null = null;
-  /** Holds the frame in the parent's placement space, so its stroke is one
-   *  width on both axes however the box is squashed. */
-  private frameSpace: Container | null = null;
-  private frame: Graphics | null = null;
-  private content: Container | null = null;
+  private mounted: Mounted | null = null;
 
   /** The class, not the instance: the content is the class as declared. */
   get label(): string {
@@ -86,63 +102,64 @@ export class OmNestedDiagram extends LitElement {
 
   /** The faded, unpickable container holding the frame and the content. */
   get container(): Container | null {
-    return this.root;
+    return this.mounted?.root ?? null;
   }
 
   /** The letterboxed container the nested entities attach to. */
   get contentContainer(): Container | null {
-    return this.content;
+    return this.mounted?.content ?? null;
   }
 
   override render(): TemplateResult {
-    if (!this.layout) return html``;
-    return renderLayoutContent(this.layout, {
-      selectedKeys: NO_SELECTION,
-      readonly: true,
-      editableShapes: false,
-      lineThicknessScale: undefined,
-      nestedSource: null,
-    });
+    const layout = this.layout;
+    if (!layout) return html``;
+    // The content depends on the layout alone; progress and zoom only move
+    // or fade the containers it attached to.
+    return html`${guard([layout], () => renderLayoutContent(layout, VIEW_ONLY))}`;
   }
 
-  override updated(): void {
+  override updated(changed: Map<string, unknown>): void {
     const parent = this.parentTransform;
-    if (!parent) return;
-    if (!this.root || this.root.destroyed) this.mount(parent);
-    const root = this.root;
-    const content = this.content;
-    if (!root || !content) return;
-    root.label = `nested:${this.label}`;
-    root.alpha = this.progress;
-    root.visible = this.progress > 0;
-
-    const fit = letterbox(
-      coordSystemSize(this.layout?.coordinateSystem),
-      this.box,
-      this.boxScale,
-    );
-    content.scale.set(fit.scaleX, fit.scaleY);
-    content.position.set(fit.x, fit.y);
-    this.drawFrame();
+    // Lit flushes a pending update after disconnect; by then the parent
+    // entity has destroyed its children, this view's root among them.
+    if (!parent || !this.isConnected) return;
+    const fresh = this.mounted === null;
+    const m = this.mounted ?? this.mount(parent);
+    const layoutChanged = fresh || changed.has("layout");
+    const boxChanged = fresh || changed.has("box") || changed.has("boxScale");
+    if (layoutChanged) m.root.label = `nested:${this.label}`;
+    if (fresh || changed.has("progress")) {
+      m.root.alpha = this.progress;
+      m.root.visible = this.progress > 0;
+    }
+    if (layoutChanged || boxChanged) {
+      const fit = letterbox(
+        coordSystemSize(this.layout?.coordinateSystem),
+        this.box,
+        this.boxScale,
+      );
+      m.content.scale.set(fit.scaleX, fit.scaleY);
+      m.content.position.set(fit.x, fit.y);
+    }
+    if (boxChanged || changed.has("worldPerPixel")) this.drawFrame(m);
     this.sceneCtx?.requestRender();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    const m = this.mounted;
+    this.mounted = null;
+    this.contentProvider.setValue(null);
+    if (!m) return;
     // Nested entities dispose their own Pixi nodes as they disconnect, and
     // may still flush an update against `content`, so only what this
     // element drew is destroyed here.
-    this.frameSpace?.destroy({ children: true });
-    this.content?.removeFromParent();
-    this.root?.destroy();
-    this.root = null;
-    this.frameSpace = null;
-    this.frame = null;
-    this.content = null;
-    this.contentProvider.setValue(null);
+    m.frameSpace.destroy({ children: true });
+    m.content.removeFromParent();
+    m.root.destroy();
   }
 
-  private mount(parent: Container): void {
+  private mount(parent: Container): Mounted {
     const root = new Container({ label: "nested" });
     root.eventMode = "none";
     root.interactiveChildren = false;
@@ -155,23 +172,18 @@ export class OmNestedDiagram extends LitElement {
     root.addChild(frameSpace, content);
     parent.sortableChildren = true;
     parent.addChild(root);
-    this.root = root;
-    this.frameSpace = frameSpace;
-    this.frame = frame;
-    this.content = content;
+    const mounted = { root, frameSpace, frame, content };
+    this.mounted = mounted;
     this.contentProvider.setValue(content);
+    return mounted;
   }
 
-  private drawFrame(): void {
-    const frameSpace = this.frameSpace;
-    const frame = this.frame;
-    if (!frameSpace || !frame) return;
+  private drawFrame({ frameSpace, frame }: Mounted): void {
     const sx = this.boxScale.x || 1;
     const sy = this.boxScale.y || 1;
     frameSpace.scale.set(1 / sx, 1 / sy);
     const width = Math.abs(this.box.width * sx);
     const height = Math.abs(this.box.height * sy);
-    const style = NESTING_CHROME;
     frame
       .clear()
       .rect(
@@ -180,10 +192,13 @@ export class OmNestedDiagram extends LitElement {
         width,
         height,
       )
-      .fill({ color: style.fillColor, alpha: style.fillOpacity })
+      .fill({
+        color: NESTING_CHROME.fillColor,
+        alpha: NESTING_CHROME.fillOpacity,
+      })
       .stroke({
-        color: style.strokeColor,
-        width: style.strokeWidthPx * this.worldPerPixel,
+        color: NESTING_CHROME.strokeColor,
+        width: NESTING_CHROME.strokeWidthPx * this.worldPerPixel,
       });
   }
 }
