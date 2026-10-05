@@ -487,7 +487,7 @@ describe("the managed install", () => {
     setup.dispose();
   });
 
-  it("joins a second install onto the first rather than clearing its staging", async () => {
+  it("joins a second install onto the first rather than clearing the first's prefix", async () => {
     let release = (): void => {};
     const blocked = new Promise<void>((resolve) => {
       release = resolve;

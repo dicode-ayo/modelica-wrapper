@@ -1,10 +1,13 @@
 import * as http from "node:http";
+import * as fsp from "node:fs/promises";
 import * as net from "node:net";
 import type { AddressInfo } from "node:net";
+import * as os from "node:os";
+import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { downloadFile } from "./omc-install-host.js";
+import { downloadFile, nodeInstallFileSystem } from "./omc-install-host.js";
 
 const servers: Array<http.Server | net.Server> = [];
 
@@ -236,5 +239,61 @@ describe("downloadFile", () => {
         proxy: "::: not a url",
       }),
     ).rejects.toThrow(/http\.proxy/);
+  });
+});
+
+describe("nodeInstallFileSystem links", () => {
+  const dirs: string[] = [];
+  const scratch = async (): Promise<string> => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "omc-link-"));
+    dirs.push(dir);
+    return dir;
+  };
+
+  afterEach(async () => {
+    for (const dir of dirs.splice(0)) {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a symlink's target, and nothing for a directory or a missing path", async () => {
+    const dir = await scratch();
+    const fs = nodeInstallFileSystem();
+    await fsp.mkdir(path.join(dir, "real"));
+    await fsp.symlink(path.join(dir, "real"), path.join(dir, "link"));
+
+    expect(await fs.readLink(path.join(dir, "link"))).toBe(
+      path.join(dir, "real"),
+    );
+    expect(await fs.readLink(path.join(dir, "real"))).toBeUndefined();
+    expect(await fs.readLink(path.join(dir, "absent"))).toBeUndefined();
+  });
+
+  it("repoints a link over an existing one without leaving it absent", async () => {
+    const dir = await scratch();
+    const fs = nodeInstallFileSystem();
+    const link = path.join(dir, "current");
+    await fsp.mkdir(path.join(dir, "a"));
+    await fsp.mkdir(path.join(dir, "b"));
+
+    await fs.replaceLink(path.join(dir, "a"), link);
+    await fs.replaceLink(path.join(dir, "b"), link);
+
+    expect(await fsp.readlink(link)).toBe(path.join(dir, "b"));
+    expect(await fsp.readdir(dir)).toEqual(["a", "b", "current"]);
+  });
+
+  it("removes a link without touching the directory it points at", async () => {
+    const dir = await scratch();
+    const fs = nodeInstallFileSystem();
+    const link = path.join(dir, "current");
+    await fsp.mkdir(path.join(dir, "slot"));
+    await fsp.writeFile(path.join(dir, "slot", "file"), "x");
+    await fs.replaceLink(path.join(dir, "slot"), link);
+
+    await fs.remove(link);
+
+    expect(await fs.exists(link)).toBe(false);
+    expect(await fs.exists(path.join(dir, "slot", "file"))).toBe(true);
   });
 });

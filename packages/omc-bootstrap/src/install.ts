@@ -1,12 +1,15 @@
 /**
  * Installing OpenModelica, and removing one we installed.
  *
- * An install fetches OpenModelica from conda-forge into a staging prefix,
- * proves it by running `omc --version`,
- * and only then moves it into the location {@link resolveOmc} probes. A prefix
- * at that location has therefore always run, so no health state has to be
- * tracked, and the installation being replaced stays on disk under another name
- * until the new one has landed.
+ * An install fetches OpenModelica from conda-forge into the prefix slot that is
+ * not active, proves it by running `omc --version` from that same slot, and
+ * only then repoints the `current` symlink {@link resolveOmc} probes at it. A
+ * prefix behind that link has therefore always run, so no health state has to be
+ * tracked, and the installation being replaced stays usable until the link flips.
+ *
+ * Conda bakes the absolute prefix into the files it installs, so a prefix cannot
+ * be built in one place and moved to another. Two alternating slots are the
+ * places a prefix is built and run from for good.
  *
  * Network, subprocess, filesystem and progress are injected. The micromamba to
  * run, the digest it must match and the packages it fetches are fixed here, not
@@ -31,7 +34,8 @@ import {
   prefixOmcBinary,
 } from "./resolve.js";
 
-const STAGING_PREFIX = "staging";
+const SLOT_A = "prefix-a";
+const SLOT_B = "prefix-b";
 const SUPERSEDED_PREFIX = "previous";
 const MICROMAMBA_BINARY = "micromamba";
 const PACKAGE_CACHE = "cache";
@@ -42,7 +46,7 @@ const LOCKFILE_NAME = "lock.txt";
  * archives, 2.9 GB of packages extracted beside them, and 0.59 GB of prefix
  * that conda copies rather than hardlinks from that cache — 4.3 GB measured on
  * linux-64 against OpenModelica 1.27.0, all of it live at once before the cache
- * is discarded. The rest is headroom for the staged swap and for the platforms
+ * is discarded. The rest is headroom for the old prefix that stays until the new one is live and for the platforms
  * that sit higher.
  */
 const REQUIRED_FREE_BYTES = 5_500_000_000;
@@ -113,7 +117,17 @@ export interface InstallFileSystem {
   writeFile(target: string, contents: Uint8Array): Promise<void>;
   makeExecutable(target: string): Promise<void>;
   move(from: string, to: string): Promise<void>;
-  /** Remove a file or tree; succeeds when it is already absent. */
+  /** Where the symlink at `target` points; undefined when absent or not a symlink. */
+  readLink(target: string): Promise<string | undefined>;
+  /**
+   * Point the symlink `link` at `target` atomically: a reader sees the old
+   * target or the new one, never neither.
+   */
+  replaceLink(target: string, link: string): Promise<void>;
+  /**
+   * Remove a file or tree; succeeds when it is already absent. A symlink is
+   * removed itself, never the tree it points at.
+   */
   remove(target: string): Promise<void>;
 }
 
@@ -144,8 +158,10 @@ export class OmcInstallError extends Error {
 /** Every path an install touches, all of them under the root we own. */
 interface ManagedLayout {
   readonly root: string;
+  /** A symlink to the active slot; a real directory only from a legacy install. */
   readonly current: string;
-  readonly staging: string;
+  readonly slots: readonly [string, string];
+  /** Where a legacy `current` waits while the link replaces it. */
   readonly superseded: string;
   readonly tool: string;
   readonly cache: string;
@@ -167,7 +183,7 @@ function layoutFor(homeDir: string, platform: NodeJS.Platform): ManagedLayout {
   return {
     root,
     current: managedPrefix(root, platform),
-    staging: paths.join(root, STAGING_PREFIX),
+    slots: [paths.join(root, SLOT_A), paths.join(root, SLOT_B)],
     superseded: paths.join(root, SUPERSEDED_PREFIX),
     tool: paths.join(root, MICROMAMBA_BINARY),
     cache,
@@ -243,22 +259,27 @@ export async function installManagedOmc(
 
   await deps.fs.makeDirectory(layout.root);
   await restoreInterruptedSwap(layout, deps);
-  // Anything already staged is from an install that did not finish. Nothing
-  // resolves to it and only we create it, so it is ours to discard.
-  await deps.fs.remove(layout.staging);
+
+  const active = await deps.fs.readLink(layout.current);
+  const [first, second] = layout.slots;
+  const [target, old] = active === first ? [second, first] : [first, second];
+  // The slot being built is not the one `current` names, so nothing resolves to
+  // it and a leftover from an install that did not finish is ours to discard.
+  await deps.fs.remove(target);
 
   try {
     await installMicromamba(layout, subdir, input, deps);
-    await createPrefix(layout, subdir, input, deps);
-    const version = await verifyPrefix(layout, input.platform, deps);
-    await promote(layout, deps);
+    await createPrefix(layout, target, subdir, input, deps);
+    const version = await verifyPrefix(target, input.platform, deps);
+    await promote(layout, target, active === undefined, deps);
+    await deps.fs.remove(old);
     await discardPackageCache(layout, deps);
     return {
       omcPath: prefixOmcBinary(layout.current, input.platform),
       version,
     };
   } catch (err) {
-    await deps.fs.remove(layout.staging);
+    await deps.fs.remove(target);
     throw err;
   }
 }
@@ -282,7 +303,7 @@ export async function removeManagedOmc(
   const installed = await fs.exists(layout.current);
   for (const entry of [
     layout.current,
-    layout.staging,
+    ...layout.slots,
     layout.superseded,
     layout.tool,
     layout.cache,
@@ -293,9 +314,9 @@ export async function removeManagedOmc(
 }
 
 /**
- * A superseded prefix with nothing at the managed location is a swap that was
- * interrupted between its two renames. The working installation is the one
- * still under the old name, and nothing resolves to it there.
+ * A superseded prefix with nothing at the managed location is a legacy
+ * migration that was interrupted between its rename and the link. The
+ * installation is still under the old name, and nothing resolves to it there.
  */
 async function restoreInterruptedSwap(
   layout: ManagedLayout,
@@ -353,7 +374,7 @@ async function installMicromamba(
 }
 
 /**
- * Create the staging prefix from the committed lockfile.
+ * Create the prefix in `target` from the committed lockfile.
  *
  * An explicit file names every package as a URL and the digest micromamba must
  * find behind it, so there is no solve: the environment is the one the lockfile
@@ -363,6 +384,7 @@ async function installMicromamba(
  */
 async function createPrefix(
   layout: ManagedLayout,
+  target: string,
   subdir: CondaSubdir,
   input: InstallOmcInput,
   deps: InstallOmcDeps,
@@ -377,14 +399,7 @@ async function createPrefix(
 
   const result = await runOrFail(deps, "install-failed", {
     command: layout.tool,
-    args: [
-      "create",
-      "--prefix",
-      layout.staging,
-      "--file",
-      layout.lockfile,
-      "--yes",
-    ],
+    args: ["create", "--prefix", target, "--file", layout.lockfile, "--yes"],
     env: micromambaEnvironment(layout, input.proxy),
     signal: deps.signal,
     onOutput: (output) =>
@@ -426,18 +441,19 @@ function micromambaEnvironment(
 }
 
 /**
- * Prove the staged prefix landed intact and that its `omc` links and runs. The
- * environment a conda-provided `omc` needs in order to compile is applied at
- * spawn time by `omc-client`, not here.
+ * Prove the prefix landed intact and that its `omc` links and runs. It runs
+ * from the slot it was built in, which is also where it will run from once
+ * `current` points there. The environment a conda-provided `omc` needs in order
+ * to compile is applied at spawn time by `omc-client`, not here.
  */
 async function verifyPrefix(
-  layout: ManagedLayout,
+  prefix: string,
   platform: NodeJS.Platform,
   deps: InstallOmcDeps,
 ): Promise<string> {
   throwIfCancelled(deps.signal);
   deps.report({ phase: "verifying-openmodelica" });
-  const omc = prefixOmcBinary(layout.staging, platform);
+  const omc = prefixOmcBinary(prefix, platform);
   const result = await runOrFail(deps, "verification-failed", {
     command: omc,
     args: ["--version"],
@@ -456,22 +472,25 @@ async function verifyPrefix(
 }
 
 /**
- * Move the verified prefix into place, keeping the installation being replaced
- * on disk until the new one has landed.
+ * Point `current` at the verified slot. A legacy `current` is a real directory
+ * whose files name a prefix that no longer exists; it waits under another name
+ * until the link is in place, since a link cannot replace a directory.
  */
 async function promote(
   layout: ManagedLayout,
+  target: string,
+  legacy: boolean,
   deps: InstallOmcDeps,
 ): Promise<void> {
   deps.report({ phase: "finishing" });
-  const replacing = await deps.fs.exists(layout.current);
+  const replacing = legacy && (await deps.fs.exists(layout.current));
 
   if (replacing) {
     await deps.fs.remove(layout.superseded);
     await deps.fs.move(layout.current, layout.superseded);
   }
   try {
-    await deps.fs.move(layout.staging, layout.current);
+    await deps.fs.replaceLink(target, layout.current);
   } catch (err) {
     if (replacing) {
       await deps.fs
@@ -480,7 +499,7 @@ async function promote(
     }
     throw new OmcInstallError(
       "install-failed",
-      `Moving the verified prefix into ${layout.current} failed.`,
+      `Pointing ${layout.current} at the verified prefix failed.`,
       { cause: err },
     );
   }

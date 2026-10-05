@@ -60,15 +60,15 @@ export function managedRoot(
 const MANAGED_PREFIX = "current";
 
 /**
- * The prefix a verified installation occupies. An install stages elsewhere
- * under the root and moves here only once it has verified, so a prefix at this
- * path is by definition one that ran.
+ * A symlink to the prefix of the verified installation. An install builds and
+ * verifies in a slot beside it and repoints the link only once that has run, so
+ * a prefix behind this path is by definition one that ran.
  */
 export function managedPrefix(root: string, platform: NodeJS.Platform): string {
   return platformPath(platform).join(root, MANAGED_PREFIX);
 }
 
-/** The `omc` inside a conda prefix, managed or staged. */
+/** The `omc` inside a conda prefix, managed or not. */
 export function prefixOmcBinary(
   prefix: string,
   platform: NodeJS.Platform,
