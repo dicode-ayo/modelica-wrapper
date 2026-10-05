@@ -123,13 +123,12 @@ class OmWebviewRoot extends LitElement {
     this.vscode?.postMessage({ type: "change", layout, basedOn }),
   );
 
-  /** Correlates `nestedDiagramRequest`/`nestedDiagramResult` — the semantic
-   *  in-place nesting zoom feature's fetch of a component's own class
-   *  diagram (issue #629). Not yet called from the renderer; the nested-box
-   *  zoom trigger lands separately. */
   private readonly nestedDiagramRequests = new NestedDiagramRequests((msg) =>
     this.post(msg),
   );
+
+  private readonly fetchNestedDiagram = (className: string) =>
+    this.nestedDiagramRequests.request(className);
 
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
   private get diagram(): OmGraphicalLayout | null {
@@ -181,6 +180,7 @@ class OmWebviewRoot extends LitElement {
     return html`
       <om-graphical-layout
         .layout=${this.layout}
+        .nestedDiagramSource=${this.fetchNestedDiagram}
         host-managed-keys
         ?readonly=${this.readOnly}
         ?has-clipboard=${this.hasClipboard}

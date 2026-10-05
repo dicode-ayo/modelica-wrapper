@@ -48,10 +48,8 @@ export {
   type GridOptions,
   type GridGraphics,
 } from "./axis/grid-build.js";
-export {
-  OmGraphicalLayout,
-  HOST_SHAPE_Z_BIAS,
-} from "./graphical-layout/graphical-layout.component.js";
+export { OmGraphicalLayout } from "./graphical-layout/graphical-layout.component.js";
+export { HOST_SHAPE_Z_BIAS } from "./graphical-layout/render-entities.js";
 export type {
   LayoutEvents,
   LayoutEventName,
@@ -68,6 +66,15 @@ export type {
   GoToSourceRequestDetail,
 } from "./graphical-layout/layout-events.js";
 export { OmComponent } from "./component/component.component.js";
+export { OmLayerGroup } from "./base/layer-group.component.js";
+export { OmNestedDiagram } from "./nesting/nested-diagram.component.js";
+export type { NestedDiagramSource } from "./nesting/nested-diagram-source.js";
+export {
+  NESTING_CHROME,
+  NESTING_THRESHOLDS,
+  type NestingChromeStyle,
+  type NestingThresholds,
+} from "./nesting/nesting-math.js";
 export { OmConnector } from "./connector/connector.component.js";
 export { OmEdge } from "./connection/edge.component.js";
 export { OmConnection } from "./connection/connection.component.js";

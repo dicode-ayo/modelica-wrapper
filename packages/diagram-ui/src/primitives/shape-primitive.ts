@@ -201,7 +201,9 @@ export abstract class OmShapePrimitive extends LitElement {
 
   override updated(): void {
     const parent = this.parentTransform;
-    if (!parent) {
+    // An update queued by a zoom can flush after the owning entity has
+    // disconnected and destroyed the container this primitive drew into.
+    if (!parent || parent.destroyed) {
       return;
     }
     if (this.editable) {

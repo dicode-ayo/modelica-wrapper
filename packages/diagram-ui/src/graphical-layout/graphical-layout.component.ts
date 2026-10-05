@@ -9,22 +9,17 @@ import type {
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
-  IconLayer,
   Shape,
 } from "@dicode/omc-client";
-import { hasDrawnShapes } from "@dicode/omc-client/shapes";
-import { colorToCss } from "@dicode/diagram-svg";
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";
 
 import { renderShape } from "../primitives/render-shape.js";
-import { withNoIconFallback } from "../icon-provider/no-icon.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
-import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
-import "../axis/grid-axis.component.js";
 import "../component/component.component.js";
 import "../connector/connector.component.js";
+import "../axis/grid-axis.component.js";
 import "../connection/connection.component.js";
 import "../debug/perf-hud.component.js";
 import "../context-menu/context-menu.component.js";
@@ -87,7 +82,6 @@ import {
   vertexKeyForEntity,
 } from "../interaction/entity-keys.js";
 import { entityKeyForNode } from "../interaction/node-keys.js";
-import { resolveConnectionWaypoints } from "../interaction/connection-route.js";
 import {
   canConnect,
   resolvePortInfo,
@@ -118,25 +112,19 @@ import {
   type PlacementPoint,
 } from "./placement-mode.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
-
-/**
- * Paint-order bias for the host class's shapes (own and inherited) so they
- * sit behind every component / connector but in front of the grid. Uses the
- * scene-z convention where positive is further from the viewer — both
- * primitive paths negate it into `zIndex`, then add `zForOrder(zOrder)` so
- * annotation-array order paints first-at-the-bottom within the band:
- *
- *   grid         zIndex = -1
- *   host shapes  zIndex = zForOrder(i) - HOST_SHAPE_Z_BIAS ← here
- *   components   zIndex =  0
- *
- * The band's capacity is where `zForOrder(i)` reaches the bias (500 shapes
- * at `SHAPE_Z_STEP` 0.001); a shape past that would paint over components.
- *
- * Shared by a shape's visual and its hit geometry so picks land in the same
- * band and a component always wins a pick over a shape beneath it.
- */
-export const HOST_SHAPE_Z_BIAS = 0.5;
+import {
+  HOST_SHAPE_Z_BIAS,
+  activeLayers,
+  componentRepeatKey,
+  renderComponent,
+  renderConnection,
+  renderStandaloneConnector,
+  visibleComponents,
+} from "./render-entities.js";
+import {
+  sharedNestedSource,
+  type NestedDiagramSource,
+} from "../nesting/nested-diagram-source.js";
 
 /** One host shape with its flat cross-layer paint index. `ownIndex` is the
  *  `shape:` key index within the host's own layer, `null` for an inherited
@@ -357,6 +345,17 @@ export class OmGraphicalLayout extends LitElement {
   perfHud = false;
 
   /**
+   * Fetches an openable component's own class diagram, which its box shows
+   * in place once zoomed large enough. `null` leaves every component an icon
+   * at every zoom level.
+   */
+  @property({ attribute: false })
+  nestedDiagramSource: NestedDiagramSource | null = null;
+
+  /** `nestedDiagramSource` shared per class, so boxes of one class fetch once. */
+  private sharedNestedSource: NestedDiagramSource | null = null;
+
+  /**
    * Optional snap-to-grid override. Priority order:
    *   1. This property (when non-null).
    *   2. `layout.coordinateSystem.grid` from the Modelica annotation.
@@ -482,6 +481,10 @@ export class OmGraphicalLayout extends LitElement {
     if (changed.has("lineThicknessScale")) {
       this.strokeScaleProvider.setValue(this.lineThicknessScale);
     }
+    if (changed.has("nestedDiagramSource")) {
+      const source = this.nestedDiagramSource;
+      this.sharedNestedSource = source ? sharedNestedSource(source) : null;
+    }
   }
 
   /** Diagram-space point the preview node sits at, snapped to the active grid
@@ -511,17 +514,6 @@ export class OmGraphicalLayout extends LitElement {
       return html``;
     }
     const active = this.layoutWithPreview(base);
-    // Mirrors `renderShape`'s `visible === false` skip (render-shape.ts):
-    // OMEdit doesn't draw a hidden component either, so it gets no
-    // `<om-component>` at all — unpickable and unselectable, same as a
-    // hidden shape. `Placement.visible` is already resolved to a literal
-    // by the producer (`placementFor`), so there's no DynamicSelect case
-    // to peel here. Its connections still route from `layout.components`
-    // directly (`endpointCentreFromLayout`), not from this element, so
-    // they keep anchoring correctly with nothing left to crash into.
-    const componentEntries = Object.entries(active.components).filter(
-      ([, comp]) => comp.placement.visible !== false,
-    );
     const connectorEntries = Object.entries(active.connectors);
     // `active.labels` is a subset of the host's diagram `Text` annotations,
     // which already draw in world space through the host shape layers
@@ -546,15 +538,8 @@ export class OmGraphicalLayout extends LitElement {
           .coordinateSystem=${active.coordinateSystem ?? undefined}
         ></om-grid-axis>
         ${this.renderHostShapes(active)} ${this.renderHostShapeEntities(active)}
-        ${repeat(
-          componentEntries,
-          // Class is part of the key so a "Change class" swap remounts the
-          // node: a reused element keeps the previous class's icon children,
-          // leaving old and new visuals overlaid. NUL can't appear in a
-          // component name or qualified class name, so the split is
-          // unambiguous.
-          ([id, comp]) => `${id}\u0000${comp.classRef}`,
-          ([id, comp]) => this.renderComponent(id, comp, active),
+        ${repeat(visibleComponents(active), componentRepeatKey, ([id, comp]) =>
+          this.renderComponent(id, comp, active),
         )}
         ${repeat(
           connectorEntries,
@@ -564,14 +549,7 @@ export class OmGraphicalLayout extends LitElement {
         ${repeat(
           active.connections,
           (_, idx) => `conn:${idx}`,
-          (conn, idx) =>
-            html`<om-connection
-              .nodeId=${String(idx)}
-              .path=${resolveConnectionWaypoints(active, conn)}
-              .smooth=${conn.smooth}
-              .stroke=${conn.color ? colorToCss(conn.color) : undefined}
-              .selectedKeys=${this.selectedKeys}
-            ></om-connection>`,
+          (conn, idx) => renderConnection(conn, idx, active, this.selectedKeys),
         )}
         <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
@@ -726,48 +704,12 @@ export class OmGraphicalLayout extends LitElement {
     comp: ComponentInstance,
     layout: DiagramLayout,
   ): TemplateResult {
-    const cls = layout.classes[comp.classRef];
-    const key = formatComponentKey(id);
-    const substitutions = buildSubstitutions(
-      comp,
-      cls,
-      layout.resolvedParameters,
-    );
-    return html`<om-component
-      .nodeId=${id}
-      .placement=${comp.placement}
-      .layers=${withNoIconFallback(cls?.iconLayers ?? [])}
-      .coordinateSystem=${cls?.coordinateSystem ?? undefined}
-      .lineThicknessScale=${this.lineThicknessScale}
-      .substitutions=${substitutions}
-      ?selected=${this.selectedKeys.has(key)}
-      ?readonly=${this.readonly}
-    >
-      ${
-        cls
-          ? Object.entries(cls.connectors)
-              // Per-instance gating: a port that's listed in
-              // `comp.hiddenPorts` was elided by the producer because
-              // its `condition` predicate evaluates to false for THIS
-              // instance (e.g. `Torque(useSupport=false)` hides
-              // `support`). The class def itself still lists the port
-              // — sibling instances of the same type may have it
-              // visible.
-              .filter(([pid]) => !comp.hiddenPorts?.includes(pid))
-              .map(
-                ([pid, port]) =>
-                  html`<om-connector
-                    .nodeId=${pid}
-                    .placement=${port.placement}
-                    .layers=${withNoIconFallback(port.iconLayers)}
-                    .coordinateSystem=${cls.coordinateSystem ?? undefined}
-                    .lineThicknessScale=${this.lineThicknessScale}
-                    ?readonly=${this.readonly}
-                  ></om-connector>`,
-              )
-          : nothing
-      }
-    </om-component>`;
+    return renderComponent(id, comp, layout, {
+      selected: this.selectedKeys.has(formatComponentKey(id)),
+      readonly: this.readonly,
+      lineThicknessScale: this.lineThicknessScale,
+      nestedSource: this.sharedNestedSource,
+    });
   }
 
   private renderStandaloneConnector(
@@ -775,36 +717,11 @@ export class OmGraphicalLayout extends LitElement {
     conn: ConnectorInstance,
     layout: DiagramLayout,
   ): TemplateResult {
-    const cls = layout.classes[conn.classRef];
-    const key = formatConnectorKey(null, id);
-    // A diagram view shows the connector class's own diagram layer when it
-    // draws one (MLS §18.2 — e.g. RealInput's smaller triangle + name),
-    // falling back to its icon. Nested ports above stay on the icon layer:
-    // that is what an enclosing diagram shows for a component's connectors.
-    //
-    // The two annotations can declare different extents, so the layers and
-    // the system they are measured in have to be chosen together.
-    const diagramLayers = cls?.diagramLayers ?? [];
-    const showsDiagram =
-      layout.kind === "diagram" && hasDrawnShapes(diagramLayers);
-    const layers = showsDiagram ? diagramLayers : (cls?.iconLayers ?? []);
-    const coordinateSystem = showsDiagram
-      ? (cls?.diagramCoordinateSystem ?? cls?.coordinateSystem)
-      : cls?.coordinateSystem;
-    return html`<om-connector
-      .nodeId=${id}
-      .placement=${conn.placement}
-      .layers=${withNoIconFallback(layers)}
-      .coordinateSystem=${coordinateSystem ?? undefined}
-      .lineThicknessScale=${this.lineThicknessScale}
-      ?selected=${this.selectedKeys.has(key)}
-      ?readonly=${this.readonly}
-    ></om-connector>`;
-  }
-
-  /** The layer set the current view shows: `iconLayers` or `diagramLayers`. */
-  private activeLayers(layout: DiagramLayout): IconLayer[] {
-    return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
+    return renderStandaloneConnector(id, conn, layout, {
+      selected: this.selectedKeys.has(formatConnectorKey(null, id)),
+      readonly: this.readonly,
+      lineThicknessScale: this.lineThicknessScale,
+    });
   }
 
   /** Every host shape with its flat cross-layer paint index. Layers arrive
@@ -812,7 +729,7 @@ export class OmGraphicalLayout extends LitElement {
    *  annotation-array order is paint order. */
   private hostShapeSlots(layout: DiagramLayout): HostShapeSlot[] {
     let zOrder = 0;
-    return this.activeLayers(layout).flatMap((layer) => {
+    return activeLayers(layout).flatMap((layer) => {
       const own = layer.from === layout.className;
       return layer.shapes.map((shape, index) => ({
         shape,
