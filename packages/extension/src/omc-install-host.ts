@@ -84,14 +84,9 @@ export function nodeInstallFileSystem(): InstallFileSystem {
         throw err;
       }
     },
-    replaceLink: async (target, link) => {
-      const staged = `${link}.tmp`;
+    replaceLink: async (target, link, staged) => {
       await fsp.rm(staged, { recursive: true, force: true });
-      await fsp.symlink(
-        target,
-        staged,
-        process.platform === "win32" ? "junction" : undefined,
-      );
+      await fsp.symlink(target, staged);
       await fsp.rename(staged, link);
     },
     // fs.rm lstats its target, so a symlink is unlinked rather than followed.

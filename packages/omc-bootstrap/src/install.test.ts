@@ -38,6 +38,7 @@ const CURRENT = `${ROOT}/current`;
 const SLOT_A = `${ROOT}/prefix-a`;
 const SLOT_B = `${ROOT}/prefix-b`;
 const PREVIOUS = `${ROOT}/previous`;
+const STAGING = `${ROOT}/current.tmp`;
 const TOOL = `${ROOT}/micromamba`;
 const CACHE = `${ROOT}/cache`;
 const LOCK = `${CACHE}/lock.txt`;
@@ -81,6 +82,7 @@ function harness(options: HarnessOptions = {}) {
     ...links.values(),
   ]);
   const ops: string[] = [];
+  const stagings: string[] = [];
   const written = new Map<string, string>();
   const runs: ProcessRequest[] = [];
   const downloads: Parameters<DownloadFile>[0][] = [];
@@ -114,7 +116,8 @@ function harness(options: HarnessOptions = {}) {
       return Promise.resolve();
     },
     readLink: (target) => Promise.resolve(links.get(target)),
-    replaceLink: (target, link) => {
+    replaceLink: (target, link, staged) => {
+      stagings.push(staged);
       if (options.replaceLinkFails === true) {
         return Promise.reject(new Error("EPERM"));
       }
@@ -153,6 +156,7 @@ function harness(options: HarnessOptions = {}) {
 
   return {
     ops,
+    stagings,
     written,
     runs,
     downloads,
@@ -225,19 +229,33 @@ describe("installManagedOmc", () => {
     expect(h.links.get(CURRENT)).toBe(prefix);
   });
 
-  it("never moves a prefix once conda has created it", async () => {
-    for (const existing of [[], [CURRENT]]) {
-      for (const links of [{}, { [CURRENT]: SLOT_A }, { [CURRENT]: SLOT_B }]) {
-        const h = harness({ existing, links });
+  it.each([
+    { existing: [], links: {} },
+    { existing: [], links: { [CURRENT]: SLOT_A } },
+    { existing: [], links: { [CURRENT]: SLOT_B } },
+    { existing: [CURRENT], links: {} },
+    { existing: [CURRENT], links: { [CURRENT]: SLOT_A } },
+    { existing: [CURRENT], links: { [CURRENT]: SLOT_B } },
+  ])(
+    "never moves a prefix once conda has created it ($existing, $links)",
+    async ({ existing, links }) => {
+      const h = harness({ existing, links });
 
-        await installManagedOmc(input(), h.deps);
+      await installManagedOmc(input(), h.deps);
 
-        const moved = h.ops.filter((op) => op.startsWith("move "));
-        for (const op of moved) {
-          expect(op).not.toMatch(/prefix-[ab]/);
-        }
+      const moved = h.ops.filter((op) => op.startsWith("move "));
+      for (const op of moved) {
+        expect(op).not.toMatch(/prefix-[ab]/);
       }
-    }
+    },
+  );
+
+  it("stages the new link at the path the layout names, which removal also clears", async () => {
+    const h = harness();
+
+    await installManagedOmc(input(), h.deps);
+
+    expect(h.stagings).toEqual([STAGING]);
   });
 
   it("builds in the slot that is not active and removes the old one after the flip", async () => {
@@ -520,6 +538,72 @@ describe("installManagedOmc", () => {
   });
 });
 
+describe("installManagedOmc after the link flip", () => {
+  it("installs when the old slot will not delete, and current keeps pointing at a live slot", async () => {
+    const h = harness({
+      links: { [CURRENT]: SLOT_A },
+      removeFails: (target) => target === SLOT_A,
+    });
+
+    const result = await installManagedOmc(input(), h.deps);
+
+    expect(result.omcPath).toBe(`${CURRENT}/bin/omc`);
+    expect(h.links.get(CURRENT)).toBe(SLOT_B);
+    expect(h.existing.has(SLOT_B)).toBe(true);
+  });
+
+  it("installs when the superseded legacy prefix will not delete", async () => {
+    const flipped = () => h.ops.some((op) => op.startsWith("link "));
+    const h = harness({
+      existing: [CURRENT],
+      removeFails: (target) => target === PREVIOUS && flipped(),
+    });
+
+    await installManagedOmc(input(), h.deps);
+
+    expect(h.links.get(CURRENT)).toBe(SLOT_A);
+    expect(h.existing.has(SLOT_A)).toBe(true);
+  });
+});
+
+describe("installManagedOmc active slot choice", () => {
+  it("builds in the first slot and retires nothing when the link names neither", async () => {
+    const elsewhere = "/opt/other-omc";
+    const h = harness({ links: { [CURRENT]: elsewhere } });
+
+    await installManagedOmc(input(), h.deps);
+
+    expect(h.runs.find((r) => r.command === TOOL)?.args).toContain(SLOT_A);
+    expect(h.existing.has(elsewhere)).toBe(true);
+    expect(h.ops).not.toContain(`remove ${elsewhere}`);
+    expect(h.ops).not.toContain(`remove ${SLOT_B}`);
+  });
+});
+
+describe("installManagedOmc interrupted swap recovery", () => {
+  it("discards a superseded prefix when current is live", async () => {
+    const h = harness({ links: { [CURRENT]: SLOT_A }, existing: [PREVIOUS] });
+
+    await installManagedOmc(input(), h.deps);
+
+    expect(h.ops.at(1)).toBe(`remove ${PREVIOUS}`);
+    expect(h.ops).not.toContain(`move ${PREVIOUS} -> ${CURRENT}`);
+  });
+
+  it("clears a dangling link before moving the superseded prefix back", async () => {
+    const h = harness({ links: { [CURRENT]: SLOT_A }, existing: [PREVIOUS] });
+    h.existing.delete(SLOT_A);
+    h.existing.delete(CURRENT);
+
+    await installManagedOmc(input(), h.deps);
+
+    expect(h.ops.slice(1, 3)).toEqual([
+      `remove ${CURRENT}`,
+      `move ${PREVIOUS} -> ${CURRENT}`,
+    ]);
+  });
+});
+
 describe("removeManagedOmc", () => {
   it("removes every entry an install creates, and says one was there", async () => {
     const h = harness({ links: { [CURRENT]: SLOT_A } });
@@ -532,6 +616,7 @@ describe("removeManagedOmc", () => {
     expect(removed).toBe(true);
     expect(h.ops).toEqual([
       `remove ${CURRENT}`,
+      `remove ${STAGING}`,
       `remove ${SLOT_A}`,
       `remove ${SLOT_B}`,
       `remove ${PREVIOUS}`,
@@ -562,6 +647,7 @@ describe("removeManagedOmc", () => {
     ).toBe(false);
     expect(h.ops).toEqual([
       `remove ${root}\\current`,
+      `remove ${root}\\current.tmp`,
       `remove ${root}\\prefix-a`,
       `remove ${root}\\prefix-b`,
       `remove ${root}\\previous`,
@@ -588,7 +674,7 @@ describe("removeManagedOmc", () => {
 
       await removeManagedOmc({ homeDir, platform: "linux" }, h.deps.fs);
 
-      expect(h.ops).toHaveLength(6);
+      expect(h.ops).toHaveLength(7);
       for (const op of h.ops) expect(op.startsWith(owned)).toBe(true);
     }
   });

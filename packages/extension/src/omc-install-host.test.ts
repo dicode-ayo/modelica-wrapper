@@ -276,11 +276,11 @@ describe("nodeInstallFileSystem links", () => {
     await fsp.mkdir(path.join(dir, "a"));
     await fsp.mkdir(path.join(dir, "b"));
 
-    await fs.replaceLink(path.join(dir, "a"), link);
-    await fs.replaceLink(path.join(dir, "b"), link);
+    await fs.replaceLink(path.join(dir, "a"), link, `${link}.tmp`);
+    await fs.replaceLink(path.join(dir, "b"), link, `${link}.tmp`);
 
     expect(await fsp.readlink(link)).toBe(path.join(dir, "b"));
-    expect(await fsp.readdir(dir)).toEqual(["a", "b", "current"]);
+    expect((await fsp.readdir(dir)).sort()).toEqual(["a", "b", "current"]);
   });
 
   it("removes a link without touching the directory it points at", async () => {
@@ -289,11 +289,22 @@ describe("nodeInstallFileSystem links", () => {
     const link = path.join(dir, "current");
     await fsp.mkdir(path.join(dir, "slot"));
     await fsp.writeFile(path.join(dir, "slot", "file"), "x");
-    await fs.replaceLink(path.join(dir, "slot"), link);
+    await fs.replaceLink(path.join(dir, "slot"), link, `${link}.tmp`);
 
     await fs.remove(link);
 
     expect(await fs.exists(link)).toBe(false);
     expect(await fs.exists(path.join(dir, "slot", "file"))).toBe(true);
+  });
+
+  it("removes a dangling link and a missing path without failing", async () => {
+    const dir = await scratch();
+    const fs = nodeInstallFileSystem();
+    await fsp.symlink(path.join(dir, "gone"), path.join(dir, "dangling"));
+
+    await fs.remove(path.join(dir, "dangling"));
+    await fs.remove(path.join(dir, "absent"));
+
+    expect(await fs.readLink(path.join(dir, "dangling"))).toBeUndefined();
   });
 });

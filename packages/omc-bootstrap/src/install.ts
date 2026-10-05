@@ -8,8 +8,7 @@
  * tracked, and the installation being replaced stays usable until the link flips.
  *
  * Conda bakes the absolute prefix into the files it installs, so a prefix cannot
- * be built in one place and moved to another. Two alternating slots are the
- * places a prefix is built and run from for good.
+ * be built in one place and moved to another; hence the two alternating slots.
  *
  * Network, subprocess, filesystem and progress are injected. The micromamba to
  * run, the digest it must match and the packages it fetches are fixed here, not
@@ -37,6 +36,7 @@ import {
 const SLOT_A = "prefix-a";
 const SLOT_B = "prefix-b";
 const SUPERSEDED_PREFIX = "previous";
+const LINK_STAGING = "current.tmp";
 const MICROMAMBA_BINARY = "micromamba";
 const PACKAGE_CACHE = "cache";
 const LOCKFILE_NAME = "lock.txt";
@@ -46,8 +46,8 @@ const LOCKFILE_NAME = "lock.txt";
  * archives, 2.9 GB of packages extracted beside them, and 0.59 GB of prefix
  * that conda copies rather than hardlinks from that cache — 4.3 GB measured on
  * linux-64 against OpenModelica 1.27.0, all of it live at once before the cache
- * is discarded. The rest is headroom for the old prefix that stays until the new one is live and for the platforms
- * that sit higher.
+ * is discarded. The rest is headroom for the old prefix that stays until the
+ * new one is live and for the platforms that sit higher.
  */
 const REQUIRED_FREE_BYTES = 5_500_000_000;
 
@@ -121,9 +121,10 @@ export interface InstallFileSystem {
   readLink(target: string): Promise<string | undefined>;
   /**
    * Point the symlink `link` at `target` atomically: a reader sees the old
-   * target or the new one, never neither.
+   * target or the new one, never neither. `staged` is where the new link is
+   * made before it replaces `link`.
    */
-  replaceLink(target: string, link: string): Promise<void>;
+  replaceLink(target: string, link: string, staged: string): Promise<void>;
   /**
    * Remove a file or tree; succeeds when it is already absent. A symlink is
    * removed itself, never the tree it points at.
@@ -163,6 +164,8 @@ interface ManagedLayout {
   readonly slots: readonly [string, string];
   /** Where a legacy `current` waits while the link replaces it. */
   readonly superseded: string;
+  /** Where a new link is made before it replaces `current`. */
+  readonly linkStaging: string;
   readonly tool: string;
   readonly cache: string;
   /** Inside the cache, so the same removal that clears one clears both. */
@@ -185,6 +188,7 @@ function layoutFor(homeDir: string, platform: NodeJS.Platform): ManagedLayout {
     current: managedPrefix(root, platform),
     slots: [paths.join(root, SLOT_A), paths.join(root, SLOT_B)],
     superseded: paths.join(root, SUPERSEDED_PREFIX),
+    linkStaging: paths.join(root, LINK_STAGING),
     tool: paths.join(root, MICROMAMBA_BINARY),
     cache,
     lockfile: paths.join(cache, LOCKFILE_NAME),
@@ -262,24 +266,35 @@ export async function installManagedOmc(
 
   const active = await deps.fs.readLink(layout.current);
   const [first, second] = layout.slots;
-  const [target, old] = active === first ? [second, first] : [first, second];
+  // A link naming neither slot is not ours to judge: build in the first and
+  // retire nothing.
+  const [target, old] =
+    active === first
+      ? [second, first]
+      : active === second
+        ? [first, second]
+        : [first, active === undefined ? second : undefined];
   // The slot being built is not the one `current` names, so nothing resolves to
   // it and a leftover from an install that did not finish is ours to discard.
   await deps.fs.remove(target);
 
+  let promoted = false;
   try {
     await installMicromamba(layout, subdir, input, deps);
     await createPrefix(layout, target, subdir, input, deps);
     const version = await verifyPrefix(target, input.platform, deps);
-    await promote(layout, target, active === undefined, deps);
-    await deps.fs.remove(old);
+    await promote(layout, target, active, deps);
+    promoted = true;
+    // The install has succeeded; a slot that will not delete is wasted space.
+    if (old !== undefined) await deps.fs.remove(old).catch(() => undefined);
     await discardPackageCache(layout, deps);
     return {
       omcPath: prefixOmcBinary(layout.current, input.platform),
       version,
     };
   } catch (err) {
-    await deps.fs.remove(target);
+    // Past the flip `current` resolves to `target`.
+    if (!promoted) await deps.fs.remove(target);
     throw err;
   }
 }
@@ -303,6 +318,7 @@ export async function removeManagedOmc(
   const installed = await fs.exists(layout.current);
   for (const entry of [
     layout.current,
+    layout.linkStaging,
     ...layout.slots,
     layout.superseded,
     layout.tool,
@@ -317,13 +333,21 @@ export async function removeManagedOmc(
  * A superseded prefix with nothing at the managed location is a legacy
  * migration that was interrupted between its rename and the link. The
  * installation is still under the old name, and nothing resolves to it there.
+ * With the managed location live, the superseded prefix is a leftover.
  */
 async function restoreInterruptedSwap(
   layout: ManagedLayout,
   deps: InstallOmcDeps,
 ): Promise<void> {
-  if (await deps.fs.exists(layout.current)) return;
   if (!(await deps.fs.exists(layout.superseded))) return;
+  if (await deps.fs.exists(layout.current)) {
+    await deps.fs.remove(layout.superseded);
+    return;
+  }
+  // A link to a slot that is gone would make the move land inside nothing.
+  if ((await deps.fs.readLink(layout.current)) !== undefined) {
+    await deps.fs.remove(layout.current);
+  }
   await deps.fs.move(layout.superseded, layout.current);
 }
 
@@ -479,18 +503,19 @@ async function verifyPrefix(
 async function promote(
   layout: ManagedLayout,
   target: string,
-  legacy: boolean,
+  active: string | undefined,
   deps: InstallOmcDeps,
 ): Promise<void> {
   deps.report({ phase: "finishing" });
-  const replacing = legacy && (await deps.fs.exists(layout.current));
+  const replacing =
+    active === undefined && (await deps.fs.exists(layout.current));
 
   if (replacing) {
     await deps.fs.remove(layout.superseded);
     await deps.fs.move(layout.current, layout.superseded);
   }
   try {
-    await deps.fs.replaceLink(target, layout.current);
+    await deps.fs.replaceLink(target, layout.current, layout.linkStaging);
   } catch (err) {
     if (replacing) {
       await deps.fs
@@ -503,7 +528,7 @@ async function promote(
       { cause: err },
     );
   }
-  if (replacing) await deps.fs.remove(layout.superseded);
+  if (replacing) await deps.fs.remove(layout.superseded).catch(() => undefined);
 }
 
 /**
