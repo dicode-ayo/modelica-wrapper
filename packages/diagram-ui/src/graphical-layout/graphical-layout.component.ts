@@ -2,19 +2,11 @@ import type { Container } from "pixi.js";
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
-import { repeat } from "lit/directives/repeat.js";
 import { styleMap } from "lit/directives/style-map.js";
-import type {
-  ClassDef,
-  ComponentInstance,
-  ConnectorInstance,
-  DiagramLayout,
-  Shape,
-} from "@dicode/omc-client";
+import type { ClassDef, DiagramLayout } from "@dicode/omc-client";
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";
 
-import { renderShape } from "../primitives/render-shape.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
@@ -75,8 +67,6 @@ import {
   type ContextKeys,
 } from "../interaction/context-keys.js";
 import {
-  formatComponentKey,
-  formatConnectorKey,
   formatShapeKey,
   parseKey,
   vertexKeyForEntity,
@@ -112,28 +102,11 @@ import {
   type PlacementPoint,
 } from "./placement-mode.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
-import {
-  HOST_SHAPE_Z_BIAS,
-  activeLayers,
-  componentRepeatKey,
-  renderComponent,
-  renderConnection,
-  renderStandaloneConnector,
-  visibleComponents,
-} from "./render-entities.js";
+import { renderLayoutContent } from "./render-entities.js";
 import {
   sharedNestedSource,
   type NestedDiagramSource,
 } from "../nesting/nested-diagram-source.js";
-
-/** One host shape with its flat cross-layer paint index. `ownIndex` is the
- *  `shape:` key index within the host's own layer, `null` for an inherited
- *  shape. */
-interface HostShapeSlot {
-  shape: Shape;
-  zOrder: number;
-  ownIndex: number | null;
-}
 
 interface BBox {
   minX: number;
@@ -514,11 +487,6 @@ export class OmGraphicalLayout extends LitElement {
       return html``;
     }
     const active = this.layoutWithPreview(base);
-    const connectorEntries = Object.entries(active.connectors);
-    // `active.labels` is a subset of the host's diagram `Text` annotations,
-    // which already draw in world space through the host shape layers
-    // (`renderHostShapes` / `renderHostShapeEntities`) — sized to their
-    // extent and tracking zoom. Rendering it here would draw them twice.
     return html`
       <om-scene
         class=${this.dropActive ? "om-drop-active" : nothing}
@@ -537,20 +505,13 @@ export class OmGraphicalLayout extends LitElement {
           .extent=${500}
           .coordinateSystem=${active.coordinateSystem ?? undefined}
         ></om-grid-axis>
-        ${this.renderHostShapes(active)} ${this.renderHostShapeEntities(active)}
-        ${repeat(visibleComponents(active), componentRepeatKey, ([id, comp]) =>
-          this.renderComponent(id, comp, active),
-        )}
-        ${repeat(
-          connectorEntries,
-          ([id]) => id,
-          ([id, conn]) => this.renderStandaloneConnector(id, conn, active),
-        )}
-        ${repeat(
-          active.connections,
-          (_, idx) => `conn:${idx}`,
-          (conn, idx) => renderConnection(conn, idx, active, this.selectedKeys),
-        )}
+        ${renderLayoutContent(active, {
+          selectedKeys: this.selectedKeys,
+          readonly: this.readonly,
+          editableShapes: true,
+          lineThicknessScale: this.lineThicknessScale,
+          nestedSource: this.nestedSourceByClass,
+        })}
         <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
       ${this.renderPlacementGhost()}
@@ -697,82 +658,6 @@ export class OmGraphicalLayout extends LitElement {
   private internalLayoutChange = false;
   private isInternalLayoutChange(): boolean {
     return this.internalLayoutChange;
-  }
-
-  private renderComponent(
-    id: string,
-    comp: ComponentInstance,
-    layout: DiagramLayout,
-  ): TemplateResult {
-    return renderComponent(id, comp, layout, {
-      selected: this.selectedKeys.has(formatComponentKey(id)),
-      readonly: this.readonly,
-      lineThicknessScale: this.lineThicknessScale,
-      nestedSource: this.nestedSourceByClass,
-    });
-  }
-
-  private renderStandaloneConnector(
-    id: string,
-    conn: ConnectorInstance,
-    layout: DiagramLayout,
-  ): TemplateResult {
-    return renderStandaloneConnector(id, conn, layout, {
-      selected: this.selectedKeys.has(formatConnectorKey(null, id)),
-      readonly: this.readonly,
-      lineThicknessScale: this.lineThicknessScale,
-    });
-  }
-
-  /** Every host shape with its flat cross-layer paint index. Layers arrive
-   *  ancestor-first / host-last and the index follows that walk, so
-   *  annotation-array order is paint order. */
-  private hostShapeSlots(layout: DiagramLayout): HostShapeSlot[] {
-    let zOrder = 0;
-    return activeLayers(layout).flatMap((layer) => {
-      const own = layer.from === layout.className;
-      return layer.shapes.map((shape, index) => ({
-        shape,
-        zOrder: zOrder++,
-        ownIndex: own ? index : null,
-      }));
-    });
-  }
-
-  /**
-   * Paints the host's INHERITED (ancestor) shapes, non-interactive.
-   * Own-layer shapes are drawn by their entity in
-   * `renderHostShapeEntities`, which owns both their visual and their
-   * interaction.
-   */
-  private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
-    return this.hostShapeSlots(layout)
-      .filter((s) => s.ownIndex === null)
-      .map((s) => renderShape(s.shape, s.zOrder, HOST_SHAPE_Z_BIAS));
-  }
-
-  /**
-   * The host's OWN drawn shapes (`from === className`) as editable entities —
-   * each its own `<om-*>` primitive owning its visual, hit geometry, and
-   * selection overlay. Inherited ancestor shapes stay non-interactive.
-   */
-  private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
-    return this.hostShapeSlots(layout).flatMap((s) =>
-      s.ownIndex === null
-        ? []
-        : [
-            renderShape(s.shape, s.zOrder, HOST_SHAPE_Z_BIAS, {
-              index: s.ownIndex,
-              selected: this.selectedKeys.has(
-                formatShapeKey(s.shape.kind, s.ownIndex),
-              ),
-              // Selecting a graphic to copy it is not an edit, so a read-only
-              // class keeps the entity and loses only the handles. `onDrag`
-              // already refuses every gesture but the rubber band.
-              editHandles: !this.readonly,
-            }),
-          ],
-    );
   }
 
   /**

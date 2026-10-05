@@ -1,23 +1,13 @@
 import { LitElement, css, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { ContextProvider, consume } from "@lit/context";
-import { repeat } from "lit/directives/repeat.js";
 import { Container, Graphics } from "pixi.js";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { coordSystemSize } from "../base/placement-math.js";
-import {
-  HOST_SHAPE_Z_BIAS,
-  activeLayers,
-  componentRepeatKey,
-  renderComponent,
-  renderConnection,
-  renderStandaloneConnector,
-  visibleComponents,
-} from "../graphical-layout/render-entities.js";
+import { renderLayoutContent } from "../graphical-layout/render-entities.js";
 import { interactionStateContext } from "../interaction/interaction-state.js";
-import { renderLayers } from "../primitives/render-shape.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import { NESTING_CHROME, letterbox, type Box } from "./nesting-math.js";
 import "../connection/connection.component.js";
@@ -105,29 +95,14 @@ export class OmNestedDiagram extends LitElement {
   }
 
   override render(): TemplateResult {
-    const layout = this.layout;
-    if (!layout) return html``;
-    const entity = {
-      selected: false,
+    if (!this.layout) return html``;
+    return renderLayoutContent(this.layout, {
+      selectedKeys: NO_SELECTION,
       readonly: true,
+      editableShapes: false,
       lineThicknessScale: undefined,
-    };
-    return html`
-      ${renderLayers(activeLayers(layout), HOST_SHAPE_Z_BIAS)}
-      ${repeat(visibleComponents(layout), componentRepeatKey, ([id, comp]) =>
-        renderComponent(id, comp, layout, { ...entity, nestedSource: null }),
-      )}
-      ${repeat(
-        Object.entries(layout.connectors),
-        ([id]) => id,
-        ([id, conn]) => renderStandaloneConnector(id, conn, layout, entity),
-      )}
-      ${repeat(
-        layout.connections,
-        (_, idx) => `conn:${idx}`,
-        (conn, idx) => renderConnection(conn, idx, layout, NO_SELECTION),
-      )}
-    `;
+      nestedSource: null,
+    });
   }
 
   override updated(): void {

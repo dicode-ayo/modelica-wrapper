@@ -1,10 +1,12 @@
 import { html, nothing, type TemplateResult } from "lit";
+import { repeat } from "lit/directives/repeat.js";
 import type {
   ComponentInstance,
   ConnectionLayout,
   ConnectorInstance,
   DiagramLayout,
   IconLayer,
+  Shape,
 } from "@dicode/omc-client";
 import { hasDrawnShapes } from "@dicode/omc-client/shapes";
 import { colorToCss } from "@dicode/diagram-svg";
@@ -12,7 +14,13 @@ import { colorToCss } from "@dicode/diagram-svg";
 import { withNoIconFallback } from "../icon-provider/no-icon.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import { resolveConnectionWaypoints } from "../interaction/connection-route.js";
+import {
+  formatComponentKey,
+  formatConnectorKey,
+  formatShapeKey,
+} from "../interaction/entity-keys.js";
 import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
+import { renderShape } from "../primitives/render-shape.js";
 
 /**
  * Paint-order bias for the host class's shapes (own and inherited) so they
@@ -33,20 +41,126 @@ import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
  */
 export const HOST_SHAPE_Z_BIAS = 0.5;
 
-export interface EntityRenderOptions {
+interface EntityRenderOptions {
   selected: boolean;
   readonly: boolean;
   lineThicknessScale: number | undefined;
 }
 
-export interface ComponentRenderOptions extends EntityRenderOptions {
+interface ComponentRenderOptions extends EntityRenderOptions {
   /** Fetches the class diagram an openable component shows on zoom. `null`
    *  keeps every component an icon at every zoom level. */
   nestedSource: NestedDiagramSource | null;
 }
 
+export interface LayoutContentOptions {
+  /** Entity keys drawn selected. */
+  selectedKeys: Set<string>;
+  readonly: boolean;
+  /**
+   * Draw the host's own-layer shapes as selectable entities. Off paints every
+   * host shape as plain geometry, as a view that offers no editing does.
+   */
+  editableShapes: boolean;
+  lineThicknessScale: number | undefined;
+  /** Fetches the class diagram an openable component shows on zoom. */
+  nestedSource: NestedDiagramSource | null;
+}
+
+/**
+ * Everything one `DiagramLayout` draws: the host's shapes, its components
+ * with their ports, its standalone connectors and its connections. Shared by
+ * the editable host scene and the view-only diagram inside an opened box, so
+ * both draw a class the same way.
+ *
+ * `layout.labels` is not drawn: it is a subset of the host's `Text` shapes,
+ * which the host shape layers already draw in world space.
+ */
+export function renderLayoutContent(
+  layout: DiagramLayout,
+  opts: LayoutContentOptions,
+): TemplateResult {
+  const entity = {
+    readonly: opts.readonly,
+    lineThicknessScale: opts.lineThicknessScale,
+  };
+  return html`
+    ${renderHostShapes(layout, opts)}
+    ${repeat(visibleComponents(layout), componentRepeatKey, ([id, comp]) =>
+      renderComponent(id, comp, layout, {
+        ...entity,
+        selected: opts.selectedKeys.has(formatComponentKey(id)),
+        nestedSource: opts.nestedSource,
+      }),
+    )}
+    ${repeat(
+      Object.entries(layout.connectors),
+      ([id]) => id,
+      ([id, conn]) =>
+        renderStandaloneConnector(id, conn, layout, {
+          ...entity,
+          selected: opts.selectedKeys.has(formatConnectorKey(null, id)),
+        }),
+    )}
+    ${repeat(
+      layout.connections,
+      (_, idx) => `conn:${idx}`,
+      (conn, idx) => renderConnection(conn, idx, layout, opts.selectedKeys),
+    )}
+  `;
+}
+
+/** One host shape with its flat cross-layer paint index. `ownIndex` is the
+ *  `shape:` key index within the host's own layer, `null` for an inherited
+ *  shape. */
+interface HostShapeSlot {
+  shape: Shape;
+  zOrder: number;
+  ownIndex: number | null;
+}
+
+/** Every host shape with its flat cross-layer paint index. Layers arrive
+ *  ancestor-first / host-last and the index follows that walk, so
+ *  annotation-array order is paint order. */
+function hostShapeSlots(layout: DiagramLayout): HostShapeSlot[] {
+  let zOrder = 0;
+  return activeLayers(layout).flatMap((layer) => {
+    const own = layer.from === layout.className;
+    return layer.shapes.map((shape, index) => ({
+      shape,
+      zOrder: zOrder++,
+      ownIndex: own ? index : null,
+    }));
+  });
+}
+
+/**
+ * The host's shapes. Inherited (ancestor) shapes are always plain paint. With
+ * `editableShapes`, own-layer shapes are entities instead — each its own
+ * `<om-*>` primitive owning its visual, hit geometry and selection overlay.
+ */
+function renderHostShapes(
+  layout: DiagramLayout,
+  opts: LayoutContentOptions,
+): TemplateResult[] {
+  return hostShapeSlots(layout).map((s) =>
+    s.ownIndex === null || !opts.editableShapes
+      ? renderShape(s.shape, s.zOrder, HOST_SHAPE_Z_BIAS)
+      : renderShape(s.shape, s.zOrder, HOST_SHAPE_Z_BIAS, {
+          index: s.ownIndex,
+          selected: opts.selectedKeys.has(
+            formatShapeKey(s.shape.kind, s.ownIndex),
+          ),
+          // Selecting a graphic to copy it is not an edit, so a read-only
+          // class keeps the entity and loses only the handles. `onDrag`
+          // already refuses every gesture but the rubber band.
+          editHandles: !opts.readonly,
+        }),
+  );
+}
+
 /** The layer set the layout's view shows: `iconLayers` or `diagramLayers`. */
-export function activeLayers(layout: DiagramLayout): IconLayer[] {
+function activeLayers(layout: DiagramLayout): IconLayer[] {
   return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
 }
 
@@ -60,7 +174,7 @@ export function activeLayers(layout: DiagramLayout): IconLayer[] {
  * (`endpointCentreFromLayout`), not from this element, so they keep
  * anchoring correctly with nothing left to crash into.
  */
-export function visibleComponents(
+function visibleComponents(
   layout: DiagramLayout,
 ): [string, ComponentInstance][] {
   return Object.entries(layout.components).filter(
@@ -74,15 +188,12 @@ export function visibleComponents(
  * children, leaving old and new visuals overlaid. NUL can't appear in a
  * component name or qualified class name, so the split is unambiguous.
  */
-export function componentRepeatKey([id, comp]: [
-  string,
-  ComponentInstance,
-]): string {
+function componentRepeatKey([id, comp]: [string, ComponentInstance]): string {
   return `${id}\u0000${comp.classRef}`;
 }
 
 /** One `<om-connection>`, routed through the layout. */
-export function renderConnection(
+function renderConnection(
   conn: ConnectionLayout,
   idx: number,
   layout: DiagramLayout,
@@ -98,7 +209,7 @@ export function renderConnection(
 }
 
 /** One `<om-component>` with its class's (per-instance visible) ports. */
-export function renderComponent(
+function renderComponent(
   id: string,
   comp: ComponentInstance,
   layout: DiagramLayout,
@@ -150,7 +261,7 @@ export function renderComponent(
 }
 
 /** One host-level `<om-connector>`. */
-export function renderStandaloneConnector(
+function renderStandaloneConnector(
   id: string,
   conn: ConnectorInstance,
   layout: DiagramLayout,
