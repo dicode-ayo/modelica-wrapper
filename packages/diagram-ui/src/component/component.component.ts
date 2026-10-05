@@ -12,7 +12,6 @@ import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
 import { nestingProgress } from "../nesting/nesting-math.js";
 import "../nesting/nested-diagram.component.js";
 import { renderLayers } from "../primitives/render-shape.js";
-import { watchViewState } from "../scene/view-state-store.js";
 
 /**
  * `<om-component>` — renders a Modelica `ComponentInstance` as an icon
@@ -78,8 +77,6 @@ export class OmComponent extends OmShapeElement {
   /** The class whose fetch this element has issued, so it asks once. */
   private requestedClass: string | null = null;
 
-  private readonly viewWatch = watchViewState(this, () => this.syncNesting());
-
   private readonly substitutionsProvider = new ContextProvider(this, {
     context: substitutionsContext,
     initialValue: null as TextSubstitutions | null,
@@ -115,11 +112,7 @@ export class OmComponent extends OmShapeElement {
       this.nestedLayout = null;
       this.requestedClass = null;
     }
-    if (
-      changed.has("nestedSource") ||
-      changed.has("placement") ||
-      changed.has("coordinateSystem")
-    ) {
+    if (changed.has("nestedSource") || changed.has("placement")) {
       this.syncNesting();
     }
   }
@@ -131,9 +124,9 @@ export class OmComponent extends OmShapeElement {
     }
   }
 
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this.viewWatch.dispose();
+  protected override onViewChanged(): void {
+    super.onViewChanged();
+    this.syncNesting();
   }
 
   /**
@@ -154,17 +147,12 @@ export class OmComponent extends OmShapeElement {
     const boxPx =
       Math.min(Math.abs(x2 - x1), Math.abs(y2 - y1)) / worldPerPixel;
     const open = nestingProgress(boxPx);
-    if (open !== this.nestingOpen) this.nestingOpen = open;
+    this.nestingOpen = open;
     if (open === 0) {
       if (this.nestedLayout === null) this.requestedClass = null;
       return;
     }
-    if (
-      this.nestedLayout !== null &&
-      worldPerPixel !== this.openWorldPerPixel
-    ) {
-      this.openWorldPerPixel = worldPerPixel;
-    }
+    if (this.nestedLayout !== null) this.openWorldPerPixel = worldPerPixel;
     this.requestNested();
   }
 

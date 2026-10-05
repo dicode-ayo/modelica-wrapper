@@ -144,6 +144,11 @@ async function zoomTo(el: OmGraphicalLayout, zoom: number): Promise<void> {
   await settle(el);
 }
 
+/**
+ * Waits out the chain one zoom sets off: the view emission updates the
+ * component, a fetch it starts resolves on a later turn, and the nested view
+ * it then mounts renders after that. Three turns cover the longest chain.
+ */
 async function settle(el: OmGraphicalLayout): Promise<void> {
   for (let i = 0; i < 3; i++) {
     await new Promise((r) => setTimeout(r, 0));
@@ -347,6 +352,8 @@ describe("semantic in-place nesting", () => {
   it("keeps the host's hover off a nested connection sharing its index", async () => {
     const el = await mountWithSource(pidSource());
     await zoomTo(el, OPEN);
+    // Written directly: the host fixture has no edge 0 to point at, and the
+    // bare key is all a nested edge 0 could mistake for its own.
     const store: unknown = Reflect.get(el, "interactionStore");
     const next: unknown = store && Reflect.get(store, "next");
     if (typeof next !== "function") throw new Error("no interaction store");
@@ -354,7 +361,7 @@ describe("semantic in-place nesting", () => {
     const conn = nested(el)?.shadowRoot?.querySelector("om-connection");
     await conn?.updateComplete;
     expect(conn).toBeTruthy();
-    expect(Reflect.get(conn ?? {}, "hovered")).toBe(false);
+    expect(conn?.isHovered).toBe(false);
   });
 
   it("stays an icon when the fetch fails, and asks again only on the next approach", async () => {

@@ -111,9 +111,12 @@ export abstract class OmShapeElement extends LitElement {
 
   private resubscribeViewState(store: ViewStateStore | null): void {
     this.viewUnsub?.();
-    this.viewUnsub = store
-      ? store.subscribe(() => this.shapeNode?.rescaleSelectionHandles())
-      : null;
+    this.viewUnsub = store ? store.subscribe(() => this.onViewChanged()) : null;
+  }
+
+  /** Fires on every pan/zoom; the base rescales its selection handles. */
+  protected onViewChanged(): void {
+    this.shapeNode?.rescaleSelectionHandles();
   }
 
   protected abstract entityNodeName(): string;

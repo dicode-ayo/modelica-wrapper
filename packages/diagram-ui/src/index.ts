@@ -69,12 +69,6 @@ export { OmComponent } from "./component/component.component.js";
 export { OmLayerGroup } from "./base/layer-group.component.js";
 export { OmNestedDiagram } from "./nesting/nested-diagram.component.js";
 export type { NestedDiagramSource } from "./nesting/nested-diagram-source.js";
-export {
-  NESTING_CHROME,
-  NESTING_THRESHOLDS,
-  type NestingChromeStyle,
-  type NestingThresholds,
-} from "./nesting/nesting-math.js";
 export { OmConnector } from "./connector/connector.component.js";
 export { OmEdge } from "./connection/edge.component.js";
 export { OmConnection } from "./connection/connection.component.js";

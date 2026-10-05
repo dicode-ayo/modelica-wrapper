@@ -4,6 +4,11 @@
  * the box.
  */
 
+import { OVERLAY_BLUE } from "../base/overlay-mesh.js";
+import type { Box } from "../base/placement-math.js";
+
+export type { Box };
+
 export interface NestingThresholds {
   /** On-screen box size (CSS px) at and above which the box is fully open. */
   enterPx: number;
@@ -26,8 +31,8 @@ export interface NestingChromeStyle {
 
 export const NESTING_CHROME: NestingChromeStyle = {
   strokeWidthPx: 1.5,
-  strokeColor: 0x6199fa,
-  fillColor: 0x6199fa,
+  strokeColor: OVERLAY_BLUE,
+  fillColor: OVERLAY_BLUE,
   fillOpacity: 0.04,
 };
 
@@ -45,14 +50,6 @@ export function nestingProgress(
   if (sizePx <= exitPx) return 0;
   if (sizePx >= enterPx) return 1;
   return (sizePx - exitPx) / (enterPx - exitPx);
-}
-
-/** An axis-aligned box by size and centre, as `coordSystemSize` reports it. */
-export interface Box {
-  width: number;
-  height: number;
-  cx: number;
-  cy: number;
 }
 
 /** Per-axis scale + translation mapping content space into box space. */

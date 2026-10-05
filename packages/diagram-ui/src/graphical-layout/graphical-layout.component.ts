@@ -17,9 +17,9 @@ import { omTokens } from "@dicode/ui-common";
 import { renderShape } from "../primitives/render-shape.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import "../scene/scene.component.js";
+import "../axis/grid-axis.component.js";
 import "../component/component.component.js";
 import "../connector/connector.component.js";
-import "../axis/grid-axis.component.js";
 import "../connection/connection.component.js";
 import "../debug/perf-hud.component.js";
 import "../context-menu/context-menu.component.js";
@@ -353,7 +353,7 @@ export class OmGraphicalLayout extends LitElement {
   nestedDiagramSource: NestedDiagramSource | null = null;
 
   /** `nestedDiagramSource` shared per class, so boxes of one class fetch once. */
-  private sharedNestedSource: NestedDiagramSource | null = null;
+  private nestedSourceByClass: NestedDiagramSource | null = null;
 
   /**
    * Optional snap-to-grid override. Priority order:
@@ -483,7 +483,7 @@ export class OmGraphicalLayout extends LitElement {
     }
     if (changed.has("nestedDiagramSource")) {
       const source = this.nestedDiagramSource;
-      this.sharedNestedSource = source ? sharedNestedSource(source) : null;
+      this.nestedSourceByClass = source ? sharedNestedSource(source) : null;
     }
   }
 
@@ -708,7 +708,7 @@ export class OmGraphicalLayout extends LitElement {
       selected: this.selectedKeys.has(formatComponentKey(id)),
       readonly: this.readonly,
       lineThicknessScale: this.lineThicknessScale,
-      nestedSource: this.sharedNestedSource,
+      nestedSource: this.nestedSourceByClass,
     });
   }
 

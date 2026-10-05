@@ -19,12 +19,7 @@ import {
 import { interactionStateContext } from "../interaction/interaction-state.js";
 import { renderLayers } from "../primitives/render-shape.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
-import {
-  NESTING_CHROME,
-  letterbox,
-  type Box,
-  type NestingChromeStyle,
-} from "./nesting-math.js";
+import { NESTING_CHROME, letterbox, type Box } from "./nesting-math.js";
 import "../connection/connection.component.js";
 import "../connector/connector.component.js";
 
@@ -68,8 +63,6 @@ export class OmNestedDiagram extends LitElement {
    *  screen-constant frame. */
   @property({ type: Number }) worldPerPixel = 1;
 
-  @property({ attribute: false }) chrome: NestingChromeStyle = NESTING_CHROME;
-
   @consume({ context: parentNodeContext, subscribe: true })
   private parentTransform: Container | null = null;
 
@@ -96,10 +89,7 @@ export class OmNestedDiagram extends LitElement {
   private frame: Graphics | null = null;
   private content: Container | null = null;
 
-  /**
-   * What the breadcrumb names this box by: the class, not the instance,
-   * because the content is the class as declared rather than this use site.
-   */
+  /** The class, not the instance: the content is the class as declared. */
   get label(): string {
     return this.layout?.className ?? "";
   }
@@ -206,7 +196,7 @@ export class OmNestedDiagram extends LitElement {
     frameSpace.scale.set(1 / sx, 1 / sy);
     const width = Math.abs(this.box.width * sx);
     const height = Math.abs(this.box.height * sy);
-    const style = this.chrome;
+    const style = NESTING_CHROME;
     frame
       .clear()
       .rect(
