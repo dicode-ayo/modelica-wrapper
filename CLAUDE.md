@@ -165,3 +165,17 @@ introduce, say, a `no-restricted-imports` rule on its own).
 - Don't `git push --force` to `main` (or anywhere) without explicit OK.
 - Don't `git amend` past commits to fold review-round changes — make a new
   commit. The PR-review history is part of the project record.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `dicode-ayo/modelica-wrapper` (via `gh`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
