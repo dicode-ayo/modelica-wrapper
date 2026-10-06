@@ -1,4 +1,5 @@
-import { layoutDependsOn, type DiagramLayout } from "@dicode/omc-client";
+import type { DiagramLayout } from "@dicode/omc-client";
+import { layoutDependsOn } from "@dicode/omc-client/layout";
 
 import { LruCache } from "../lru-cache.js";
 

@@ -3,7 +3,8 @@ import { customElement, property, state } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import { ContextProvider } from "@lit/context";
 import type { TextSubstitutions } from "@dicode/diagram-svg";
-import { layoutDependsOn, type DiagramLayout } from "@dicode/omc-client";
+import type { DiagramLayout } from "@dicode/omc-client";
+import { layoutDependsOn } from "@dicode/omc-client/layout";
 
 import { OmShapeElement } from "../base/shape-element.js";
 import "../base/layer-group.component.js";
