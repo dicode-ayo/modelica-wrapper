@@ -40,6 +40,7 @@ import {
   isLikelyDiskPath,
   linkPersistedClass,
   persistClass,
+  withErrorBuffer,
   type OmcClient,
 } from "@dicode/omc-client";
 
@@ -166,49 +167,44 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     const info = await client.getClassInformation({ typeName });
     const onDisk = isLikelyDiskPath(info.fileName);
 
-    // Both screens sit ahead of the `loadString` below to keep this method's
-    // "refuse before any OMC mutation" promise. The buffer would bind every
-    // class it declares to `info.fileName`; the file may have gained a class
-    // from an external edit since it loaded. Either way the write that follows
-    // reconstructs the file from one class and drops the rest (#452). A file
-    // OMC cannot parse falls through — refusing there would block saving a fix
-    // over a corrupted file, and the buffer screen still holds.
-    if (onDisk) {
-      const inFile = await multipleTopLevelClasses(client, info.fileName);
-      if (inFile) {
-        throw vscode.FileSystemError.Unavailable(
-          multiEntityMessage(info.fileName, inFile),
-        );
-      }
-    }
     // OMC keys a class to its file, so a class stored inline in a shared
     // `package.mo` stays in place with its siblings — passing a per-class
     // pseudo-filename evicts it from that file. A memory-only class has no
-    // disk path yet, so it carries the buffer URI until `setSourceFile`. Both
-    // the buffer screen above and the `loadString` below key off this same
-    // filename: the screen exists to predict what `loadString` binds to.
+    // disk path yet, so it carries the buffer URI until `setSourceFile`.
     const bindFilename = onDisk ? info.fileName : uri.toString();
-    const refusal = await bufferRefusal(client, {
-      data: text,
-      filename: bindFilename,
-      expected: typeName,
-      label: onDisk ? info.fileName : typeName,
+
+    // Both screens sit ahead of the `loadString` below to keep this method's
+    // "refuse before any OMC mutation" promise. The buffer would bind every
+    // class it declares to `bindFilename`; the file may have gained a class
+    // from an external edit since it loaded. Either way the write that follows
+    // reconstructs the file from one class and drops the rest (#452). A file
+    // OMC cannot parse falls through — refusing there would block saving a fix
+    // over a corrupted file, and the buffer screen still holds. The screens
+    // can leave a diagnostic in OMC's buffer; draining it inside their own
+    // turn keeps it from reaching a caller queued before the `loadString` turn.
+    const { result: refusal } = await withErrorBuffer(client, async () => {
+      const inFile = onDisk
+        ? await multipleTopLevelClasses(client, info.fileName)
+        : undefined;
+      if (inFile) return multiEntityMessage(info.fileName, inFile);
+      return bufferRefusal(client, {
+        data: text,
+        filename: bindFilename,
+        expected: typeName,
+        label: onDisk ? info.fileName : typeName,
+      });
     });
     if (refusal !== undefined) {
       throw vscode.FileSystemError.Unavailable(refusal);
     }
 
-    // Drain any stale errors so the post-loadString check below only sees
-    // diagnostics produced by this save.
-    await client.getErrorString();
-
-    // Update OMC's in-memory AST, under the same filename the screen above
-    // just checked the buffer against.
-    const { success } = await client.loadString({
-      data: text,
-      filename: bindFilename,
-    });
-    const { errorString } = await client.getErrorString();
+    // Update OMC's in-memory AST, under the filename the screen checked.
+    const {
+      result: { success },
+      errorString,
+    } = await withErrorBuffer(client, () =>
+      client.loadString({ data: text, filename: bindFilename }),
+    );
     if (!success || (errorString.length > 0 && /error/i.test(errorString))) {
       // Surface to VSCode so the editor keeps the dirty state and the user
       // sees a banner; the live-check pipeline will also pin the precise

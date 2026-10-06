@@ -7,7 +7,7 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { withErrorBuffer } from "@dicode/omc-client";
+import { runQueued, withErrorBuffer } from "@dicode/omc-client";
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import { renamedClassMessage } from "../single-entity-file.js";
@@ -72,7 +72,7 @@ describe("compareBufferToClass", () => {
 });
 
 describe("reloadBufferIntoOmc", () => {
-  it("screens the buffer before the clear, so only the load is drained", async () => {
+  it("drains the screens in their own turn, ahead of the load's clear", async () => {
     const calls: string[] = [];
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => {
@@ -106,8 +106,10 @@ describe("reloadBufferIntoOmc", () => {
 
     expect(result).toEqual({ ok: true });
     expect(calls).toEqual([
+      "getErrorString",
       "getSourceFile",
       "parseString",
+      "getErrorString",
       "getErrorString",
       "loadString",
       "getErrorString",
@@ -164,6 +166,63 @@ describe("reloadBufferIntoOmc", () => {
     // Queued behind the mutation's whole turn, so parseString cannot run
     // until that turn's own drain has already read an empty buffer.
     expect(mutationResult.errorString).toBe("");
+    expect(reloadResult).toEqual({ ok: true });
+  });
+
+  it("drains a screen's diagnostic before a bare getErrorString queued behind it reads", async () => {
+    let buffer = "";
+    let releaseScreen: () => void = () => undefined;
+    const screenGate = new Promise<void>((resolve) => {
+      releaseScreen = resolve;
+    });
+    let signalScreenRunning: () => void = () => undefined;
+    const screenRunning = new Promise<void>((resolve) => {
+      signalScreenRunning = resolve;
+    });
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => {
+        buffer = "Error: malformed input near line 3";
+        signalScreenRunning();
+        await screenGate;
+        return { classNames: ["Pkg.Model"] };
+      }),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      // Waits out an in-flight turn like `OmcClient`'s own buffer readers; a
+      // read from inside a turn is rejected by `runQueued` and runs directly.
+      getErrorString: vi.fn(() => {
+        const read = () => {
+          const errorString = buffer;
+          buffer = "";
+          return { errorString };
+        };
+        return runQueued(client, () => Promise.resolve(read())).catch(
+          (error: unknown) => {
+            if (
+              error instanceof Error &&
+              error.message.includes("already holding it")
+            ) {
+              return read();
+            }
+            throw error;
+          },
+        );
+      }),
+      loadString: vi.fn(async () => ({ success: true })),
+    };
+
+    const reload = reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
+    );
+    await screenRunning;
+    // Queues behind the screen turn, ahead of the load's own turn.
+    const bare = client.getErrorString();
+    releaseScreen();
+
+    const [{ errorString }, reloadResult] = await Promise.all([bare, reload]);
+
+    expect(errorString).toBe("");
     expect(reloadResult).toEqual({ ok: true });
   });
 
@@ -234,6 +293,8 @@ describe("reloadBufferIntoOmc", () => {
 
   it("reports the post-load error, not the drained pre-load one", async () => {
     const errorStrings = [
+      "stale error from the screens' clear",
+      "screen diagnostic",
       "stale error from a prior edit",
       "the real rejection",
     ];
