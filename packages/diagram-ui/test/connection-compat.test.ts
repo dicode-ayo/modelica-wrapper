@@ -116,7 +116,38 @@ function layoutWithBlocks(): DiagramLayout {
         },
       },
     },
-    connectors: {},
+    connectors: {
+      uIn: {
+        name: "uIn",
+        classRef: "Modelica.Blocks.Interfaces.RealInput",
+        placement: {
+          extent: [
+            [-110, -10],
+            [-90, 10],
+          ],
+        },
+      },
+      yOut: {
+        name: "yOut",
+        classRef: "Modelica.Blocks.Interfaces.RealOutput",
+        placement: {
+          extent: [
+            [90, -10],
+            [110, 10],
+          ],
+        },
+      },
+      uIn2: {
+        name: "uIn2",
+        classRef: "Modelica.Blocks.Interfaces.RealInput",
+        placement: {
+          extent: [
+            [-110, 20],
+            [-90, 40],
+          ],
+        },
+      },
+    },
     connections: [],
   };
 }
@@ -230,5 +261,54 @@ describe("canConnect", () => {
       stream: false,
     };
     expect(canConnect(from, to)).toEqual({ ok: true });
+  });
+});
+
+describe("canConnect with root-class (standalone) connectors", () => {
+  const info = (key: string) => {
+    const port = resolvePortInfo(layoutWithBlocks(), key);
+    if (!port) throw new Error(`expected portInfo for ${key}`);
+    return port;
+  };
+  const accepted = (a: string, b: string) => {
+    expect(canConnect(info(a), info(b)).ok).toBe(true);
+    expect(canConnect(info(b), info(a)).ok).toBe(true);
+  };
+  const rejected = (a: string, b: string) => {
+    expect(canConnect(info(a), info(b)).ok).toBe(false);
+    expect(canConnect(info(b), info(a)).ok).toBe(false);
+  };
+
+  it("marks a standalone key and not a component port", () => {
+    expect(info("k:uIn").standalone).toBe(true);
+    expect(info("k:g1.u").standalone).toBeUndefined();
+  });
+
+  it("accepts root input → component input", () => {
+    accepted("k:uIn", "k:g1.u");
+  });
+
+  it("accepts component output → root output", () => {
+    accepted("k:g1.y", "k:yOut");
+  });
+
+  it("accepts root input → root output", () => {
+    accepted("k:uIn", "k:yOut");
+  });
+
+  it("rejects root input → component output (two sources)", () => {
+    rejected("k:uIn", "k:g1.y");
+  });
+
+  it("rejects root output → component input (two sinks)", () => {
+    rejected("k:yOut", "k:g1.u");
+  });
+
+  it("rejects root input → root input", () => {
+    rejected("k:uIn", "k:uIn2");
+  });
+
+  it("still rejects component input → component input", () => {
+    rejected("k:g1.u", "k:g2.u");
   });
 });
