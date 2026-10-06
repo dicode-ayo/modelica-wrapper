@@ -14,7 +14,11 @@
  * gets a fresh one.
  */
 
-import type { DiagramLayout, OmcClient } from "@dicode/omc-client";
+import {
+  layoutDependsOn,
+  type DiagramLayout,
+  type OmcClient,
+} from "@dicode/omc-client";
 import { LruCache } from "@dicode/diagram-ui/lru-cache";
 
 import { fetchDiagramLayout } from "./open-diagram.js";
@@ -34,6 +38,8 @@ export class NestedDiagramCache {
    * rather than issuing a duplicate OMC round trip each.
    */
   private readonly pending = new Map<string, Promise<DiagramLayout>>();
+  /** Bumped by every invalidation, so a fetch that straddles one is not cached. */
+  private generation = 0;
 
   constructor(
     private readonly client: OmcClient,
@@ -57,16 +63,39 @@ export class NestedDiagramCache {
     try {
       return await promise;
     } finally {
-      this.pending.delete(className);
+      if (this.pending.get(className) === promise) {
+        this.pending.delete(className);
+      }
     }
+  }
+
+  /**
+   * Drop every layout built from `className`'s definition — its own, and
+   * any that draws it as a sub-component, port, or ancestor. An in-flight
+   * fetch may already have read the old definition, so it is dropped too.
+   */
+  invalidate(className: string): void {
+    this.generation += 1;
+    this.pending.clear();
+    for (const [key, layout] of [...this.layouts.entries()]) {
+      if (layoutDependsOn(layout, className)) this.layouts.delete(key);
+    }
+  }
+
+  /** Drop everything, for a change no class name describes. */
+  clear(): void {
+    this.generation += 1;
+    this.pending.clear();
+    this.layouts.clear();
   }
 
   // A rejection is not cached — `pending` is cleared in `get`'s `finally`
   // either way, and `layouts.set` only runs on success — so a transient OMC
   // failure doesn't poison every later zoom into the same class.
   private async load(className: string): Promise<DiagramLayout> {
+    const generation = this.generation;
     const layout = await this.fetch(this.client, className);
-    this.layouts.set(className, layout);
+    if (generation === this.generation) this.layouts.set(className, layout);
     return layout;
   }
 }

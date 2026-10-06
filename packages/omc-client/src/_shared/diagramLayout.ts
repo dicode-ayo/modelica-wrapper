@@ -286,6 +286,36 @@ export function classNameOf(layout: DiagramLayout, classRef: string): string {
   return layout.classes[classRef]?.name ?? classRef;
 }
 
+/**
+ * Whether `layout` was built from `className`'s definition: the host class, a
+ * catalogued type, a port's connector type, or an ancestor that contributed
+ * shapes or ports. An ancestor that contributes neither leaves no trace in the
+ * layout, so a change to it goes unseen here.
+ */
+export function layoutDependsOn(
+  layout: DiagramLayout,
+  className: string,
+): boolean {
+  const fromLayers = (layers: readonly IconLayer[] | undefined): boolean =>
+    layers?.some((layer) => layer.from === className) ?? false;
+  if (layout.className === className) return true;
+  if (fromLayers(layout.iconLayers) || fromLayers(layout.diagramLayers)) {
+    return true;
+  }
+  return Object.values(layout.classes).some(
+    (def) =>
+      def.name === className ||
+      fromLayers(def.iconLayers) ||
+      fromLayers(def.diagramLayers) ||
+      Object.values(def.connectors).some(
+        (port) =>
+          port.typeName === className ||
+          port.from === className ||
+          fromLayers(port.iconLayers),
+      ),
+  );
+}
+
 export interface ComponentInstance {
   name: string;
   /**

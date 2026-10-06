@@ -390,3 +390,85 @@ describe("semantic in-place nesting", () => {
     expect(nested(el)?.container?.alpha).toBe(1);
   });
 });
+
+describe("semantic in-place nesting: a changed class", () => {
+  function innerIds(el: OmGraphicalLayout): string[] {
+    return Array.from(
+      nested(el)?.shadowRoot?.querySelectorAll("om-component") ?? [],
+    ).map((c) => c.nodeId);
+  }
+
+  function revisedDiagram(): DiagramLayout {
+    const diagram = limPidDiagram();
+    const { addP } = diagram.components;
+    if (!addP) throw new Error("fixture has no addP");
+    return { ...diagram, components: { addP }, connections: [] };
+  }
+
+  it("re-fetches an open box drawing the class, keeping the old diagram up meanwhile", async () => {
+    const source = vi
+      .fn<NestedDiagramSource>()
+      .mockResolvedValueOnce(limPidDiagram())
+      .mockResolvedValue(revisedDiagram());
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+
+    el.invalidateNestedDiagrams("P.Add");
+    expect(nested(el)).not.toBeNull();
+    await settle(el);
+
+    expect(source).toHaveBeenCalledTimes(2);
+    expect(innerIds(el)).toEqual(["addP"]);
+  });
+
+  it("leaves an open box alone when a class it does not draw changes", async () => {
+    const source = pidSource();
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+
+    el.invalidateNestedDiagrams("P.Elsewhere");
+    await settle(el);
+
+    expect(source).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a closed box's diagram, so the next approach fetches afresh", async () => {
+    const source = vi
+      .fn<NestedDiagramSource>()
+      .mockResolvedValueOnce(limPidDiagram())
+      .mockResolvedValue(revisedDiagram());
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+    await zoomTo(el, CLOSED);
+
+    el.invalidateNestedDiagrams("P.LimPID");
+    await settle(el);
+    expect(source).toHaveBeenCalledTimes(1);
+
+    await zoomTo(el, OPEN);
+    expect(source).toHaveBeenCalledTimes(2);
+    expect(innerIds(el)).toEqual(["addP"]);
+  });
+
+  it("ignores a fetch the change superseded, even when it lands last", async () => {
+    let resolveStale: (layout: DiagramLayout) => void = () => {};
+    const source = vi
+      .fn<NestedDiagramSource>()
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveStale = resolve;
+        }),
+      )
+      .mockResolvedValue(revisedDiagram());
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+
+    el.invalidateNestedDiagrams("P.LimPID");
+    await settle(el);
+    resolveStale(limPidDiagram());
+    await settle(el);
+
+    expect(source).toHaveBeenCalledTimes(2);
+    expect(innerIds(el)).toEqual(["addP"]);
+  });
+});

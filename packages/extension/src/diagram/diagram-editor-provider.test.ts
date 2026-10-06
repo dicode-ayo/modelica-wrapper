@@ -90,6 +90,8 @@ import {
   resolveDiagramEditor,
 } from "./diagram-editor-provider.js";
 import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
+import { ClassInvalidationRegistry } from "../invalidation.js";
+import { nestedDiagramCache } from "./nested-diagram-cache.js";
 
 /** Stands in for whatever sentence the write verdict refuses with. */
 const REFUSAL = "Cannot edit Pkg.M — its source file is read-only.";
@@ -3854,5 +3856,74 @@ describe("DiagramEditController: go to source (issue #514)", () => {
 
     expect(vscodeMock.shownTextDocuments).toHaveLength(1);
     expect(posted.filter((m) => m.type === "error")).toHaveLength(0);
+  });
+});
+
+describe("resolveDiagramEditor: a changed class staling nested diagrams", () => {
+  function open(invalidation: ClassInvalidationRegistry): {
+    posted: ExtensionToWebview[];
+    fireReady: () => void;
+    fireDispose: () => void;
+    client: OmcClient;
+  } {
+    const { panel, posted, fireReady, fireDispose } = makePanel();
+    const { client } = makeClient();
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      vi.fn(() => Promise.resolve(client)),
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo")),
+      "diagram",
+      undefined,
+      invalidation,
+    );
+    return { posted, fireReady, fireDispose, client };
+  }
+
+  const staled = (posted: ExtensionToWebview[]): ExtensionToWebview[] =>
+    posted.filter((m) => m.type === "nestedDiagramStale");
+
+  it("tells an initialised webview which class changed, and evicts the session cache", async () => {
+    const invalidation = new ClassInvalidationRegistry();
+    const { posted, fireReady, client } = open(invalidation);
+    fireReady();
+    await flush();
+    const invalidate = vi.spyOn(nestedDiagramCache(client), "invalidate");
+    const clear = vi.spyOn(nestedDiagramCache(client), "clear");
+
+    invalidation.classChanged("P.Child");
+    invalidation.allClassesChanged();
+    invalidation.sessionReplaced();
+
+    expect(invalidate).toHaveBeenCalledWith("P.Child");
+    expect(clear).toHaveBeenCalledTimes(2);
+    expect(staled(posted)).toEqual([
+      { type: "nestedDiagramStale", className: "P.Child" },
+      { type: "nestedDiagramStale", className: null },
+      { type: "nestedDiagramStale", className: null },
+    ]);
+  });
+
+  it("sends nothing before init, when the webview holds no nested diagram", () => {
+    const invalidation = new ClassInvalidationRegistry();
+    const { posted, fireReady } = open(invalidation);
+
+    invalidation.classChanged("P.Child");
+    fireReady();
+
+    expect(staled(posted)).toEqual([]);
+  });
+
+  it("stops listening once the panel is gone", async () => {
+    const invalidation = new ClassInvalidationRegistry();
+    const { posted, fireReady, fireDispose } = open(invalidation);
+    fireReady();
+    await flush();
+
+    fireDispose();
+    invalidation.classChanged("P.Child");
+
+    expect(staled(posted)).toEqual([]);
   });
 });

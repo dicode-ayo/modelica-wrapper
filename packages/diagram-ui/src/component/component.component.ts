@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import { ContextProvider } from "@lit/context";
 import type { TextSubstitutions } from "@dicode/diagram-svg";
-import type { DiagramLayout } from "@dicode/omc-client";
+import { layoutDependsOn, type DiagramLayout } from "@dicode/omc-client";
 
 import { OmShapeElement } from "../base/shape-element.js";
 import "../base/layer-group.component.js";
@@ -81,6 +81,9 @@ export class OmComponent extends OmShapeElement {
 
   /** The class whose fetch this element has issued, so it asks once. */
   private requestedClass: string | null = null;
+
+  /** Stamp of the latest fetch, so one superseded by a refresh lands nowhere. */
+  private nestedRequest = 0;
 
   /** The box the nested view fills, and the signed scale it is placed at.
    *  Derived from `placement` / `coordinateSystem` and kept by reference, so
@@ -174,6 +177,31 @@ export class OmComponent extends OmShapeElement {
     this.requestNested();
   }
 
+  /**
+   * Re-fetch the class diagram if it was built from `className`'s definition
+   * (`null`: whatever it was built from). While open, the stale diagram stays
+   * up until the fresh one lands; while closed, it is dropped so the next
+   * approach fetches.
+   */
+  refreshNested(className: string | null): void {
+    if (this.requestedClass === null) return;
+    const layout = this.nestedLayout;
+    if (
+      className !== null &&
+      layout !== null &&
+      !layoutDependsOn(layout, className)
+    ) {
+      return;
+    }
+    this.requestedClass = null;
+    if (this.nestingOpen === 0) {
+      this.nestedLayout = null;
+      this.nestedRequest += 1;
+      return;
+    }
+    this.requestNested();
+  }
+
   private requestNested(): void {
     const source = this.nestedSource;
     const className = this.classRef;
@@ -181,9 +209,14 @@ export class OmComponent extends OmShapeElement {
       return;
     }
     this.requestedClass = className;
+    const request = (this.nestedRequest += 1);
     source(className).then(
       (layout) => {
-        if (this.nestedSource === source && this.classRef === className) {
+        if (
+          request === this.nestedRequest &&
+          this.nestedSource === source &&
+          this.classRef === className
+        ) {
           this.nestedLayout = layout;
           this.syncNesting();
         }

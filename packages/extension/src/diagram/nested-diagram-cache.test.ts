@@ -84,6 +84,91 @@ describe("NestedDiagramCache", () => {
   });
 });
 
+describe("NestedDiagramCache: invalidation", () => {
+  /** `className`'s diagram, drawing one sub-component of class `child`. */
+  function drawing(className: string, child: string): DiagramLayout {
+    return {
+      ...layout(className),
+      iconLayers: [],
+      diagramLayers: [],
+      classes: {
+        c: {
+          name: child,
+          restriction: "model",
+          iconLayers: [],
+          connectors: {},
+          parameters: {},
+        },
+      },
+    } as DiagramLayout;
+  }
+
+  function cacheOf(layouts: Record<string, DiagramLayout>): {
+    cache: NestedDiagramCache;
+    fetch: ReturnType<typeof vi.fn>;
+  } {
+    const fetch = vi.fn((_client: OmcClient, className: string) => {
+      const found = layouts[className];
+      return found
+        ? Promise.resolve(found)
+        : Promise.reject(new Error(`no ${className}`));
+    });
+    return { cache: new NestedDiagramCache({} as OmcClient, fetch), fetch };
+  }
+
+  it("drops the layouts drawing the changed class, and keeps the rest", async () => {
+    const { cache, fetch } = cacheOf({
+      "P.Parent": drawing("P.Parent", "P.Child"),
+      "P.Other": drawing("P.Other", "P.Unrelated"),
+    });
+    await cache.get("P.Parent");
+    await cache.get("P.Other");
+
+    cache.invalidate("P.Child");
+    await cache.get("P.Parent");
+    await cache.get("P.Other");
+
+    expect(fetch.mock.calls.map(([, name]) => name)).toEqual([
+      "P.Parent",
+      "P.Other",
+      "P.Parent",
+    ]);
+  });
+
+  it("does not cache a fetch that straddled an invalidation", async () => {
+    let resolveFirst: (l: DiagramLayout) => void = () => {};
+    const fetch = vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise<DiagramLayout>((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockResolvedValue(drawing("P.Parent", "P.Child"));
+    const cache = new NestedDiagramCache({} as OmcClient, fetch);
+
+    const straddling = cache.get("P.Parent");
+    cache.invalidate("P.Child");
+    resolveFirst(drawing("P.Parent", "P.Child"));
+    await straddling;
+    await cache.get("P.Parent");
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears everything for a change no class name describes", async () => {
+    const { cache, fetch } = cacheOf({
+      "P.Parent": drawing("P.Parent", "P.Child"),
+    });
+    await cache.get("P.Parent");
+
+    cache.clear();
+    await cache.get("P.Parent");
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("nestedDiagramCache", () => {
   it("returns the same instance for the same client, and a fresh one for another", () => {
     const clientA = {} as OmcClient;

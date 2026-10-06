@@ -177,6 +177,7 @@ export {
   LineShapeSchema,
   moveWithin,
   classNameOf,
+  layoutDependsOn,
   connectorPlacementKeywords,
   PolygonShapeSchema,
   RectangleShapeSchema,

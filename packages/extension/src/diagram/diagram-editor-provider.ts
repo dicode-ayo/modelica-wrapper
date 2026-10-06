@@ -62,7 +62,10 @@ import {
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
 import { parseKey } from "@dicode/diagram-ui/entity-keys";
 import { LibrarySource } from "./library-source.js";
-import { nestedDiagramCache } from "./nested-diagram-cache.js";
+import {
+  nestedDiagramCache,
+  type NestedDiagramCache,
+} from "./nested-diagram-cache.js";
 import {
   applyClassParameterEdits,
   applyComponentParameterEdits,
@@ -122,6 +125,13 @@ export function classNameFromDocument(
   return qualifiedNameFromUri(document.uri);
 }
 
+/** The class-change signals an open diagram's nested views go stale on. */
+export interface NestedInvalidation {
+  register(listener: (className: string) => void): vscode.Disposable;
+  registerAllClassesChanged(listener: () => void): vscode.Disposable;
+  registerSessionReplaced(listener: () => void): vscode.Disposable;
+}
+
 /**
  * Diagram custom editor: a `CustomTextEditorProvider` bound to `*.mo` that
  * renders a class's graphics from OMC. In `"diagram"` mode it renders the
@@ -142,6 +152,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     private readonly writeVerdicts: WriteVerdicts,
     private readonly mode: DiagramMode,
     private readonly onClassContentChanged?: (className: string) => void,
+    private readonly invalidation?: NestedInvalidation,
   ) {}
 
   static register(
@@ -151,6 +162,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     viewType: string,
     mode: DiagramMode,
     onClassContentChanged?: (className: string) => void,
+    invalidation?: NestedInvalidation,
   ): vscode.Disposable {
     const provider = new DiagramEditorProvider(
       context.extensionUri,
@@ -158,6 +170,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       writeVerdicts,
       mode,
       onClassContentChanged,
+      invalidation,
     );
     return vscode.window.registerCustomEditorProvider(viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -178,6 +191,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       document,
       this.mode,
       this.onClassContentChanged,
+      this.invalidation,
     );
   }
 
@@ -282,6 +296,7 @@ export function resolveDiagramEditor(
   document: vscode.TextDocument,
   mode: DiagramMode,
   onClassContentChanged?: (className: string) => void,
+  invalidation?: NestedInvalidation,
 ): void {
   const { webview } = webviewPanel;
   webview.options = {
@@ -298,6 +313,27 @@ export function resolveDiagramEditor(
     inputFocused: false,
   };
   DiagramEditorProvider.addSession(session);
+
+  // Every open editor shares the session cache, so the first listener to run
+  // evicts and the rest find nothing left; each still tells its own webview.
+  // Before `init` the webview holds no nested diagram to drop.
+  let nestedCache: NestedDiagramCache | undefined;
+  const nestedStale = (className: string | null): void => {
+    if (className === null) nestedCache?.clear();
+    else nestedCache?.invalidate(className);
+    if (controller !== undefined) {
+      gate.send({ type: "nestedDiagramStale", className });
+    }
+  };
+  const invalidationSub = vscode.Disposable.from(
+    ...(invalidation
+      ? [
+          invalidation.register(nestedStale),
+          invalidation.registerAllClassesChanged(() => nestedStale(null)),
+          invalidation.registerSessionReplaced(() => nestedStale(null)),
+        ]
+      : []),
+  );
 
   const sub = webview.onDidReceiveMessage((msg: unknown) => {
     // `postMessage` delivers whatever the webview serialized, and nothing
@@ -331,6 +367,7 @@ export function resolveDiagramEditor(
   webviewPanel.onDidDispose(() => {
     sub.dispose();
     viewStateSub.dispose();
+    invalidationSub.dispose();
     DiagramEditorProvider.removeSession(session);
     DiagramEditorProvider.clearActive(session);
     controller?.dispose();
@@ -342,6 +379,7 @@ export function resolveDiagramEditor(
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
+        nestedCache = nestedDiagramCache(client);
         const layout =
           mode === "icon"
             ? await fetchIconLayout(client, className)

@@ -262,6 +262,7 @@ export async function activate(
       DIAGRAM_VIEW_TYPE,
       "diagram",
       (className) => invalidation.classChanged(className),
+      invalidation,
     ),
     DiagramEditorProvider.register(
       context,
@@ -270,6 +271,7 @@ export async function activate(
       ICON_VIEW_TYPE,
       "icon",
       (className) => invalidation.classChanged(className),
+      invalidation,
     ),
     DocumentationEditorProvider.register(
       context,

@@ -317,6 +317,9 @@ class OmWebviewRoot extends LitElement {
       case "nestedDiagramResult":
         this.nestedDiagramRequests.handleResult(message);
         return;
+      case "nestedDiagramStale":
+        this.diagram?.invalidateNestedDiagrams(message.className);
+        return;
       default:
         assertUnreachable(message, "ExtensionToWebview");
     }

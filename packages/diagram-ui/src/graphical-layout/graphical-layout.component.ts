@@ -106,6 +106,7 @@ import { renderLayoutContent } from "./render-entities.js";
 import {
   sharedNestedSource,
   type NestedDiagramSource,
+  type SharedNestedSource,
 } from "../nesting/nested-diagram-source.js";
 
 interface BBox {
@@ -326,7 +327,7 @@ export class OmGraphicalLayout extends LitElement {
   nestedDiagramSource: NestedDiagramSource | null = null;
 
   /** `nestedDiagramSource` shared per class, so boxes of one class fetch once. */
-  private nestedSourceByClass: NestedDiagramSource | null = null;
+  private nestedSourceByClass: SharedNestedSource | null = null;
 
   /**
    * Optional snap-to-grid override. Priority order:
@@ -510,7 +511,7 @@ export class OmGraphicalLayout extends LitElement {
           readonly: this.readonly,
           editableShapes: true,
           lineThicknessScale: this.lineThicknessScale,
-          nestedSource: this.nestedSourceByClass,
+          nestedSource: this.nestedSourceByClass?.fetch ?? null,
         })}
         <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
@@ -620,6 +621,18 @@ export class OmGraphicalLayout extends LitElement {
    * applied, `false` if the layout was empty or the scene wasn't
    * mounted yet.
    */
+  /**
+   * Re-fetch every nested diagram built from `className`'s definition, which
+   * changed; `null` re-fetches all of them. Each box keeps showing what it
+   * has until the fresh diagram lands.
+   */
+  invalidateNestedDiagrams(className: string | null): void {
+    this.nestedSourceByClass?.invalidate(className);
+    for (const comp of this.sceneEl?.querySelectorAll("om-component") ?? []) {
+      comp.refreshNested(className);
+    }
+  }
+
   fitToContent(padding = 1.2): boolean {
     const layout = this.draftLayout ?? this.layout;
     const sceneEl = this.sceneEl;

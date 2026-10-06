@@ -135,6 +135,12 @@ export type ExtensionToWebview =
       className: string;
       layout?: DiagramLayout;
       error?: string;
+    }
+  | {
+      // `className`'s definition changed, so every nested diagram built
+      // from it is stale. `null` when the change names no class.
+      type: "nestedDiagramStale";
+      className: string | null;
     };
 
 /**
@@ -158,6 +164,7 @@ const EXTENSION_MESSAGE_TYPES: Readonly<
   placementPreview: true,
   placementCancel: true,
   nestedDiagramResult: true,
+  nestedDiagramStale: true,
 };
 
 /**
