@@ -90,6 +90,7 @@ import {
   resolveDiagramEditor,
 } from "./diagram-editor-provider.js";
 import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
+import { ClassInvalidationRegistry } from "../invalidation.js";
 
 /** Stands in for whatever sentence the write verdict refuses with. */
 const REFUSAL = "Cannot edit Pkg.M — its source file is read-only.";
@@ -946,6 +947,7 @@ function controllerDeps(
     className: "Pkg.M",
     clipboard: new DiagramClipboard(),
     onClipboardChanged: () => {},
+    liveClient: () => Promise.resolve(base.client),
     ...base,
   };
 }
@@ -2515,7 +2517,35 @@ function diagramRectInstance(extent: number[][]): ModelInstance {
   } as unknown as ModelInstance;
 }
 
-describe("DiagramEditController: nestedDiagramRequest (issue #629)", () => {
+describe("DiagramEditController: nestedDiagramRequest", () => {
+  it("fetches through the live session's client, not the one the editor opened with", async () => {
+    const opened = makeEditClient();
+    const live = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({
+        client: opened.client,
+        gate,
+        liveClient: () => Promise.resolve(live.client),
+      }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "nestedDiagramRequest",
+      requestId: "nested-live",
+      className: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(opened.invoked).not.toContain("getModelInstance");
+    expect(live.invoked).toContain("getModelInstance");
+    expect(posted.find((m) => m.type === "nestedDiagramResult")).toMatchObject({
+      requestId: "nested-live",
+    });
+  });
+
   it("answers with the requested class's own diagram layout", async () => {
     const { client, invoked } = makeEditClient();
     const { gate, posted } = makeGate();
@@ -3854,5 +3884,69 @@ describe("DiagramEditController: go to source (issue #514)", () => {
 
     expect(vscodeMock.shownTextDocuments).toHaveLength(1);
     expect(posted.filter((m) => m.type === "error")).toHaveLength(0);
+  });
+});
+
+describe("resolveDiagramEditor: a changed class staling nested diagrams", () => {
+  function open(invalidation: ClassInvalidationRegistry): {
+    posted: ExtensionToWebview[];
+    fireReady: () => void;
+    fireDispose: () => void;
+  } {
+    const { panel, posted, fireReady, fireDispose } = makePanel();
+    const { client } = makeClient();
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      vi.fn(() => Promise.resolve(client)),
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo")),
+      "diagram",
+      undefined,
+      invalidation,
+    );
+    return { posted, fireReady, fireDispose };
+  }
+
+  const staled = (posted: ExtensionToWebview[]): ExtensionToWebview[] =>
+    posted.filter((m) => m.type === "nestedDiagramStale");
+
+  it("tells an initialised webview which class changed", async () => {
+    const invalidation = new ClassInvalidationRegistry();
+    const { posted, fireReady } = open(invalidation);
+    fireReady();
+    await flush();
+
+    invalidation.classChanged("P.Child");
+    invalidation.allClassesChanged();
+    invalidation.sessionReplaced();
+
+    expect(staled(posted)).toEqual([
+      { type: "nestedDiagramStale", className: "P.Child" },
+      { type: "nestedDiagramStale", className: null },
+      { type: "nestedDiagramStale", className: null },
+    ]);
+  });
+
+  it("sends nothing before init, when the webview holds no nested diagram", () => {
+    const invalidation = new ClassInvalidationRegistry();
+    const { posted, fireReady } = open(invalidation);
+
+    invalidation.classChanged("P.Child");
+    fireReady();
+
+    expect(staled(posted)).toEqual([]);
+  });
+
+  it("stops listening once the panel is gone", async () => {
+    const invalidation = new ClassInvalidationRegistry();
+    const { posted, fireReady, fireDispose } = open(invalidation);
+    fireReady();
+    await flush();
+
+    fireDispose();
+    invalidation.classChanged("P.Child");
+
+    expect(staled(posted)).toEqual([]);
   });
 });

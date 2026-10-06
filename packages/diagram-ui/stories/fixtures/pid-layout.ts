@@ -27,7 +27,9 @@ import pidFixture from "./pidController.modelInstance.json";
 // ModelInstanceSchema.parse here to keep the story bundle browser-only —
 // the schema module itself is browser-safe, but re-exporting it from the
 // omc-client barrel forces the OmcClient class import too.
+export const pidInstance = pidFixture as unknown as ModelInstance;
+
 export const pidLayout: DiagramLayout = produceDiagramLayout(
-  pidFixture as unknown as ModelInstance,
+  pidInstance,
   "diagram",
 );

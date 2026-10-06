@@ -24,6 +24,11 @@ import { registerCommands } from "./commands/index.js";
 import { errorDetail } from "./error-detail.js";
 import { DiagramEditorProvider } from "./diagram/diagram-editor-provider.js";
 import {
+  evictNestedDiagramsOnChange,
+  nestedDiagramCache,
+  type NestedDiagramCache,
+} from "./diagram/nested-diagram-cache.js";
+import {
   DIAGRAM_VIEW_TYPE,
   DOCUMENTATION_VIEW_TYPE,
   ICON_VIEW_TYPE,
@@ -123,6 +128,11 @@ export async function activate(
     },
   });
 
+  let liveNestedCache: NestedDiagramCache | undefined;
+  context.subscriptions.push(
+    evictNestedDiagramsOnChange(invalidation, () => liveNestedCache),
+  );
+
   // `onReset` closes over the per-activation `ClassInvalidationRegistry`, so
   // this can't be built at module scope.
   const omcClientCache: OmcClientCache<OmcClient> = createOmcClientCache(
@@ -132,6 +142,7 @@ export async function activate(
       // The subscription lives on `c` and dies with it, so there is nothing
       // for `context.subscriptions` to hold.
       publishOmcMutations(c, sourceProvider, invalidation, pathClassIndex);
+      liveNestedCache = nestedDiagramCache(c);
       await cdIntoWorkspaceCacheDir(c);
       void omcSetup.reportVersion(c, omcPath);
       return c;
@@ -262,6 +273,7 @@ export async function activate(
       DIAGRAM_VIEW_TYPE,
       "diagram",
       (className) => invalidation.classChanged(className),
+      invalidation,
     ),
     DiagramEditorProvider.register(
       context,
@@ -270,6 +282,7 @@ export async function activate(
       ICON_VIEW_TYPE,
       "icon",
       (className) => invalidation.classChanged(className),
+      invalidation,
     ),
     DocumentationEditorProvider.register(
       context,

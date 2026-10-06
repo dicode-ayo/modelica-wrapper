@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import type { DiagramLayout, OmcClient } from "@dicode/omc-client";
 
+import { ClassInvalidationRegistry } from "../invalidation.js";
 import {
+  evictNestedDiagramsOnChange,
   NestedDiagramCache,
   nestedDiagramCache,
 } from "./nested-diagram-cache.js";
@@ -81,6 +83,154 @@ describe("NestedDiagramCache", () => {
     await cache.get("B"); // B was evicted, re-fetched
 
     expect(fetch).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("NestedDiagramCache: invalidation", () => {
+  /** `className`'s diagram, drawing one sub-component of class `child`. */
+  function drawing(className: string, child: string): DiagramLayout {
+    return {
+      kind: "diagram",
+      className,
+      source: {
+        filename: "<fixture>",
+        lineStart: 1,
+        columnStart: 1,
+        lineEnd: 1,
+        columnEnd: 1,
+      },
+      iconLayers: [],
+      diagramLayers: [],
+      labels: [],
+      classes: {
+        c: {
+          name: child,
+          restriction: "model",
+          iconLayers: [],
+          connectors: {},
+          parameters: {},
+        },
+      },
+      components: {},
+      connectors: {},
+      connections: [],
+    };
+  }
+
+  type Fetch = (client: OmcClient, className: string) => Promise<DiagramLayout>;
+
+  /** A fetch per call, each settled by hand, in call order. */
+  function deferredFetch(): {
+    fetch: Mock<Fetch>;
+    settle: (i: number, layout: DiagramLayout) => Promise<void>;
+  } {
+    const resolvers: ((l: DiagramLayout) => void)[] = [];
+    const fetch = vi.fn<Fetch>(
+      () =>
+        new Promise<DiagramLayout>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const settle = async (i: number, layout: DiagramLayout): Promise<void> => {
+      resolvers[i]?.(layout);
+      await new Promise((r) => setTimeout(r, 0));
+    };
+    return { fetch, settle };
+  }
+
+  it("drops the layouts drawing the changed class, and keeps the rest", async () => {
+    const layouts: Record<string, DiagramLayout> = {
+      "P.Parent": drawing("P.Parent", "P.Child"),
+      "P.Other": drawing("P.Other", "P.Unrelated"),
+    };
+    const fetch = vi.fn((_client: OmcClient, className: string) => {
+      const found = layouts[className];
+      return found
+        ? Promise.resolve(found)
+        : Promise.reject(new Error(`no ${className}`));
+    });
+    const cache = new NestedDiagramCache({} as OmcClient, fetch);
+    await cache.get("P.Parent");
+    await cache.get("P.Other");
+
+    cache.invalidate("P.Child");
+    await cache.get("P.Parent");
+    await cache.get("P.Other");
+
+    expect(fetch.mock.calls.map(([, name]) => name)).toEqual([
+      "P.Parent",
+      "P.Other",
+      "P.Parent",
+    ]);
+  });
+
+  it("re-runs a fetch in flight across a change to a class it draws, and serves the re-run", async () => {
+    const { fetch, settle } = deferredFetch();
+    const cache = new NestedDiagramCache({} as OmcClient, fetch);
+    const stale = drawing("P.Parent", "P.Child");
+    const fresh = drawing("P.Parent", "P.Child");
+
+    const got = cache.get("P.Parent");
+    cache.invalidate("P.Child");
+    await settle(0, stale);
+    await settle(1, fresh);
+
+    expect(await got).toBe(fresh);
+    expect(await cache.get("P.Parent")).toBe(fresh);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a fetch in flight across a change to a class it does not draw", async () => {
+    const { fetch, settle } = deferredFetch();
+    const cache = new NestedDiagramCache({} as OmcClient, fetch);
+    const layout = drawing("P.Parent", "P.Child");
+
+    const got = cache.get("P.Parent");
+    cache.invalidate("P.Host");
+    await settle(0, layout);
+
+    expect(await got).toBe(layout);
+    await cache.get("P.Parent");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears everything for a change no class name describes, in flight included", async () => {
+    const { fetch, settle } = deferredFetch();
+    const cache = new NestedDiagramCache({} as OmcClient, fetch);
+
+    const got = cache.get("P.Parent");
+    cache.clear();
+    await settle(0, drawing("P.Parent", "P.Child"));
+    await settle(1, drawing("P.Parent", "P.Child"));
+    await got;
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("evictNestedDiagramsOnChange", () => {
+  it("evicts the live session's cache with no editor open to hear the change", () => {
+    const invalidation = new ClassInvalidationRegistry();
+    const cache = new NestedDiagramCache({} as OmcClient, vi.fn());
+    const invalidate = vi.spyOn(cache, "invalidate");
+    const clear = vi.spyOn(cache, "clear");
+    const sub = evictNestedDiagramsOnChange(invalidation, () => cache);
+
+    invalidation.classChanged("P.Child");
+    invalidation.allClassesChanged();
+    invalidation.sessionReplaced();
+    sub.dispose();
+    invalidation.classChanged("P.Later");
+
+    expect(invalidate.mock.calls).toEqual([["P.Child"]]);
+    expect(clear).toHaveBeenCalledTimes(2);
+  });
+
+  it("does nothing before a session exists", () => {
+    const invalidation = new ClassInvalidationRegistry();
+    evictNestedDiagramsOnChange(invalidation, () => undefined);
+
+    expect(() => invalidation.classChanged("P.Child")).not.toThrow();
   });
 });
 

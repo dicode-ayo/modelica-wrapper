@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   DiagramLayoutSchema,
   IconLayerSchema,
+  layoutDependsOn,
   ShapeSchema,
+  type ClassDef,
+  type DiagramLayout,
 } from "./diagramLayout.js";
 
 const SOURCE = {
@@ -196,5 +199,99 @@ describe("DiagramLayoutSchema: rejects malformed input", () => {
       ],
     };
     expect(() => DiagramLayoutSchema.parse(layout)).toThrow();
+  });
+});
+
+describe("layoutDependsOn", () => {
+  const PLACEMENT = {
+    extent: [
+      [-10, -10],
+      [10, 10],
+    ] as [[number, number], [number, number]],
+  };
+
+  function host(classes: Record<string, ClassDef> = {}): DiagramLayout {
+    return {
+      kind: "diagram",
+      className: "P.Host",
+      source: SOURCE,
+      iconLayers: [{ from: "P.HostBase", shapes: [] }],
+      diagramLayers: [],
+      labels: [],
+      classes,
+      components: {},
+      connectors: {},
+      connections: [],
+    };
+  }
+
+  function classDef(name: string, overrides: Partial<ClassDef> = {}): ClassDef {
+    return {
+      name,
+      restriction: "model",
+      iconLayers: [],
+      connectors: {},
+      parameters: {},
+      ...overrides,
+    };
+  }
+
+  it("follows the host class and the ancestors drawing its layers", () => {
+    expect(layoutDependsOn(host(), "P.Host")).toBe(true);
+    expect(layoutDependsOn(host(), "P.HostBase")).toBe(true);
+  });
+
+  it("follows a catalogued type by its class name, not its catalog key", () => {
+    const layout = host({ "P.Sub#1": classDef("P.Sub") });
+    expect(layoutDependsOn(layout, "P.Sub")).toBe(true);
+    expect(layoutDependsOn(layout, "P.Sub#1")).toBe(false);
+  });
+
+  it("follows a type's drawing ancestors and its ports' connector types", () => {
+    const layout = host({
+      sub: classDef("P.Sub", {
+        iconLayers: [{ from: "P.SubBase", shapes: [] }],
+        connectors: {
+          u: {
+            name: "u",
+            typeName: "P.RealInput",
+            placement: PLACEMENT,
+            iconLayers: [{ from: "P.InputBase", shapes: [] }],
+            from: "P.PortOwner",
+          },
+        },
+      }),
+    });
+    for (const name of [
+      "P.SubBase",
+      "P.RealInput",
+      "P.InputBase",
+      "P.PortOwner",
+    ]) {
+      expect(layoutDependsOn(layout, name)).toBe(true);
+    }
+  });
+
+  it("follows an ancestor that leaves no shapes or ports behind", () => {
+    const layout = host({
+      sub: classDef("P.Sub", { ancestors: ["P.Bare", "P.SubBase"] }),
+    });
+    expect(layoutDependsOn(layout, "P.Bare")).toBe(true);
+  });
+
+  it("follows a component whose class has no catalog entry", () => {
+    const layout = host();
+    layout.components["broken"] = {
+      name: "broken",
+      classRef: "P.Unresolved",
+      placement: PLACEMENT,
+    };
+    expect(layoutDependsOn(layout, "P.Unresolved")).toBe(true);
+  });
+
+  it("does not follow a class the layout was not built from", () => {
+    expect(layoutDependsOn(host({ sub: classDef("P.Sub") }), "P.Else")).toBe(
+      false,
+    );
   });
 });

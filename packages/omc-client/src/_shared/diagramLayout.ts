@@ -265,6 +265,8 @@ export interface ClassDef {
    * whichever annotation `iconLayers` came from.
    */
   diagramCoordinateSystem?: CoordinateSystem | undefined;
+  /** Every class in the extends chain, nearest last, absent when none. */
+  ancestors?: string[] | undefined;
   /** Ports declared on this class or any of its ancestors. */
   connectors: Record<string, PortDef>;
   /**
@@ -284,6 +286,39 @@ export interface ClassDef {
  */
 export function classNameOf(layout: DiagramLayout, classRef: string): string {
   return layout.classes[classRef]?.name ?? classRef;
+}
+
+/** Whether `layout` was built from `className`'s definition. */
+export function layoutDependsOn(
+  layout: DiagramLayout,
+  className: string,
+): boolean {
+  const fromLayers = (layers: readonly IconLayer[] | undefined): boolean =>
+    layers?.some((layer) => layer.from === className) ?? false;
+  if (layout.className === className) return true;
+  if (fromLayers(layout.iconLayers) || fromLayers(layout.diagramLayers)) {
+    return true;
+  }
+  const instances = [
+    ...Object.values(layout.components),
+    ...Object.values(layout.connectors),
+  ];
+  if (instances.some((i) => classNameOf(layout, i.classRef) === className)) {
+    return true;
+  }
+  return Object.values(layout.classes).some(
+    (def) =>
+      def.name === className ||
+      (def.ancestors?.includes(className) ?? false) ||
+      fromLayers(def.iconLayers) ||
+      fromLayers(def.diagramLayers) ||
+      Object.values(def.connectors).some(
+        (port) =>
+          port.typeName === className ||
+          port.from === className ||
+          fromLayers(port.iconLayers),
+      ),
+  );
 }
 
 export interface ComponentInstance {
@@ -656,6 +691,7 @@ export const ClassDefSchema = z
     diagramLayers: z.array(IconLayerSchema).optional(),
     coordinateSystem: CoordinateSystemSchema.optional(),
     diagramCoordinateSystem: CoordinateSystemSchema.optional(),
+    ancestors: z.array(z.string()).optional(),
     connectors: z.record(z.string(), PortDefSchema),
     parameters: z.record(z.string(), ParameterDefSchema),
   })

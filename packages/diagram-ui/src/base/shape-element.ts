@@ -111,9 +111,12 @@ export abstract class OmShapeElement extends LitElement {
 
   private resubscribeViewState(store: ViewStateStore | null): void {
     this.viewUnsub?.();
-    this.viewUnsub = store
-      ? store.subscribe(() => this.shapeNode?.rescaleSelectionHandles())
-      : null;
+    this.viewUnsub = store ? store.subscribe(() => this.onViewChanged()) : null;
+  }
+
+  /** Fires on every pan/zoom. */
+  protected onViewChanged(): void {
+    this.shapeNode?.rescaleSelectionHandles();
   }
 
   protected abstract entityNodeName(): string;
@@ -134,8 +137,13 @@ export abstract class OmShapeElement extends LitElement {
     return 0;
   }
 
+  /** Subclasses override to wrap or replace the icon. */
+  protected renderIcon(): unknown {
+    return renderLayers(this.layers);
+  }
+
   override render(): TemplateResult {
-    return html`${renderLayers(this.layers)}<slot></slot>`;
+    return html`${this.renderIcon()}<slot></slot>`;
   }
 
   override updated(_changed: Map<string, unknown>): void {

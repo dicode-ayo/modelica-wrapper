@@ -4,7 +4,7 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
-import { HOST_SHAPE_Z_BIAS } from "../src/graphical-layout/graphical-layout.component.js";
+import { HOST_SHAPE_Z_BIAS } from "../src/graphical-layout/render-entities.js";
 import { entityKeyForNode } from "../src/interaction/node-keys.js";
 import { zForOrder } from "../src/primitives/shape-utils.js";
 import type { OmScene } from "../src/scene/scene.component.js";

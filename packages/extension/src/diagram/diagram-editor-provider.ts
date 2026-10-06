@@ -62,7 +62,10 @@ import {
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
 import { parseKey } from "@dicode/diagram-ui/entity-keys";
 import { LibrarySource } from "./library-source.js";
-import { nestedDiagramCache } from "./nested-diagram-cache.js";
+import {
+  nestedDiagramCache,
+  type NestedInvalidation,
+} from "./nested-diagram-cache.js";
 import {
   applyClassParameterEdits,
   applyComponentParameterEdits,
@@ -142,6 +145,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     private readonly writeVerdicts: WriteVerdicts,
     private readonly mode: DiagramMode,
     private readonly onClassContentChanged?: (className: string) => void,
+    private readonly invalidation?: NestedInvalidation,
   ) {}
 
   static register(
@@ -151,6 +155,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     viewType: string,
     mode: DiagramMode,
     onClassContentChanged?: (className: string) => void,
+    invalidation?: NestedInvalidation,
   ): vscode.Disposable {
     const provider = new DiagramEditorProvider(
       context.extensionUri,
@@ -158,6 +163,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       writeVerdicts,
       mode,
       onClassContentChanged,
+      invalidation,
     );
     return vscode.window.registerCustomEditorProvider(viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -178,6 +184,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       document,
       this.mode,
       this.onClassContentChanged,
+      this.invalidation,
     );
   }
 
@@ -282,6 +289,7 @@ export function resolveDiagramEditor(
   document: vscode.TextDocument,
   mode: DiagramMode,
   onClassContentChanged?: (className: string) => void,
+  invalidation?: NestedInvalidation,
 ): void {
   const { webview } = webviewPanel;
   webview.options = {
@@ -298,6 +306,22 @@ export function resolveDiagramEditor(
     inputFocused: false,
   };
   DiagramEditorProvider.addSession(session);
+
+  // Before `init` the webview holds no nested diagram to drop.
+  const nestedStale = (className: string | null): void => {
+    if (controller !== undefined) {
+      gate.send({ type: "nestedDiagramStale", className });
+    }
+  };
+  const invalidationSub = vscode.Disposable.from(
+    ...(invalidation
+      ? [
+          invalidation.register(nestedStale),
+          invalidation.registerAllClassesChanged(() => nestedStale(null)),
+          invalidation.registerSessionReplaced(() => nestedStale(null)),
+        ]
+      : []),
+  );
 
   const sub = webview.onDidReceiveMessage((msg: unknown) => {
     // `postMessage` delivers whatever the webview serialized, and nothing
@@ -331,6 +355,7 @@ export function resolveDiagramEditor(
   webviewPanel.onDidDispose(() => {
     sub.dispose();
     viewStateSub.dispose();
+    invalidationSub.dispose();
     DiagramEditorProvider.removeSession(session);
     DiagramEditorProvider.clearActive(session);
     controller?.dispose();
@@ -360,6 +385,7 @@ export function resolveDiagramEditor(
         controller = new DiagramEditController(
           {
             client,
+            liveClient: ensureClient,
             document,
             className,
             gate,
@@ -419,6 +445,8 @@ export function resolveDiagramEditor(
 
 interface EditControllerDeps {
   client: OmcClient;
+  /** The current session's client; `client` is closed once `:reset` replaces it. */
+  liveClient: () => Promise<OmcClient>;
   document: vscode.TextDocument;
   className: string;
   gate: ReadyGate;
@@ -1159,19 +1187,14 @@ export class DiagramEditController {
     }
   }
 
-  /**
-   * Answer a `nestedDiagramRequest` (issue #629): fetch `className` as its
-   * own root through the session-wide {@link nestedDiagramCache} and send
-   * the correlated result back. Best-effort — a failed fetch (a class that
-   * no longer parses, an OMC hiccup) reports `error` rather than throwing,
-   * so one bad nested class doesn't take down the bound diagram.
-   */
+  /** A failed fetch is reported as `error`, so one bad class can't take down the diagram. */
   private async onNestedDiagramRequest(
     requestId: string,
     className: string,
   ): Promise<void> {
-    const { client, gate } = this.deps;
+    const { liveClient, gate } = this.deps;
     try {
+      const client = await liveClient();
       const layout = await nestedDiagramCache(client).get(className);
       gate.send({ type: "nestedDiagramResult", requestId, className, layout });
     } catch (err) {

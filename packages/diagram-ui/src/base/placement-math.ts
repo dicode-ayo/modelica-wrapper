@@ -51,12 +51,14 @@ export function defaultCoordSystemSize(): { width: number; height: number } {
   };
 }
 
-export function coordSystemSize(cs: CoordinateSystem | undefined): {
+export interface Box {
   width: number;
   height: number;
   cx: number;
   cy: number;
-} {
+}
+
+export function coordSystemSize(cs: CoordinateSystem | undefined): Box {
   const e = cs?.extent;
   if (!e || e.length < 2) {
     return { ...defaultCoordSystemSize(), cx: 0, cy: 0 };

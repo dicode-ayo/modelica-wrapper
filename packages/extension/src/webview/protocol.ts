@@ -135,6 +135,11 @@ export type ExtensionToWebview =
       className: string;
       layout?: DiagramLayout;
       error?: string;
+    }
+  | {
+      // Nested diagrams built from `className` are stale; `null` for all.
+      type: "nestedDiagramStale";
+      className: string | null;
     };
 
 /**
@@ -158,6 +163,7 @@ const EXTENSION_MESSAGE_TYPES: Readonly<
   placementPreview: true,
   placementCancel: true,
   nestedDiagramResult: true,
+  nestedDiagramStale: true,
 };
 
 /**
