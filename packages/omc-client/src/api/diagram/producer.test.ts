@@ -2413,3 +2413,36 @@ describe("produceDiagramLayout: source locations (issue #514)", () => {
     expect(layout.components.gain2?.declarationSource).toBeUndefined();
   });
 });
+
+describe("produceComponentClass: ancestors", () => {
+  it("names every class in the extends chain, graphics or not", () => {
+    const grand: unknown = {
+      name: "Synth.Grand",
+      restriction: "model",
+      elements: [],
+    };
+    const base: unknown = {
+      name: "Synth.Base",
+      restriction: "model",
+      elements: [{ $kind: "extends", baseClass: grand }],
+    };
+    const child: unknown = {
+      name: "Synth.Child",
+      restriction: "model",
+      elements: [{ $kind: "extends", baseClass: base }],
+    };
+    const def = produceComponentClass(ModelInstanceSchema.parse(child));
+    expect(def.ancestors).toEqual(["Synth.Grand", "Synth.Base"]);
+    expect(def.iconLayers).toEqual([]);
+  });
+
+  it("leaves `ancestors` off a class that extends nothing", () => {
+    const leaf: unknown = {
+      name: "Synth.Leaf",
+      restriction: "model",
+      elements: [],
+    };
+    const def = produceComponentClass(ModelInstanceSchema.parse(leaf));
+    expect(def).not.toHaveProperty("ancestors");
+  });
+});

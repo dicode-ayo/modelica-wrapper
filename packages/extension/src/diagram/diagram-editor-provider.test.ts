@@ -947,6 +947,7 @@ function controllerDeps(
     className: "Pkg.M",
     clipboard: new DiagramClipboard(),
     onClipboardChanged: () => {},
+    liveClient: () => Promise.resolve(base.client),
     ...base,
   };
 }
@@ -2516,7 +2517,35 @@ function diagramRectInstance(extent: number[][]): ModelInstance {
   } as unknown as ModelInstance;
 }
 
-describe("DiagramEditController: nestedDiagramRequest (issue #629)", () => {
+describe("DiagramEditController: nestedDiagramRequest", () => {
+  it("fetches through the live session's client, not the one the editor opened with", async () => {
+    const opened = makeEditClient();
+    const live = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({
+        client: opened.client,
+        gate,
+        liveClient: () => Promise.resolve(live.client),
+      }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "nestedDiagramRequest",
+      requestId: "nested-live",
+      className: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(opened.invoked).not.toContain("getModelInstance");
+    expect(live.invoked).toContain("getModelInstance");
+    expect(posted.find((m) => m.type === "nestedDiagramResult")).toMatchObject({
+      requestId: "nested-live",
+    });
+  });
+
   it("answers with the requested class's own diagram layout", async () => {
     const { client, invoked } = makeEditClient();
     const { gate, posted } = makeGate();

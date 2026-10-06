@@ -356,6 +356,10 @@ function buildClassDef(
     if (diagramCs) def.diagramCoordinateSystem = diagramCs;
   }
   if (cs) def.coordinateSystem = cs;
+  const ancestors = [...walkExtendsChain(typeMi)]
+    .map(({ klass }) => klass.name)
+    .filter((name) => name !== typeMi.name);
+  if (ancestors.length > 0) def.ancestors = ancestors;
   return def;
 }
 

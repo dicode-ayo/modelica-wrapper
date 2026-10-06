@@ -272,6 +272,13 @@ describe("layoutDependsOn", () => {
     }
   });
 
+  it("follows an ancestor that leaves no shapes or ports behind", () => {
+    const layout = host({
+      sub: classDef("P.Sub", { ancestors: ["P.Bare", "P.SubBase"] }),
+    });
+    expect(layoutDependsOn(layout, "P.Bare")).toBe(true);
+  });
+
   it("follows a component whose class has no catalog entry", () => {
     const layout = host();
     layout.components["broken"] = {

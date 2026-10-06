@@ -385,6 +385,7 @@ export function resolveDiagramEditor(
         controller = new DiagramEditController(
           {
             client,
+            liveClient: ensureClient,
             document,
             className,
             gate,
@@ -444,6 +445,8 @@ export function resolveDiagramEditor(
 
 interface EditControllerDeps {
   client: OmcClient;
+  /** The current session's client; `client` is closed once `:reset` replaces it. */
+  liveClient: () => Promise<OmcClient>;
   document: vscode.TextDocument;
   className: string;
   gate: ReadyGate;
@@ -1184,19 +1187,14 @@ export class DiagramEditController {
     }
   }
 
-  /**
-   * Answer a `nestedDiagramRequest` (issue #629): fetch `className` as its
-   * own root through the session-wide {@link nestedDiagramCache} and send
-   * the correlated result back. Best-effort — a failed fetch (a class that
-   * no longer parses, an OMC hiccup) reports `error` rather than throwing,
-   * so one bad nested class doesn't take down the bound diagram.
-   */
+  /** A failed fetch is reported as `error`, so one bad class can't take down the diagram. */
   private async onNestedDiagramRequest(
     requestId: string,
     className: string,
   ): Promise<void> {
-    const { client, gate } = this.deps;
+    const { liveClient, gate } = this.deps;
     try {
+      const client = await liveClient();
       const layout = await nestedDiagramCache(client).get(className);
       gate.send({ type: "nestedDiagramResult", requestId, className, layout });
     } catch (err) {
