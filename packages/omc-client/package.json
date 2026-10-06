@@ -65,7 +65,7 @@
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^16.0.3",
-    "@types/node": "^24.13.6",
+    "@types/node": "^24.19.1",
     "@vitest/coverage-istanbul": "^4.1.11",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
