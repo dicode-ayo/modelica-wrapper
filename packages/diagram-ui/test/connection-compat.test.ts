@@ -187,7 +187,7 @@ describe("canConnect", () => {
     if (!a) throw new Error("expected portInfo for g1.u");
     const b = resolvePortInfo(layoutWithBlocks(), "k:g2.u");
     if (!b) throw new Error("expected portInfo for g2.u");
-    expect(canConnect(a, b)).toEqual({ ok: false, reason: "both input" });
+    expect(canConnect(a, b)).toEqual({ ok: false, reason: "two sinks" });
   });
 
   it("rejects two outputs", () => {
@@ -195,7 +195,7 @@ describe("canConnect", () => {
     if (!a) throw new Error("expected portInfo for g1.y");
     const b = resolvePortInfo(layoutWithBlocks(), "k:g2.y");
     if (!b) throw new Error("expected portInfo for g2.y");
-    expect(canConnect(a, b)).toEqual({ ok: false, reason: "both output" });
+    expect(canConnect(a, b)).toEqual({ ok: false, reason: "two sources" });
   });
 
   it("accepts input ↔ output of the same family", () => {
@@ -302,6 +302,27 @@ describe("canConnect with root-class (standalone) connectors", () => {
 
   it("rejects root output → component input (two sinks)", () => {
     rejected("k:yOut", "k:g1.u");
+  });
+
+  it("names the rejection by the connection, not the declared direction", () => {
+    expect(canConnect(info("k:uIn"), info("k:g1.y")).reason).toBe(
+      "two sources",
+    );
+    expect(canConnect(info("k:yOut"), info("k:g1.u")).reason).toBe("two sinks");
+  });
+
+  it("leaves a root connector without causality unreversed", () => {
+    const standalonePin = {
+      typeName: "Modelica.Electrical.Analog.Interfaces.PositivePin",
+      direction: "unknown" as const,
+      flow: false,
+      stream: false,
+      standalone: true as const,
+    };
+    const resistorPin = resolvePortInfo(layoutWithBlocks(), "k:r1.p");
+    if (!resistorPin) throw new Error("expected portInfo for r1.p");
+    expect(canConnect(standalonePin, resistorPin).ok).toBe(true);
+    expect(canConnect(resistorPin, standalonePin).ok).toBe(true);
   });
 
   it("rejects root input → root input", () => {

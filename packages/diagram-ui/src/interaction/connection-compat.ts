@@ -27,9 +27,10 @@ import { parseKey } from "./entity-keys.js";
 export interface PortInfo {
   /** Qualified type name of the connector class. */
   typeName: string;
-  /** Effective causality: explicit prefix wins; otherwise inferred
+  /** Declared causality: explicit prefix wins; otherwise inferred
    *  from the type-name suffix (`*Input` / `*Output`) which is the
-   *  Modelica convention for the Blocks / Real-Input/Output family. */
+   *  Modelica convention for the Blocks / Real-Input/Output family. `effectiveDirection`
+   *  reverses it for a root-class end. */
   direction: "input" | "output" | "" | "unknown";
   flow: boolean;
   stream: boolean;
@@ -142,7 +143,7 @@ export function canConnect(from: PortInfo, to: PortInfo): CompatibilityResult {
   const bothInput = fromDir === "input" && toDir === "input";
   const bothOutput = fromDir === "output" && toDir === "output";
   if (dirsKnown && (bothInput || bothOutput)) {
-    return { ok: false, reason: `both ${fromDir}` };
+    return { ok: false, reason: bothOutput ? "two sources" : "two sinks" };
   }
   // Same type, no direction conflict: accept. Covers acausal pairs
   // (`Pin ↔ Pin`, `Flange_a ↔ Flange_a`) and directional pairs that
