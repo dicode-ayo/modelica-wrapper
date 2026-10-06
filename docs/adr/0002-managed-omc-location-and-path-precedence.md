@@ -41,11 +41,15 @@ human typed.
 
 ## What sits under the root
 
-The verified installation is `<root>/current`. An install stages into a sibling under the same
-root and is moved into place only once it has run, so the swap is a rename within one
-filesystem and every path the installer creates — staging directories included — sits inside
-the subdirectory the removal guarantee covers. Putting the prefix at the root itself would push
-staging out into `~/.openmodelica`, which OpenModelica owns and we do not.
+The verified installation is `<root>/current`, a symlink to one of two prefix slots,
+`<root>/prefix-a` and `<root>/prefix-b`. Conda writes the absolute prefix into the files it
+installs, so a prefix built in one directory and moved to another points at a path that no
+longer exists. An install therefore builds in the slot that is not active, runs
+`omc --version` from that same slot, and only then repoints `current` with an atomic
+rename. The installation being replaced stays usable until that flip and is removed after
+it. Every path the installer creates sits inside the subdirectory the removal guarantee
+covers; putting the prefix at the root itself would push the second slot out into
+`~/.openmodelica`, which OpenModelica owns and we do not.
 
 ## Consequences
 

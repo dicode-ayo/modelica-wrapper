@@ -251,9 +251,9 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
 
   /**
    * One managed-install operation at a time in this window: a second install
-   * would clear the staging prefix out from under the first, and a removal
+   * would clear the slot the first is building in, and a removal
    * would delete what that first one is building. Two windows share the root
-   * and are not covered; the staged swap is what limits that.
+   * and are not covered; the atomic link flip is what limits that.
    */
   function exclusive(operation: () => Promise<void>): Promise<void> {
     const running = inFlight;

@@ -60,7 +60,7 @@ export function nodeInstaller(): OmcInstaller {
   };
 }
 
-function nodeInstallFileSystem(): InstallFileSystem {
+export function nodeInstallFileSystem(): InstallFileSystem {
   return {
     exists: pathExists,
     availableBytes: async (target) => {
@@ -75,8 +75,32 @@ function nodeInstallFileSystem(): InstallFileSystem {
     writeFile: (target, contents) => fsp.writeFile(target, contents),
     makeExecutable: (target) => fsp.chmod(target, 0o755),
     move: (from, to) => fsp.rename(from, to),
+    readLink: async (target) => {
+      try {
+        return await fsp.readlink(target);
+      } catch (err) {
+        // EINVAL: it exists but is not a symlink.
+        if (isErrno(err, "ENOENT") || isErrno(err, "EINVAL")) return undefined;
+        throw err;
+      }
+    },
+    replaceLink: async (target, link, staged) => {
+      await fsp.rm(staged, { recursive: true, force: true });
+      await fsp.symlink(target, staged);
+      await fsp.rename(staged, link);
+    },
+    // fs.rm lstats its target, so a symlink is unlinked rather than followed.
     remove: (target) => fsp.rm(target, { recursive: true, force: true }),
   };
+}
+
+function isErrno(err: unknown, code: string): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    err.code === code
+  );
 }
 
 async function nearestExisting(target: string): Promise<string> {
