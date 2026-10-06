@@ -12,15 +12,21 @@ const CAPACITY = 64;
 export interface SharedNestedSource {
   readonly fetch: NestedDiagramSource;
   /**
-   * Forget every layout built from `className`'s definition, and every fetch
-   * still in flight, which may have read the old one. `null` forgets all.
+   * Forget every layout built from `className`'s definition; `null` forgets
+   * all. A fetch in flight that may have read the old definition runs again.
    */
   invalidate(className: string | null): void;
 }
 
-interface Entry {
-  readonly pending: Promise<DiagramLayout>;
-  layout?: DiagramLayout;
+/** Classes changed while one fetch was in flight; `null` stands for all. */
+type Changed = Set<string | null>;
+
+function readStale(layout: DiagramLayout, changed: Changed): boolean {
+  if (changed.has(null)) return true;
+  for (const className of changed) {
+    if (className !== null && layoutDependsOn(layout, className)) return true;
+  }
+  return false;
 }
 
 /**
@@ -32,29 +38,45 @@ export function sharedNestedSource(
   fetch: NestedDiagramSource,
   capacity = CAPACITY,
 ): SharedNestedSource {
-  const byClass = new LruCache<string, Entry>(capacity);
+  const byClass = new LruCache<string, Promise<DiagramLayout>>(capacity);
+  const settled = new WeakMap<Promise<DiagramLayout>, DiagramLayout>();
+  const inFlight = new Set<Changed>();
+
+  const load = async (className: string): Promise<DiagramLayout> => {
+    for (;;) {
+      const changed: Changed = new Set();
+      inFlight.add(changed);
+      let layout: DiagramLayout;
+      try {
+        layout = await fetch(className);
+      } finally {
+        inFlight.delete(changed);
+      }
+      if (!readStale(layout, changed)) return layout;
+    }
+  };
+
   return {
     fetch: (className) => {
       const known = byClass.get(className);
-      if (known !== undefined) return known.pending;
-      const entry: Entry = { pending: fetch(className) };
-      byClass.set(className, entry);
-      entry.pending.then(
-        (layout) => {
-          entry.layout = layout;
-        },
+      if (known !== undefined) return known;
+      const pending = load(className);
+      byClass.set(className, pending);
+      pending.then(
+        (layout) => settled.set(pending, layout),
         () => {
-          if (byClass.get(className) === entry) byClass.delete(className);
+          if (byClass.get(className) === pending) byClass.delete(className);
         },
       );
-      return entry.pending;
+      return pending;
     },
     invalidate: (className) => {
-      for (const [key, { layout }] of [...byClass.entries()]) {
+      for (const changed of inFlight) changed.add(className);
+      for (const [key, pending] of [...byClass.entries()]) {
+        const layout = settled.get(pending);
         if (
-          className === null ||
-          layout === undefined ||
-          layoutDependsOn(layout, className)
+          layout !== undefined &&
+          (className === null || layoutDependsOn(layout, className))
         ) {
           byClass.delete(key);
         }

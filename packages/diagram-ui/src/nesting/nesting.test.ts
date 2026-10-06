@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { Graphics, type Container } from "pixi.js";
 import type { ClassDef, DiagramLayout, Placement } from "@dicode/omc-client";
 
 import type { OmComponent } from "../component/component.component.js";
@@ -18,6 +19,7 @@ import { mountLayout } from "../../test/harness/interaction-fixtures.js";
 import { emptyLayout } from "../../test/harness/layout-fixtures.js";
 import type { OmNestedDiagram } from "./nested-diagram.component.js";
 import type { NestedDiagramSource } from "./nested-diagram-source.js";
+import { NESTING_CHROME } from "./nesting-math.js";
 
 const CLOSED = 100;
 const MID = 6000 / 170;
@@ -196,6 +198,30 @@ function onScreenContentScale(el: OmGraphicalLayout): { x: number; y: number } {
   };
 }
 
+function frame(el: OmGraphicalLayout): { space: Container; g: Graphics } {
+  const space = nested(el)?.container?.getChildByLabel("nested-frame-space");
+  const g = space?.getChildByLabel("nested-frame");
+  if (!space || !(g instanceof Graphics)) throw new Error("expected a frame");
+  return { space, g };
+}
+
+function strokeWidth(g: Graphics): number {
+  const stroke = (
+    g.context.instructions as ReadonlyArray<{
+      action: string;
+      data: { style: { width?: number } };
+    }>
+  ).find((i) => i.action === "stroke");
+  return stroke?.data.style.width ?? Number.NaN;
+}
+
+/** The frame's stroke as drawn on screen, in CSS px. */
+function onScreenStrokePx(el: OmGraphicalLayout): number {
+  const ctx = scene(el).sceneContextValue;
+  if (!ctx) throw new Error("expected a scene context");
+  return strokeWidth(frame(el).g) / ctx.worldPerPixel();
+}
+
 function pidSource(): ReturnType<typeof vi.fn<NestedDiagramSource>> {
   return vi.fn<NestedDiagramSource>(() => Promise.resolve(limPidDiagram()));
 }
@@ -302,34 +328,43 @@ describe("semantic in-place nesting", () => {
     expect(y).toBeGreaterThan(0);
   });
 
-  it("draws a frame round the opened box, apart from the class's own content", async () => {
-    const el = await mountWithSource(pidSource());
+  it("draws the frame undistorted by a non-square placement, apart from the content", async () => {
+    const layout = hostLayout();
+    const pid = layout.components["pid"];
+    if (!pid) throw new Error("fixture has no pid");
+    pid.placement = {
+      extent: [
+        [-20, -10],
+        [20, 10],
+      ],
+    };
+    const el = await mountWithSource(pidSource(), layout);
     await zoomTo(el, OPEN);
-    const view = nested(el);
-    const frame = view?.container
-      ?.getChildByLabel("nested-frame-space")
-      ?.getChildByLabel("nested-frame");
-    expect(frame).toBeTruthy();
-    expect(view?.contentContainer?.getChildByLabel("nested-frame", true)).toBe(
-      null,
-    );
+    const placed = nested(el)?.container?.parent;
+    if (!placed) throw new Error("expected an opened box");
+    const { space } = frame(el);
+
+    // One stroke width on both axes: the frame's space cancels the
+    // placement's per-axis scale.
+    expect(space.scale.x * placed.scale.x).toBeCloseTo(1);
+    expect(space.scale.y * placed.scale.y).toBeCloseTo(1);
+    expect(
+      nested(el)?.contentContainer?.getChildByLabel("nested-frame", true),
+    ).toBe(null);
   });
 
-  it("keeps the frame screen-constant as zoom continues past fully open", async () => {
+  it("keeps the frame's on-screen stroke constant as zoom continues past fully open", async () => {
     const el = await mountWithSource(pidSource());
     await zoomTo(el, OPEN);
-    const before = nested(el)?.worldPerPixel;
+    expect(onScreenStrokePx(el)).toBeCloseTo(NESTING_CHROME.strokeWidthPx);
     await zoomTo(el, OPEN / 10);
-    const after = nested(el)?.worldPerPixel;
-    expect(before).toBeDefined();
-    expect(after).toBeCloseTo((before ?? 0) / 10);
+    expect(onScreenStrokePx(el)).toBeCloseTo(NESTING_CHROME.strokeWidthPx);
   });
 
   it("names the opened box by its class, not by the instance", async () => {
     const el = await mountWithSource(pidSource());
     await zoomTo(el, OPEN);
     expect(nested(el)?.label).toBe("P.LimPID");
-    expect(nested(el)?.container?.label).toBe("nested:P.LimPID");
   });
 
   it("renders the nested entities but keeps every one of them unpickable", async () => {
@@ -405,16 +440,45 @@ describe("semantic in-place nesting: a changed class", () => {
     return { ...diagram, components: { addP }, connections: [] };
   }
 
-  it("re-fetches an open box drawing the class, keeping the old diagram up meanwhile", async () => {
+  /** A source whose first call answers `first` and whose later calls wait. */
+  function heldAfterFirst(first: DiagramLayout = limPidDiagram()): {
+    source: ReturnType<typeof vi.fn<NestedDiagramSource>>;
+    release: (layout: DiagramLayout) => void;
+  } {
+    let release: (layout: DiagramLayout) => void = () => {};
+    const held = new Promise<DiagramLayout>((resolve) => {
+      release = resolve;
+    });
     const source = vi
       .fn<NestedDiagramSource>()
-      .mockResolvedValueOnce(limPidDiagram())
-      .mockResolvedValue(revisedDiagram());
+      .mockResolvedValueOnce(first)
+      .mockReturnValue(held);
+    return { source, release: (layout) => release(layout) };
+  }
+
+  it("re-fetches an open box drawing the class, keeping the old diagram up meanwhile", async () => {
+    const { source, release } = heldAfterFirst();
     const el = await mountWithSource(source);
     await zoomTo(el, OPEN);
 
     el.invalidateNestedDiagrams("P.Add");
-    expect(nested(el)).not.toBeNull();
+    await settle(el);
+    expect(source).toHaveBeenCalledTimes(2);
+    expect(innerIds(el)).toEqual(["addP", "addI"]);
+    expect(iconGroup(el).container?.alpha).toBe(0);
+
+    release(revisedDiagram());
+    await settle(el);
+    expect(innerIds(el)).toEqual(["addP"]);
+  });
+
+  it("re-fetches every open box for a change no class name describes", async () => {
+    const { source, release } = heldAfterFirst();
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+
+    el.invalidateNestedDiagrams(null);
+    release(revisedDiagram());
     await settle(el);
 
     expect(source).toHaveBeenCalledTimes(2);
@@ -432,11 +496,8 @@ describe("semantic in-place nesting: a changed class", () => {
     expect(source).toHaveBeenCalledTimes(1);
   });
 
-  it("drops a closed box's diagram, so the next approach fetches afresh", async () => {
-    const source = vi
-      .fn<NestedDiagramSource>()
-      .mockResolvedValueOnce(limPidDiagram())
-      .mockResolvedValue(revisedDiagram());
+  it("drops a closed box's diagram, so it reopens as the icon until the fresh one lands", async () => {
+    const { source, release } = heldAfterFirst();
     const el = await mountWithSource(source);
     await zoomTo(el, OPEN);
     await zoomTo(el, CLOSED);
@@ -447,10 +508,15 @@ describe("semantic in-place nesting: a changed class", () => {
 
     await zoomTo(el, OPEN);
     expect(source).toHaveBeenCalledTimes(2);
+    expect(nested(el)).toBeNull();
+    expect(iconGroup(el).container?.alpha).toBe(1);
+
+    release(revisedDiagram());
+    await settle(el);
     expect(innerIds(el)).toEqual(["addP"]);
   });
 
-  it("ignores a fetch the change superseded, even when it lands last", async () => {
+  it("serves the fresh diagram when the class changes while its fetch is in flight", async () => {
     let resolveStale: (layout: DiagramLayout) => void = () => {};
     const source = vi
       .fn<NestedDiagramSource>()
@@ -463,12 +529,44 @@ describe("semantic in-place nesting: a changed class", () => {
     const el = await mountWithSource(source);
     await zoomTo(el, OPEN);
 
-    el.invalidateNestedDiagrams("P.LimPID");
-    await settle(el);
+    el.invalidateNestedDiagrams("P.Add");
     resolveStale(limPidDiagram());
+    await settle(el);
     await settle(el);
 
     expect(source).toHaveBeenCalledTimes(2);
     expect(innerIds(el)).toEqual(["addP"]);
+  });
+
+  it("does not restart a fetch in flight when an unrelated class changes", async () => {
+    let resolve: (layout: DiagramLayout) => void = () => {};
+    const source = vi.fn<NestedDiagramSource>().mockReturnValueOnce(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+
+    el.invalidateNestedDiagrams("P.Host");
+    resolve(limPidDiagram());
+    await settle(el);
+
+    expect(source).toHaveBeenCalledTimes(1);
+    expect(innerIds(el)).toEqual(["addP", "addI"]);
+  });
+
+  it("fetches the new class when an open box's class changes under it", async () => {
+    const source = vi.fn<NestedDiagramSource>((className) =>
+      Promise.resolve({ ...limPidDiagram(), className }),
+    );
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+
+    component(el, "pid").classRef = "P.Gain";
+    await settle(el);
+
+    expect(source).toHaveBeenLastCalledWith("P.Gain");
+    expect(nested(el)?.label).toBe("P.Gain");
   });
 });

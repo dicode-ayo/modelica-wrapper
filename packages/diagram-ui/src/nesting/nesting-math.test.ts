@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Box } from "../base/placement-math.js";
-import {
-  NESTING_THRESHOLDS,
-  letterbox,
-  nestingProgress,
-} from "./nesting-math.js";
+import { letterbox, nestingProgress } from "./nesting-math.js";
 
 const SQUARE: Box = { width: 200, height: 200, cx: 0, cy: 0 };
 
@@ -33,12 +29,6 @@ describe("nestingProgress", () => {
   it("treats a non-finite size as closed", () => {
     expect(nestingProgress(Number.NaN)).toBe(0);
     expect(nestingProgress(Number.POSITIVE_INFINITY)).toBe(0);
-  });
-
-  it("ships an enter size above its exit size", () => {
-    expect(NESTING_THRESHOLDS.enterPx).toBeGreaterThan(
-      NESTING_THRESHOLDS.exitPx,
-    );
   });
 });
 

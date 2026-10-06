@@ -91,7 +91,6 @@ import {
 } from "./diagram-editor-provider.js";
 import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
 import { ClassInvalidationRegistry } from "../invalidation.js";
-import { nestedDiagramCache } from "./nested-diagram-cache.js";
 
 /** Stands in for whatever sentence the write verdict refuses with. */
 const REFUSAL = "Cannot edit Pkg.M — its source file is read-only.";
@@ -3864,7 +3863,6 @@ describe("resolveDiagramEditor: a changed class staling nested diagrams", () => 
     posted: ExtensionToWebview[];
     fireReady: () => void;
     fireDispose: () => void;
-    client: OmcClient;
   } {
     const { panel, posted, fireReady, fireDispose } = makePanel();
     const { client } = makeClient();
@@ -3878,26 +3876,22 @@ describe("resolveDiagramEditor: a changed class staling nested diagrams", () => 
       undefined,
       invalidation,
     );
-    return { posted, fireReady, fireDispose, client };
+    return { posted, fireReady, fireDispose };
   }
 
   const staled = (posted: ExtensionToWebview[]): ExtensionToWebview[] =>
     posted.filter((m) => m.type === "nestedDiagramStale");
 
-  it("tells an initialised webview which class changed, and evicts the session cache", async () => {
+  it("tells an initialised webview which class changed", async () => {
     const invalidation = new ClassInvalidationRegistry();
-    const { posted, fireReady, client } = open(invalidation);
+    const { posted, fireReady } = open(invalidation);
     fireReady();
     await flush();
-    const invalidate = vi.spyOn(nestedDiagramCache(client), "invalidate");
-    const clear = vi.spyOn(nestedDiagramCache(client), "clear");
 
     invalidation.classChanged("P.Child");
     invalidation.allClassesChanged();
     invalidation.sessionReplaced();
 
-    expect(invalidate).toHaveBeenCalledWith("P.Child");
-    expect(clear).toHaveBeenCalledTimes(2);
     expect(staled(posted)).toEqual([
       { type: "nestedDiagramStale", className: "P.Child" },
       { type: "nestedDiagramStale", className: null },

@@ -64,7 +64,7 @@ import { parseKey } from "@dicode/diagram-ui/entity-keys";
 import { LibrarySource } from "./library-source.js";
 import {
   nestedDiagramCache,
-  type NestedDiagramCache,
+  type NestedInvalidation,
 } from "./nested-diagram-cache.js";
 import {
   applyClassParameterEdits,
@@ -123,13 +123,6 @@ export function classNameFromDocument(
   document: vscode.TextDocument,
 ): string | undefined {
   return qualifiedNameFromUri(document.uri);
-}
-
-/** The class-change signals an open diagram's nested views go stale on. */
-export interface NestedInvalidation {
-  register(listener: (className: string) => void): vscode.Disposable;
-  registerAllClassesChanged(listener: () => void): vscode.Disposable;
-  registerSessionReplaced(listener: () => void): vscode.Disposable;
 }
 
 /**
@@ -314,13 +307,9 @@ export function resolveDiagramEditor(
   };
   DiagramEditorProvider.addSession(session);
 
-  // Every open editor shares the session cache, so the first listener to run
-  // evicts and the rest find nothing left; each still tells its own webview.
-  // Before `init` the webview holds no nested diagram to drop.
-  let nestedCache: NestedDiagramCache | undefined;
+  // The session cache evicts on its own subscription; this only tells the
+  // webview. Before `init` it holds no nested diagram to drop.
   const nestedStale = (className: string | null): void => {
-    if (className === null) nestedCache?.clear();
-    else nestedCache?.invalidate(className);
     if (controller !== undefined) {
       gate.send({ type: "nestedDiagramStale", className });
     }
@@ -379,7 +368,6 @@ export function resolveDiagramEditor(
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
-        nestedCache = nestedDiagramCache(client);
         const layout =
           mode === "icon"
             ? await fetchIconLayout(client, className)

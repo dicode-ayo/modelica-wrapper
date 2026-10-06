@@ -288,9 +288,10 @@ export function classNameOf(layout: DiagramLayout, classRef: string): string {
 
 /**
  * Whether `layout` was built from `className`'s definition: the host class, a
- * catalogued type, a port's connector type, or an ancestor that contributed
- * shapes or ports. An ancestor that contributes neither leaves no trace in the
- * layout, so a change to it goes unseen here.
+ * component or connector's type (catalogued or not), a port's connector type,
+ * or an ancestor that contributed shapes or ports. An ancestor that
+ * contributes neither leaves no trace in the layout, so a change to it goes
+ * unseen here.
  */
 export function layoutDependsOn(
   layout: DiagramLayout,
@@ -300,6 +301,13 @@ export function layoutDependsOn(
     layers?.some((layer) => layer.from === className) ?? false;
   if (layout.className === className) return true;
   if (fromLayers(layout.iconLayers) || fromLayers(layout.diagramLayers)) {
+    return true;
+  }
+  const instances = [
+    ...Object.values(layout.components),
+    ...Object.values(layout.connectors),
+  ];
+  if (instances.some((i) => classNameOf(layout, i.classRef) === className)) {
     return true;
   }
   return Object.values(layout.classes).some(

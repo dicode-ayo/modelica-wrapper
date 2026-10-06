@@ -272,6 +272,16 @@ describe("layoutDependsOn", () => {
     }
   });
 
+  it("follows a component whose class has no catalog entry", () => {
+    const layout = host();
+    layout.components["broken"] = {
+      name: "broken",
+      classRef: "P.Unresolved",
+      placement: PLACEMENT,
+    };
+    expect(layoutDependsOn(layout, "P.Unresolved")).toBe(true);
+  });
+
   it("does not follow a class the layout was not built from", () => {
     expect(layoutDependsOn(host({ sub: classDef("P.Sub") }), "P.Else")).toBe(
       false,

@@ -83,9 +83,6 @@ export class OmComponent extends OmShapeElement {
   /** The class whose fetch this element has issued, so it asks once. */
   private requestedClass: string | null = null;
 
-  /** Stamp of the latest fetch, so one superseded by a refresh lands nowhere. */
-  private nestedRequest = 0;
-
   /** The box the nested view fills, and the signed scale it is placed at.
    *  Derived from `placement` / `coordinateSystem` and kept by reference, so
    *  a progress-only render leaves the nested view's inputs unchanged. */
@@ -136,7 +133,11 @@ export class OmComponent extends OmShapeElement {
         this.nestedBoxScale = scale;
       }
     }
-    if (changed.has("nestedSource") || changed.has("placement")) {
+    if (
+      changed.has("classRef") ||
+      changed.has("nestedSource") ||
+      changed.has("placement")
+    ) {
       this.syncNesting();
     }
   }
@@ -182,22 +183,15 @@ export class OmComponent extends OmShapeElement {
    * Re-fetch the class diagram if it was built from `className`'s definition
    * (`null`: whatever it was built from). While open, the stale diagram stays
    * up until the fresh one lands; while closed, it is dropped so the next
-   * approach fetches.
+   * approach fetches. A fetch still in flight is the source's to re-run.
    */
   refreshNested(className: string | null): void {
-    if (this.requestedClass === null) return;
     const layout = this.nestedLayout;
-    if (
-      className !== null &&
-      layout !== null &&
-      !layoutDependsOn(layout, className)
-    ) {
-      return;
-    }
+    if (layout === null) return;
+    if (className !== null && !layoutDependsOn(layout, className)) return;
     this.requestedClass = null;
     if (this.nestingOpen === 0) {
       this.nestedLayout = null;
-      this.nestedRequest += 1;
       return;
     }
     this.requestNested();
@@ -210,14 +204,9 @@ export class OmComponent extends OmShapeElement {
       return;
     }
     this.requestedClass = className;
-    const request = (this.nestedRequest += 1);
     source(className).then(
       (layout) => {
-        if (
-          request === this.nestedRequest &&
-          this.nestedSource === source &&
-          this.classRef === className
-        ) {
+        if (this.nestedSource === source && this.classRef === className) {
           this.nestedLayout = layout;
           this.syncNesting();
         }

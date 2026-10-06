@@ -615,13 +615,6 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   /**
-   * Compute the bounding box of all components + connectors in the
-   * current layout, then set the scene's zoom + pan so the box fills
-   * the viewport with a small padding. Returns `true` if the fit was
-   * applied, `false` if the layout was empty or the scene wasn't
-   * mounted yet.
-   */
-  /**
    * Re-fetch every nested diagram built from `className`'s definition, which
    * changed; `null` re-fetches all of them. Each box keeps showing what it
    * has until the fresh diagram lands.
@@ -633,6 +626,13 @@ export class OmGraphicalLayout extends LitElement {
     }
   }
 
+  /**
+   * Compute the bounding box of all components + connectors in the
+   * current layout, then set the scene's zoom + pan so the box fills
+   * the viewport with a small padding. Returns `true` if the fit was
+   * applied, `false` if the layout was empty or the scene wasn't
+   * mounted yet.
+   */
   fitToContent(padding = 1.2): boolean {
     const layout = this.draftLayout ?? this.layout;
     const sceneEl = this.sceneEl;

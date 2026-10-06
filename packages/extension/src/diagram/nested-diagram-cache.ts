@@ -14,6 +14,7 @@
  * gets a fresh one.
  */
 
+import * as vscode from "vscode";
 import {
   layoutDependsOn,
   type DiagramLayout,
@@ -30,6 +31,17 @@ import { fetchDiagramLayout } from "./open-diagram.js";
  */
 const CAPACITY = 64;
 
+/** Classes changed while one fetch was in flight; `null` stands for all. */
+type Changed = Set<string | null>;
+
+function readStale(layout: DiagramLayout, changed: Changed): boolean {
+  if (changed.has(null)) return true;
+  for (const className of changed) {
+    if (className !== null && layoutDependsOn(layout, className)) return true;
+  }
+  return false;
+}
+
 export class NestedDiagramCache {
   private readonly layouts: LruCache<string, DiagramLayout>;
   /**
@@ -38,8 +50,7 @@ export class NestedDiagramCache {
    * rather than issuing a duplicate OMC round trip each.
    */
   private readonly pending = new Map<string, Promise<DiagramLayout>>();
-  /** Bumped by every invalidation, so a fetch that straddles one is not cached. */
-  private generation = 0;
+  private readonly inFlight = new Set<Changed>();
 
   constructor(
     private readonly client: OmcClient,
@@ -63,20 +74,16 @@ export class NestedDiagramCache {
     try {
       return await promise;
     } finally {
-      if (this.pending.get(className) === promise) {
-        this.pending.delete(className);
-      }
+      this.pending.delete(className);
     }
   }
 
   /**
    * Drop every layout built from `className`'s definition — its own, and
-   * any that draws it as a sub-component, port, or ancestor. An in-flight
-   * fetch may already have read the old definition, so it is dropped too.
+   * any that draws it as a sub-component, port, or ancestor.
    */
   invalidate(className: string): void {
-    this.generation += 1;
-    this.pending.clear();
+    for (const changed of this.inFlight) changed.add(className);
     for (const [key, layout] of [...this.layouts.entries()]) {
       if (layoutDependsOn(layout, className)) this.layouts.delete(key);
     }
@@ -84,19 +91,30 @@ export class NestedDiagramCache {
 
   /** Drop everything, for a change no class name describes. */
   clear(): void {
-    this.generation += 1;
-    this.pending.clear();
+    for (const changed of this.inFlight) changed.add(null);
     this.layouts.clear();
   }
 
   // A rejection is not cached — `pending` is cleared in `get`'s `finally`
   // either way, and `layouts.set` only runs on success — so a transient OMC
-  // failure doesn't poison every later zoom into the same class.
+  // failure doesn't poison every later zoom into the same class. A fetch
+  // that may have read a definition changed under it runs again; one that
+  // could not have is kept.
   private async load(className: string): Promise<DiagramLayout> {
-    const generation = this.generation;
-    const layout = await this.fetch(this.client, className);
-    if (generation === this.generation) this.layouts.set(className, layout);
-    return layout;
+    for (;;) {
+      const changed: Changed = new Set();
+      this.inFlight.add(changed);
+      let layout: DiagramLayout;
+      try {
+        layout = await this.fetch(this.client, className);
+      } finally {
+        this.inFlight.delete(changed);
+      }
+      if (!readStale(layout, changed)) {
+        this.layouts.set(className, layout);
+        return layout;
+      }
+    }
   }
 }
 
@@ -110,4 +128,27 @@ export function nestedDiagramCache(client: OmcClient): NestedDiagramCache {
     caches.set(client, cache);
   }
   return cache;
+}
+
+/** The class-change signals a nested diagram goes stale on. */
+export interface NestedInvalidation {
+  register(listener: (className: string) => void): vscode.Disposable;
+  registerAllClassesChanged(listener: () => void): vscode.Disposable;
+  registerSessionReplaced(listener: () => void): vscode.Disposable;
+}
+
+/**
+ * Keep the live session's cache in step with every class change, whether or
+ * not a diagram editor is open to hear it: a layout cached by an editor since
+ * closed is still served to the next one.
+ */
+export function evictNestedDiagramsOnChange(
+  invalidation: NestedInvalidation,
+  current: () => NestedDiagramCache | undefined,
+): vscode.Disposable {
+  return vscode.Disposable.from(
+    invalidation.register((className) => current()?.invalidate(className)),
+    invalidation.registerAllClassesChanged(() => current()?.clear()),
+    invalidation.registerSessionReplaced(() => current()?.clear()),
+  );
 }

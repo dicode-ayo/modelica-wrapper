@@ -93,7 +93,7 @@ describe("sharedNestedSource: invalidate", () => {
     ]);
   });
 
-  it("drops a fetch still in flight, which may have read the old definition", async () => {
+  it("re-runs a fetch in flight across a change to a class it draws", async () => {
     const resolvers: ((layout: DiagramLayout) => void)[] = [];
     const fetch = vi.fn(
       () =>
@@ -102,12 +102,35 @@ describe("sharedNestedSource: invalidate", () => {
         }),
     );
     const { fetch: source, invalidate } = sharedNestedSource(fetch);
-    void source("P.A");
+    const fresh = withChild("P.Parent");
 
-    invalidate("P.Unrelated");
-    void source("P.A");
+    const got = source("P.Parent");
+    invalidate("P.Child");
+    resolvers[0]?.(withChild("P.Parent"));
+    await new Promise((r) => setTimeout(r, 0));
+    resolvers[1]?.(fresh);
 
+    expect(await got).toBe(fresh);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a fetch in flight across a change to a class it does not draw", async () => {
+    let resolve: (layout: DiagramLayout) => void = () => {};
+    const fetch = vi.fn(
+      () =>
+        new Promise<DiagramLayout>((r) => {
+          resolve = r;
+        }),
+    );
+    const { fetch: source, invalidate } = sharedNestedSource(fetch);
+    const layout = withChild("P.Parent");
+
+    const got = source("P.Parent");
+    invalidate("P.Unrelated");
+    resolve(layout);
+
+    expect(await got).toBe(layout);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("forgets everything for a change no class name describes", async () => {
