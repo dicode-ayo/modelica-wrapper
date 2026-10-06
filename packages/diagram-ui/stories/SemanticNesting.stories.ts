@@ -1,11 +1,7 @@
 /**
- * Semantic in-place nesting on `PID_Controller`: zoom onto `PI` (a LimPID)
- * and its class diagram fades in inside its own box.
- *
- * The extension fetches each nested class as its own root. This story has
- * no OMC, so it produces LimPID from the subtree PID_Controller's capture
- * already carries, which places LimPID's components but resolves none of
- * its connections — the nested view here shows blocks without wires.
+ * Zoom onto `PI` (a LimPID) to open its class diagram in place. Without OMC,
+ * LimPID comes from PID_Controller's captured subtree, so it has blocks but
+ * no wires.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";

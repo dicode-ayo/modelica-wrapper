@@ -51,7 +51,6 @@ export function defaultCoordSystemSize(): { width: number; height: number } {
   };
 }
 
-/** An axis-aligned box by size and centre. */
 export interface Box {
   width: number;
   height: number;

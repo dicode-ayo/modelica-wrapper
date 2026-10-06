@@ -114,7 +114,7 @@ export abstract class OmShapeElement extends LitElement {
     this.viewUnsub = store ? store.subscribe(() => this.onViewChanged()) : null;
   }
 
-  /** Fires on every pan/zoom; the base rescales its selection handles. */
+  /** Fires on every pan/zoom. */
   protected onViewChanged(): void {
     this.shapeNode?.rescaleSelectionHandles();
   }
@@ -137,7 +137,7 @@ export abstract class OmShapeElement extends LitElement {
     return 0;
   }
 
-  /** The icon's shape primitives; subclasses wrap or replace just this. */
+  /** Subclasses override to wrap or replace the icon. */
   protected renderIcon(): unknown {
     return renderLayers(this.layers);
   }

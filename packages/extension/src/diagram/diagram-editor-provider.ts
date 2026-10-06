@@ -307,8 +307,7 @@ export function resolveDiagramEditor(
   };
   DiagramEditorProvider.addSession(session);
 
-  // The session cache evicts on its own subscription; this only tells the
-  // webview. Before `init` it holds no nested diagram to drop.
+  // Before `init` the webview holds no nested diagram to drop.
   const nestedStale = (className: string | null): void => {
     if (controller !== undefined) {
       gate.send({ type: "nestedDiagramStale", className });

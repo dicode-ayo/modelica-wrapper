@@ -201,8 +201,7 @@ export abstract class OmShapePrimitive extends LitElement {
 
   override updated(): void {
     const parent = this.parentTransform;
-    // Lit flushes a pending update after disconnect; by then the owning
-    // entity has destroyed the container this primitive drew into.
+    // Lit can flush after disconnect, when the owner has destroyed the container.
     if (!parent || !this.isConnected) {
       return;
     }

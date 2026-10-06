@@ -6,11 +6,7 @@ import { Container } from "pixi.js";
 import { parentNodeContext } from "./parent-node-context.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 
-/**
- * `<om-layer-group>` — a Pixi `Container` its slotted primitives attach to,
- * so they can be faded as one. Fully transparent hides the container
- * outright, so it costs nothing to draw.
- */
+/** `<om-layer-group>` — a container its slotted primitives attach to, so they fade as one. */
 @customElement("om-layer-group")
 export class OmLayerGroup extends LitElement {
   static override styles = css`
@@ -34,7 +30,6 @@ export class OmLayerGroup extends LitElement {
 
   private group: Container | null = null;
 
-  /** The container the slotted primitives attach to. */
   get container(): Container | null {
     return this.group;
   }
@@ -45,8 +40,7 @@ export class OmLayerGroup extends LitElement {
 
   override updated(): void {
     const parent = this.parentTransform;
-    // Lit flushes a pending update after disconnect; by then the parent
-    // entity has destroyed its children, this group among them.
+    // Lit can flush after disconnect, when the parent has destroyed this group.
     if (!parent || !this.isConnected) return;
     const group = this.group ?? new Container({ label: "om-layer-group" });
     if (group.parent !== parent) {
@@ -54,8 +48,7 @@ export class OmLayerGroup extends LitElement {
       parent.addChild(group);
     }
     this.group = group;
-    // Provided only once parented: primitives size their strokes from the
-    // world scale of the container they attach to.
+    // Provided once parented: primitives size strokes from its world scale.
     this.provider.setValue(group);
     group.alpha = this.alpha;
     group.visible = this.alpha > 0;

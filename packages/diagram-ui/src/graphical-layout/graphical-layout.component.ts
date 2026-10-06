@@ -318,15 +318,11 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Boolean, reflect: true, attribute: "perf-hud" })
   perfHud = false;
 
-  /**
-   * Fetches an openable component's own class diagram, which its box shows
-   * in place once zoomed large enough. `null` leaves every component an icon
-   * at every zoom level.
-   */
+  /** Fetches an openable component's class diagram; `null` keeps every component an icon. */
   @property({ attribute: false })
   nestedDiagramSource: NestedDiagramSource | null = null;
 
-  /** `nestedDiagramSource` shared per class, so boxes of one class fetch once. */
+  /** Shared so boxes of one class fetch once. */
   private nestedSourceByClass: SharedNestedSource | null = null;
 
   /**
@@ -614,11 +610,7 @@ export class OmGraphicalLayout extends LitElement {
     }
   }
 
-  /**
-   * Re-fetch every nested diagram built from `className`'s definition, which
-   * changed; `null` re-fetches all of them. Each box keeps showing what it
-   * has until the fresh diagram lands.
-   */
+  /** Re-fetch the nested diagrams built from `className`; `null` for all. */
   invalidateNestedDiagrams(className: string | null): void {
     this.nestedSourceByClass?.invalidate(className);
     for (const comp of this.sceneEl?.querySelectorAll("om-component") ?? []) {

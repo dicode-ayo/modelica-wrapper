@@ -23,47 +23,26 @@ import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
 import { renderShape } from "../primitives/render-shape.js";
 
 /**
- * Paint-order bias for the host class's shapes (own and inherited) so they
- * sit behind every component / connector but in front of the grid. Uses the
- * scene-z convention where positive is further from the viewer — both
- * primitive paths negate it into `zIndex`, then add `zForOrder(zOrder)` so
- * annotation-array order paints first-at-the-bottom within the band:
- *
- *   grid         zIndex = -1
- *   host shapes  zIndex = zForOrder(i) - HOST_SHAPE_Z_BIAS ← here
- *   components   zIndex =  0
- *
- * The band's capacity is where `zForOrder(i)` reaches the bias (500 shapes
- * at `SHAPE_Z_STEP` 0.001); a shape past that would paint over components.
- *
- * Shared by a shape's visual and its hit geometry so picks land in the same
- * band and a component always wins a pick over a shape beneath it.
+ * Puts host shapes between the grid (`zIndex` -1) and components (0) as
+ * `zForOrder(i) - bias`. Holds 500 shapes at `SHAPE_Z_STEP` 0.001; more
+ * would paint over components. Visual and hit geometry share it, so a
+ * component wins a pick over a shape beneath it.
  */
 export const HOST_SHAPE_Z_BIAS = 0.5;
 
 export interface LayoutContentOptions {
-  /** Entity keys drawn selected. */
   selectedKeys: Set<string>;
   readonly: boolean;
-  /**
-   * Draw the host's own-layer shapes as selectable entities. Off paints every
-   * host shape as plain geometry, as a view that offers no editing does.
-   */
+  /** Own-layer host shapes as selectable entities; off draws plain geometry. */
   editableShapes: boolean;
   lineThicknessScale: number | undefined;
-  /** Fetches the class diagram an openable component shows on zoom. `null`
-   *  keeps every component an icon at every zoom level. */
+  /** `null` keeps every component an icon. */
   nestedSource: NestedDiagramSource | null;
 }
 
 /**
- * Everything one `DiagramLayout` draws: the host's shapes, its components
- * with their ports, its standalone connectors and its connections. Shared by
- * the editable host scene and the view-only diagram inside an opened box, so
- * both draw a class the same way.
- *
- * `layout.labels` is not drawn: it is a subset of the host's `Text` shapes,
- * which the host shape layers already draw in world space.
+ * Everything a layout draws, for the host scene and a nested box alike.
+ * `layout.labels` is skipped: the host's `Text` shapes already draw it.
  */
 export function renderLayoutContent(
   layout: DiagramLayout,
@@ -87,18 +66,14 @@ export function renderLayoutContent(
   `;
 }
 
-/** One host shape with its flat cross-layer paint index. `ownIndex` is the
- *  `shape:` key index within the host's own layer, `null` for an inherited
- *  shape. */
+/** `ownIndex` is the `shape:` key index in the host's own layer; `null` if inherited. */
 interface HostShapeSlot {
   shape: Shape;
   zOrder: number;
   ownIndex: number | null;
 }
 
-/** Every host shape with its flat cross-layer paint index. Layers arrive
- *  ancestor-first / host-last and the index follows that walk, so
- *  annotation-array order is paint order. */
+/** Layers arrive ancestor-first, so the running index is paint order. */
 function hostShapeSlots(layout: DiagramLayout): HostShapeSlot[] {
   let zOrder = 0;
   return activeLayers(layout).flatMap((layer) => {
@@ -111,11 +86,6 @@ function hostShapeSlots(layout: DiagramLayout): HostShapeSlot[] {
   });
 }
 
-/**
- * The host's shapes. Inherited (ancestor) shapes are always plain paint. With
- * `editableShapes`, own-layer shapes are entities instead — each its own
- * `<om-*>` primitive owning its visual, hit geometry and selection overlay.
- */
 function renderHostShapes(
   layout: DiagramLayout,
   opts: LayoutContentOptions,
@@ -128,29 +98,17 @@ function renderHostShapes(
           selected: opts.selectedKeys.has(
             formatShapeKey(s.shape.kind, s.ownIndex),
           ),
-          // Selecting a graphic to copy it is not an edit, so a read-only
-          // class keeps the entity and loses only the handles. `onDrag`
-          // already refuses every gesture but the rubber band.
+          // Selecting to copy isn't an edit: read-only keeps the entity, not the handles.
           editHandles: !opts.readonly,
         }),
   );
 }
 
-/** The layer set the layout's view shows: `iconLayers` or `diagramLayers`. */
 function activeLayers(layout: DiagramLayout): IconLayer[] {
   return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
 }
 
-/**
- * The components a scene draws. Mirrors `renderShape`'s `visible === false`
- * skip (render-shape.ts): OMEdit doesn't draw a hidden component either, so
- * it gets no `<om-component>` at all — unpickable and unselectable, same as
- * a hidden shape. `Placement.visible` is already resolved to a literal by
- * the producer (`placementFor`), so there's no DynamicSelect case to peel
- * here. Its connections still route from `layout.components` directly
- * (`endpointCentreFromLayout`), not from this element, so they keep
- * anchoring correctly with nothing left to crash into.
- */
+/** A hidden component gets no element, as in OMEdit; its connections still anchor from the layout. */
 function visibleComponents(
   layout: DiagramLayout,
 ): [string, ComponentInstance][] {
@@ -159,17 +117,11 @@ function visibleComponents(
   );
 }
 
-/**
- * `repeat` key for a component. Class is part of the key so a "Change class"
- * swap remounts the node: a reused element keeps the previous class's icon
- * children, leaving old and new visuals overlaid. NUL can't appear in a
- * component name or qualified class name, so the split is unambiguous.
- */
+/** Keyed by class too, so "Change class" remounts rather than overlaying the old icon. */
 function componentRepeatKey([id, comp]: [string, ComponentInstance]): string {
   return `${id}\u0000${comp.classRef}`;
 }
 
-/** One `<om-connection>`, routed through the layout. */
 function renderConnection(
   conn: ConnectionLayout,
   idx: number,
@@ -185,7 +137,6 @@ function renderConnection(
   ></om-connection>`;
 }
 
-/** One `<om-component>` with its class's (per-instance visible) ports. */
 function renderComponent(
   id: string,
   comp: ComponentInstance,
@@ -213,13 +164,7 @@ function renderComponent(
     ${
       cls
         ? Object.entries(cls.connectors)
-            // Per-instance gating: a port that's listed in
-            // `comp.hiddenPorts` was elided by the producer because
-            // its `condition` predicate evaluates to false for THIS
-            // instance (e.g. `Torque(useSupport=false)` hides
-            // `support`). The class def itself still lists the port
-            // — sibling instances of the same type may have it
-            // visible.
+            // Ports whose `condition` is false for this instance only.
             .filter(([pid]) => !comp.hiddenPorts?.includes(pid))
             .map(
               ([pid, port]) =>
@@ -237,7 +182,6 @@ function renderComponent(
   </om-component>`;
 }
 
-/** One host-level `<om-connector>`. */
 function renderStandaloneConnector(
   id: string,
   conn: ConnectorInstance,
@@ -245,13 +189,8 @@ function renderStandaloneConnector(
   opts: LayoutContentOptions,
 ): TemplateResult {
   const cls = layout.classes[conn.classRef];
-  // A diagram view shows the connector class's own diagram layer when it
-  // draws one (MLS §18.2 — e.g. RealInput's smaller triangle + name),
-  // falling back to its icon. Nested ports above stay on the icon layer:
-  // that is what an enclosing diagram shows for a component's connectors.
-  //
-  // The two annotations can declare different extents, so the layers and
-  // the system they are measured in have to be chosen together.
+  // A diagram view prefers the connector's diagram layer (MLS §18.2), with
+  // that layer's own extent; component ports stay on the icon layer.
   const diagramLayers = cls?.diagramLayers ?? [];
   const showsDiagram =
     layout.kind === "diagram" && hasDrawnShapes(diagramLayers);

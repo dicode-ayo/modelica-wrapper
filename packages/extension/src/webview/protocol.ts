@@ -137,8 +137,7 @@ export type ExtensionToWebview =
       error?: string;
     }
   | {
-      // `className`'s definition changed, so every nested diagram built
-      // from it is stale. `null` when the change names no class.
+      // Nested diagrams built from `className` are stale; `null` for all.
       type: "nestedDiagramStale";
       className: string | null;
     };

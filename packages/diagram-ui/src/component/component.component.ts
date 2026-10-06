@@ -41,10 +41,8 @@ import { extentToRect } from "../primitives/shape-utils.js";
  *       <om-connector nodeId="n" ...></om-connector>
  *     </om-component>
  *
- * Given a `nestedSource`, the component opens in place on zoom: once its
- * box is large enough on screen it fetches its class's own diagram and
- * cross-fades from the icon to that diagram as the box grows. Ports stay
- * on the icon's placement either way.
+ * With a `nestedSource`, zooming in cross-fades the icon to the class's own
+ * diagram. Ports stay on the icon's placement.
  */
 @customElement("om-component")
 export class OmComponent extends OmShapeElement {
@@ -64,28 +62,22 @@ export class OmComponent extends OmShapeElement {
   @property({ attribute: false })
   substitutions: TextSubstitutions | null = null;
 
-  /** Qualified class name — what `nestedSource` is asked for. */
   @property() classRef = "";
 
-  /** Fetches this component's class diagram; `null` keeps it an icon. */
+  /** `null` keeps the component an icon. */
   @property({ attribute: false })
   nestedSource: NestedDiagramSource | null = null;
 
-  /** The fetched class diagram, once it has arrived. */
   @state() private nestedLayout: DiagramLayout | null = null;
 
-  /** Open fraction from the box's on-screen size; see `nestingProgress`. */
   @state() private nestingOpen = 0;
 
-  /** Diagram units per CSS px while the box is open, for its frame. */
   @state() private openWorldPerPixel = 1;
 
-  /** The class whose fetch this element has issued, so it asks once. */
+  /** Set once a fetch is issued, so the element asks once per approach. */
   private requestedClass: string | null = null;
 
-  /** The box the nested view fills, and the signed scale it is placed at.
-   *  Derived from `placement` / `coordinateSystem` and kept by reference, so
-   *  a progress-only render leaves the nested view's inputs unchanged. */
+  /** Kept by reference so a progress-only render leaves these inputs unchanged. */
   private nestedBox: Box = coordSystemSize(undefined);
   private nestedBoxScale = { x: 1, y: 1 };
 
@@ -100,7 +92,6 @@ export class OmComponent extends OmShapeElement {
 
   protected override renderIcon(): unknown {
     if (!this.nestedSource) return super.renderIcon();
-    // The icon stays opaque until the diagram has arrived.
     const open = this.nestedLayout ? this.nestingOpen : 0;
     return html`<om-layer-group .alpha=${1 - open}
         >${guard([this.layers], () => super.renderIcon())}</om-layer-group
@@ -154,13 +145,7 @@ export class OmComponent extends OmShapeElement {
     this.syncNesting();
   }
 
-  /**
-   * Recompute the open fraction from the box's current on-screen size and,
-   * on entering the fade band, fetch the class diagram. The box is measured
-   * in the parent's units, which for a top-level component are diagram
-   * units. A failed fetch is retried only after the box has left the band,
-   * not on every pan inside it.
-   */
+  /** A failed fetch is retried only after the box leaves the band, not on every pan. */
   private syncNesting(): void {
     const ctx = this.sceneCtx;
     if (!this.nestedSource || !ctx) {
@@ -180,10 +165,9 @@ export class OmComponent extends OmShapeElement {
   }
 
   /**
-   * Re-fetch the class diagram if it was built from `className`'s definition
-   * (`null`: whatever it was built from). While open, the stale diagram stays
-   * up until the fresh one lands; while closed, it is dropped so the next
-   * approach fetches. A fetch still in flight is the source's to re-run.
+   * Re-fetch if the diagram was built from `className` (`null`: any). Open, the
+   * old diagram stays up until the new one lands; closed, it is dropped. A
+   * fetch in flight is the source's to re-run.
    */
   refreshNested(className: string | null): void {
     const layout = this.nestedLayout;

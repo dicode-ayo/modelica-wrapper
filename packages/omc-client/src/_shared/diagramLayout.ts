@@ -287,11 +287,8 @@ export function classNameOf(layout: DiagramLayout, classRef: string): string {
 }
 
 /**
- * Whether `layout` was built from `className`'s definition: the host class, a
- * component or connector's type (catalogued or not), a port's connector type,
- * or an ancestor that contributed shapes or ports. An ancestor that
- * contributes neither leaves no trace in the layout, so a change to it goes
- * unseen here.
+ * Whether `layout` was built from `className`. An ancestor contributing
+ * neither shapes nor ports leaves no trace, so it goes unseen.
  */
 export function layoutDependsOn(
   layout: DiagramLayout,

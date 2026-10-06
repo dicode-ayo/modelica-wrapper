@@ -1,20 +1,13 @@
-/**
- * Pure math behind semantic in-place nesting: how far a component's box has
- * opened at its current on-screen size, and how its class diagram fits into
- * the box.
- */
-
 import { OVERLAY_BLUE } from "../base/overlay-mesh.js";
 import type { Box } from "../base/placement-math.js";
 
-/** On-screen box sizes (CSS px): fully open at and above `enterPx`, icon
- *  only at and below `exitPx`. */
+/** On-screen box sizes in CSS px: open at `enterPx`, icon at `exitPx`. */
 export const NESTING_THRESHOLDS = {
   enterPx: 200,
   exitPx: 140,
 } as const;
 
-/** Look of the boundary drawn round an opened box. Widths are CSS px. */
+/** Frame round an opened box; widths in CSS px. */
 export const NESTING_CHROME = {
   strokeWidthPx: 1.5,
   strokeColor: OVERLAY_BLUE,
@@ -22,11 +15,7 @@ export const NESTING_CHROME = {
   fillOpacity: 0.04,
 } as const;
 
-/**
- * Open fraction in `[0, 1]` for a box `sizePx` wide on screen. A function of
- * size alone, with no hysteresis state, so scrolling back retraces the same
- * fade and no threshold can flicker.
- */
+/** Open fraction in `[0, 1]`. Stateless, so reversing the zoom retraces the fade. */
 export function nestingProgress(sizePx: number): number {
   if (!Number.isFinite(sizePx)) return 0;
   const { enterPx, exitPx } = NESTING_THRESHOLDS;
@@ -35,7 +24,6 @@ export function nestingProgress(sizePx: number): number {
   return (sizePx - exitPx) / (enterPx - exitPx);
 }
 
-/** Per-axis scale + translation mapping content space into box space. */
 export interface LetterboxFit {
   scaleX: number;
   scaleY: number;
@@ -44,11 +32,8 @@ export interface LetterboxFit {
 }
 
 /**
- * Fits `content` inside `box` so that it reads unstretched and unmirrored
- * on screen, where `box` is itself drawn at the signed per-axis `boxScale`
- * of its placement: one on-screen scale on both axes, the tighter axis
- * decides, and the content centre lands on the box centre. A point `p` in
- * content space maps to `(p.x * scaleX + x, p.y * scaleY + y)` in box space.
+ * Fits `content` into `box`, which is drawn at the signed `boxScale`, so it
+ * reads centred, unstretched and unmirrored on screen.
  */
 export function letterbox(
   content: Box,

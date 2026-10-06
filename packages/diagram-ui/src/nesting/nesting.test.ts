@@ -1,9 +1,7 @@
 /**
- * Semantic in-place nesting (issue #629), driven headlessly through a
- * mounted `<om-graphical-layout>`. With no live canvas the scene measures
- * 800 × 600, so a 20-unit box is `20 * 600 / (2 * zoom)` px on screen:
- * 60 px at zoom 100 (closed), 170 px at zoom 6000/170 (mid-band) and
- * 300 px at zoom 20 (open).
+ * Headless, the scene measures 800 × 600, so a 20-unit box is
+ * `20 * 600 / (2 * zoom)` px on screen: 60 px at zoom 100 (closed), 170 px
+ * at 6000/170 (mid-band), 300 px at 20 (open).
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -152,11 +150,7 @@ async function zoomTo(el: OmGraphicalLayout, zoom: number): Promise<void> {
   await settle(el);
 }
 
-/**
- * Waits out the chain one zoom sets off: the view emission updates the
- * component, a fetch it starts resolves on a later turn, and the nested view
- * it then mounts renders after that. Three turns cover the longest chain.
- */
+/** Three turns: view update, fetch resolution, nested render. */
 async function settle(el: OmGraphicalLayout): Promise<void> {
   for (let i = 0; i < 3; i++) {
     await new Promise((r) => setTimeout(r, 0));
@@ -344,8 +338,6 @@ describe("semantic in-place nesting", () => {
     if (!placed) throw new Error("expected an opened box");
     const { space } = frame(el);
 
-    // One stroke width on both axes: the frame's space cancels the
-    // placement's per-axis scale.
     expect(space.scale.x * placed.scale.x).toBeCloseTo(1);
     expect(space.scale.y * placed.scale.y).toBeCloseTo(1);
     expect(
@@ -392,8 +384,7 @@ describe("semantic in-place nesting", () => {
   it("keeps the host's hover off a nested connection sharing its index", async () => {
     const el = await mountWithSource(pidSource());
     await zoomTo(el, OPEN);
-    // Written directly: the host fixture has no edge 0 to point at, and the
-    // bare key is all a nested edge 0 could mistake for its own.
+    // Set directly: the host fixture has no edge 0 to hover.
     const store: unknown = Reflect.get(el, "interactionStore");
     const next: unknown = store && Reflect.get(store, "next");
     if (typeof next !== "function") throw new Error("no interaction store");

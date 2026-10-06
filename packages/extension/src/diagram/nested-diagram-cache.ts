@@ -1,17 +1,8 @@
 /**
- * Class-keyed cache of nested diagram layouts — the semantic in-place
- * nesting zoom feature (issue #629). A component's box, once it earns the
- * `openable` flag `producer.ts` computes, fetches its CLASS's own diagram
- * (that class as its own root, not derived from the already-open class's
- * sub-tree — see issue #628 for why the derived path resolves no
- * connections) and shows it inside the box. Keyed on class name rather than
- * instance name: one `Inertia` fetch serves every `Inertia` instance on the
- * canvas, in this editor or another.
- *
- * Session-scoped and keyed off the `OmcClient` via a module-level `WeakMap`,
- * mirroring `sessionUnitCache` (`unit-table.ts`) — every diagram editor
- * sharing a client shares the cache, and a new client (new OMC session)
- * gets a fresh one.
+ * Nested diagram layouts keyed by class, so one fetch serves every instance
+ * in every editor. Each class is fetched as its own root: derived from the
+ * open class's sub-tree, its connections would not resolve. One cache per
+ * `OmcClient`, so a new OMC session starts empty.
  */
 
 import * as vscode from "vscode";
@@ -78,10 +69,7 @@ export class NestedDiagramCache {
     }
   }
 
-  /**
-   * Drop every layout built from `className`'s definition — its own, and
-   * any that draws it as a sub-component, port, or ancestor.
-   */
+  /** Drop every layout built from `className`. */
   invalidate(className: string): void {
     for (const changed of this.inFlight) changed.add(className);
     for (const [key, layout] of [...this.layouts.entries()]) {
@@ -89,17 +77,13 @@ export class NestedDiagramCache {
     }
   }
 
-  /** Drop everything, for a change no class name describes. */
   clear(): void {
     for (const changed of this.inFlight) changed.add(null);
     this.layouts.clear();
   }
 
-  // A rejection is not cached — `pending` is cleared in `get`'s `finally`
-  // either way, and `layouts.set` only runs on success — so a transient OMC
-  // failure doesn't poison every later zoom into the same class. A fetch
-  // that may have read a definition changed under it runs again; one that
-  // could not have is kept.
+  // Rejections are not cached, so a transient OMC failure is retried. A fetch
+  // whose result draws a class changed mid-flight runs again.
   private async load(className: string): Promise<DiagramLayout> {
     for (;;) {
       const changed: Changed = new Set();
@@ -130,18 +114,13 @@ export function nestedDiagramCache(client: OmcClient): NestedDiagramCache {
   return cache;
 }
 
-/** The class-change signals a nested diagram goes stale on. */
 export interface NestedInvalidation {
   register(listener: (className: string) => void): vscode.Disposable;
   registerAllClassesChanged(listener: () => void): vscode.Disposable;
   registerSessionReplaced(listener: () => void): vscode.Disposable;
 }
 
-/**
- * Keep the live session's cache in step with every class change, whether or
- * not a diagram editor is open to hear it: a layout cached by an editor since
- * closed is still served to the next one.
- */
+/** Evicts even with no editor open: a closed editor's layouts serve the next one. */
 export function evictNestedDiagramsOnChange(
   invalidation: NestedInvalidation,
   current: () => NestedDiagramCache | undefined,

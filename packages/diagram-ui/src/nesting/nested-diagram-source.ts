@@ -3,18 +3,14 @@ import { layoutDependsOn } from "@dicode/omc-client/layout";
 
 import { LruCache } from "../lru-cache.js";
 
-/** Fetches `className`'s own diagram layout, with that class as its root. */
+/** `className`'s own diagram, with that class as root. */
 export type NestedDiagramSource = (className: string) => Promise<DiagramLayout>;
 
-/** Bound on the class layouts one layout element keeps resident. */
 const CAPACITY = 64;
 
 export interface SharedNestedSource {
   readonly fetch: NestedDiagramSource;
-  /**
-   * Forget every layout built from `className`'s definition; `null` forgets
-   * all. A fetch in flight that may have read the old definition runs again.
-   */
+  /** Forget layouts built from `className` (`null`: all); an affected fetch in flight re-runs. */
   invalidate(className: string | null): void;
 }
 
@@ -29,11 +25,7 @@ function readStale(layout: DiagramLayout, changed: Changed): boolean {
   return false;
 }
 
-/**
- * Wraps `fetch` so every box of one class shares one request, in flight or
- * settled, for the most recent `capacity` classes. A rejected fetch is
- * forgotten so the next approach retries it.
- */
+/** One request per class, shared by every box. A rejection is forgotten so the next approach retries. */
 export function sharedNestedSource(
   fetch: NestedDiagramSource,
   capacity = CAPACITY,

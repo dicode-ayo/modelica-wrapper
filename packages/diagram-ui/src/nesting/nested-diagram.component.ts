@@ -17,8 +17,7 @@ import { NESTING_CHROME, letterbox } from "./nesting-math.js";
 import "../connection/connection.component.js";
 import "../connector/connector.component.js";
 
-/** View-only content: plain host shapes, nothing selected, no deeper nesting.
- *  One shared instance so `.selectedKeys` keeps its identity across renders. */
+/** Shared so `selectedKeys` keeps its identity across renders. */
 const VIEW_ONLY: LayoutContentOptions = {
   selectedKeys: new Set(),
   readonly: true,
@@ -29,25 +28,18 @@ const VIEW_ONLY: LayoutContentOptions = {
 
 interface Mounted {
   root: Container;
-  /** Holds the frame in the parent's placement space, so its stroke is one
-   *  width on both axes however the box is squashed. */
+  /** Cancels the placement scale so the stroke is even on both axes. */
   frameSpace: Container;
   frame: Graphics;
   content: Container;
 }
 
 /**
- * `<om-nested-diagram>` — a class's own diagram drawn inside the box of a
- * component of that class, letterboxed into `box` and faded by `progress`.
- *
- * View only: the subtree is `eventMode: "none"`, so no pick, hover or drag
- * reaches anything inside it, and it shields its content from the host's
- * interaction state so a host hover key such as `edge:0` cannot light up a
- * nested connection that happens to share the index.
- *
- * Content may reach past the class's declared extent (LimPID routes wires
- * to x = -120 inside a [-100, 100] system); it is neither clipped nor
- * refitted, so a nested view's scale never depends on where a wire runs.
+ * `<om-nested-diagram>` — a class's own diagram, letterboxed into `box` and
+ * faded by `progress`. View only: nothing inside is pickable, and the host's
+ * interaction state is shadowed so a host key like `edge:0` can't light a
+ * nested entity with the same index. Content past the declared extent is
+ * drawn, not clipped or refitted.
  */
 @customElement("om-nested-diagram")
 export class OmNestedDiagram extends LitElement {
@@ -57,21 +49,18 @@ export class OmNestedDiagram extends LitElement {
     }
   `;
 
-  /** The class's diagram, fetched with that class as its own root. */
   @property({ attribute: false }) layout: DiagramLayout | null = null;
 
-  /** The box to fill, in the parent container's (icon) coordinates. */
+  /** In the parent's icon coordinates. */
   @property({ attribute: false }) box: Box = coordSystemSize(undefined);
 
-  /** Signed per-axis scale the parent container is placed at, so the
-   *  content can undo a squash or mirror and read true on screen. */
+  /** Signed placement scale of the parent, undone so the content reads true. */
   @property({ attribute: false }) boxScale = { x: 1, y: 1 };
 
   /** Open fraction in `[0, 1]`. */
   @property({ type: Number }) progress = 0;
 
-  /** Units per CSS px in the space the parent is placed in, for the
-   *  screen-constant frame. */
+  /** Parent-space units per CSS px, for a screen-constant frame. */
   @property({ type: Number }) worldPerPixel = 1;
 
   @consume({ context: parentNodeContext, subscribe: true })
@@ -95,17 +84,15 @@ export class OmNestedDiagram extends LitElement {
 
   private mounted: Mounted | null = null;
 
-  /** The class, not the instance: the content is the class as declared. */
+  /** The class, not the instance. */
   get label(): string {
     return this.layout?.className ?? "";
   }
 
-  /** The faded, unpickable container holding the frame and the content. */
   get container(): Container | null {
     return this.mounted?.root ?? null;
   }
 
-  /** The letterboxed container the nested entities attach to. */
   get contentContainer(): Container | null {
     return this.mounted?.content ?? null;
   }
@@ -113,15 +100,13 @@ export class OmNestedDiagram extends LitElement {
   override render(): TemplateResult {
     const layout = this.layout;
     if (!layout) return html``;
-    // The content depends on the layout alone; progress and zoom only move
-    // or fade the containers it attached to.
+    // Progress and zoom only move or fade containers; content follows the layout.
     return html`${guard([layout], () => renderLayoutContent(layout, VIEW_ONLY))}`;
   }
 
   override updated(changed: Map<string, unknown>): void {
     const parent = this.parentTransform;
-    // Lit flushes a pending update after disconnect; by then the parent
-    // entity has destroyed its children, this view's root among them.
+    // Lit can flush after disconnect, when the parent has destroyed this root.
     if (!parent || !this.isConnected) return;
     const fresh = this.mounted === null;
     const m = this.mounted ?? this.mount(parent);
@@ -151,9 +136,8 @@ export class OmNestedDiagram extends LitElement {
     this.mounted = null;
     this.contentProvider.setValue(null);
     if (!m) return;
-    // Nested entities dispose their own Pixi nodes as they disconnect, and
-    // may still flush an update against `content`, so only what this
-    // element drew is destroyed here.
+    // Nested entities destroy their own nodes and may still flush against
+    // `content`, so only what this element drew is destroyed.
     m.frameSpace.destroy({ children: true });
     m.content.removeFromParent();
     m.root.destroy();
