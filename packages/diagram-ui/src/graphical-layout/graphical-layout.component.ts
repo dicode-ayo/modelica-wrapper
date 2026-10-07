@@ -363,7 +363,6 @@ export class OmGraphicalLayout extends LitElement {
 
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
-  /** Open boxes, so wires meet the ports a box draws rather than its icon's. */
   @state() private nestingViews: NestingViews = new Map();
   @state() private hoverKey: string | null = null;
   /** Current connection-drag state, mirrored from the mode's `connection`
@@ -461,20 +460,6 @@ export class OmGraphicalLayout extends LitElement {
       const source = this.nestedDiagramSource;
       this.nestedSourceByClass = source ? sharedNestedSource(source) : null;
     }
-    if (changed.has("layout") || changed.has("draftLayout")) {
-      this.pruneNestingViews();
-    }
-  }
-
-  /** A removed component can't announce its box closing; a re-added one starts closed. */
-  private pruneNestingViews(): void {
-    const components = (this.draftLayout ?? this.layout)?.components ?? {};
-    const kept = [...this.nestingViews].filter(
-      ([id, view]) => components[id]?.classRef === view.layout.className,
-    );
-    if (kept.length !== this.nestingViews.size) {
-      this.nestingViews = new Map(kept);
-    }
   }
 
   private readonly onNestingChange = (
@@ -534,14 +519,17 @@ export class OmGraphicalLayout extends LitElement {
           .extent=${500}
           .coordinateSystem=${active.coordinateSystem ?? undefined}
         ></om-grid-axis>
-        ${renderLayoutContent(active, {
-          selectedKeys: this.selectedKeys,
-          readonly: this.readonly,
-          editableShapes: true,
-          lineThicknessScale: this.lineThicknessScale,
-          nestedSource: this.nestedSourceByClass?.fetch ?? null,
-          nesting: this.nestingViews,
-        })}
+        ${renderLayoutContent(
+          active,
+          {
+            selectedKeys: this.selectedKeys,
+            readonly: this.readonly,
+            editableShapes: true,
+            lineThicknessScale: this.lineThicknessScale,
+            nestedSource: this.nestedSourceByClass?.fetch ?? null,
+          },
+          this.nestingViews,
+        )}
         <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
       ${this.renderPlacementGhost()}

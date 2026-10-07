@@ -281,12 +281,12 @@ describe("endpointCentreFromLayout on a mirrored placement", () => {
         },
       },
     });
-    const centre = endpointCentreFromLayout(layout, {
+    const center = endpointCentreFromLayout(layout, {
       component: "c",
       port: "p",
     });
-    expect(centre?.x).toBeCloseTo(10);
-    expect(centre?.y).toBeCloseTo(0);
+    expect(center?.x).toBeCloseTo(10);
+    expect(center?.y).toBeCloseTo(0);
   });
 });
 
@@ -446,6 +446,20 @@ describe("resolveConnectionWaypoints with shifted ends", () => {
       [10, 0],
       [10, 50],
       [100, 50],
+    ]);
+  });
+
+  it("moves a neighbor both ends share once, not once per end", () => {
+    const conn = authored([
+      [0, 50],
+      [50, 50],
+      [100, 50],
+    ]);
+    const both: EndShift = () => ({ x: 0, y: 10 });
+    expect(resolveConnectionWaypoints(twoPorts, conn, both)).toEqual([
+      [0, 60],
+      [50, 60],
+      [100, 60],
     ]);
   });
 

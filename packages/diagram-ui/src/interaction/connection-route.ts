@@ -6,6 +6,14 @@ import type {
 } from "@dicode/omc-client";
 
 import { iconToParent, placementCentre } from "../base/placement-math.js";
+import type { DiagramPoint } from "../scene/view-math.js";
+
+export type Axis = "h" | "v";
+
+/** The axis a segment mostly runs along. */
+export function segmentAxis(a: Point, b: Point): Axis {
+  return Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? "h" : "v";
+}
 
 /**
  * Reference-tolerant content equality for waypoint arrays. After an OMC
@@ -97,9 +105,8 @@ export function orthogonalRoute(
  * data alone (no DOM query).
  *
  * For standalone host-class ports (`ep.component === undefined`) the
- * placement is already in diagram coordinates; for sub-component ports the
- * icon-space position is placed the way the renderer places it, signed
- * scale and rotation included, so a mirrored component's port is mirrored.
+ * placement is already in diagram coordinates; a sub-component port is
+ * placed as the renderer places it, mirror included.
  *
  * Returns `null` when the endpoint can't be resolved (missing component,
  * missing class, missing port definition).
@@ -130,20 +137,17 @@ export function endpointCentreFromLayout(
 }
 
 /** Display-only offset for a connection end; `null` leaves it where it is. */
-export type EndShift = (
-  ep: ConnectionEndpoint,
-) => { x: number; y: number } | null;
+export type EndShift = (ep: ConnectionEndpoint) => DiagramPoint | null;
 
 const NO_SHIFT: EndShift = () => null;
 
 /**
  * Resolves the path to render for a connection.
  *
- * When `conn.waypoints` has two or more points they are the route, with each
- * end moved by `shift`; when it is empty the two endpoint centers are computed
- * from the layout, moved, and an orthogonal route is generated. Returns an
- * empty array only when both endpoints can't be resolved. `conn.waypoints` is
- * never mutated, and comes back by identity when no end moves.
+ * Two or more `conn.waypoints` are the route; fewer get an orthogonal route
+ * between the endpoint centers. Either way each end moves by `shift`.
+ * `conn.waypoints` is never mutated, and comes back by identity when no end
+ * moves. Empty only when neither endpoint resolves.
  */
 export function resolveConnectionWaypoints(
   layout: DiagramLayout,
@@ -163,44 +167,41 @@ export function resolveConnectionWaypoints(
   return orthogonalRoute(offset(from, lhs), offset(to, rhs));
 }
 
-function offset(
-  p: { x: number; y: number },
-  d: { x: number; y: number } | null,
-): { x: number; y: number } {
+function offset(p: DiagramPoint, d: DiagramPoint | null): DiagramPoint {
   return d ? { x: p.x + d.x, y: p.y + d.y } : p;
 }
 
-/**
- * Moves the first and last points of `path`. An axis-aligned end segment
- * keeps its axis: the neighbor follows along the perpendicular, so an
- * orthogonal route stays orthogonal.
- */
+/** Moves the ends of `path`; each neighbor follows so its segment keeps its axis. */
 function shiftPathEnds(
   path: Point[],
-  lhs: { x: number; y: number } | null,
-  rhs: { x: number; y: number } | null,
+  lhs: DiagramPoint | null,
+  rhs: DiagramPoint | null,
 ): Point[] {
   if (!lhs && !rhs) return path;
   const out = path.map(([x, y]): Point => [x, y]);
-  if (lhs) moveEnd(out, 0, 1, lhs);
-  if (rhs) moveEnd(out, out.length - 1, out.length - 2, rhs);
+  if (lhs) moveEnd(path, out, 0, 1, lhs);
+  if (rhs) moveEnd(path, out, path.length - 1, path.length - 2, rhs);
   return out;
 }
 
+/** Reads axes from `path`, so two ends sharing one neighbor don't compound. */
 function moveEnd(
   path: Point[],
+  out: Point[],
   end: number,
   next: number,
-  d: { x: number; y: number },
+  d: DiagramPoint,
 ): void {
   const p = path[end];
   const q = path[next];
-  if (p === undefined || q === undefined) return;
+  const pOut = out[end];
+  const qOut = out[next];
+  if (!p || !q || !pOut || !qOut) return;
   // A two-point path has no free neighbor: its other end is fixed.
   if (path.length > 2) {
-    if (p[1] === q[1]) q[1] += d.y;
-    else if (p[0] === q[0]) q[0] += d.x;
+    if (segmentAxis(p, q) === "h") qOut[1] = q[1] + d.y;
+    else qOut[0] = q[0] + d.x;
   }
-  p[0] += d.x;
-  p[1] += d.y;
+  pOut[0] = p[0] + d.x;
+  pOut[1] = p[1] + d.y;
 }

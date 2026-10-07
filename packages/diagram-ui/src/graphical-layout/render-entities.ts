@@ -3,6 +3,7 @@ import { guard } from "lit/directives/guard.js";
 import { repeat } from "lit/directives/repeat.js";
 import type {
   ComponentInstance,
+  ConnectionEndpoint,
   ConnectionLayout,
   ConnectorInstance,
   DiagramLayout,
@@ -14,7 +15,10 @@ import { colorToCss } from "@dicode/diagram-svg";
 
 import { withNoIconFallback } from "../icon-provider/no-icon.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
-import { resolveConnectionWaypoints } from "../interaction/connection-route.js";
+import {
+  resolveConnectionWaypoints,
+  type EndShift,
+} from "../interaction/connection-route.js";
 import {
   formatComponentKey,
   formatConnectorKey,
@@ -40,47 +44,43 @@ export interface LayoutContentOptions {
   lineThicknessScale: number | undefined;
   /** `null` keeps every component an icon. */
   nestedSource: NestedDiagramSource | null;
-  /** Open boxes; their wires end on the ports the box draws. */
-  nesting: NestingViews;
 }
 
 /**
  * Everything a layout draws, for the host scene and a nested box alike.
  * `layout.labels` is skipped: the host's `Text` shapes already draw it.
+ * `nesting` holds the open boxes, whose wires end on the ports they draw.
  */
 export function renderLayoutContent(
   layout: DiagramLayout,
   opts: LayoutContentOptions,
+  nesting: NestingViews,
 ): TemplateResult {
-  const { selectedKeys, readonly, editableShapes, lineThicknessScale } = opts;
-  // Every zoom step through a fade changes `nesting`; only the wires read it.
-  const entities = guard(
-    [
-      layout,
-      selectedKeys,
-      readonly,
-      editableShapes,
-      lineThicknessScale,
-      opts.nestedSource,
-    ],
-    () => html`
-      ${renderHostShapes(layout, opts)}
-      ${repeat(visibleComponents(layout), componentRepeatKey, ([id, comp]) =>
-        renderComponent(id, comp, layout, opts),
-      )}
-      ${repeat(
-        Object.entries(layout.connectors),
-        ([id]) => id,
-        ([id, conn]) => renderStandaloneConnector(id, conn, layout, opts),
-      )}
-    `,
-  );
+  // `nesting` changes on every zoom step through a fade; only wires read it.
+  const entities = guard([layout, ...Object.values(opts)], () => [
+    renderHostShapes(layout, opts),
+    repeat(visibleComponents(layout), componentRepeatKey, ([id, comp]) =>
+      renderComponent(id, comp, layout, opts),
+    ),
+    repeat(
+      Object.entries(layout.connectors),
+      ([id]) => id,
+      ([id, conn]) => renderStandaloneConnector(id, conn, layout, opts),
+    ),
+  ]);
+  const shift: EndShift = (ep) => nestedPortShift(layout, ep, nesting);
+  const viewAt = (ep: ConnectionEndpoint) =>
+    ep.component === undefined ? undefined : nesting.get(ep.component);
   return html`
     ${entities}
     ${repeat(
       layout.connections,
       (_, idx) => `conn:${idx}`,
-      (conn, idx) => renderConnection(conn, idx, layout, opts),
+      (conn, idx) =>
+        guard(
+          [conn, layout, opts.selectedKeys, viewAt(conn.lhs), viewAt(conn.rhs)],
+          () => renderConnection(conn, idx, layout, opts.selectedKeys, shift),
+        ),
     )}
   `;
 }
@@ -145,16 +145,15 @@ function renderConnection(
   conn: ConnectionLayout,
   idx: number,
   layout: DiagramLayout,
-  opts: LayoutContentOptions,
+  selectedKeys: Set<string>,
+  shift: EndShift,
 ): TemplateResult {
   return html`<om-connection
     .nodeId=${String(idx)}
-    .path=${resolveConnectionWaypoints(layout, conn, (ep) =>
-      nestedPortShift(layout, ep, opts.nesting),
-    )}
+    .path=${resolveConnectionWaypoints(layout, conn, shift)}
     .smooth=${conn.smooth}
     .stroke=${conn.color ? colorToCss(conn.color) : undefined}
-    .selectedKeys=${opts.selectedKeys}
+    .selectedKeys=${selectedKeys}
   ></om-connection>`;
 }
 

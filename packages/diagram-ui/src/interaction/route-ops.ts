@@ -8,6 +8,8 @@ import {
   pointsEqual,
   projectOntoSegment,
   resolveConnectionWaypoints,
+  segmentAxis,
+  type Axis,
 } from "./connection-route.js";
 
 /**
@@ -20,8 +22,6 @@ import {
  * coincident / collinear corners that produces are collapsed again, so
  * repeated drags don't accumulate cruft.
  */
-
-type Axis = "h" | "v";
 
 /**
  * Inserts a new waypoint into a connection's route at the point on the
@@ -277,10 +277,6 @@ function storeRoute(
 
 /** Dominant orientation of segment `a`–`b`: horizontal when its x-run is
  *  at least its y-run, vertical otherwise. */
-function segmentAxis(a: Point, b: Point): Axis {
-  return Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? "h" : "v";
-}
-
 /** Corner that lets the segment leaving `from` run along `axis` before
  *  turning perpendicular to reach `to`. */
 function jogFromStart(from: Point, to: Point, axis: Axis): Point {

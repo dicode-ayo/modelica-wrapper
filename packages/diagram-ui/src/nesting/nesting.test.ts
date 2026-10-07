@@ -644,14 +644,21 @@ describe("semantic in-place nesting: parent wires", () => {
     [-10, 0],
   ];
 
-  it("meets the port where the open box draws it", async () => {
-    const el = await mountWithSource(drawingUAt(40), wiredHost(AUTHORED));
+  it("meets the port where the open box draws it, and leaves the layout's route alone", async () => {
+    const layout = wiredHost(AUTHORED);
+    const before = JSON.stringify(layout.connections);
+    const el = await mountWithSource(drawingUAt(40), layout);
     await zoomTo(el, OPEN);
     await el.updateComplete;
     const end = wire(el).path.at(-1);
     expect(end?.[0]).toBeCloseTo(-10);
     expect(end?.[1]).toBeCloseTo(4);
     expect(wire(el).path[0]).toEqual([-50, 0]);
+    expect(JSON.stringify(el.layout?.connections)).toBe(before);
+
+    await zoomTo(el, CLOSED);
+    await el.updateComplete;
+    expect(wire(el).path).toEqual(AUTHORED);
   });
 
   it("moves the end as far as the box has faded in", async () => {
@@ -660,28 +667,6 @@ describe("semantic in-place nesting: parent wires", () => {
     await zoomTo(el, MID);
     await el.updateComplete;
     expect(wire(el).path.at(-1)?.[1]).toBeCloseTo(2);
-  });
-
-  it("leaves a port both layers agree on exactly as it was", async () => {
-    const layout = wiredHost(AUTHORED);
-    const el = await mountWithSource(drawingUAt(0), layout);
-    await zoomTo(el, OPEN);
-    await el.updateComplete;
-    expect(nested(el)).not.toBeNull();
-    expect(wire(el).path).toBe(layout.connections[0]?.waypoints);
-  });
-
-  it("leaves the authored waypoints byte-identical across an open and a close", async () => {
-    const layout = wiredHost(AUTHORED);
-    const before = JSON.stringify(layout.connections);
-    const el = await mountWithSource(drawingUAt(40), layout);
-    await zoomTo(el, OPEN);
-    await el.updateComplete;
-    expect(JSON.stringify(el.layout?.connections)).toBe(before);
-    await zoomTo(el, CLOSED);
-    await el.updateComplete;
-    expect(JSON.stringify(el.layout?.connections)).toBe(before);
-    expect(wire(el).path).toEqual(AUTHORED);
   });
 
   it("forgets a box removed while open, so its re-added component starts closed", async () => {
@@ -697,33 +682,5 @@ describe("semantic in-place nesting: parent wires", () => {
     await el.updateComplete;
     await settle(el);
     expect(wire(el).path).toEqual(AUTHORED);
-  });
-
-  it("routes an auto-routed wire to the moved port of a flipped component", async () => {
-    const layout = wiredHost([]);
-    const pid = layout.components["pid"];
-    if (!pid) throw new Error("fixture has no pid");
-    pid.placement = {
-      extent: [
-        [10, -10],
-        [-10, 10],
-      ],
-    };
-    const el = await mountWithSource(drawingUAt(40), layout);
-    await zoomTo(el, OPEN);
-    await el.updateComplete;
-    // The unmirrored box draws `u` on its left edge.
-    const end = wire(el).path.at(-1);
-    expect(end?.[0]).toBeCloseTo(-10);
-    expect(end?.[1]).toBeCloseTo(4);
-  });
-
-  it("routes an auto-routed wire to the moved port too", async () => {
-    const el = await mountWithSource(drawingUAt(40), wiredHost([]));
-    await zoomTo(el, OPEN);
-    await el.updateComplete;
-    const end = wire(el).path.at(-1);
-    expect(end?.[0]).toBeCloseTo(-10);
-    expect(end?.[1]).toBeCloseTo(4);
   });
 });

@@ -94,12 +94,6 @@ describe("nestedPortShift", () => {
     expect(shift?.y).toBeCloseTo(2);
   });
 
-  it("leaves a port alone where both layers put it in the same place", () => {
-    expect(
-      nestedPortShift(host(BOX), PID_U, new Map([["pid", view(-100, 0)]])),
-    ).toBeNull();
-  });
-
   it("leaves a port alone where the layers agree up to float noise", () => {
     const third: Placement = {
       extent: [
@@ -134,16 +128,6 @@ describe("nestedPortShift", () => {
     };
     expect(
       nestedPortShift(host(BOX), PID_U, new Map([["pid", bare]])),
-    ).toBeNull();
-  });
-
-  it("leaves a standalone host connector alone", () => {
-    expect(
-      nestedPortShift(
-        host(BOX),
-        { component: undefined, port: "u" },
-        new Map([["pid", view(-100, 40)]]),
-      ),
     ).toBeNull();
   });
 

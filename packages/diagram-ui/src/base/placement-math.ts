@@ -114,11 +114,7 @@ export function applyPlacement(
   };
 }
 
-/**
- * Where `point`, in the placed class's icon coordinates, lands in the parent
- * diagram: the entity transform's `position + R·S·point`, with the signed
- * scale, so a mirrored placement mirrors the point too.
- */
+/** Where icon-space `point` lands in the parent, as the entity transform puts it: mirror included. */
 export function iconToParent(
   placement: Placement,
   iconCoordSystem: CoordinateSystem | undefined,

@@ -1,5 +1,7 @@
 import { OVERLAY_BLUE } from "../base/overlay-mesh.js";
-import type { Box } from "../base/placement-math.js";
+import type { CoordinateSystem, Point } from "@dicode/omc-client";
+
+import { coordSystemSize, type Box } from "../base/placement-math.js";
 
 /** On-screen box sizes in CSS px: open at `enterPx`, icon at `exitPx`. */
 export const NESTING_THRESHOLDS = {
@@ -58,4 +60,17 @@ export function letterbox(
     x: box.cx - content.cx * scaleX,
     y: box.cy - content.cy * scaleY,
   };
+}
+
+export function nestedFit(
+  content: CoordinateSystem | undefined,
+  box: Box,
+  boxScale: { x: number; y: number },
+): LetterboxFit {
+  return letterbox(coordSystemSize(content), box, boxScale);
+}
+
+/** Where `point` of the fitted content lands in the box's coordinates. */
+export function fitPoint(fit: LetterboxFit, [x, y]: Point): Point {
+  return [fit.x + x * fit.scaleX, fit.y + y * fit.scaleY];
 }

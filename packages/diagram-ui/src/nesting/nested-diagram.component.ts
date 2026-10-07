@@ -13,7 +13,7 @@ import {
 } from "../graphical-layout/render-entities.js";
 import { interactionStateContext } from "../interaction/interaction-state.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
-import { NESTING_CHROME, letterbox } from "./nesting-math.js";
+import { NESTING_CHROME, nestedFit } from "./nesting-math.js";
 import "../connection/connection.component.js";
 import "../connector/connector.component.js";
 
@@ -24,7 +24,6 @@ const VIEW_ONLY: LayoutContentOptions = {
   editableShapes: false,
   lineThicknessScale: undefined,
   nestedSource: null,
-  nesting: new Map(),
 };
 
 interface Mounted {
@@ -102,7 +101,7 @@ export class OmNestedDiagram extends LitElement {
     const layout = this.layout;
     if (!layout) return html``;
     // Progress and zoom only move or fade containers; content follows the layout.
-    return html`${guard([layout], () => renderLayoutContent(layout, VIEW_ONLY))}`;
+    return html`${guard([layout], () => renderLayoutContent(layout, VIEW_ONLY, new Map()))}`;
   }
 
   override updated(changed: Map<string, unknown>): void {
@@ -119,8 +118,8 @@ export class OmNestedDiagram extends LitElement {
       m.root.visible = this.progress > 0;
     }
     if (layoutChanged || boxChanged) {
-      const fit = letterbox(
-        coordSystemSize(this.layout?.coordinateSystem),
+      const fit = nestedFit(
+        this.layout?.coordinateSystem,
         this.box,
         this.boxScale,
       );

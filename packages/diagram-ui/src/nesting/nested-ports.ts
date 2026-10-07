@@ -6,9 +6,11 @@ import {
   iconToParent,
   placementCentre,
 } from "../base/placement-math.js";
-import { letterbox } from "./nesting-math.js";
+import { endpointCentreFromLayout } from "../interaction/connection-route.js";
+import type { DiagramPoint } from "../scene/view-math.js";
+import { fitPoint, nestedFit } from "./nesting-math.js";
 
-/** Parent-diagram units below which the two layers count as agreeing. */
+/** Below this the layers agree; the letterbox scale leaves float noise. */
 const AGREE_EPSILON = 1e-9;
 
 /** What an open box draws: its class's own diagram, faded in by `progress`. */
@@ -21,57 +23,46 @@ export interface NestingView {
 export type NestingViews = ReadonlyMap<string, NestingView>;
 
 /**
- * Parent-diagram offset from where a component's icon puts `ep`'s port to
- * where its open box draws that port, scaled by the box's progress. `null`
- * when nothing moves: the component is closed, the two layers agree, or the
- * class's own diagram does not draw the port.
+ * `om-nesting-change`, fired by `<om-component>` when what its box draws
+ * changes. Not composed, so only the layout that drew the component hears it.
+ */
+export interface NestingChangeDetail {
+  nodeId: string;
+  /** `null` once the box draws the icon alone. */
+  view: NestingView | null;
+}
+
+/**
+ * Offset from where `ep`'s icon port sits to where its open box draws it,
+ * scaled by progress. `null` when nothing moves.
  */
 export function nestedPortShift(
   layout: DiagramLayout,
   ep: ConnectionEndpoint,
   views: NestingViews,
-): { x: number; y: number } | null {
+): DiagramPoint | null {
   if (ep.component === undefined) return null;
   const view = views.get(ep.component);
   const comp = layout.components[ep.component];
   if (!view || view.progress <= 0 || !comp) return null;
   if (view.layout.className !== comp.classRef) return null;
   const cls = layout.classes[comp.classRef];
-  const iconPort = cls?.connectors[ep.port];
   const ownPort = view.layout.connectors[ep.port];
-  if (!cls || !iconPort || !ownPort) return null;
+  const icon = endpointCentreFromLayout(layout, ep);
+  if (!cls || !ownPort || !icon) return null;
 
-  const placed = applyPlacement(comp.placement, cls.coordinateSystem);
-  const fit = letterbox(
-    coordSystemSize(view.layout.coordinateSystem),
+  const fit = nestedFit(
+    view.layout.coordinateSystem,
     coordSystemSize(cls.coordinateSystem),
-    placed.scale,
+    applyPlacement(comp.placement, cls.coordinateSystem).scale,
   );
-  const [ox, oy] = placementCentre(ownPort.placement);
-  const drawn = iconToParent(comp.placement, cls.coordinateSystem, [
-    fit.x + ox * fit.scaleX,
-    fit.y + oy * fit.scaleY,
-  ]);
-  const icon = iconToParent(
+  const drawn = iconToParent(
     comp.placement,
     cls.coordinateSystem,
-    placementCentre(iconPort.placement),
+    fitPoint(fit, placementCentre(ownPort.placement)),
   );
-  const dx = (drawn.x - icon.x) * view.progress;
-  const dy = (drawn.y - icon.y) * view.progress;
-  // Float noise from the letterbox scale must not read as a move.
+  const dx = drawn.x - icon.x;
+  const dy = drawn.y - icon.y;
   if (Math.hypot(dx, dy) < AGREE_EPSILON) return null;
-  return { x: dx, y: dy };
-}
-
-/**
- * Fired by `<om-component>` when what its box draws changes. Bubbles but is
- * not composed, so it reaches only the layout that drew the component.
- */
-export const NESTING_CHANGE = "om-nesting-change";
-
-export interface NestingChangeDetail {
-  nodeId: string;
-  /** `null` once the box draws the icon alone. */
-  view: NestingView | null;
+  return { x: dx * view.progress, y: dy * view.progress };
 }
