@@ -108,6 +108,10 @@ import {
   type NestedDiagramSource,
   type SharedNestedSource,
 } from "../nesting/nested-diagram-source.js";
+import type {
+  NestingChangeDetail,
+  NestingViews,
+} from "../nesting/nested-ports.js";
 
 interface BBox {
   minX: number;
@@ -359,6 +363,7 @@ export class OmGraphicalLayout extends LitElement {
 
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
+  @state() private nestingViews: NestingViews = new Map();
   @state() private hoverKey: string | null = null;
   /** Current connection-drag state, mirrored from the mode's `connection`
    *  events — drives the source/target port indicators and the red flag
@@ -457,6 +462,17 @@ export class OmGraphicalLayout extends LitElement {
     }
   }
 
+  private readonly onNestingChange = (
+    e: CustomEvent<NestingChangeDetail>,
+  ): void => {
+    const { nodeId, view } = e.detail;
+    if (view === null && !this.nestingViews.has(nodeId)) return;
+    const next = new Map(this.nestingViews);
+    if (view === null) next.delete(nodeId);
+    else next.set(nodeId, view);
+    this.nestingViews = next;
+  };
+
   /** Diagram-space point the preview node sits at, snapped to the active grid
    *  exactly as a commit is, or `null` when the cursor is off-canvas. */
   private previewPoint(): { x: number; y: number } | null {
@@ -488,6 +504,7 @@ export class OmGraphicalLayout extends LitElement {
       <om-scene
         class=${this.dropActive ? "om-drop-active" : nothing}
         @om-view-change=${this.onViewChange}
+        @om-nesting-change=${this.onNestingChange}
         .rendererFactory=${this.rendererFactory ?? undefined}
         .textMode=${this.textMode ?? undefined}
         ?debug=${this.debug}
@@ -502,13 +519,17 @@ export class OmGraphicalLayout extends LitElement {
           .extent=${500}
           .coordinateSystem=${active.coordinateSystem ?? undefined}
         ></om-grid-axis>
-        ${renderLayoutContent(active, {
-          selectedKeys: this.selectedKeys,
-          readonly: this.readonly,
-          editableShapes: true,
-          lineThicknessScale: this.lineThicknessScale,
-          nestedSource: this.nestedSourceByClass?.fetch ?? null,
-        })}
+        ${renderLayoutContent(
+          active,
+          {
+            selectedKeys: this.selectedKeys,
+            readonly: this.readonly,
+            editableShapes: true,
+            lineThicknessScale: this.lineThicknessScale,
+            nestedSource: this.nestedSourceByClass?.fetch ?? null,
+          },
+          this.nestingViews,
+        )}
         <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
       ${this.renderPlacementGhost()}

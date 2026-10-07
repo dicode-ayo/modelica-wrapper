@@ -113,3 +113,20 @@ export function applyPlacement(
     iconSize: { width: icon.width, height: icon.height },
   };
 }
+
+/** Where icon-space `point` lands in the parent, as the entity transform puts it: mirror included. */
+export function iconToParent(
+  placement: Placement,
+  iconCoordSystem: CoordinateSystem | undefined,
+  [x, y]: Point,
+): { x: number; y: number } {
+  const t = applyPlacement(placement, iconCoordSystem);
+  const sx = x * t.scale.x;
+  const sy = y * t.scale.y;
+  const cos = Math.cos(t.rotationZ);
+  const sin = Math.sin(t.rotationZ);
+  return {
+    x: t.position.x + sx * cos - sy * sin,
+    y: t.position.y + sx * sin + sy * cos,
+  };
+}

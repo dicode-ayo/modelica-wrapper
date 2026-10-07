@@ -5,6 +5,16 @@ import type {
   Point,
 } from "@dicode/omc-client";
 
+import { iconToParent, placementCentre } from "../base/placement-math.js";
+import type { DiagramPoint } from "../scene/view-math.js";
+
+export type Axis = "h" | "v";
+
+/** The axis a segment mostly runs along. */
+export function segmentAxis(a: Point, b: Point): Axis {
+  return Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? "h" : "v";
+}
+
 /**
  * Reference-tolerant content equality for waypoint arrays. After an OMC
  * roundtrip the layout payload is a fresh object tree so identical
@@ -91,13 +101,12 @@ export function orthogonalRoute(
 }
 
 /**
- * Diagram-space centre of a connection endpoint, derived from the layout
+ * Diagram-space center of a connection endpoint, derived from the layout
  * data alone (no DOM query).
  *
  * For standalone host-class ports (`ep.component === undefined`) the
- * placement is already in diagram coordinates; for sub-component ports the
- * icon-space position is projected into the component's diagram-space frame
- * using the component's extent + rotation.
+ * placement is already in diagram coordinates; a sub-component port is
+ * placed as the renderer places it, mirror included.
  *
  * Returns `null` when the endpoint can't be resolved (missing component,
  * missing class, missing port definition).
@@ -109,10 +118,8 @@ export function endpointCentreFromLayout(
   if (ep.component === undefined) {
     const conn = layout.connectors[ep.port];
     if (!conn) return null;
-    const [[x1, y1], [x2, y2]] = conn.placement.extent;
-    const ox = conn.placement.origin?.[0] ?? 0;
-    const oy = conn.placement.origin?.[1] ?? 0;
-    return { x: ox + (x1 + x2) / 2, y: oy + (y1 + y2) / 2 };
+    const [x, y] = placementCentre(conn.placement);
+    return { x, y };
   }
 
   const comp = layout.components[ep.component];
@@ -122,69 +129,79 @@ export function endpointCentreFromLayout(
   const portDef = classDef.connectors[ep.port];
   if (!portDef) return null;
 
-  const ce = comp.placement.extent;
-  const cox = comp.placement.origin?.[0] ?? 0;
-  const coy = comp.placement.origin?.[1] ?? 0;
-  const compCx = cox + (ce[0][0] + ce[1][0]) / 2;
-  const compCy = coy + (ce[0][1] + ce[1][1]) / 2;
-  const compW = Math.abs(ce[1][0] - ce[0][0]) || 1;
-  const compH = Math.abs(ce[1][1] - ce[0][1]) || 1;
-  const compRot = ((comp.placement.rotation ?? 0) * Math.PI) / 180;
-
-  const ics = classDef.coordinateSystem;
-  const iconExtent = ics?.extent;
-  const iconP0 = iconExtent?.[0];
-  const iconP1 = iconExtent?.[1];
-  const rawIconW =
-    iconP0 !== undefined && iconP1 !== undefined
-      ? Math.abs((iconP1[0] ?? 100) - (iconP0[0] ?? -100))
-      : 200;
-  const rawIconH =
-    iconP0 !== undefined && iconP1 !== undefined
-      ? Math.abs((iconP1[1] ?? 100) - (iconP0[1] ?? -100))
-      : 200;
-  const iconW = rawIconW || 200;
-  const iconH = rawIconH || 200;
-
-  const scaleX = compW / iconW;
-  const scaleY = compH / iconH;
-
-  const pe = portDef.placement.extent;
-  const pox = portDef.placement.origin?.[0] ?? 0;
-  const poy = portDef.placement.origin?.[1] ?? 0;
-  const portIconX = pox + (pe[0][0] + pe[1][0]) / 2;
-  const portIconY = poy + (pe[0][1] + pe[1][1]) / 2;
-
-  const localX = portIconX * scaleX;
-  const localY = portIconY * scaleY;
-  const cosR = Math.cos(compRot);
-  const sinR = Math.sin(compRot);
-
-  return {
-    x: compCx + localX * cosR - localY * sinR,
-    y: compCy + localX * sinR + localY * cosR,
-  };
+  return iconToParent(
+    comp.placement,
+    classDef.coordinateSystem,
+    placementCentre(portDef.placement),
+  );
 }
+
+/** Display-only offset for a connection end; `null` leaves it where it is. */
+export type EndShift = (ep: ConnectionEndpoint) => DiagramPoint | null;
+
+const NO_SHIFT: EndShift = () => null;
 
 /**
  * Resolves the path to render for a connection.
  *
- * When `conn.waypoints` has two or more points it is returned as-is.
- * When it is empty the two endpoint centres are computed from the layout
- * and an orthogonal route is generated. Returns an empty array only when
- * both endpoints can't be resolved.
+ * Two or more `conn.waypoints` are the route; fewer get an orthogonal route
+ * between the endpoint centers. Either way each end moves by `shift`.
+ * `conn.waypoints` is never mutated, and comes back by identity when no end
+ * moves. Empty only when neither endpoint resolves.
  */
 export function resolveConnectionWaypoints(
   layout: DiagramLayout,
   conn: ConnectionLayout,
+  shift: EndShift = NO_SHIFT,
 ): Point[] {
+  const lhs = shift(conn.lhs);
+  const rhs = shift(conn.rhs);
   if (conn.waypoints.length >= 2) {
-    return conn.waypoints;
+    return shiftPathEnds(conn.waypoints, lhs, rhs);
   }
   const from = endpointCentreFromLayout(layout, conn.lhs);
   const to = endpointCentreFromLayout(layout, conn.rhs);
   if (!from || !to) {
     return conn.waypoints;
   }
-  return orthogonalRoute(from, to);
+  return orthogonalRoute(offset(from, lhs), offset(to, rhs));
+}
+
+function offset(p: DiagramPoint, d: DiagramPoint | null): DiagramPoint {
+  return d ? { x: p.x + d.x, y: p.y + d.y } : p;
+}
+
+/** Moves the ends of `path`; each neighbor follows so its segment keeps its axis. */
+function shiftPathEnds(
+  path: Point[],
+  lhs: DiagramPoint | null,
+  rhs: DiagramPoint | null,
+): Point[] {
+  if (!lhs && !rhs) return path;
+  const out = path.map(([x, y]): Point => [x, y]);
+  if (lhs) moveEnd(path, out, 0, 1, lhs);
+  if (rhs) moveEnd(path, out, path.length - 1, path.length - 2, rhs);
+  return out;
+}
+
+/** Reads axes from `path`, so two ends sharing one neighbor don't compound. */
+function moveEnd(
+  path: Point[],
+  out: Point[],
+  end: number,
+  next: number,
+  d: DiagramPoint,
+): void {
+  const p = path[end];
+  const q = path[next];
+  const pOut = out[end];
+  const qOut = out[next];
+  if (!p || !q || !pOut || !qOut) return;
+  // A two-point path has no free neighbor: its other end is fixed.
+  if (path.length > 2) {
+    if (segmentAxis(p, q) === "h") qOut[1] = q[1] + d.y;
+    else qOut[0] = q[0] + d.x;
+  }
+  pOut[0] = p[0] + d.x;
+  pOut[1] = p[1] + d.y;
 }
