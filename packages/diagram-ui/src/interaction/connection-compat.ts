@@ -27,12 +27,16 @@ import { parseKey } from "./entity-keys.js";
 export interface PortInfo {
   /** Qualified type name of the connector class. */
   typeName: string;
-  /** Effective causality: explicit prefix wins; otherwise inferred
+  /** Declared causality: explicit prefix wins; otherwise inferred
    *  from the type-name suffix (`*Input` / `*Output`) which is the
-   *  Modelica convention for the Blocks / Real-Input/Output family. */
+   *  Modelica convention for the Blocks / Real-Input/Output family. `effectiveDirection`
+   *  reverses it for a root-class end. */
   direction: "input" | "output" | "" | "unknown";
   flow: boolean;
   stream: boolean;
+  /** The end is a connector declared on the root class itself, seen from
+   *  the inside: its causality is the reverse of a component port's. */
+  standalone?: true;
 }
 
 export interface CompatibilityResult {
@@ -71,6 +75,7 @@ export function resolvePortInfo(
       direction: inferDirectionFromTypeName(typeName),
       flow: false,
       stream: false,
+      standalone: true,
     };
   }
   // Nested: walk component → class → connectors map.
@@ -115,8 +120,9 @@ function inferDirectionFromTypeName(
  *
  *   1. Self-connection is rejected (handled by the caller via
  *      `excludeKey`; not encoded here).
- *   2. If both directions are known, they must be opposite
- *      (`input ↔ output`).
+ *   2. If both effective directions are known, they must be opposite
+ *      (`input ↔ output`). A root-class connector's direction is
+ *      reversed: seen from inside, its `input` is a source.
  *   3. If both types are identical, accept regardless of direction —
  *      catches the common "both `Pin`" and "both `Flange_a`" cases.
  *   4. If types differ AND directions don't conflict, accept and let
@@ -128,14 +134,16 @@ function inferDirectionFromTypeName(
  */
 export function canConnect(from: PortInfo, to: PortInfo): CompatibilityResult {
   // Causality first: two known directional connectors with the SAME
-  // direction can never pair. This rules out `RealInput ↔ RealInput`
-  // (same type, same direction) before the type-equality test can
-  // wave it through.
-  const dirsKnown = from.direction !== "unknown" && to.direction !== "unknown";
-  const bothInput = from.direction === "input" && to.direction === "input";
-  const bothOutput = from.direction === "output" && to.direction === "output";
+  // effective direction can never pair. This rules out
+  // `RealInput ↔ RealInput` (same type, same direction) before the
+  // type-equality test can wave it through.
+  const fromDir = effectiveDirection(from);
+  const toDir = effectiveDirection(to);
+  const dirsKnown = fromDir !== "unknown" && toDir !== "unknown";
+  const bothInput = fromDir === "input" && toDir === "input";
+  const bothOutput = fromDir === "output" && toDir === "output";
   if (dirsKnown && (bothInput || bothOutput)) {
-    return { ok: false, reason: `both ${from.direction}` };
+    return { ok: false, reason: bothOutput ? "two sources" : "two sinks" };
   }
   // Same type, no direction conflict: accept. Covers acausal pairs
   // (`Pin ↔ Pin`, `Flange_a ↔ Flange_a`) and directional pairs that
@@ -168,6 +176,15 @@ export function canConnect(from: PortInfo, to: PortInfo): CompatibilityResult {
     ok: false,
     reason: `incompatible types (${shortName(from.typeName)} ↔ ${shortName(to.typeName)})`,
   };
+}
+
+/** A root-class connector's `input` drives the class's contents, so it
+ *  acts as a source (`output`) to the connection, and vice versa. */
+function effectiveDirection(port: PortInfo): PortInfo["direction"] {
+  if (port.standalone !== true) return port.direction;
+  if (port.direction === "input") return "output";
+  if (port.direction === "output") return "input";
+  return port.direction;
 }
 
 /** Last dot-segment of a qualified name. */
