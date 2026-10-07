@@ -257,6 +257,39 @@ describe("endpointCentreFromLayout", () => {
   });
 });
 
+describe("endpointCentreFromLayout on a mirrored placement", () => {
+  it("puts the port where the flipped icon draws it", () => {
+    const layout = makeLayout({
+      classes: {
+        "Test.Comp": makeClassDef({
+          p: makePortDef([
+            [-110, -10],
+            [-90, 10],
+          ]),
+        }),
+      },
+      components: {
+        c: {
+          name: "c",
+          classRef: "Test.Comp",
+          placement: {
+            extent: [
+              [10, -10],
+              [-10, 10],
+            ],
+          },
+        },
+      },
+    });
+    const centre = endpointCentreFromLayout(layout, {
+      component: "c",
+      port: "p",
+    });
+    expect(centre?.x).toBeCloseTo(10);
+    expect(centre?.y).toBeCloseTo(0);
+  });
+});
+
 describe("resolveConnectionWaypoints", () => {
   it("returns existing waypoints when two or more points are present", () => {
     const waypoints: [number, number][] = [

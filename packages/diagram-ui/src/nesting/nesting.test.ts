@@ -699,6 +699,25 @@ describe("semantic in-place nesting: parent wires", () => {
     expect(wire(el).path).toEqual(AUTHORED);
   });
 
+  it("routes an auto-routed wire to the moved port of a flipped component", async () => {
+    const layout = wiredHost([]);
+    const pid = layout.components["pid"];
+    if (!pid) throw new Error("fixture has no pid");
+    pid.placement = {
+      extent: [
+        [10, -10],
+        [-10, 10],
+      ],
+    };
+    const el = await mountWithSource(drawingUAt(40), layout);
+    await zoomTo(el, OPEN);
+    await el.updateComplete;
+    // The unmirrored box draws `u` on its left edge.
+    const end = wire(el).path.at(-1);
+    expect(end?.[0]).toBeCloseTo(-10);
+    expect(end?.[1]).toBeCloseTo(4);
+  });
+
   it("routes an auto-routed wire to the moved port too", async () => {
     const el = await mountWithSource(drawingUAt(40), wiredHost([]));
     await zoomTo(el, OPEN);

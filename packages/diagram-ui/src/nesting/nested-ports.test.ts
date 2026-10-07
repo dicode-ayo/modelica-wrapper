@@ -100,6 +100,18 @@ describe("nestedPortShift", () => {
     ).toBeNull();
   });
 
+  it("leaves a port alone where the layers agree up to float noise", () => {
+    const third: Placement = {
+      extent: [
+        [-10, -10],
+        [10 / 3, 10 / 3],
+      ],
+    };
+    expect(
+      nestedPortShift(host(third), PID_U, new Map([["pid", view(-100, 0)]])),
+    ).toBeNull();
+  });
+
   it("leaves a port alone while its component is not open", () => {
     expect(
       nestedPortShift(host(BOX), PID_U, new Map([["pid", view(-100, 40, 0)]])),

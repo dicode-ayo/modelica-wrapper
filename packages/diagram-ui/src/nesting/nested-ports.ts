@@ -3,9 +3,13 @@ import type { ConnectionEndpoint, DiagramLayout } from "@dicode/omc-client";
 import {
   applyPlacement,
   coordSystemSize,
+  iconToParent,
   placementCentre,
 } from "../base/placement-math.js";
 import { letterbox } from "./nesting-math.js";
+
+/** Parent-diagram units below which the two layers count as agreeing. */
+const AGREE_EPSILON = 1e-9;
 
 /** What an open box draws: its class's own diagram, faded in by `progress`. */
 export interface NestingView {
@@ -43,14 +47,21 @@ export function nestedPortShift(
     coordSystemSize(cls.coordinateSystem),
     placed.scale,
   );
-  const [ix, iy] = placementCentre(iconPort.placement);
   const [ox, oy] = placementCentre(ownPort.placement);
-  const dx = (fit.x + ox * fit.scaleX - ix) * placed.scale.x * view.progress;
-  const dy = (fit.y + oy * fit.scaleY - iy) * placed.scale.y * view.progress;
-  if (dx === 0 && dy === 0) return null;
-  const cos = Math.cos(placed.rotationZ);
-  const sin = Math.sin(placed.rotationZ);
-  return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+  const drawn = iconToParent(comp.placement, cls.coordinateSystem, [
+    fit.x + ox * fit.scaleX,
+    fit.y + oy * fit.scaleY,
+  ]);
+  const icon = iconToParent(
+    comp.placement,
+    cls.coordinateSystem,
+    placementCentre(iconPort.placement),
+  );
+  const dx = (drawn.x - icon.x) * view.progress;
+  const dy = (drawn.y - icon.y) * view.progress;
+  // Float noise from the letterbox scale must not read as a move.
+  if (Math.hypot(dx, dy) < AGREE_EPSILON) return null;
+  return { x: dx, y: dy };
 }
 
 /**
