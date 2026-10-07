@@ -58,10 +58,12 @@ describe("om-error-state", () => {
     it("is collapsed by default behind an aria-expanded toggle", async () => {
       const el = await mount({ heading: "Boom", detail: longDetail });
       const root = el.shadowRoot;
-      expect(root?.querySelector(".detail")).toBeNull();
       const toggle = root?.querySelector<HTMLButtonElement>("button.toggle");
       expect(toggle?.textContent?.trim()).toBe("Show details");
       expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+      const detail = root?.querySelector<HTMLElement>(".detail");
+      expect(detail?.hidden).toBe(true);
+      expect(root?.getElementById("detail")).toBe(detail);
     });
 
     it("toggle reveals and hides the full detail", async () => {
@@ -69,12 +71,38 @@ describe("om-error-state", () => {
       const root = el.shadowRoot;
       root?.querySelector<HTMLButtonElement>("button.toggle")?.click();
       await el.updateComplete;
+      expect(root?.querySelector<HTMLElement>(".detail")?.hidden).toBe(false);
       expect(root?.querySelector(".detail")?.textContent).toBe(longDetail);
       const toggle = root?.querySelector<HTMLButtonElement>("button.toggle");
       expect(toggle?.getAttribute("aria-expanded")).toBe("true");
       toggle?.click();
       await el.updateComplete;
-      expect(root?.querySelector(".detail")).toBeNull();
+      expect(root?.querySelector<HTMLElement>(".detail")?.hidden).toBe(true);
+    });
+
+    it("collapses again and resets copy status when detail changes", async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      vi.stubGlobal("navigator", { clipboard: { writeText } });
+      teardowns.push(() => vi.unstubAllGlobals());
+      const el = await mount({ heading: "Boom", detail: longDetail });
+      const root = el.shadowRoot;
+      root?.querySelector<HTMLButtonElement>("button.toggle")?.click();
+      root?.querySelector<HTMLButtonElement>("button.copy")?.click();
+      await vi.waitFor(async () => {
+        await el.updateComplete;
+        expect(root?.querySelector("button.copy")?.textContent?.trim()).toBe(
+          "Copied",
+        );
+      });
+      el.detail = `${longDetail}\nextra`;
+      await el.updateComplete;
+      expect(root?.querySelector<HTMLElement>(".detail")?.hidden).toBe(true);
+      expect(
+        root?.querySelector("button.toggle")?.getAttribute("aria-expanded"),
+      ).toBe("false");
+      expect(root?.querySelector("button.copy")?.textContent?.trim()).toBe(
+        "Copy details",
+      );
     });
 
     it("copy writes the full detail to the clipboard", async () => {
@@ -99,6 +127,15 @@ describe("om-error-state", () => {
           el.shadowRoot?.querySelector("button.copy")?.textContent?.trim(),
         ).toBe("Copy failed");
       });
+    });
+
+    it("collapses at 5 lines but not at 4", async () => {
+      const lines = (n: number): string =>
+        Array.from({ length: n }, (_, i) => `l${i}`).join("\n");
+      const four = await mount({ heading: "Boom", detail: lines(4) });
+      expect(four.shadowRoot?.querySelector("button")).toBeNull();
+      const five = await mount({ heading: "Boom", detail: lines(5) });
+      expect(five.shadowRoot?.querySelector("button.toggle")).not.toBeNull();
     });
 
     it("does not collapse a short detail", async () => {

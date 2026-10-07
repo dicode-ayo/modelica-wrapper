@@ -240,10 +240,10 @@ the same generic "OMC response shape mismatch" error `parseOutput` would.
 Both throw sites render the failure through `formatSchemaMismatch`
 ([\_shared/formatSchemaMismatch.ts](../packages/omc-client/src/_shared/formatSchemaMismatch.ts)):
 a header naming the call, then one `path: message` line per leaf issue
-(`instance.elements[2].type.elements[41].$kind: ...`), capped at 10 lines. For
+(`instance.elements[2].type.elements[41].$kind: ...`), capped at `MAX_LINES`. For
 a failed union it follows the branch that matched deepest. The text is meant
-for `<om-error-state>`'s detail block, which collapses anything over four lines
-behind a "Show details" toggle with a "Copy details" button.
+for `<om-error-state>`'s detail block, which collapses anything over
+`COLLAPSE_LINE_THRESHOLD` lines behind a "Show details" toggle with a "Copy details" button.
 
 ## Validation
 

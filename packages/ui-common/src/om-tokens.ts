@@ -80,6 +80,7 @@ export const omTokens: CSSResult = css`
     /* --- error state card --- */
     --om-error-card-max-width: 480px;
     --om-error-card-icon-size: 32px;
+    --om-error-detail-max-height: 12em;
 
     /* --- drop target affordance ---
      * Outline width the diagram canvas paints while a draggable library class

@@ -7,25 +7,34 @@ interface Leaf {
   message: string;
 }
 
+function depth(leaves: readonly Leaf[]): number {
+  return leaves.reduce((max, leaf) => Math.max(max, leaf.path.length), 0);
+}
+
 function collect(
   issues: readonly z.core.$ZodIssue[],
   prefix: PropertyKey[],
 ): Leaf[] {
   return issues.flatMap((issue) => {
     const path = [...prefix, ...issue.path];
+    const fallback = [{ path, message: issue.message }];
+    if (issue.code === "invalid_key" || issue.code === "invalid_element") {
+      const nested = collect(issue.issues, path);
+      return nested.length > 0 ? nested : fallback;
+    }
     if (issue.code !== "invalid_union" || issue.errors.length === 0) {
-      return [{ path, message: issue.message }];
+      return fallback;
     }
     // A union reports one issue list per branch; the branch that got
     // furthest into the value is the one the input was closest to matching.
-    const branches = issue.errors.map((branch) => collect(branch, path));
-    const depth = (leaves: Leaf[]): number =>
-      Math.max(0, ...leaves.map((leaf) => leaf.path.length));
-    const best = branches.reduce<Leaf[]>(
-      (acc, branch) => (depth(branch) > depth(acc) ? branch : acc),
-      [],
-    );
-    return best.length > 0 ? best : [{ path, message: issue.message }];
+    // Strict `>` keeps the earliest branch on a tie, so output is stable.
+    const best = issue.errors
+      .map((branch) => collect(branch, path))
+      .reduce<Leaf[]>(
+        (acc, branch) => (depth(branch) > depth(acc) ? branch : acc),
+        [],
+      );
+    return best.length > 0 ? best : fallback;
   });
 }
 
@@ -43,9 +52,13 @@ function renderPath(path: readonly PropertyKey[]): string {
  * surface where Zod's own JSON message is not.
  */
 export function formatSchemaMismatch(cmd: string, error: z.ZodError): string {
-  const lines = collect(error.issues, []).map(
-    (leaf) => `  ${renderPath(leaf.path) || "(root)"}: ${leaf.message}`,
-  );
+  const lines = [
+    ...new Set(
+      collect(error.issues, []).map(
+        (leaf) => `  ${renderPath(leaf.path) || "(root)"}: ${leaf.message}`,
+      ),
+    ),
+  ];
   const shown = lines.slice(0, MAX_LINES);
   const hidden = lines.length - shown.length;
   if (hidden > 0) shown.push(`  … and ${hidden} more`);

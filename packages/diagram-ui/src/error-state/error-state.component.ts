@@ -8,17 +8,13 @@
  *   - `detail`  — the backend failure text.
  *   - `hint`    — what the user can do about it.
  *
- * `subject`, `detail`, and `hint` each render only when non-empty.
- *
- * `detail` is left-aligned in a bounded, scrollable monospace block so
- * multi-line backend text (e.g. a schema-mismatch listing) stays readable.
- * Past `COLLAPSE_LINE_THRESHOLD` lines it starts collapsed behind a
- * "Show details" toggle, and a "Copy details" button puts the full text on
- * the clipboard. Heading, subject, and hint stay centred above the fold.
+ * `subject`, `detail`, and `hint` each render only when non-empty. `detail`
+ * collapses behind a toggle past `COLLAPSE_LINE_THRESHOLD` lines: a schema
+ * mismatch listing otherwise pushes the hint out of view.
  */
 
 import { LitElement, css, html, nothing, svg } from "lit";
-import type { TemplateResult } from "lit";
+import type { PropertyValues, TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
 import { omTokens } from "@dicode/ui-common";
@@ -77,7 +73,7 @@ export class OmErrorState extends LitElement {
         box-sizing: border-box;
         margin: 0;
         inline-size: 100%;
-        max-block-size: var(--om-error-detail-max-height, 12em);
+        max-block-size: var(--om-error-detail-max-height);
         overflow: auto;
         padding: var(--om-space-md);
         text-align: start;
@@ -119,11 +115,17 @@ export class OmErrorState extends LitElement {
   @property() hint = "";
 
   @state() private expanded = false;
-  @state() private copyFailed = false;
-  @state() private copied = false;
+  @state() private copyStatus: "idle" | "copied" | "failed" = "idle";
 
   private get collapsible(): boolean {
     return this.detail.split("\n").length > COLLAPSE_LINE_THRESHOLD;
+  }
+
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("detail")) {
+      this.expanded = false;
+      this.copyStatus = "idle";
+    }
   }
 
   private toggle(): void {
@@ -131,13 +133,12 @@ export class OmErrorState extends LitElement {
   }
 
   private async copy(): Promise<void> {
-    this.copied = false;
-    this.copyFailed = false;
+    this.copyStatus = "idle";
     try {
       await navigator.clipboard.writeText(this.detail);
-      this.copied = true;
+      this.copyStatus = "copied";
     } catch {
-      this.copyFailed = true;
+      this.copyStatus = "failed";
     }
   }
 
@@ -146,6 +147,12 @@ export class OmErrorState extends LitElement {
     if (!this.collapsible) {
       return html`<p class="detail">${this.detail}</p>`;
     }
+    const collapsed = !this.expanded;
+    const copyLabel = {
+      idle: "Copy details",
+      copied: "Copied",
+      failed: "Copy failed",
+    }[this.copyStatus];
     return html`
       <div class="actions">
         <button
@@ -158,20 +165,10 @@ export class OmErrorState extends LitElement {
           ${this.expanded ? "Hide details" : "Show details"}
         </button>
         <button type="button" class="copy" @click=${this.copy}>
-          ${
-            this.copyFailed
-              ? "Copy failed"
-              : this.copied
-                ? "Copied"
-                : "Copy details"
-          }
+          ${copyLabel}
         </button>
       </div>
-      ${
-        this.expanded
-          ? html`<pre class="detail" id="detail">${this.detail}</pre>`
-          : nothing
-      }
+      <pre class="detail" id="detail" ?hidden=${collapsed}>${this.detail}</pre>
     `;
   }
 
