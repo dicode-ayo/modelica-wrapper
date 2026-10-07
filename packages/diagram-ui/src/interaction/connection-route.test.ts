@@ -9,6 +9,7 @@ import type {
 import {
   endpointCentreFromLayout,
   resolveConnectionWaypoints,
+  type EndShift,
 } from "./connection-route.js";
 
 // Minimal DiagramLayout with only the fields these helpers need.
@@ -322,5 +323,102 @@ describe("resolveConnectionWaypoints", () => {
     };
     const result = resolveConnectionWaypoints(layout, conn);
     expect(result).toEqual([]);
+  });
+});
+
+describe("resolveConnectionWaypoints with shifted ends", () => {
+  const twoPorts = makeLayout({
+    connectors: {
+      a: {
+        name: "a",
+        classRef: "Test.Port",
+        placement: {
+          extent: [
+            [-5, -5],
+            [5, 5],
+          ],
+        },
+      },
+      b: {
+        name: "b",
+        classRef: "Test.Port",
+        placement: {
+          extent: [
+            [95, 45],
+            [105, 55],
+          ],
+        },
+      },
+    },
+  });
+
+  const shiftB: EndShift = (ep) => (ep.port === "b" ? { x: 0, y: 10 } : null);
+
+  function authored(
+    waypoints: ConnectionLayout["waypoints"],
+  ): ConnectionLayout {
+    return {
+      lhs: { component: undefined, port: "a" },
+      rhs: { component: undefined, port: "b" },
+      waypoints,
+    };
+  }
+
+  it("returns the authored waypoints themselves when no end moves", () => {
+    const conn = authored([
+      [0, 0],
+      [100, 50],
+    ]);
+    expect(resolveConnectionWaypoints(twoPorts, conn, () => null)).toBe(
+      conn.waypoints,
+    );
+  });
+
+  it("moves a shifted end without touching the authored waypoints", () => {
+    const conn = authored([
+      [0, 0],
+      [100, 50],
+    ]);
+    const before = structuredClone(conn.waypoints);
+    expect(resolveConnectionWaypoints(twoPorts, conn, shiftB)).toEqual([
+      [0, 0],
+      [100, 60],
+    ]);
+    expect(conn.waypoints).toEqual(before);
+  });
+
+  it("drags the neighbor along so a horizontal last segment stays horizontal", () => {
+    const conn = authored([
+      [0, 0],
+      [50, 0],
+      [50, 50],
+      [100, 50],
+    ]);
+    expect(resolveConnectionWaypoints(twoPorts, conn, shiftB)).toEqual([
+      [0, 0],
+      [50, 0],
+      [50, 60],
+      [100, 60],
+    ]);
+  });
+
+  it("drags the neighbor along so a vertical first segment stays vertical", () => {
+    const conn = authored([
+      [0, 0],
+      [0, 50],
+      [100, 50],
+    ]);
+    const shiftA: EndShift = (ep) => (ep.port === "a" ? { x: 10, y: 0 } : null);
+    expect(resolveConnectionWaypoints(twoPorts, conn, shiftA)).toEqual([
+      [10, 0],
+      [10, 50],
+      [100, 50],
+    ]);
+  });
+
+  it("routes an auto-routed connection to the shifted end", () => {
+    const path = resolveConnectionWaypoints(twoPorts, authored([]), shiftB);
+    expect(path[0]).toEqual([0, 0]);
+    expect(path.at(-1)).toEqual([100, 60]);
   });
 });

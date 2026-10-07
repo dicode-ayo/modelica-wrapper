@@ -24,6 +24,7 @@ const VIEW_ONLY: LayoutContentOptions = {
   editableShapes: false,
   lineThicknessScale: undefined,
   nestedSource: null,
+  nesting: new Map(),
 };
 
 interface Mounted {

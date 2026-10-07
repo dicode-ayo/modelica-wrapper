@@ -1,4 +1,5 @@
 import { html, nothing, type TemplateResult } from "lit";
+import { guard } from "lit/directives/guard.js";
 import { repeat } from "lit/directives/repeat.js";
 import type {
   ComponentInstance,
@@ -20,6 +21,7 @@ import {
   formatShapeKey,
 } from "../interaction/entity-keys.js";
 import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
+import { nestedPortShift, type NestingViews } from "../nesting/nested-ports.js";
 import { renderShape } from "../primitives/render-shape.js";
 
 /**
@@ -38,6 +40,8 @@ export interface LayoutContentOptions {
   lineThicknessScale: number | undefined;
   /** `null` keeps every component an icon. */
   nestedSource: NestedDiagramSource | null;
+  /** Open boxes; their wires end on the ports the box draws. */
+  nesting: NestingViews;
 }
 
 /**
@@ -48,16 +52,31 @@ export function renderLayoutContent(
   layout: DiagramLayout,
   opts: LayoutContentOptions,
 ): TemplateResult {
+  const { selectedKeys, readonly, editableShapes, lineThicknessScale } = opts;
+  // Every zoom step through a fade changes `nesting`; only the wires read it.
+  const entities = guard(
+    [
+      layout,
+      selectedKeys,
+      readonly,
+      editableShapes,
+      lineThicknessScale,
+      opts.nestedSource,
+    ],
+    () => html`
+      ${renderHostShapes(layout, opts)}
+      ${repeat(visibleComponents(layout), componentRepeatKey, ([id, comp]) =>
+        renderComponent(id, comp, layout, opts),
+      )}
+      ${repeat(
+        Object.entries(layout.connectors),
+        ([id]) => id,
+        ([id, conn]) => renderStandaloneConnector(id, conn, layout, opts),
+      )}
+    `,
+  );
   return html`
-    ${renderHostShapes(layout, opts)}
-    ${repeat(visibleComponents(layout), componentRepeatKey, ([id, comp]) =>
-      renderComponent(id, comp, layout, opts),
-    )}
-    ${repeat(
-      Object.entries(layout.connectors),
-      ([id]) => id,
-      ([id, conn]) => renderStandaloneConnector(id, conn, layout, opts),
-    )}
+    ${entities}
     ${repeat(
       layout.connections,
       (_, idx) => `conn:${idx}`,
@@ -130,7 +149,9 @@ function renderConnection(
 ): TemplateResult {
   return html`<om-connection
     .nodeId=${String(idx)}
-    .path=${resolveConnectionWaypoints(layout, conn)}
+    .path=${resolveConnectionWaypoints(layout, conn, (ep) =>
+      nestedPortShift(layout, ep, opts.nesting),
+    )}
     .smooth=${conn.smooth}
     .stroke=${conn.color ? colorToCss(conn.color) : undefined}
     .selectedKeys=${opts.selectedKeys}

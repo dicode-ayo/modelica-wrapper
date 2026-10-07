@@ -16,6 +16,11 @@ import {
 import { substitutionsContext } from "../label/substitutions-context.js";
 import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
 import { nestingProgress } from "../nesting/nesting-math.js";
+import {
+  NESTING_CHANGE,
+  type NestingChangeDetail,
+  type NestingView,
+} from "../nesting/nested-ports.js";
 import "../nesting/nested-diagram.component.js";
 import { extentToRect } from "../primitives/shape-utils.js";
 
@@ -42,7 +47,8 @@ import { extentToRect } from "../primitives/shape-utils.js";
  *     </om-component>
  *
  * With a `nestedSource`, zooming in cross-fades the icon to the class's own
- * diagram. Ports stay on the icon's placement.
+ * diagram. Ports stay on the icon's placement; the host is told what the box
+ * draws through `NESTING_CHANGE`, so its wires can meet the class's own ports.
  */
 @customElement("om-component")
 export class OmComponent extends OmShapeElement {
@@ -73,6 +79,9 @@ export class OmComponent extends OmShapeElement {
   @state() private nestingOpen = 0;
 
   @state() private openWorldPerPixel = 1;
+
+  /** Last view announced through `NESTING_CHANGE`. */
+  private announcedView: NestingView | null = null;
 
   /** Set once a fetch is issued, so the element asks once per approach. */
   private requestedClass: string | null = null;
@@ -138,6 +147,22 @@ export class OmComponent extends OmShapeElement {
     if (changed.has("substitutions")) {
       this.substitutionsProvider.setValue(this.substitutions);
     }
+    this.announceView();
+  }
+
+  private announceView(): void {
+    const layout = this.nestedLayout;
+    const progress = this.nestingOpen;
+    const view = layout && progress > 0 ? { layout, progress } : null;
+    const last = this.announcedView;
+    if (view?.layout === last?.layout && view?.progress === last?.progress) {
+      return;
+    }
+    this.announcedView = view;
+    const detail: NestingChangeDetail = { nodeId: this.nodeId, view };
+    this.dispatchEvent(
+      new CustomEvent(NESTING_CHANGE, { detail, bubbles: true }),
+    );
   }
 
   protected override onViewChanged(): void {

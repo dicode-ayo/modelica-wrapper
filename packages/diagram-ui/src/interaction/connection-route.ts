@@ -166,25 +166,78 @@ export function endpointCentreFromLayout(
   };
 }
 
+/** Display-only offset for a connection end; `null` leaves it where it is. */
+export type EndShift = (
+  ep: ConnectionEndpoint,
+) => { x: number; y: number } | null;
+
+const NO_SHIFT: EndShift = () => null;
+
 /**
  * Resolves the path to render for a connection.
  *
- * When `conn.waypoints` has two or more points it is returned as-is.
- * When it is empty the two endpoint centres are computed from the layout
- * and an orthogonal route is generated. Returns an empty array only when
- * both endpoints can't be resolved.
+ * When `conn.waypoints` has two or more points they are the route, with each
+ * end moved by `shift`; when it is empty the two endpoint centres are computed
+ * from the layout, moved, and an orthogonal route is generated. Returns an
+ * empty array only when both endpoints can't be resolved. `conn.waypoints` is
+ * never mutated, and comes back by identity when no end moves.
  */
 export function resolveConnectionWaypoints(
   layout: DiagramLayout,
   conn: ConnectionLayout,
+  shift: EndShift = NO_SHIFT,
 ): Point[] {
+  const lhs = shift(conn.lhs);
+  const rhs = shift(conn.rhs);
   if (conn.waypoints.length >= 2) {
-    return conn.waypoints;
+    return shiftPathEnds(conn.waypoints, lhs, rhs);
   }
   const from = endpointCentreFromLayout(layout, conn.lhs);
   const to = endpointCentreFromLayout(layout, conn.rhs);
   if (!from || !to) {
     return conn.waypoints;
   }
-  return orthogonalRoute(from, to);
+  return orthogonalRoute(offset(from, lhs), offset(to, rhs));
+}
+
+function offset(
+  p: { x: number; y: number },
+  d: { x: number; y: number } | null,
+): { x: number; y: number } {
+  return d ? { x: p.x + d.x, y: p.y + d.y } : p;
+}
+
+/**
+ * Moves the first and last points of `path`. An axis-aligned end segment
+ * keeps its axis: the neighbor follows along the perpendicular, so an
+ * orthogonal route stays orthogonal.
+ */
+function shiftPathEnds(
+  path: Point[],
+  lhs: { x: number; y: number } | null,
+  rhs: { x: number; y: number } | null,
+): Point[] {
+  if (!lhs && !rhs) return path;
+  const out = path.map(([x, y]): Point => [x, y]);
+  if (lhs) moveEnd(out, 0, 1, lhs);
+  if (rhs) moveEnd(out, out.length - 1, out.length - 2, rhs);
+  return out;
+}
+
+function moveEnd(
+  path: Point[],
+  end: number,
+  next: number,
+  d: { x: number; y: number },
+): void {
+  const p = path[end];
+  const q = path[next];
+  if (p === undefined || q === undefined) return;
+  // A two-point path has no free neighbor: its other end is fixed.
+  if (path.length > 2) {
+    if (p[1] === q[1]) q[1] += d.y;
+    else if (p[0] === q[0]) q[0] += d.x;
+  }
+  p[0] += d.x;
+  p[1] += d.y;
 }

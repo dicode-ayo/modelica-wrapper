@@ -6,9 +6,16 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { Graphics, type Container } from "pixi.js";
-import type { ClassDef, DiagramLayout, Placement } from "@dicode/omc-client";
+import type {
+  ClassDef,
+  DiagramLayout,
+  Placement,
+  Point,
+  PortDef,
+} from "@dicode/omc-client";
 
 import type { OmComponent } from "../component/component.component.js";
+import type { OmConnection } from "../connection/connection.component.js";
 import type { OmLayerGroup } from "../base/layer-group.component.js";
 import type { OmGraphicalLayout } from "../graphical-layout/graphical-layout.component.js";
 import { entityKeyForNode } from "../interaction/node-keys.js";
@@ -559,5 +566,145 @@ describe("semantic in-place nesting: a changed class", () => {
 
     expect(source).toHaveBeenLastCalledWith("P.Gain");
     expect(nested(el)?.label).toBe("P.Gain");
+  });
+});
+
+describe("semantic in-place nesting: parent wires", () => {
+  const PORT_U: PortDef = {
+    name: "u",
+    typeName: "P.RealInput",
+    placement: {
+      extent: [
+        [-110, -10],
+        [-90, 10],
+      ],
+    },
+    iconLayers: [],
+    from: "P.LimPID",
+  };
+
+  /** `src` at (-50, 0) wired to `pid.u`, which the icon puts at (-10, 0). */
+  function wiredHost(waypoints: Point[]): DiagramLayout {
+    const layout = hostLayout(
+      blockClass("P.LimPID", { connectors: { u: PORT_U } }),
+    );
+    return {
+      ...layout,
+      classes: { ...layout.classes, "P.RealInput": blockClass("P.RealInput") },
+      connectors: {
+        src: {
+          name: "src",
+          classRef: "P.RealInput",
+          placement: {
+            extent: [
+              [-52, -2],
+              [-48, 2],
+            ],
+          },
+        },
+      },
+      connections: [
+        {
+          lhs: { component: undefined, port: "src" },
+          rhs: { component: "pid", port: "u" },
+          waypoints,
+        },
+      ],
+    };
+  }
+
+  /** LimPID's own diagram, drawing `u` at `(-100, y)`. */
+  function drawingUAt(y: number): NestedDiagramSource {
+    return () =>
+      Promise.resolve({
+        ...limPidDiagram(),
+        connectors: {
+          u: {
+            name: "u",
+            classRef: "P.RealInput",
+            placement: {
+              extent: [
+                [-110, y - 10],
+                [-90, y + 10],
+              ],
+            },
+          },
+        },
+      });
+  }
+
+  function wire(el: OmGraphicalLayout): OmConnection {
+    const found = el.shadowRoot?.querySelector("om-connection");
+    if (!found) throw new Error("no om-connection");
+    return found;
+  }
+
+  const AUTHORED: Point[] = [
+    [-50, 0],
+    [-10, 0],
+  ];
+
+  it("meets the port where the open box draws it", async () => {
+    const el = await mountWithSource(drawingUAt(40), wiredHost(AUTHORED));
+    await zoomTo(el, OPEN);
+    await el.updateComplete;
+    const end = wire(el).path.at(-1);
+    expect(end?.[0]).toBeCloseTo(-10);
+    expect(end?.[1]).toBeCloseTo(4);
+    expect(wire(el).path[0]).toEqual([-50, 0]);
+  });
+
+  it("moves the end as far as the box has faded in", async () => {
+    const el = await mountWithSource(drawingUAt(40), wiredHost(AUTHORED));
+    await zoomTo(el, OPEN);
+    await zoomTo(el, MID);
+    await el.updateComplete;
+    expect(wire(el).path.at(-1)?.[1]).toBeCloseTo(2);
+  });
+
+  it("leaves a port both layers agree on exactly as it was", async () => {
+    const layout = wiredHost(AUTHORED);
+    const el = await mountWithSource(drawingUAt(0), layout);
+    await zoomTo(el, OPEN);
+    await el.updateComplete;
+    expect(nested(el)).not.toBeNull();
+    expect(wire(el).path).toBe(layout.connections[0]?.waypoints);
+  });
+
+  it("leaves the authored waypoints byte-identical across an open and a close", async () => {
+    const layout = wiredHost(AUTHORED);
+    const before = JSON.stringify(layout.connections);
+    const el = await mountWithSource(drawingUAt(40), layout);
+    await zoomTo(el, OPEN);
+    await el.updateComplete;
+    expect(JSON.stringify(el.layout?.connections)).toBe(before);
+    await zoomTo(el, CLOSED);
+    await el.updateComplete;
+    expect(JSON.stringify(el.layout?.connections)).toBe(before);
+    expect(wire(el).path).toEqual(AUTHORED);
+  });
+
+  it("forgets a box removed while open, so its re-added component starts closed", async () => {
+    const layout = wiredHost(AUTHORED);
+    const el = await mountWithSource(drawingUAt(40), layout);
+    await zoomTo(el, OPEN);
+    const { pid: _removed, ...rest } = layout.components;
+    el.layout = { ...layout, components: rest, connections: [] };
+    await el.updateComplete;
+    scene(el).zoom = CLOSED;
+    await scene(el).updateComplete;
+    el.layout = layout;
+    await el.updateComplete;
+    await settle(el);
+    expect(wire(el).path).toEqual(AUTHORED);
+  });
+
+  it("routes an auto-routed wire to the moved port too", async () => {
+    const el = await mountWithSource(drawingUAt(40), wiredHost([]));
+    await zoomTo(el, OPEN);
+    await el.updateComplete;
+    const end = wire(el).path.at(-1);
+    expect(end?.[0]).toBeCloseTo(-10);
+    expect(end?.[1]).toBeCloseTo(4);
   });
 });
