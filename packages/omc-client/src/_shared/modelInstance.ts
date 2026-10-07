@@ -43,6 +43,8 @@
 
 import { z } from "zod";
 
+import { formatSchemaMismatch } from "./formatSchemaMismatch.js";
+
 export const SourceLocationSchema = z
   .object({
     filename: z.string(),
@@ -598,7 +600,5 @@ export function parseModelInstanceOutput<T extends { instance: unknown }>(
     (issue) => issue.path.join(".") === "instance.name",
   );
   if (missingName) throw new ModelInstanceNotFullyLoadedError(className);
-  throw new Error(
-    `OMC response shape mismatch for ${cmd}: ${result.error.message}`,
-  );
+  throw new Error(formatSchemaMismatch(cmd, result.error));
 }
