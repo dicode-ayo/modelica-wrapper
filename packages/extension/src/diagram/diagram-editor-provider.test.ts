@@ -436,6 +436,69 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
     expect(posted.map((m) => m.type)).toEqual(["init"]);
   });
 
+  it("retries a missing class when its enclosing package is announced", async () => {
+    const { panel, webview } = makePanel();
+    let loaded = false;
+    const { client } = makeClient({
+      getModelInstance: (typeName) =>
+        loaded
+          ? Promise.resolve({ instance: INSTANCE })
+          : Promise.reject(new ModelInstanceNotFoundError(typeName)),
+    });
+    const invalidation = new ClassInvalidationRegistry();
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      () => Promise.resolve(client),
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
+      "diagram",
+      undefined,
+      invalidation,
+    );
+    await flush();
+    expect(webview.html).toContain("Class not found");
+
+    loaded = true;
+    invalidation.classChanged("ResistorDemo");
+    await flush();
+    expect(webview.html).toContain("om-webview-root");
+  });
+
+  it("retries a missing class when the class set changed while its fetch was in flight", async () => {
+    const { panel, webview, posted, fireReady } = makePanel();
+    let calls = 0;
+    let releaseFirst: () => void = () => {};
+    const { client } = makeClient({
+      getModelInstance: (typeName) => {
+        calls += 1;
+        if (calls > 1) return Promise.resolve({ instance: INSTANCE });
+        return new Promise((_resolve, reject) => {
+          releaseFirst = () => reject(new ModelInstanceNotFoundError(typeName));
+        });
+      },
+    });
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      () => Promise.resolve(client),
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
+      "diagram",
+    );
+    await flush();
+    DiagramEditorProvider.retryMissingClasses();
+    releaseFirst();
+    await flush();
+
+    expect(calls).toBe(2);
+    expect(webview.html).toContain("om-webview-root");
+    fireReady();
+    expect(posted.map((m) => m.type)).toEqual(["init"]);
+  });
+
   it("evaluates readOnly after the layout fetch resolves the class", async () => {
     const { panel, posted, fireReady } = makePanel();
     // Read-only becomes visible only once the fetch has resolved the class: an

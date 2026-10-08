@@ -15,12 +15,13 @@ import {
   withErrorBuffer,
 } from "@dicode/omc-client";
 
-import { assertUnreachable } from "@dicode/modelica-lang-core";
+import { assertUnreachable, enclosingScope } from "@dicode/modelica-lang-core";
 
 import { showInRepl } from "../commands/repl.js";
 import { resolveGroupImages } from "../documentation/documentation-resources.js";
 import { pathExists } from "../fs-util.js";
 import { omcRangeToVscodeRange } from "../language/position.js";
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import {
@@ -240,6 +241,13 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     DiagramEditorProvider.sessions.delete(session);
   }
 
+  /** Re-fetch every open editor's class that OMC didn't have when it opened. */
+  static retryMissingClasses(): void {
+    for (const session of DiagramEditorProvider.sessions) {
+      session.retryIfMissing(null);
+    }
+  }
+
   /** Tell every open editor whether the shared clipboard holds anything. */
   static broadcastClipboard(): void {
     const hasClipboard = !diagramClipboard.isEmpty;
@@ -268,7 +276,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 interface EditorSession {
   className(): string | undefined;
   send(msg: ExtensionToWebview): void;
+  /** Re-fetch a class OMC didn't have, if `announced` (`null`: any class) could have added it. */
+  retryIfMissing(announced: string | null): void;
   inputFocused: boolean;
+}
+
+/** Whether a change announced for `announced` (`null`: any class) can reach `className`. */
+function announces(announced: string | null, className: string): boolean {
+  if (announced === null) return true;
+  for (let scope = className; scope !== ""; scope = enclosingScope(scope)) {
+    if (scope === announced) return true;
+  }
+  return false;
 }
 
 /**
@@ -301,24 +320,36 @@ export function resolveDiagramEditor(
   let gate = createReadyGate(webview);
   let controller: DiagramEditController | undefined;
   let resolvedClassName: string | undefined;
-  let missingClassName: string | undefined;
+  let disposed = false;
+  // The class OMC didn't have, and whether the class set changed while the
+  // fetch that found it missing was still in flight.
+  let missing: { className: string; changed: boolean } | undefined;
+  let fetching: { className: string; changed: boolean } | undefined;
+
+  const retryIfMissing = (announced: string | null): void => {
+    const target = missing ?? fetching;
+    if (target === undefined || !announces(announced, target.className)) {
+      return;
+    }
+    if (target === fetching) {
+      target.changed = true;
+      return;
+    }
+    missing = undefined;
+    start(target.className);
+  };
   const session: EditorSession = {
     className: () => resolvedClassName,
-    send: (msg) => gate.send(msg),
+    send: (msg) => {
+      if (missing === undefined) gate.send(msg);
+    },
+    retryIfMissing,
     inputFocused: false,
   };
   DiagramEditorProvider.addSession(session);
 
   // Before `init` the webview holds no nested diagram to drop.
   const nestedStale = (className: string | null): void => {
-    if (missingClassName !== undefined) {
-      if (className === null || className === missingClassName) {
-        const retry = missingClassName;
-        missingClassName = undefined;
-        start(retry);
-      }
-      return;
-    }
     if (controller !== undefined) {
       gate.send({ type: "nestedDiagramStale", className });
     }
@@ -326,9 +357,18 @@ export function resolveDiagramEditor(
   const invalidationSub = vscode.Disposable.from(
     ...(invalidation
       ? [
-          invalidation.register(nestedStale),
-          invalidation.registerAllClassesChanged(() => nestedStale(null)),
-          invalidation.registerSessionReplaced(() => nestedStale(null)),
+          invalidation.register((className) => {
+            nestedStale(className);
+            retryIfMissing(className);
+          }),
+          invalidation.registerAllClassesChanged(() => {
+            nestedStale(null);
+            retryIfMissing(null);
+          }),
+          invalidation.registerSessionReplaced(() => {
+            nestedStale(null);
+            retryIfMissing(null);
+          }),
         ]
       : []),
   );
@@ -363,6 +403,7 @@ export function resolveDiagramEditor(
     else DiagramEditorProvider.clearActive(session);
   });
   webviewPanel.onDidDispose(() => {
+    disposed = true;
     sub.dispose();
     viewStateSub.dispose();
     invalidationSub.dispose();
@@ -373,7 +414,10 @@ export function resolveDiagramEditor(
 
   const start = (className: string): void => {
     resolvedClassName = className;
+    gate = createReadyGate(webview);
     webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
+    const attempt = { className, changed: false };
+    fetching = attempt;
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
@@ -419,14 +463,18 @@ export function resolveDiagramEditor(
           hasClipboard: !diagramClipboard.isEmpty,
         });
       } catch (err) {
+        if (disposed) return;
         // A restored tab can name a class OMC doesn't have (yet): one never
         // saved, or one whose package loads after the tab. The tab retries
         // when the class set changes, so the page holds no bundle and the
         // session names no class until then.
         if (err instanceof ModelInstanceNotFoundError) {
+          if (attempt.changed) {
+            start(className);
+            return;
+          }
           resolvedClassName = undefined;
-          missingClassName = className;
-          gate = createReadyGate(webview);
+          missing = attempt;
           webview.html = renderPlaceholderPage({
             cspSource: webview.cspSource,
             title: "Class not found",
@@ -435,12 +483,14 @@ export function resolveDiagramEditor(
           log.info("diagramEditor", err.message);
           return;
         }
-        const detail = (err as Error).message;
+        const detail = errorDetail(err);
         gate.send({ type: "renderError", className, mode, detail });
         log.warn(
           "diagramEditor",
           `Failed to render ${mode} for ${className}: ${detail}`,
         );
+      } finally {
+        if (fetching === attempt) fetching = undefined;
       }
     })();
     if (webviewPanel.active) DiagramEditorProvider.setActive(session);
