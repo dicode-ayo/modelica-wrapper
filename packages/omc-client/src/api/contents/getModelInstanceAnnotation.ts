@@ -30,7 +30,6 @@ import {
   parseModelInstanceOutput,
   type ModelInstanceAnnotation,
 } from "../../_shared/modelInstance.js";
-
 import { modelInstanceJson } from "../../_shared/modelInstanceReply.js";
 
 export const GetModelInstanceAnnotationInputSchema = TypeNameInput.extend({

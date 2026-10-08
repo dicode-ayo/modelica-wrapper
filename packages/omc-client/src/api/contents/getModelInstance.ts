@@ -32,7 +32,6 @@ import {
   parseModelInstanceOutput,
   type ModelInstance,
 } from "../../_shared/modelInstance.js";
-
 import { modelInstanceJson } from "../../_shared/modelInstanceReply.js";
 
 export const GetModelInstanceInputSchema = TypeNameInput.extend({

@@ -1,9 +1,9 @@
+import { existClass } from "../api/browsing/existClass.js";
+import { expectString, isNull, parse } from "../parse.js";
+
 import type { CallContext } from "./callContext.js";
 import { ModelInstanceNotFoundError } from "./modelInstance.js";
-import { failureReason, NO_REASON } from "./parseOutput.js";
-import { OmcDiagnosticError } from "../error-buffer.js";
-import { expectString, parse } from "../parse.js";
-import { existClass } from "../api/browsing/existClass.js";
+import { readFailure } from "./parseOutput.js";
 
 /**
  * Unwraps the Modelica string literal around a `getModelInstance`/
@@ -21,9 +21,9 @@ export async function modelInstanceJson(
   className: string,
 ): Promise<string> {
   const value = parse(raw);
-  if (value.kind !== "null") return expectString(value);
-  const reason = await failureReason(ctx);
+  if (!isNull(value)) return expectString(value);
+  const failure = await readFailure(ctx, fnName);
   const { exists } = await existClass(ctx, { typeName: className });
   if (!exists) throw new ModelInstanceNotFoundError(className);
-  throw new OmcDiagnosticError(`${fnName}: ${reason ?? NO_REASON}`);
+  throw failure;
 }
