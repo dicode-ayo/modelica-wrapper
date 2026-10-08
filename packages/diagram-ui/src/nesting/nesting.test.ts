@@ -422,6 +422,34 @@ describe("semantic in-place nesting", () => {
     expect(source).toHaveBeenCalledTimes(2);
     expect(nested(el)?.container?.alpha).toBe(1);
   });
+
+  it("fetches a second-keyed instance by its class name, not its catalog key", async () => {
+    const base = hostLayout();
+    const layout: DiagramLayout = {
+      ...base,
+      classes: {
+        ...base.classes,
+        "P.Gain#2": blockClass("P.Gain", { restriction: "model" }),
+      },
+      components: {
+        ...base.components,
+        pid: {
+          name: "pid",
+          classRef: "P.Gain#2",
+          placement: BOX,
+          openable: true,
+        },
+      },
+    };
+    const source = vi.fn<NestedDiagramSource>((className) =>
+      Promise.resolve({ ...limPidDiagram(), className }),
+    );
+    const el = await mountWithSource(source, layout);
+    await zoomTo(el, OPEN);
+    expect(source).toHaveBeenCalledWith("P.Gain");
+    expect(source).not.toHaveBeenCalledWith("P.Gain#2");
+    expect(nested(el)?.label).toBe("P.Gain");
+  });
 });
 
 describe("semantic in-place nesting: a changed class", () => {
@@ -561,7 +589,7 @@ describe("semantic in-place nesting: a changed class", () => {
     const el = await mountWithSource(source);
     await zoomTo(el, OPEN);
 
-    component(el, "pid").classRef = "P.Gain";
+    component(el, "pid").nestedClass = "P.Gain";
     await settle(el);
 
     expect(source).toHaveBeenLastCalledWith("P.Gain");
@@ -659,6 +687,25 @@ describe("semantic in-place nesting: parent wires", () => {
     await zoomTo(el, CLOSED);
     await el.updateComplete;
     expect(wire(el).path).toEqual(AUTHORED);
+  });
+
+  it("meets the port of a box whose class is catalogued under a second key", async () => {
+    const base = wiredHost(AUTHORED);
+    const { "P.LimPID": limPid, ...others } = base.classes;
+    const pid = base.components["pid"];
+    if (!limPid || !pid) throw new Error("fixture has no pid");
+    const layout: DiagramLayout = {
+      ...base,
+      classes: { ...others, "P.LimPID#2": limPid },
+      components: {
+        ...base.components,
+        pid: { ...pid, classRef: "P.LimPID#2" },
+      },
+    };
+    const el = await mountWithSource(drawingUAt(40), layout);
+    await zoomTo(el, OPEN);
+    await el.updateComplete;
+    expect(wire(el).path.at(-1)?.[1]).toBeCloseTo(4);
   });
 
   it("moves the end as far as the box has faded in", async () => {
