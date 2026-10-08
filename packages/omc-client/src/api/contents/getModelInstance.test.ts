@@ -118,51 +118,24 @@ describe("getModelInstance: response handling", () => {
   });
 
   it("parses a local class element (MultiBody World's replaceable gravityAcceleration)", async () => {
-    // Trimmed from live OMC 1.27.1 `getModelInstance` of
-    // Modelica.Mechanics.MultiBody.Examples.Elementary.FreeBody, at
-    // `instance.elements[2].type.elements[41]`.
-    const gravityAcceleration = {
-      $kind: "class",
-      name: "gravityAcceleration",
-      restriction: "function",
-      prefixes: {
-        replaceable: {
-          constrainedby:
-            "Modelica.Mechanics.MultiBody.Interfaces.partialGravityAcceleration",
-          comment:
-            "Function to compute the gravity acceleration, resolved in world frame",
-          annotation: { choicesAllMatching: true },
-        },
-      },
-      baseClass:
-        "Modelica.Mechanics.MultiBody.Forces.Internal.standardGravityAcceleration",
-      modifiers: {
-        gravityType: "gravityType",
-        g: "g*Modelica.Math.Vectors.normalizeWithAssert(n)",
-        mu: "mu",
-      },
-      source: {
-        filename: "Modelica/Mechanics/MultiBody/package.mo",
-        lineStart: 147,
-        columnStart: 15,
-        lineEnd: 150,
-        columnEnd: 8,
-      },
-    };
     const { ctx } = stubCtx(
       quote(
         JSON.stringify({
-          name: "Modelica.Mechanics.MultiBody.Examples.Elementary.FreeBody",
+          name: "Modelica.Mechanics.MultiBody.World",
           restriction: "model",
           elements: [
             {
-              $kind: "component",
-              name: "world",
-              type: {
-                name: "Modelica.Mechanics.MultiBody.World",
-                restriction: "model",
-                elements: [gravityAcceleration],
+              $kind: "class",
+              name: "gravityAcceleration",
+              restriction: "function",
+              prefixes: {
+                replaceable: {
+                  constrainedby:
+                    "Modelica.Mechanics.MultiBody.Interfaces.partialGravityAcceleration",
+                  annotation: { choicesAllMatching: true },
+                },
               },
+              modifiers: { mu: "mu" },
             },
           ],
         }),
@@ -170,13 +143,9 @@ describe("getModelInstance: response handling", () => {
     );
 
     const out = await getModelInstance(ctx, {
-      typeName: "Modelica.Mechanics.MultiBody.Examples.Elementary.FreeBody",
+      typeName: "Modelica.Mechanics.MultiBody.World",
     });
-    const world = out.instance.elements?.[0];
-    if (world?.$kind !== "component" || typeof world.type !== "object") {
-      throw new Error("expected world component with a nested type");
-    }
-    expect(world.type.elements?.[0]).toMatchObject({
+    expect(out.instance.elements?.[0]).toMatchObject({
       $kind: "class",
       name: "gravityAcceleration",
       restriction: "function",

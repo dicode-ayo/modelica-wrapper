@@ -571,10 +571,8 @@ export const ClassElementSchema =
   ClassElementBranch as unknown as z.ZodType<ClassElement>;
 
 /**
- * Strict on `$kind`: an element kind OMC adds later fails the parse with its
- * path named, rather than vanishing from the tree. `ElementNode` stays a
- * closed union so `switch ($kind)` narrows; a catch-all branch typed
- * `$kind: string` would break that narrowing for every consumer.
+ * Strict on `$kind`: an unknown element kind fails the parse with its path
+ * named. `ElementNode` stays a closed union so `switch ($kind)` narrows.
  */
 const ElementLazy = z.lazy(() =>
   z.discriminatedUnion("$kind", [

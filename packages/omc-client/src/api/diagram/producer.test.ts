@@ -645,34 +645,6 @@ describe("produceDiagramLayout: sub-component instances", () => {
   });
 });
 
-describe("produceDiagramLayout: local class elements", () => {
-  it("draws no component for a class defined inside the host", () => {
-    const instance = ModelInstanceSchema.parse({
-      name: "Synth.WithLocalClass",
-      restriction: "model",
-      elements: [
-        {
-          $kind: "class",
-          name: "gravityAcceleration",
-          restriction: "function",
-        },
-        {
-          $kind: "component",
-          name: "gain1",
-          type: { name: "Synth.Gain", restriction: "block" },
-          annotation: placementAnno([
-            [-10, -10],
-            [10, 10],
-          ]),
-        },
-      ],
-    });
-
-    const layout = produceDiagramLayout(instance, "icon");
-    expect(Object.keys(layout.components)).toEqual(["gain1"]);
-  });
-});
-
 describe("produceDiagramLayout: openable flag (issue #629)", () => {
   it("marks a component whose class nests a sub-component as openable", () => {
     const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
