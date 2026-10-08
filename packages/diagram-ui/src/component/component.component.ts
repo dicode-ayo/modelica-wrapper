@@ -40,7 +40,7 @@ import { extentToRect } from "../primitives/shape-utils.js";
  *     <om-component
  *       nodeId="R1"
  *       .nestedClass=${classNameOf(layout, componentInstance.classRef)}
- *       .nestedSource=${source}
+ *       .nestedSource=${componentInstance.openable ? source : null}
  *       .placement=${componentInstance.placement}
  *       .layers=${cls?.iconLayers ?? []}
  *       .coordinateSystem=${cls?.coordinateSystem}>

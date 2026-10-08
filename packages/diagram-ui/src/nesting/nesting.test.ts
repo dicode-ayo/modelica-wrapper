@@ -429,7 +429,7 @@ describe("semantic in-place nesting", () => {
       ...base,
       classes: {
         ...base.classes,
-        "P.Gain#2": blockClass("P.Gain", { restriction: "model" }),
+        "P.Gain#2": blockClass("P.Gain"),
       },
       components: {
         ...base.components,
@@ -690,7 +690,7 @@ describe("semantic in-place nesting: parent wires", () => {
     expect(wire(el).path).toEqual(AUTHORED);
   });
 
-  it("meets the port of a box whose class is catalogued under a second key", async () => {
+  it("meets the port of a box whose class is cataloged under a second key", async () => {
     const base = wiredHost(AUTHORED);
     const { "P.LimPID": limPid, ...others } = base.classes;
     const pid = base.components["pid"];
