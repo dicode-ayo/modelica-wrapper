@@ -13,7 +13,6 @@ import {
 } from "@dicode/omc-client";
 import { LruCache } from "@dicode/diagram-ui/lru-cache";
 
-import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 
 import { fetchDiagramLayout } from "./open-diagram.js";
@@ -95,13 +94,9 @@ export class NestedDiagramCache {
       try {
         layout = await this.fetch(this.client, className);
       } catch (err) {
-        // The webview keeps the box an icon and says nothing, so this line is
-        // the only trace of why it didn't open. Logged here, where concurrent
-        // requests share the fetch, so one failure writes one line.
-        log.debug(
-          "nestedDiagram",
-          `fetch failed for ${className}: ${errorDetail(err)}`,
-        );
+        // Logged here, where concurrent requests share the fetch, so one
+        // failure writes one line.
+        log.debug("nestedDiagram", `fetch failed for ${className}`, err);
         throw err;
       } finally {
         this.inFlight.delete(changed);

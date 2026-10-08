@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { DiagramLayout, OmcClient } from "@dicode/omc-client";
 
 import { ClassInvalidationRegistry } from "../invalidation.js";
@@ -12,6 +12,10 @@ import {
 function layout(className: string): DiagramLayout {
   return { kind: "diagram", className } as unknown as DiagramLayout;
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("NestedDiagramCache", () => {
   it("fetches a class once and serves the cached layout on the next get", async () => {
@@ -70,7 +74,7 @@ describe("NestedDiagramCache", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("writes one debug line naming the class and the error for a fetch two gets shared", async () => {
+  it("logs one debug line per failed fetch, however many gets share it", async () => {
     const debug = vi.spyOn(log, "debug").mockImplementation(() => {});
     let rejectFetch: (err: Error) => void = () => {};
     const fetch = vi.fn(
@@ -80,16 +84,20 @@ describe("NestedDiagramCache", () => {
         }),
     );
     const cache = new NestedDiagramCache({} as OmcClient, fetch);
+    const failure = new Error("OMC unavailable");
 
-    const first = cache.get("A.B");
-    const second = cache.get("A.B");
-    rejectFetch(new Error("OMC unavailable"));
+    const gets = [cache.get("A.B"), cache.get("A.B")];
+    rejectFetch(failure);
 
-    await expect(first).rejects.toThrow("OMC unavailable");
-    await expect(second).rejects.toThrow("OMC unavailable");
+    await Promise.all(
+      gets.map((get) => expect(get).rejects.toThrow("OMC unavailable")),
+    );
     expect(debug).toHaveBeenCalledOnce();
-    expect(debug.mock.calls[0]?.[1]).toMatch(/A\.B.*OMC unavailable/);
-    debug.mockRestore();
+    expect(debug).toHaveBeenCalledWith(
+      "nestedDiagram",
+      expect.stringContaining("A.B"),
+      failure,
+    );
   });
 
   it("evicts the least-recently-used class once past capacity", async () => {
