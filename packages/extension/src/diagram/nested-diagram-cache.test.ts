@@ -2,6 +2,7 @@ import { describe, expect, it, vi, type Mock } from "vitest";
 import type { DiagramLayout, OmcClient } from "@dicode/omc-client";
 
 import { ClassInvalidationRegistry } from "../invalidation.js";
+import { log } from "../logger.js";
 import {
   evictNestedDiagramsOnChange,
   NestedDiagramCache,
@@ -67,6 +68,28 @@ describe("NestedDiagramCache", () => {
     await expect(cache.get("A.B")).rejects.toThrow("OMC unavailable");
     await expect(cache.get("A.B")).resolves.toEqual(layout("A.B"));
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("writes one debug line naming the class and the error for a fetch two gets shared", async () => {
+    const debug = vi.spyOn(log, "debug").mockImplementation(() => {});
+    let rejectFetch: (err: Error) => void = () => {};
+    const fetch = vi.fn(
+      () =>
+        new Promise<DiagramLayout>((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    );
+    const cache = new NestedDiagramCache({} as OmcClient, fetch);
+
+    const first = cache.get("A.B");
+    const second = cache.get("A.B");
+    rejectFetch(new Error("OMC unavailable"));
+
+    await expect(first).rejects.toThrow("OMC unavailable");
+    await expect(second).rejects.toThrow("OMC unavailable");
+    expect(debug).toHaveBeenCalledOnce();
+    expect(debug.mock.calls[0]?.[1]).toMatch(/A\.B.*OMC unavailable/);
+    debug.mockRestore();
   });
 
   it("evicts the least-recently-used class once past capacity", async () => {

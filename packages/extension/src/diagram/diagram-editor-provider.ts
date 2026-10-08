@@ -20,7 +20,6 @@ import { showInRepl } from "../commands/repl.js";
 import { resolveGroupImages } from "../documentation/documentation-resources.js";
 import { pathExists } from "../fs-util.js";
 import { omcRangeToVscodeRange } from "../language/position.js";
-import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import {
@@ -1199,12 +1198,12 @@ export class DiagramEditController {
       const layout = await nestedDiagramCache(client).get(className);
       gate.send({ type: "nestedDiagramResult", requestId, className, layout });
     } catch (err) {
-      const error = errorDetail(err);
-      log.debug(
-        "diagramEditor",
-        `nested diagram fetch failed for ${className}: ${error}`,
-      );
-      gate.send({ type: "nestedDiagramResult", requestId, className, error });
+      gate.send({
+        type: "nestedDiagramResult",
+        requestId,
+        className,
+        error: (err as Error).message,
+      });
     }
   }
 

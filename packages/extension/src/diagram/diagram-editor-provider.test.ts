@@ -22,7 +22,6 @@ import type {
 } from "@dicode/omc-client";
 
 import * as vscodeMock from "../../test-support/vscode-mock.js";
-import { log } from "../logger.js";
 import {
   appliedEdits,
   executedCommands,
@@ -2573,8 +2572,7 @@ describe("DiagramEditController: nestedDiagramRequest", () => {
     expect(result.error).toBeUndefined();
   });
 
-  it("reports a failed fetch as `error` rather than throwing, and logs it at debug level", async () => {
-    const debug = vi.spyOn(log, "debug").mockImplementation(() => {});
+  it("reports a failed fetch as `error` rather than throwing", async () => {
     const { client } = makeEditClient({ getModelInstanceThrows: true });
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
@@ -2596,10 +2594,6 @@ describe("DiagramEditController: nestedDiagramRequest", () => {
     expect(result.requestId).toBe("nested-2");
     expect(result.layout).toBeUndefined();
     expect(result.error).toContain("getModelInstance failed");
-    expect(debug).toHaveBeenCalledOnce();
-    expect(debug.mock.calls[0]?.[1]).toMatch(
-      /Modelica\.Blocks\.Math\.Gain.*getModelInstance failed/,
-    );
   });
 });
 
