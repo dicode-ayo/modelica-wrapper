@@ -20,6 +20,7 @@ import type {
   OmcClient,
   ParameterModel,
 } from "@dicode/omc-client";
+import { ModelInstanceNotFoundError } from "@dicode/omc-client";
 
 import * as vscodeMock from "../../test-support/vscode-mock.js";
 import {
@@ -391,6 +392,31 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       mode: "diagram",
       detail: "OMC down",
     });
+  });
+
+  it("shows a class-not-found page, not the render error card, when a restored tab's class no longer exists", async () => {
+    const { panel, webview, posted, fireReady } = makePanel();
+    const { client } = makeClient({
+      getModelInstance: (typeName) =>
+        Promise.reject(new ModelInstanceNotFoundError(typeName)),
+    });
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
+      "diagram",
+    );
+
+    await flush();
+    fireReady();
+    expect(posted).toEqual([]);
+    expect(webview.html).not.toContain("om-webview-root");
+    expect(webview.html).toContain("ResistorDemo.NewModel");
+    expect(webview.html).toContain("no longer exists");
   });
 
   it("evaluates readOnly after the layout fetch resolves the class", async () => {

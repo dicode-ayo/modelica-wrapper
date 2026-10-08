@@ -10,6 +10,7 @@ import type {
 } from "@dicode/omc-client";
 import {
   looksLikeError,
+  ModelInstanceNotFoundError,
   produceSimulationModel,
   withErrorBuffer,
 } from "@dicode/omc-client";
@@ -409,6 +410,17 @@ export function resolveDiagramEditor(
           hasClipboard: !diagramClipboard.isEmpty,
         });
       } catch (err) {
+        // A restored tab outlives a class that was never saved; that is a
+        // state to explain, not a render failure.
+        if (err instanceof ModelInstanceNotFoundError) {
+          webview.html = renderPlaceholderPage({
+            cspSource: webview.cspSource,
+            title: "Class not found",
+            message: `${className} no longer exists or isn't loaded. A class created in an earlier session and never saved is gone after a restart: close this tab, or load the package that defines it and reopen it.`,
+          });
+          log.info("diagramEditor", err.message);
+          return;
+        }
         const detail = (err as Error).message;
         gate.send({ type: "renderError", className, mode, detail });
         log.warn(
