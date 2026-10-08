@@ -235,34 +235,32 @@ function buildField(
 }
 
 /**
- * A replaceable local class, e.g. MultiBody `World.gravityAcceleration`, shown
- * read-only with its current class: the form has no redeclare widget. Its
- * `Dialog` sits on the constraining clause's annotation, not on the class.
+ * A replaceable local class, e.g. MultiBody `World.gravityAcceleration`, or a
+ * redeclaration of one, shown read-only with its current class: the form has
+ * no redeclare widget. A constrained replaceable carries its description and
+ * `Dialog` on the constraining clause rather than on the class.
  */
 function replaceableClassField(
   el: ClassElement,
   inheritedFrom: string | undefined,
 ): ParameterField | undefined {
-  const replaceable = el.prefixes?.replaceable;
-  if (replaceable === undefined || replaceable === false) return undefined;
-  const clauseAnnotation =
-    typeof replaceable === "object" && isPlainObject(replaceable.annotation)
-      ? (replaceable.annotation as Annotation)
-      : undefined;
+  const { replaceable, redeclare } = el.prefixes ?? {};
+  if (!replaceable && !redeclare) return undefined;
+  const clause = typeof replaceable === "object" ? replaceable : undefined;
+  const comment =
+    typeof clause?.comment === "string" ? clause.comment : el.comment;
   const field: ParameterField = {
     name: el.name,
-    label: el.comment ?? el.name,
+    label: comment ?? el.name,
     kind: "unsupported",
-    value: typeof el.baseClass === "string" ? el.baseClass : "",
-    dialog: readDialogInfo(clauseAnnotation),
+    value: typeof el.baseClass === "string" ? el.baseClass : el.name,
+    dialog: readDialogInfo(
+      (clause?.annotation as Annotation | undefined) ?? el.annotation,
+    ),
     unitOptions: [],
   };
   if (inheritedFrom !== undefined) field.inheritedFrom = inheritedFrom;
   return field;
-}
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 // ---------- type-shape resolution (was parameter-shape.ts) ----------

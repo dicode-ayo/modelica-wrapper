@@ -205,6 +205,7 @@ describe("produceParameterModel — class params", () => {
           replaceable: {
             constrainedby:
               "Modelica.Mechanics.MultiBody.Interfaces.partialGravityAcceleration",
+            comment: "Function to compute the gravity acceleration",
             annotation: {
               choicesAllMatching: true,
               Dialog: { tab: "Gravity", enable },
@@ -228,12 +229,45 @@ describe("produceParameterModel — class params", () => {
     expect(field.value).toBe(
       "Modelica.Mechanics.MultiBody.Forces.Internal.standardGravityAcceleration",
     );
-    expect(field.label).toBe("gravityAcceleration");
+    expect(field.label).toBe("Function to compute the gravity acceleration");
     expect(field.dialog).toEqual({
       tab: "Gravity",
       group: "Parameters",
       enable,
     });
+  });
+
+  it("takes a bare replaceable's Dialog from the class, and lets a redeclaring host override the inherited entry", () => {
+    const base = {
+      name: "Test.Base",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "class",
+          name: "Medium",
+          restriction: "package",
+          prefixes: { replaceable: true },
+          annotation: { Dialog: { tab: "Fluid" } },
+          baseClass: "Media.Air",
+        },
+      ],
+    };
+    const mi = instance([
+      { $kind: "extends", baseClass: base },
+      {
+        $kind: "class",
+        name: "Medium",
+        restriction: "package",
+        prefixes: { redeclare: true },
+        baseClass: "Media.Water",
+      },
+    ]);
+    const model = produceParameterModel(mi);
+    expect(model.fields.map((f) => f.name)).toEqual(["Medium"]);
+    expect(fieldByName(model, "Medium").value).toBe("Media.Water");
+
+    const baseOnly = produceParameterModel(ModelInstanceSchema.parse(base));
+    expect(fieldByName(baseOnly, "Medium").dialog.tab).toBe("Fluid");
   });
 
   it("carries the raw Dialog.enable AST when present, omits it otherwise", () => {
