@@ -58,3 +58,18 @@ export const HeadingOnly: Story = {
     hint: "",
   },
 };
+
+export const LongDetail: Story = {
+  args: {
+    heading: "Can't render the diagram",
+    subject: "Modelica.Mechanics.MultiBody.Examples.Systems.RobotR3.oneAxis",
+    detail: [
+      "OMC response shape mismatch for getModelInstance:",
+      "  instance.elements[2].type.elements[41].$kind: Invalid discriminator value. Expected 'component' | 'extends'",
+      "  instance.elements[7].type.elements[3].name: Invalid input: expected string, received null",
+      "  instance.elements[9].modifiers.value: Invalid input: expected object, received string",
+      "  instance.elements[12].dims.absyn[0]: Invalid input: expected string, received number",
+    ].join("\n"),
+    hint: "Make sure the class and its enclosing package load without errors, then reopen this editor.",
+  },
+};

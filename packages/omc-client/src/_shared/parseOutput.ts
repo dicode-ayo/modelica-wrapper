@@ -10,6 +10,7 @@ import {
   type Value,
 } from "../parse.js";
 import type { CallContext } from "./callContext.js";
+import { formatSchemaMismatch } from "./formatSchemaMismatch.js";
 
 /**
  * Validate `data` against `schema` and return the typed value.
@@ -24,9 +25,7 @@ export function parseOutput<T>(
 ): T {
   const result = schema.safeParse(data);
   if (!result.success) {
-    throw new Error(
-      `OMC response shape mismatch for ${cmd}: ${result.error.message}`,
-    );
+    throw new Error(formatSchemaMismatch(cmd, result.error));
   }
   return result.data;
 }

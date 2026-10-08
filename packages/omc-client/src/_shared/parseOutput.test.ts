@@ -7,11 +7,12 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import type { CallContext } from "./callContext.js";
 import { OmcDiagnosticError } from "../error-buffer.js";
 
-import { NO_REASON, parseMutationSuccess } from "./parseOutput.js";
+import { NO_REASON, parseMutationSuccess, parseOutput } from "./parseOutput.js";
 
 function stubCtx(errorString: string): CallContext {
   return {
@@ -128,5 +129,14 @@ describe("parseMutationSuccess", () => {
     await expect(
       parseMutationSuccess(ctx, "42", "someMutation"),
     ).rejects.toThrow("expected bool, got int");
+  });
+});
+
+describe("parseOutput schema mismatch", () => {
+  it("throws path-prefixed lines rather than Zod's JSON dump", () => {
+    const schema = z.object({ a: z.object({ b: z.array(z.string()) }) });
+    expect(() => parseOutput(schema, { a: { b: [1] } }, "someCall")).toThrow(
+      "OMC response shape mismatch for someCall:\n  a.b[0]: Invalid input: expected string, received number",
+    );
   });
 });

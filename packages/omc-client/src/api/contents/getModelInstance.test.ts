@@ -130,6 +130,8 @@ describe("getModelInstance: response handling", () => {
 
     await expect(
       getModelInstance(ctx, { typeName: "Some.Class" }),
-    ).rejects.toThrow(/OMC response shape mismatch for getModelInstance/);
+    ).rejects.toThrow(
+      "OMC response shape mismatch for getModelInstance:\n  instance.elements: Invalid input: expected array, received string",
+    );
   });
 });

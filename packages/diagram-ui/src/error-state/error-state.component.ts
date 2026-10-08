@@ -8,12 +8,14 @@
  *   - `detail`  — the backend failure text.
  *   - `hint`    — what the user can do about it.
  *
- * `subject`, `detail`, and `hint` each render only when non-empty.
+ * `subject`, `detail`, and `hint` each render only when non-empty. `detail`
+ * collapses behind a toggle past `COLLAPSE_LINE_THRESHOLD` lines: a schema
+ * mismatch listing otherwise pushes the hint out of view.
  */
 
 import { LitElement, css, html, nothing, svg } from "lit";
-import type { TemplateResult } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import type { PropertyValues, TemplateResult } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 
 import { omTokens } from "@dicode/ui-common";
 
@@ -25,6 +27,8 @@ const warningIcon = glyph(
     <path d="M12 9v4" /><path d="M12 17h.01" />`,
   "icon",
 );
+
+const COLLAPSE_LINE_THRESHOLD = 4;
 
 @customElement("om-error-state")
 export class OmErrorState extends LitElement {
@@ -66,12 +70,37 @@ export class OmErrorState extends LitElement {
         padding: var(--om-space-2xs) var(--om-space-xs);
       }
       .detail {
+        box-sizing: border-box;
         margin: 0;
+        inline-size: 100%;
+        max-block-size: var(--om-error-detail-max-height);
+        overflow: auto;
+        padding: var(--om-space-md);
+        text-align: start;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         font-family: var(--vscode-editor-font-family, monospace);
         font-size: var(--om-description-size);
         color: var(--vscode-descriptionForeground);
+        background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.1));
+        border-radius: var(--om-radius-md);
+      }
+      .actions {
+        display: flex;
+        gap: var(--om-space-md);
+      }
+      button {
+        font: inherit;
+        color: var(--vscode-textLink-foreground);
+        background: none;
+        border: none;
+        padding: var(--om-space-2xs) var(--om-space-xs);
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      button:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 1px;
       }
       .hint {
         margin: 0;
@@ -85,13 +114,71 @@ export class OmErrorState extends LitElement {
   @property() detail = "";
   @property() hint = "";
 
+  @state() private expanded = false;
+  @state() private copyStatus: "idle" | "copied" | "failed" = "idle";
+
+  private get collapsible(): boolean {
+    return this.detail.split("\n").length > COLLAPSE_LINE_THRESHOLD;
+  }
+
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("detail")) {
+      this.expanded = false;
+      this.copyStatus = "idle";
+    }
+  }
+
+  private toggle(): void {
+    this.expanded = !this.expanded;
+  }
+
+  private async copy(): Promise<void> {
+    this.copyStatus = "idle";
+    try {
+      await navigator.clipboard.writeText(this.detail);
+      this.copyStatus = "copied";
+    } catch {
+      this.copyStatus = "failed";
+    }
+  }
+
+  private renderDetail(): TemplateResult | typeof nothing {
+    if (!this.detail) return nothing;
+    if (!this.collapsible) {
+      return html`<p class="detail">${this.detail}</p>`;
+    }
+    const collapsed = !this.expanded;
+    const copyLabel = {
+      idle: "Copy details",
+      copied: "Copied",
+      failed: "Copy failed",
+    }[this.copyStatus];
+    return html`
+      <div class="actions">
+        <button
+          type="button"
+          class="toggle"
+          aria-expanded=${this.expanded ? "true" : "false"}
+          aria-controls="detail"
+          @click=${this.toggle}
+        >
+          ${this.expanded ? "Hide details" : "Show details"}
+        </button>
+        <button type="button" class="copy" @click=${this.copy}>
+          ${copyLabel}
+        </button>
+      </div>
+      <pre class="detail" id="detail" ?hidden=${collapsed}>${this.detail}</pre>
+    `;
+  }
+
   override render(): TemplateResult {
     return html`
       <div class="card" role="alert">
         ${warningIcon}
         <h2>${this.heading}</h2>
         ${this.subject ? html`<code>${this.subject}</code>` : nothing}
-        ${this.detail ? html`<p class="detail">${this.detail}</p>` : nothing}
+        ${this.renderDetail()}
         ${this.hint ? html`<p class="hint">${this.hint}</p>` : nothing}
       </div>
     `;
