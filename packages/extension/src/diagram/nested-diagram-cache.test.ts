@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import type { DiagramLayout, OmcClient } from "@dicode/omc-client";
 
 import { ClassInvalidationRegistry } from "../invalidation.js";
@@ -9,13 +9,11 @@ import {
   nestedDiagramCache,
 } from "./nested-diagram-cache.js";
 
+vi.mock("../logger.js", () => import("../../test-support/logger-mock.js"));
+
 function layout(className: string): DiagramLayout {
   return { kind: "diagram", className } as unknown as DiagramLayout;
 }
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("NestedDiagramCache", () => {
   it("fetches a class once and serves the cached layout on the next get", async () => {
@@ -75,7 +73,8 @@ describe("NestedDiagramCache", () => {
   });
 
   it("logs one debug line per failed fetch, however many gets share it", async () => {
-    const debug = vi.spyOn(log, "debug").mockImplementation(() => {});
+    const debug = vi.mocked(log.debug);
+    debug.mockClear();
     let rejectFetch: (err: Error) => void = () => {};
     const fetch = vi.fn(
       () =>
