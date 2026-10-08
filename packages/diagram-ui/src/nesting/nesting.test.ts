@@ -643,9 +643,10 @@ describe("semantic in-place nesting: parent wires", () => {
 
   /** LimPID's own diagram, drawing `u` at `(-100, y)`. */
   function drawingUAt(y: number): NestedDiagramSource {
-    return () =>
+    return (className) =>
       Promise.resolve({
         ...limPidDiagram(),
+        className,
         connectors: {
           u: {
             name: "u",

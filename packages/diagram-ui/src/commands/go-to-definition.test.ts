@@ -117,6 +117,30 @@ describe("resolveDefinitionSource", () => {
     });
   });
 
+  it("falls back to a second-keyed component's class name, not its catalog key", () => {
+    const base = makeLayout();
+    const gain = base.components["gain1"];
+    if (!gain) throw new Error("fixture has no gain1");
+    const keyed: DiagramLayout = {
+      ...base,
+      classes: {
+        "Modelica.Blocks.Math.Gain#2": {
+          name: "Modelica.Blocks.Math.Gain",
+          restriction: "block",
+          iconLayers: [],
+          connectors: {},
+          parameters: {},
+        },
+      },
+      components: {
+        gain1: { ...gain, classRef: "Modelica.Blocks.Math.Gain#2" },
+      },
+    };
+    expect(
+      resolveDefinitionSource(keyed, new Set(["c:gain1"]))?.fallbackClassName,
+    ).toBe("Modelica.Blocks.Math.Gain");
+  });
+
   it("resolves a standalone connector to its type's class source", () => {
     expect(resolveDefinitionSource(layout, new Set(["k:p"]))).toEqual({
       source: PIN_TYPE_SOURCE,

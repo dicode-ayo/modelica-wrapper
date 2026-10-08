@@ -110,7 +110,10 @@ export function resolveDefinitionSource(
     case "component": {
       const comp = layout.components[parsed.nodeId];
       if (comp?.source === undefined) return null;
-      return { source: comp.source, fallbackClassName: comp.classRef };
+      return {
+        source: comp.source,
+        fallbackClassName: classNameOf(layout, comp.classRef),
+      };
     }
     case "connector": {
       // Only standalone connectors: a sub-component's port is the
@@ -118,7 +121,10 @@ export function resolveDefinitionSource(
       if (parsed.componentName !== null) return null;
       const conn = layout.connectors[parsed.portName];
       if (conn?.source === undefined) return null;
-      return { source: conn.source, fallbackClassName: conn.classRef };
+      return {
+        source: conn.source,
+        fallbackClassName: classNameOf(layout, conn.classRef),
+      };
     }
     case "edge": {
       const connection = layout.connections[parsed.connIndex];
