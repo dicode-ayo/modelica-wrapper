@@ -46,12 +46,7 @@ export function startsWithError(text: string): boolean {
   return /^Error(?![\w.])/.test(text);
 }
 
-/**
- * A failure OMC reported through its error buffer rather than by throwing.
- * Distinguishes an answer the caller can act on from a transport fault or a
- * dead client, which reach the same `catch`.
- */
-export class OmcDiagnosticError extends Error {}
+export { OmcDiagnosticError } from "./diagnostic-error.js";
 
 /**
  * One turn queue per client instance, keyed by identity (a `WeakMap`) so

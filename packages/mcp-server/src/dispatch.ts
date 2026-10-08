@@ -21,7 +21,6 @@ import type {
   SourceTree,
 } from "@dicode/omc-client";
 import {
-  ModelInstanceNotFoundError,
   OmcDiagnosticError,
   errorBufferTransaction,
   isReadOnlyFunction,
@@ -290,9 +289,7 @@ export async function dispatchByName(
     log?.warn(`${action} failed: ${message}`);
     const quiet =
       isReadOnlyFunction(fn) &&
-      (err instanceof OmcDiagnosticError ||
-        err instanceof ZodError ||
-        err instanceof ModelInstanceNotFoundError);
+      (err instanceof OmcDiagnosticError || err instanceof ZodError);
     if (!quiet) notifyFailure?.(`${fn} failed: ${message}`);
     return errorResult(message);
   }

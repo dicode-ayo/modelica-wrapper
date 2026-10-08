@@ -21,10 +21,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
-import {
-  ModelInstanceNotFoundError,
-  ModelInstanceNotFullyLoadedError,
-} from "../../_shared/modelInstance.js";
+import { ModelInstanceNotFullyLoadedError } from "../../_shared/modelInstance.js";
 
 import { getModelInstanceAnnotation } from "./getModelInstanceAnnotation.js";
 
@@ -120,23 +117,6 @@ describe("getModelInstanceAnnotation: response handling", () => {
     });
     expect(out.instance.name).toBe("Modelica.Blocks.Math.Sin");
     expect(out.instance.restriction).toBe("block");
-  });
-
-  it("throws ModelInstanceNotFoundError naming the class when the reply is empty and the class doesn't exist", async () => {
-    const ctx: CallContext = {
-      async call(cmd) {
-        return cmd.startsWith("existClass(") ? "false" : "";
-      },
-      async getErrorString() {
-        return { errorString: "" };
-      },
-    };
-
-    const err: unknown = await getModelInstanceAnnotation(ctx, {
-      typeName: "Modelica.NoSuchClass",
-    }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(ModelInstanceNotFoundError);
-    expect(err).toMatchObject({ className: "Modelica.NoSuchClass" });
   });
 
   it("throws ModelInstanceNotFullyLoadedError when name is null (partial-load shape)", async () => {
