@@ -298,9 +298,10 @@ export function resolveDiagramEditor(
     localResourceRoots: [vscode.Uri.joinPath(extensionUri, "out")],
   };
 
-  const gate = createReadyGate(webview);
+  let gate = createReadyGate(webview);
   let controller: DiagramEditController | undefined;
   let resolvedClassName: string | undefined;
+  let missingClassName: string | undefined;
   const session: EditorSession = {
     className: () => resolvedClassName,
     send: (msg) => gate.send(msg),
@@ -310,6 +311,14 @@ export function resolveDiagramEditor(
 
   // Before `init` the webview holds no nested diagram to drop.
   const nestedStale = (className: string | null): void => {
+    if (missingClassName !== undefined) {
+      if (className === null || className === missingClassName) {
+        const retry = missingClassName;
+        missingClassName = undefined;
+        start(retry);
+      }
+      return;
+    }
     if (controller !== undefined) {
       gate.send({ type: "nestedDiagramStale", className });
     }
@@ -410,13 +419,18 @@ export function resolveDiagramEditor(
           hasClipboard: !diagramClipboard.isEmpty,
         });
       } catch (err) {
-        // A restored tab outlives a class that was never saved; that is a
-        // state to explain, not a render failure.
+        // A restored tab can name a class OMC doesn't have (yet): one never
+        // saved, or one whose package loads after the tab. The tab retries
+        // when the class set changes, so the page holds no bundle and the
+        // session names no class until then.
         if (err instanceof ModelInstanceNotFoundError) {
+          resolvedClassName = undefined;
+          missingClassName = className;
+          gate = createReadyGate(webview);
           webview.html = renderPlaceholderPage({
             cspSource: webview.cspSource,
             title: "Class not found",
-            message: `${className} no longer exists or isn't loaded. A class created in an earlier session and never saved is gone after a restart: close this tab, or load the package that defines it and reopen it.`,
+            message: `OMC has no class named ${className}. It may have been deleted, or created in an earlier session and never saved. If its package isn't loaded yet, this tab shows the class once it is.`,
           });
           log.info("diagramEditor", err.message);
           return;

@@ -394,13 +394,17 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
     });
   });
 
-  it("shows a class-not-found page, not the render error card, when a restored tab's class no longer exists", async () => {
+  it("shows a class-not-found page instead of the render error card, and renders the class once it loads", async () => {
     const { panel, webview, posted, fireReady } = makePanel();
-    const { client } = makeClient({
+    let loaded = false;
+    const { client, seenTypeName } = makeClient({
       getModelInstance: (typeName) =>
-        Promise.reject(new ModelInstanceNotFoundError(typeName)),
+        loaded
+          ? Promise.resolve({ instance: INSTANCE })
+          : Promise.reject(new ModelInstanceNotFoundError(typeName)),
     });
     const ensureClient = vi.fn(() => Promise.resolve(client));
+    const invalidation = new ClassInvalidationRegistry();
 
     resolveDiagramEditor(
       panel,
@@ -409,14 +413,27 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
       "diagram",
+      undefined,
+      invalidation,
     );
 
     await flush();
-    fireReady();
     expect(posted).toEqual([]);
     expect(webview.html).not.toContain("om-webview-root");
     expect(webview.html).toContain("ResistorDemo.NewModel");
-    expect(webview.html).toContain("no longer exists");
+    expect(webview.html).toContain("Class not found");
+
+    invalidation.classChanged("ResistorDemo.Other");
+    await flush();
+    expect(webview.html).toContain("Class not found");
+
+    loaded = true;
+    invalidation.allClassesChanged();
+    await flush();
+    expect(webview.html).toContain("om-webview-root");
+    expect(seenTypeName()).toBe("ResistorDemo.NewModel");
+    fireReady();
+    expect(posted.map((m) => m.type)).toEqual(["init"]);
   });
 
   it("evaluates readOnly after the layout fetch resolves the class", async () => {

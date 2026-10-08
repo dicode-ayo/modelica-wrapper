@@ -178,7 +178,9 @@ export async function activate(
     folders: () =>
       (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
     ensureClient,
-    refresh: () => libraryTree.childrenChanged(null),
+    // Announced to every listener, not just the sidebar: a restored diagram
+    // tab may have asked for one of these classes before they loaded.
+    refresh: () => invalidation.allClassesChanged(),
     onSkipped: (skipped) => {
       void vscode.window.showWarningMessage(
         multiEntityBatchToast(skipped.map((s) => s.fileName)),
