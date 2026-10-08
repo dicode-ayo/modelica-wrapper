@@ -241,11 +241,14 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     DiagramEditorProvider.sessions.delete(session);
   }
 
-  /** Re-fetch every open editor's class that OMC didn't have when it opened. */
-  static retryMissingClasses(): void {
+  /** Re-fetch every open editor's class that OMC didn't have; returns those classes. */
+  static retryMissingClasses(): string[] {
+    const retried: string[] = [];
     for (const session of DiagramEditorProvider.sessions) {
-      session.retryIfMissing(null);
+      const className = session.retryIfMissing(null);
+      if (className !== undefined) retried.push(className);
     }
+    return retried;
   }
 
   /** Tell every open editor whether the shared clipboard holds anything. */
@@ -276,8 +279,11 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 interface EditorSession {
   className(): string | undefined;
   send(msg: ExtensionToWebview): void;
-  /** Re-fetch a class OMC didn't have, if `announced` (`null`: any class) could have added it. */
-  retryIfMissing(announced: string | null): void;
+  /**
+   * Re-fetch a class OMC didn't have, if `announced` (`null`: any class) could
+   * have added it. Returns the class it re-fetched.
+   */
+  retryIfMissing(announced: string | null): string | undefined;
   inputFocused: boolean;
 }
 
@@ -319,29 +325,27 @@ export function resolveDiagramEditor(
 
   let gate = createReadyGate(webview);
   let controller: DiagramEditController | undefined;
-  let resolvedClassName: string | undefined;
+  let shownClassName: string | undefined;
   let disposed = false;
-  // The class OMC didn't have, and whether the class set changed while the
-  // fetch that found it missing was still in flight.
-  let missing: { className: string; changed: boolean } | undefined;
-  let fetching: { className: string; changed: boolean } | undefined;
+  let booted = false;
+  // `missing`: OMC didn't have the class and the page is the placeholder.
+  let phase: "idle" | "fetching" | "missing" = "idle";
+  // The class set changed while the fetch was in flight, so a not-found answer
+  // from it is already out of date.
+  let changedWhileFetching = false;
 
-  const retryIfMissing = (announced: string | null): void => {
-    const target = missing ?? fetching;
-    if (target === undefined || !announces(announced, target.className)) {
-      return;
-    }
-    if (target === fetching) {
-      target.changed = true;
-      return;
-    }
-    missing = undefined;
-    start(target.className);
+  const retryIfMissing = (announced: string | null): string | undefined => {
+    if (shownClassName === undefined) return undefined;
+    if (!announces(announced, shownClassName)) return undefined;
+    if (phase === "fetching") changedWhileFetching = true;
+    if (phase !== "missing") return undefined;
+    load(shownClassName);
+    return shownClassName;
   };
   const session: EditorSession = {
-    className: () => resolvedClassName,
+    className: () => (phase === "missing" ? undefined : shownClassName),
     send: (msg) => {
-      if (missing === undefined) gate.send(msg);
+      if (phase !== "missing") gate.send(msg);
     },
     retryIfMissing,
     inputFocused: false,
@@ -365,10 +369,7 @@ export function resolveDiagramEditor(
             nestedStale(null);
             retryIfMissing(null);
           }),
-          invalidation.registerSessionReplaced(() => {
-            nestedStale(null);
-            retryIfMissing(null);
-          }),
+          invalidation.registerSessionReplaced(() => nestedStale(null)),
         ]
       : []),
   );
@@ -412,12 +413,15 @@ export function resolveDiagramEditor(
     controller?.dispose();
   });
 
-  const start = (className: string): void => {
-    resolvedClassName = className;
+  const boot = (className: string): void => {
     gate = createReadyGate(webview);
     webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
-    const attempt = { className, changed: false };
-    fetching = attempt;
+    booted = true;
+  };
+
+  const load = (className: string): void => {
+    phase = "fetching";
+    changedWhileFetching = false;
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
@@ -436,6 +440,8 @@ export function resolveDiagramEditor(
           className,
           "edit",
         );
+        if (disposed) return;
+        if (!booted) boot(className);
         controller = new DiagramEditController(
           {
             client,
@@ -462,6 +468,7 @@ export function resolveDiagramEditor(
           readOnly: !verdict.ok,
           hasClipboard: !diagramClipboard.isEmpty,
         });
+        phase = "idle";
       } catch (err) {
         if (disposed) return;
         // A restored tab can name a class OMC doesn't have (yet): one never
@@ -469,12 +476,12 @@ export function resolveDiagramEditor(
         // when the class set changes, so the page holds no bundle and the
         // session names no class until then.
         if (err instanceof ModelInstanceNotFoundError) {
-          if (attempt.changed) {
-            start(className);
+          if (changedWhileFetching) {
+            load(className);
             return;
           }
-          resolvedClassName = undefined;
-          missing = attempt;
+          phase = "missing";
+          booted = false;
           webview.html = renderPlaceholderPage({
             cspSource: webview.cspSource,
             title: "Class not found",
@@ -483,16 +490,22 @@ export function resolveDiagramEditor(
           log.info("diagramEditor", err.message);
           return;
         }
+        phase = "idle";
+        if (!booted) boot(className);
         const detail = errorDetail(err);
         gate.send({ type: "renderError", className, mode, detail });
         log.warn(
           "diagramEditor",
           `Failed to render ${mode} for ${className}: ${detail}`,
         );
-      } finally {
-        if (fetching === attempt) fetching = undefined;
       }
     })();
+  };
+
+  const start = (className: string): void => {
+    shownClassName = className;
+    boot(className);
+    load(className);
     if (webviewPanel.active) DiagramEditorProvider.setActive(session);
   };
 

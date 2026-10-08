@@ -395,13 +395,16 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
   });
 
   it("shows a class-not-found page instead of the render error card, and renders the class once it loads", async () => {
-    const { panel, webview, posted, fireReady } = makePanel();
+    const { panel, webview, posted, fireReady, fireDispose } = makePanel();
     let loaded = false;
+    let fetches = 0;
     const { client, seenTypeName } = makeClient({
-      getModelInstance: (typeName) =>
-        loaded
+      getModelInstance: (typeName) => {
+        fetches += 1;
+        return loaded
           ? Promise.resolve({ instance: INSTANCE })
-          : Promise.reject(new ModelInstanceNotFoundError(typeName)),
+          : Promise.reject(new ModelInstanceNotFoundError(typeName));
+      },
     });
     const ensureClient = vi.fn(() => Promise.resolve(client));
     const invalidation = new ClassInvalidationRegistry();
@@ -425,7 +428,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
 
     invalidation.classChanged("ResistorDemo.Other");
     await flush();
-    expect(webview.html).toContain("Class not found");
+    expect(fetches).toBe(1);
 
     loaded = true;
     invalidation.allClassesChanged();
@@ -434,10 +437,11 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
     expect(seenTypeName()).toBe("ResistorDemo.NewModel");
     fireReady();
     expect(posted.map((m) => m.type)).toEqual(["init"]);
+    fireDispose();
   });
 
   it("retries a missing class when its enclosing package is announced", async () => {
-    const { panel, webview } = makePanel();
+    const { panel, webview, fireDispose } = makePanel();
     let loaded = false;
     const { client } = makeClient({
       getModelInstance: (typeName) =>
@@ -464,10 +468,11 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
     invalidation.classChanged("ResistorDemo");
     await flush();
     expect(webview.html).toContain("om-webview-root");
+    fireDispose();
   });
 
   it("retries a missing class when the class set changed while its fetch was in flight", async () => {
-    const { panel, webview, posted, fireReady } = makePanel();
+    const { panel, webview, posted, fireReady, fireDispose } = makePanel();
     let calls = 0;
     let releaseFirst: () => void = () => {};
     const { client } = makeClient({
@@ -497,6 +502,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
     expect(webview.html).toContain("om-webview-root");
     fireReady();
     expect(posted.map((m) => m.type)).toEqual(["init"]);
+    fireDispose();
   });
 
   it("evaluates readOnly after the layout fetch resolves the class", async () => {
