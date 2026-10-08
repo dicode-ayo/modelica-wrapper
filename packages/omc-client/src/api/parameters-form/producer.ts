@@ -27,6 +27,7 @@
 
 import type {
   Annotation,
+  ClassElement,
   ComponentElement,
   Expression,
   ExtendsElement,
@@ -108,22 +109,29 @@ export function produceParameterModel(
     // is an ancestor reached via `extends`, so its params are inherited.
     const inheritedFrom = klass === instance ? undefined : directBase;
     for (const el of klass.elements ?? []) {
-      if (el.$kind !== "component") continue;
-      if (el.prefixes?.variability !== "parameter") continue;
-      const field = buildField(
-        el,
-        inheritedFrom,
-        opts.component ? overrides[el.name] : undefined,
-        opts.unitTable,
-      );
-      const existing = indexByName.get(el.name);
+      let field: ParameterField | undefined;
+      if (
+        el.$kind === "component" &&
+        el.prefixes?.variability === "parameter"
+      ) {
+        field = buildField(
+          el,
+          inheritedFrom,
+          opts.component ? overrides[el.name] : undefined,
+          opts.unitTable,
+        );
+      } else if (el.$kind === "class") {
+        field = replaceableClassField(el, inheritedFrom);
+      }
+      if (field === undefined) continue;
+      const existing = indexByName.get(field.name);
       if (existing !== undefined) {
         // More-derived re-declaration overrides the inherited entry, in place
         // (preserves first-seen order, last-write-wins on content) — matches
         // the form builders' last-write-wins-by-name semantics.
         fields[existing] = field;
       } else {
-        indexByName.set(el.name, fields.length);
+        indexByName.set(field.name, fields.length);
         fields.push(field);
       }
     }
@@ -224,6 +232,37 @@ function buildField(
     kind: "unsupported",
     value: display,
   };
+}
+
+/**
+ * A replaceable local class, e.g. MultiBody `World.gravityAcceleration`, shown
+ * read-only with its current class: the form has no redeclare widget. Its
+ * `Dialog` sits on the constraining clause's annotation, not on the class.
+ */
+function replaceableClassField(
+  el: ClassElement,
+  inheritedFrom: string | undefined,
+): ParameterField | undefined {
+  const replaceable = el.prefixes?.replaceable;
+  if (replaceable === undefined || replaceable === false) return undefined;
+  const clauseAnnotation =
+    typeof replaceable === "object" && isPlainObject(replaceable.annotation)
+      ? (replaceable.annotation as Annotation)
+      : undefined;
+  const field: ParameterField = {
+    name: el.name,
+    label: el.comment ?? el.name,
+    kind: "unsupported",
+    value: typeof el.baseClass === "string" ? el.baseClass : "",
+    dialog: readDialogInfo(clauseAnnotation),
+    unitOptions: [],
+  };
+  if (inheritedFrom !== undefined) field.inheritedFrom = inheritedFrom;
+  return field;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 // ---------- type-shape resolution (was parameter-shape.ts) ----------

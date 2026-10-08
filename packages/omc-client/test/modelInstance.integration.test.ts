@@ -28,6 +28,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { produceParameterModel } from "../src/api/parameters-form/index.js";
 import { OmcClient } from "../src/client.js";
 import {
   ModelInstanceAnnotationSchema,
@@ -111,6 +112,20 @@ describeIf("ModelInstanceSchema against live OMC", () => {
     expect(world.type.elements).toContainEqual(
       expect.objectContaining({ $kind: "class", name: "gravityAcceleration" }),
     );
+  }, 60_000);
+
+  it("lists World's replaceable gravityAcceleration in its parameter model with the current class", async () => {
+    const { instance } = await client.getModelInstance({
+      typeName: "Modelica.Mechanics.MultiBody.World",
+    });
+    const field = produceParameterModel(instance).fields.find(
+      (f) => f.name === "gravityAcceleration",
+    );
+    expect(field).toMatchObject({
+      kind: "unsupported",
+      value:
+        "Modelica.Mechanics.MultiBody.Forces.Internal.standardGravityAcceleration",
+    });
   }, 60_000);
 
   it("parses the live Sin annotation-only tree", () => {
