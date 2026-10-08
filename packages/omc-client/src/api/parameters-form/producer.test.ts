@@ -264,7 +264,9 @@ describe("produceParameterModel — class params", () => {
     ]);
     const model = produceParameterModel(mi);
     expect(model.fields.map((f) => f.name)).toEqual(["Medium"]);
-    expect(fieldByName(model, "Medium").value).toBe("Media.Water");
+    const medium = fieldByName(model, "Medium");
+    expect(medium.value).toBe("Media.Water");
+    expect(medium.dialog.tab).toBe("Fluid");
 
     const baseOnly = produceParameterModel(ModelInstanceSchema.parse(base));
     expect(fieldByName(baseOnly, "Medium").dialog.tab).toBe("Fluid");

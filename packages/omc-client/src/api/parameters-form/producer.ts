@@ -4,9 +4,10 @@
  *
  * No OMC contact, no rendering. The producer:
  *  1. Walks the (component's) type extends chain in post-order (ancestors
- *     first, host last), collecting `variability == "parameter"` elements.
- *     A more-derived re-declaration overrides the inherited entry by name,
- *     matching Modelica flattening / override semantics.
+ *     first, host last), collecting `variability == "parameter"` elements
+ *     and replaceable (or redeclared) local classes. A more-derived
+ *     re-declaration overrides the inherited entry by name, matching Modelica
+ *     flattening / override semantics.
  *  2. Resolves each value as instance-modifier-over-type-default, classifying
  *     the field kind (scalar / enum / unsupported) off the (possibly aliased)
  *     declaration type.
@@ -121,7 +122,13 @@ export function produceParameterModel(
           opts.unitTable,
         );
       } else if (el.$kind === "class") {
-        field = replaceableClassField(el, inheritedFrom);
+        const inherited = indexByName.get(el.name);
+        field = replaceableClassField(
+          el,
+          klass.name,
+          inheritedFrom,
+          inherited === undefined ? undefined : fields[inherited],
+        );
       }
       if (field === undefined) continue;
       const existing = indexByName.get(field.name);
@@ -238,25 +245,36 @@ function buildField(
  * A replaceable local class, e.g. MultiBody `World.gravityAcceleration`, or a
  * redeclaration of one, shown read-only with its current class: the form has
  * no redeclare widget. A constrained replaceable carries its description and
- * `Dialog` on the constraining clause rather than on the class.
+ * `Dialog` on the constraining clause rather than on the class. A
+ * redeclaration that brings neither keeps the `inherited` entry's.
  */
 function replaceableClassField(
   el: ClassElement,
+  enclosingClass: string,
   inheritedFrom: string | undefined,
+  inherited: ParameterField | undefined,
 ): ParameterField | undefined {
   const { replaceable, redeclare } = el.prefixes ?? {};
   if (!replaceable && !redeclare) return undefined;
   const clause = typeof replaceable === "object" ? replaceable : undefined;
   const comment =
     typeof clause?.comment === "string" ? clause.comment : el.comment;
+  const clauseAnnotation = clause?.annotation as Annotation | undefined;
+  const dialogSource = [clauseAnnotation, el.annotation].find(
+    (a) => (a as { Dialog?: unknown } | null | undefined)?.Dialog !== undefined,
+  );
   const field: ParameterField = {
     name: el.name,
-    label: comment ?? el.name,
+    label: comment ?? inherited?.label ?? el.name,
     kind: "unsupported",
-    value: typeof el.baseClass === "string" ? el.baseClass : el.name,
-    dialog: readDialogInfo(
-      (clause?.annotation as Annotation | undefined) ?? el.annotation,
-    ),
+    value:
+      typeof el.baseClass === "string"
+        ? el.baseClass
+        : `${enclosingClass}.${el.name}`,
+    dialog:
+      dialogSource === undefined && inherited !== undefined
+        ? inherited.dialog
+        : readDialogInfo(dialogSource),
     unitOptions: [],
   };
   if (inheritedFrom !== undefined) field.inheritedFrom = inheritedFrom;
