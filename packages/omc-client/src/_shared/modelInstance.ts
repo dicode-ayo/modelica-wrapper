@@ -470,7 +470,24 @@ export interface ExtendsElement {
   [key: string]: unknown;
 }
 
-export type ElementNode = ComponentElement | ExtendsElement;
+/**
+ * A class defined inside another class, e.g. MultiBody `World`'s replaceable
+ * `gravityAcceleration` function. Not drawn on the diagram; consumers that
+ * walk `elements` select the kinds they render.
+ */
+export interface ClassElement {
+  $kind: "class";
+  name: string;
+  restriction: string;
+  comment?: string | undefined;
+  prefixes?: Prefixes | undefined;
+  modifiers?: Modifier | undefined;
+  annotation?: Annotation | undefined;
+  source?: unknown;
+  [key: string]: unknown;
+}
+
+export type ElementNode = ComponentElement | ExtendsElement | ClassElement;
 
 export interface ConnectionNode {
   lhs: ComponentRef;
@@ -537,8 +554,34 @@ const ExtendsElementBranch = z.lazy(() =>
 export const ExtendsElementSchema =
   ExtendsElementBranch as unknown as z.ZodType<ExtendsElement>;
 
+const ClassElementBranch = z.lazy(() =>
+  z
+    .object({
+      $kind: z.literal("class"),
+      name: z.string(),
+      restriction: z.string(),
+      comment: z.string().optional(),
+      prefixes: PrefixesSchema.optional(),
+      modifiers: ModifierSchema.optional(),
+      annotation: AnnotationSchema.optional(),
+    })
+    .passthrough(),
+);
+export const ClassElementSchema =
+  ClassElementBranch as unknown as z.ZodType<ClassElement>;
+
+/**
+ * Strict on `$kind`: an element kind OMC adds later fails the parse with its
+ * path named, rather than vanishing from the tree. `ElementNode` stays a
+ * closed union so `switch ($kind)` narrows; a catch-all branch typed
+ * `$kind: string` would break that narrowing for every consumer.
+ */
 const ElementLazy = z.lazy(() =>
-  z.discriminatedUnion("$kind", [ComponentElementBranch, ExtendsElementBranch]),
+  z.discriminatedUnion("$kind", [
+    ComponentElementBranch,
+    ExtendsElementBranch,
+    ClassElementBranch,
+  ]),
 );
 export const ElementSchema = ElementLazy as unknown as z.ZodType<ElementNode>;
 

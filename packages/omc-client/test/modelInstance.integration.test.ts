@@ -98,6 +98,18 @@ describeIf("ModelInstanceSchema against live OMC", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it.each([
+    "Modelica.Mechanics.MultiBody.Examples.Elementary.FreeBody",
+    "Modelica.Mechanics.MultiBody.Examples.Elementary.DoublePendulum",
+  ])(
+    "parses %s, whose World nests a local class element",
+    async (typeName) => {
+      const { instance } = await client.getModelInstance({ typeName });
+      expect(instance.name).toBe(typeName);
+    },
+    60_000,
+  );
+
   it("parses the live Sin annotation-only tree", () => {
     const parsed = ModelInstanceAnnotationSchema.safeParse(
       sinAnnotationInstance,
