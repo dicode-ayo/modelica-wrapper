@@ -36,9 +36,11 @@ import { extentToRect } from "../primitives/shape-utils.js";
  *
  * Typical usage:
  *
+ *     const cls = layout.classes[componentInstance.classRef];
  *     <om-component
  *       nodeId="R1"
  *       .nestedClass=${classNameOf(layout, componentInstance.classRef)}
+ *       .nestedSource=${source}
  *       .placement=${componentInstance.placement}
  *       .layers=${cls?.iconLayers ?? []}
  *       .coordinateSystem=${cls?.coordinateSystem}>
@@ -69,7 +71,7 @@ export class OmComponent extends OmShapeElement {
   substitutions: TextSubstitutions | null = null;
 
   /** The class name `nestedSource` is asked for — a name, not a catalog key. */
-  @property() nestedClass = "";
+  @property({ attribute: false }) nestedClass = "";
 
   /** `null` keeps the component an icon. */
   @property({ attribute: false })
