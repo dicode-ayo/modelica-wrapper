@@ -27,10 +27,10 @@ import { mlBool, quoteListOrFillEmpty } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
   ModelInstanceAnnotationSchema,
+  modelInstanceJson,
   parseModelInstanceOutput,
   type ModelInstanceAnnotation,
 } from "../../_shared/modelInstance.js";
-import { expectString, parse } from "../../parse.js";
 
 export const GetModelInstanceAnnotationInputSchema = TypeNameInput.extend({
   filter: z
@@ -74,7 +74,7 @@ export async function getModelInstanceAnnotation(
   const raw = await ctx.call(
     `getModelInstanceAnnotation(${input.typeName}, ${quoteListOrFillEmpty(filter)}, ${mlBool(prettyPrint)})`,
   );
-  const json = expectString(parse(raw));
+  const json = modelInstanceJson(raw, input.typeName);
   const parsed: unknown = JSON.parse(json);
   const validated = parseModelInstanceOutput(
     GetModelInstanceAnnotationOutputSchema,

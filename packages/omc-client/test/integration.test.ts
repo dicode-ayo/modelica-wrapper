@@ -18,6 +18,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { ModelInstanceNotFoundError } from "../src/_shared/modelInstance.js";
 import { OmcClient } from "../src/client.js";
 import { compatibilityReport } from "../src/version.js";
 import { describeIf } from "./fixtures.js";
@@ -213,6 +214,17 @@ describeIf("OmcClient against real OMC", () => {
       { graphics?: unknown[] } | undefined;
     expect(Array.isArray(icon?.graphics)).toBe(true);
     expect((icon?.graphics ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("getModelInstance and getModelInstanceAnnotation throw ModelInstanceNotFoundError for an unknown class", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const typeName = "Modelica.NoSuchClass";
+    await expect(client.getModelInstance({ typeName })).rejects.toThrow(
+      ModelInstanceNotFoundError,
+    );
+    await expect(
+      client.getModelInstanceAnnotation({ typeName }),
+    ).rejects.toThrow(ModelInstanceNotFoundError);
   });
 
   it("getModelInstance prettyPrint produces structurally identical content", async () => {

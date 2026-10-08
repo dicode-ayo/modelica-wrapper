@@ -21,7 +21,10 @@ import { describe, expect, it } from "vitest";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
-import { ModelInstanceNotFullyLoadedError } from "../../_shared/modelInstance.js";
+import {
+  ModelInstanceNotFoundError,
+  ModelInstanceNotFullyLoadedError,
+} from "../../_shared/modelInstance.js";
 
 import { getModelInstanceAnnotation } from "./getModelInstanceAnnotation.js";
 
@@ -117,6 +120,17 @@ describe("getModelInstanceAnnotation: response handling", () => {
     });
     expect(out.instance.name).toBe("Modelica.Blocks.Math.Sin");
     expect(out.instance.restriction).toBe("block");
+  });
+
+  it("throws ModelInstanceNotFoundError naming the class on OMC's empty reply for an unknown class", async () => {
+    const { ctx } = stubCtx("");
+
+    await expect(
+      getModelInstanceAnnotation(ctx, { typeName: "Modelica.NoSuchClass" }),
+    ).rejects.toThrow(ModelInstanceNotFoundError);
+    await expect(
+      getModelInstanceAnnotation(ctx, { typeName: "Modelica.NoSuchClass" }),
+    ).rejects.toThrow(/Modelica\.NoSuchClass/);
   });
 
   it("throws ModelInstanceNotFullyLoadedError when name is null (partial-load shape)", async () => {

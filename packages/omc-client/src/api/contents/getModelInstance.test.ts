@@ -9,7 +9,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { ModelInstanceNotFullyLoadedError } from "../../_shared/modelInstance.js";
+import {
+  ModelInstanceNotFoundError,
+  ModelInstanceNotFullyLoadedError,
+} from "../../_shared/modelInstance.js";
 import { quote } from "../../_shared/format.js";
 
 import { getModelInstance } from "./getModelInstance.js";
@@ -57,6 +60,19 @@ describe("getModelInstance: response handling", () => {
 
     const out = await getModelInstance(ctx, { typeName: "Pkg.NullAnno" });
     expect(out.instance.annotation).toBeNull();
+  });
+
+  it("throws ModelInstanceNotFoundError naming the class on OMC's empty reply for an unknown class", async () => {
+    const { ctx } = stubCtx("");
+
+    const err: unknown = await getModelInstance(ctx, {
+      typeName: "ResistorDemo.RLCCircuit",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ModelInstanceNotFoundError);
+    expect(err).toMatchObject({ className: "ResistorDemo.RLCCircuit" });
+    expect((err as Error).message).toMatch(
+      /ResistorDemo\.RLCCircuit.*not loaded or does not exist/,
+    );
   });
 
   it("throws ModelInstanceNotFullyLoadedError when name is null (partial-load shape)", async () => {
