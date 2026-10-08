@@ -122,15 +122,21 @@ describe("getModelInstanceAnnotation: response handling", () => {
     expect(out.instance.restriction).toBe("block");
   });
 
-  it("throws ModelInstanceNotFoundError naming the class on OMC's empty reply for an unknown class", async () => {
-    const { ctx } = stubCtx("");
+  it("throws ModelInstanceNotFoundError naming the class when the reply is empty and the class doesn't exist", async () => {
+    const ctx: CallContext = {
+      async call(cmd) {
+        return cmd.startsWith("existClass(") ? "false" : "";
+      },
+      async getErrorString() {
+        return { errorString: "" };
+      },
+    };
 
-    await expect(
-      getModelInstanceAnnotation(ctx, { typeName: "Modelica.NoSuchClass" }),
-    ).rejects.toThrow(ModelInstanceNotFoundError);
-    await expect(
-      getModelInstanceAnnotation(ctx, { typeName: "Modelica.NoSuchClass" }),
-    ).rejects.toThrow(/Modelica\.NoSuchClass/);
+    const err: unknown = await getModelInstanceAnnotation(ctx, {
+      typeName: "Modelica.NoSuchClass",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ModelInstanceNotFoundError);
+    expect(err).toMatchObject({ className: "Modelica.NoSuchClass" });
   });
 
   it("throws ModelInstanceNotFullyLoadedError when name is null (partial-load shape)", async () => {

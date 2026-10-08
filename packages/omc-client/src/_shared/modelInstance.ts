@@ -43,8 +43,6 @@
 
 import { z } from "zod";
 
-import { expectString, parse } from "../parse.js";
-
 import { formatSchemaMismatch } from "./formatSchemaMismatch.js";
 
 export const SourceLocationSchema = z
@@ -585,8 +583,8 @@ export class ModelInstanceNotFullyLoadedError extends Error {
 
 /**
  * Thrown when OMC's `getModelInstance`/`getModelInstanceAnnotation` reply is
- * empty, which is what OMC sends for a class it has no definition of: one
- * never loaded, or one deleted or never saved.
+ * empty and `existClass` confirms OMC has no definition of the class: one never
+ * loaded, or one deleted or never saved.
  */
 export class ModelInstanceNotFoundError extends Error {
   constructor(public readonly className: string) {
@@ -595,16 +593,6 @@ export class ModelInstanceNotFoundError extends Error {
     );
     this.name = "ModelInstanceNotFoundError";
   }
-}
-
-/**
- * Unwraps the Modelica string literal around a `getModelInstance`/
- * `getModelInstanceAnnotation` reply into its JSON text.
- */
-export function modelInstanceJson(raw: string, className: string): string {
-  const value = parse(raw);
-  if (value.kind === "null") throw new ModelInstanceNotFoundError(className);
-  return expectString(value);
 }
 
 /**

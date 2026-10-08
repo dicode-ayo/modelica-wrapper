@@ -29,10 +29,11 @@ import { prettyPrint } from "../../_shared/fields.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
   ModelInstanceSchema,
-  modelInstanceJson,
   parseModelInstanceOutput,
   type ModelInstance,
 } from "../../_shared/modelInstance.js";
+
+import { modelInstanceJson } from "../../_shared/modelInstanceReply.js";
 
 export const GetModelInstanceInputSchema = TypeNameInput.extend({
   prettyPrint,
@@ -58,7 +59,12 @@ export async function getModelInstance(
       ? `${input.typeName}, prettyPrint=true`
       : `${input.typeName}`;
   const raw = await ctx.call(`getModelInstance(${args})`);
-  const json = modelInstanceJson(raw, input.typeName);
+  const json = await modelInstanceJson(
+    ctx,
+    raw,
+    "getModelInstance",
+    input.typeName,
+  );
   const parsed: unknown = JSON.parse(json);
   const validated = parseModelInstanceOutput(
     GetModelInstanceOutputSchema,

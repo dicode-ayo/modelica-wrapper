@@ -9,7 +9,11 @@ import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { OmcDiagnosticError, REGISTRY } from "@dicode/omc-client";
+import {
+  ModelInstanceNotFoundError,
+  OmcDiagnosticError,
+  REGISTRY,
+} from "@dicode/omc-client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { z } from "zod";
 
@@ -348,6 +352,31 @@ describe("dispatchByName's logging and failure notification", () => {
 
     expect(result.isError).toBe(true);
     expect(text(result)).toContain("Failed to open simulation result");
+    expect(warnings).toHaveLength(1);
+    expect(notified).toEqual([]);
+  });
+
+  it("keeps a read of a class OMC doesn't have between the model and the tool", async () => {
+    const { log, warnings } = makeLog();
+    const notified: string[] = [];
+    const client = baseClient({
+      invoke: async () => {
+        throw new ModelInstanceNotFoundError("Modelica.NoSuchClass");
+      },
+    });
+    const deps: McpToolDeps = {
+      ensureClient: async () => client,
+      verdicts,
+      log,
+      notifyFailure: (m) => notified.push(m),
+    };
+
+    const result = await dispatchByName(deps, "getModelInstance", {
+      typeName: "Modelica.NoSuchClass",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("Modelica.NoSuchClass");
     expect(warnings).toHaveLength(1);
     expect(notified).toEqual([]);
   });

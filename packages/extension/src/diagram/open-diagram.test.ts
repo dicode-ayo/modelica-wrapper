@@ -16,6 +16,7 @@ import type {
   OmcClient,
   RectangleShape,
 } from "@dicode/omc-client";
+import { ModelInstanceNotFoundError } from "@dicode/omc-client";
 
 import { executedCommands } from "../../test-support/vscode-mock.js";
 import {
@@ -124,8 +125,17 @@ describe("libraryIconSvg: when the annotation path is trusted", () => {
     expect(svg).toBeUndefined();
   });
 
-  // An empty OMC reply throws in `JSON.parse` and a malformed one fails the
-  // schema, so throwing is the only way the cheap call fails to answer.
+  it("does not instantiate a class OMC doesn't have", async () => {
+    const { client, calls } = makeClient({
+      annotation: async () => {
+        throw new ModelInstanceNotFoundError("Pkg.Gone");
+      },
+    });
+    const { svg } = await libraryIconSvg(client, "Pkg.Gone");
+    expect(calls).toEqual(["getModelInstanceAnnotation"]);
+    expect(svg).toBeUndefined();
+  });
+
   it("falls back to getModelInstance when the annotation call throws", async () => {
     const { client, calls } = makeClient({
       annotation: async () => {

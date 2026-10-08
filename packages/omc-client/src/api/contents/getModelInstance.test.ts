@@ -14,6 +14,7 @@ import {
   ModelInstanceNotFullyLoadedError,
 } from "../../_shared/modelInstance.js";
 import { quote } from "../../_shared/format.js";
+import { OmcDiagnosticError } from "../../error-buffer.js";
 
 import { getModelInstance } from "./getModelInstance.js";
 
@@ -35,6 +36,21 @@ function stubCtx(response?: string): { ctx: CallContext } {
     },
   };
   return { ctx };
+}
+
+/** OMC's empty `getModelInstance` reply, with `existClass` and the error buffer answering as given. */
+function emptyReplyCtx(opts: {
+  exists: boolean;
+  errorString: string;
+}): CallContext {
+  return {
+    async call(cmd) {
+      return cmd.startsWith("existClass(") ? String(opts.exists) : "";
+    },
+    async getErrorString() {
+      return { errorString: opts.errorString };
+    },
+  };
 }
 
 describe("getModelInstance: response handling", () => {
@@ -62,8 +78,8 @@ describe("getModelInstance: response handling", () => {
     expect(out.instance.annotation).toBeNull();
   });
 
-  it("throws ModelInstanceNotFoundError naming the class on OMC's empty reply for an unknown class", async () => {
-    const { ctx } = stubCtx("");
+  it("throws ModelInstanceNotFoundError naming the class when the reply is empty and the class doesn't exist", async () => {
+    const ctx = emptyReplyCtx({ exists: false, errorString: "" });
 
     const err: unknown = await getModelInstance(ctx, {
       typeName: "ResistorDemo.RLCCircuit",
@@ -72,6 +88,21 @@ describe("getModelInstance: response handling", () => {
     expect(err).toMatchObject({ className: "ResistorDemo.RLCCircuit" });
     expect((err as Error).message).toMatch(
       /ResistorDemo\.RLCCircuit.*not loaded or does not exist/,
+    );
+  });
+
+  it("surfaces OMC's diagnostic, not not-found, when the reply is empty for a class that exists", async () => {
+    const ctx = emptyReplyCtx({
+      exists: true,
+      errorString: "Error: Base class NoBase not found in scope Partial2.\n",
+    });
+
+    const err: unknown = await getModelInstance(ctx, {
+      typeName: "P.Partial2",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OmcDiagnosticError);
+    expect((err as Error).message).toBe(
+      "getModelInstance: Error: Base class NoBase not found in scope Partial2.",
     );
   });
 

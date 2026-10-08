@@ -227,6 +227,15 @@ describeIf("OmcClient against real OMC", () => {
     ).rejects.toThrow(ModelInstanceNotFoundError);
   });
 
+  it("getModelInstance surfaces OMC's diagnostic for a loaded class that fails to instantiate", async () => {
+    await client.loadString({
+      data: "package NotFoundProbe model MissingBase extends NoSuchBase; end MissingBase; end NotFoundProbe;",
+    });
+    await expect(
+      client.getModelInstance({ typeName: "NotFoundProbe.MissingBase" }),
+    ).rejects.toThrow(/NoSuchBase/);
+  });
+
   it("getModelInstance prettyPrint produces structurally identical content", async () => {
     await client.loadModel({ typeName: "Modelica" });
     const cls = "Modelica.Blocks.Math.Sin";

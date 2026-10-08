@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  ModelInstanceNotFoundError,
   OmcClient,
   asString,
   diagram,
@@ -599,11 +600,12 @@ async function fetchIconInstance(
       // A class that simply has no Icon is not a failed call. Instantiating it
       // to look again costs seconds on deep hierarchies, and never returns for
       // the builtins, all to rediscover there is nothing to paint. The cheap
-      // call can only fail to answer by throwing — an empty reply fails
-      // `JSON.parse`, a malformed one fails the schema — so the fallback
-      // belongs in the catch.
+      // call can only fail to answer by throwing, so the fallback belongs in
+      // the catch — except for a class OMC doesn't have, which the full call
+      // can't find either.
       return instance;
     } catch (err) {
+      if (err instanceof ModelInstanceNotFoundError) throw err;
       log.warn(
         "fetchIconInstance",
         `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${(err as Error).message}`,
