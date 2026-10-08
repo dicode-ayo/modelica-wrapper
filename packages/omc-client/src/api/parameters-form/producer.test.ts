@@ -246,6 +246,7 @@ describe("produceParameterModel — class params", () => {
           $kind: "class",
           name: "Medium",
           restriction: "package",
+          comment: "Medium in the component",
           prefixes: { replaceable: true },
           annotation: { Dialog: { tab: "Fluid" } },
           baseClass: "Media.Air",
@@ -267,6 +268,8 @@ describe("produceParameterModel — class params", () => {
     const medium = fieldByName(model, "Medium");
     expect(medium.value).toBe("Media.Water");
     expect(medium.dialog.tab).toBe("Fluid");
+    expect(medium.label).toBe("Medium in the component");
+    expect(medium.inheritedFrom).toBeUndefined();
 
     const baseOnly = produceParameterModel(ModelInstanceSchema.parse(base));
     expect(fieldByName(baseOnly, "Medium").dialog.tab).toBe("Fluid");

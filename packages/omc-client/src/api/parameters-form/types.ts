@@ -24,7 +24,8 @@ import type { Expression } from "../../_shared/modelInstance.js";
  *
  *  - `string` / `number` / `integer` / `boolean` — scalar primitives
  *  - `enum` — an enumeration type; `enumChoices` carries the leaf names
- *  - `unsupported` — record / array / complex parameter we can't edit yet;
+ *  - `unsupported` — record / array / complex parameter we can't edit yet,
+ *    or a replaceable local class (its `value` is the current class name);
  *    surfaced read-only so the user still sees the current binding
  */
 export type ParameterFieldKind =

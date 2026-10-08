@@ -123,9 +123,12 @@ describeIf("ModelInstanceSchema against live OMC", () => {
     );
     expect(field).toMatchObject({
       kind: "unsupported",
+      label:
+        "Function to compute the gravity acceleration, resolved in world frame",
       value:
         "Modelica.Mechanics.MultiBody.Forces.Internal.standardGravityAcceleration",
     });
+    expect(field?.dialog.enable).toBeDefined();
   }, 60_000);
 
   it("parses the live Sin annotation-only tree", () => {

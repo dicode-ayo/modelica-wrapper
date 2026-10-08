@@ -110,6 +110,8 @@ export function produceParameterModel(
     // is an ancestor reached via `extends`, so its params are inherited.
     const inheritedFrom = klass === instance ? undefined : directBase;
     for (const el of klass.elements ?? []) {
+      const existing =
+        el.$kind === "extends" ? undefined : indexByName.get(el.name);
       let field: ParameterField | undefined;
       if (
         el.$kind === "component" &&
@@ -122,16 +124,14 @@ export function produceParameterModel(
           opts.unitTable,
         );
       } else if (el.$kind === "class") {
-        const inherited = indexByName.get(el.name);
         field = replaceableClassField(
           el,
           klass.name,
           inheritedFrom,
-          inherited === undefined ? undefined : fields[inherited],
+          existing === undefined ? undefined : fields[existing],
         );
       }
       if (field === undefined) continue;
-      const existing = indexByName.get(field.name);
       if (existing !== undefined) {
         // More-derived re-declaration overrides the inherited entry, in place
         // (preserves first-seen order, last-write-wins on content) — matches
@@ -260,9 +260,7 @@ function replaceableClassField(
   const comment =
     typeof clause?.comment === "string" ? clause.comment : el.comment;
   const clauseAnnotation = clause?.annotation as Annotation | undefined;
-  const dialogSource = [clauseAnnotation, el.annotation].find(
-    (a) => (a as { Dialog?: unknown } | null | undefined)?.Dialog !== undefined,
-  );
+  const dialogSource = [clauseAnnotation, el.annotation].find(hasDialog);
   const field: ParameterField = {
     name: el.name,
     label: comment ?? inherited?.label ?? el.name,
@@ -279,6 +277,15 @@ function replaceableClassField(
   };
   if (inheritedFrom !== undefined) field.inheritedFrom = inheritedFrom;
   return field;
+}
+
+/** Whether `annotation` carries a `Dialog` record `readDialogInfo` would read. */
+function hasDialog(annotation: Annotation | undefined): boolean {
+  if (typeof annotation !== "object" || annotation === null) return false;
+  const dialog = (annotation as { Dialog?: unknown }).Dialog;
+  return (
+    typeof dialog === "object" && dialog !== null && !Array.isArray(dialog)
+  );
 }
 
 // ---------- type-shape resolution (was parameter-shape.ts) ----------
