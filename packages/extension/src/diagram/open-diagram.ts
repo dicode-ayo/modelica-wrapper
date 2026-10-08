@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import {
   ModelInstanceNotFoundError,
   OmcClient,
-  OmcDiagnosticError,
   asString,
   diagram,
   looksLikeError,
@@ -606,9 +605,8 @@ async function fetchIconInstance(
       // the catch.
       return instance;
     } catch (err) {
-      // OMC's own answer (an unknown class, or one that fails to instantiate)
-      // is the same answer the full call would give.
-      if (err instanceof OmcDiagnosticError) throw err;
+      // The full call can't find a class OMC doesn't have either.
+      if (err instanceof ModelInstanceNotFoundError) throw err;
       log.warn(
         "fetchIconInstance",
         `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${errorDetail(err)}`,
@@ -662,8 +660,7 @@ function iconDependencies(instance: ModelInstance): string[] {
  * restriction-letter badge. `dependsOn` is `undefined` when the render failed
  * — the chain is unknown, distinct from a successful `[]` for a class that
  * genuinely extends nothing — so the caller keeps its previously recorded
- * edges rather than dropping them on a transient failure. A class OMC doesn't
- * have depends on nothing, so its edges are dropped.
+ * edges rather than dropping them on a transient failure.
  *
  * `fresh` forces a full re-elaboration (see {@link fetchIconInstance}); the
  * sidebar sets it for a class it just observed change, so the thumbnail
@@ -693,10 +690,7 @@ export async function libraryIconSvg(
       "libraryIconSvg",
       `icon render failed for ${className}: ${errorDetail(err)}`,
     );
-    return {
-      svg: undefined,
-      dependsOn: err instanceof ModelInstanceNotFoundError ? [] : undefined,
-    };
+    return { svg: undefined, dependsOn: undefined };
   }
 }
 

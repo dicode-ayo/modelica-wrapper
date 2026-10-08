@@ -227,13 +227,13 @@ describeIf("OmcClient against real OMC", () => {
     ).rejects.toThrow(ModelInstanceNotFoundError);
   });
 
-  it("getModelInstance surfaces OMC's diagnostic for a loaded class that fails to instantiate", async () => {
+  it("getModelInstance reports a loaded class that fails to instantiate, not as not-found", async () => {
     await client.loadString({
       data: "package NotFoundProbe model MissingBase extends NoSuchBase; end MissingBase; end NotFoundProbe;",
     });
     await expect(
       client.getModelInstance({ typeName: "NotFoundProbe.MissingBase" }),
-    ).rejects.toThrow(/NoSuchBase/);
+    ).rejects.toThrow(/fails to instantiate/);
   });
 
   it("getModelInstance prettyPrint produces structurally identical content", async () => {

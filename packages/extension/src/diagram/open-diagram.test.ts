@@ -16,10 +16,7 @@ import type {
   OmcClient,
   RectangleShape,
 } from "@dicode/omc-client";
-import {
-  ModelInstanceNotFoundError,
-  OmcDiagnosticError,
-} from "@dicode/omc-client";
+import { ModelInstanceNotFoundError } from "@dicode/omc-client";
 
 import { executedCommands } from "../../test-support/vscode-mock.js";
 import {
@@ -128,27 +125,15 @@ describe("libraryIconSvg: when the annotation path is trusted", () => {
     expect(svg).toBeUndefined();
   });
 
-  it.each([
-    [
-      "a class OMC doesn't have",
-      new ModelInstanceNotFoundError("Pkg.Gone"),
-      [],
-    ],
-    [
-      "a class OMC fails to instantiate",
-      new OmcDiagnosticError("getModelInstanceAnnotation: Error: no base"),
-      undefined,
-    ],
-  ])("does not instantiate %s", async (_label, failure, expectedDependsOn) => {
+  it("does not instantiate a class OMC doesn't have", async () => {
     const { client, calls } = makeClient({
       annotation: async () => {
-        throw failure;
+        throw new ModelInstanceNotFoundError("Pkg.Gone");
       },
     });
-    const { svg, dependsOn } = await libraryIconSvg(client, "Pkg.Gone");
+    const { svg } = await libraryIconSvg(client, "Pkg.Gone");
     expect(calls).toEqual(["getModelInstanceAnnotation"]);
     expect(svg).toBeUndefined();
-    expect(dependsOn).toEqual(expectedDependsOn);
   });
 
   it("falls back to getModelInstance when the annotation call throws", async () => {

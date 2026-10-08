@@ -24,9 +24,6 @@ function emptyReplyCtx(opts: {
   };
 }
 
-const BASE_CLASS_ERROR =
-  "Error: Base class NoBase not found in scope Partial2.\n";
-
 describe.each([
   ["getModelInstance", getModelInstance],
   ["getModelInstanceAnnotation", getModelInstanceAnnotation],
@@ -44,27 +41,33 @@ describe.each([
     );
   });
 
-  it("surfaces OMC's diagnostic, not not-found, for a class that exists", async () => {
-    const ctx = emptyReplyCtx({ exists: true, errorString: BASE_CLASS_ERROR });
+  it("throws OmcDiagnosticError, not not-found, for a class that exists, ignoring a possibly stale buffer", async () => {
+    const ctx = emptyReplyCtx({
+      exists: true,
+      errorString: "Error: Class NoType not found in scope B.\n",
+    });
 
     const err: unknown = await fetch(ctx, { typeName: "P.Partial2" }).catch(
       (e: unknown) => e,
     );
     expect(err).toBeInstanceOf(OmcDiagnosticError);
     expect(err).not.toBeInstanceOf(ModelInstanceNotFoundError);
-    expect((err as Error).message).toBe(
-      `${fnName}: ${BASE_CLASS_ERROR.trim()}`,
+    expect((err as Error).message).toMatch(
+      new RegExp(`^${fnName}: .*"P\\.Partial2".*fails to instantiate`),
     );
+    expect((err as Error).message).not.toContain("NoType");
   });
 
-  it("keeps OMC's diagnostic when the existClass probe itself fails", async () => {
+  it("lets a failed existClass probe surface as itself, not as OMC's answer", async () => {
     const ctx = emptyReplyCtx({
       exists: new Error("transport closed"),
-      errorString: BASE_CLASS_ERROR,
+      errorString: "",
     });
 
-    await expect(fetch(ctx, { typeName: "P.Partial2" })).rejects.toThrow(
-      `${fnName}: ${BASE_CLASS_ERROR.trim()}`,
+    const err: unknown = await fetch(ctx, { typeName: "P.Partial2" }).catch(
+      (e: unknown) => e,
     );
+    expect(err).not.toBeInstanceOf(OmcDiagnosticError);
+    expect((err as Error).message).toBe("transport closed");
   });
 });

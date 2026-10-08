@@ -1,9 +1,9 @@
 import { existClass } from "../api/browsing/existClass.js";
+import { OmcDiagnosticError } from "../diagnostic-error.js";
 import { expectString, isNull, parse } from "../parse.js";
 
 import type { CallContext } from "./callContext.js";
 import { ModelInstanceNotFoundError } from "./modelInstance.js";
-import { readFailure } from "./parseOutput.js";
 
 /**
  * Unwraps the Modelica string literal around a `getModelInstance`/
@@ -11,9 +11,9 @@ import { readFailure } from "./parseOutput.js";
  *
  * OMC replies empty both for a class it doesn't know and for a loaded class
  * that fails to instantiate (e.g. a missing base class), so an empty reply is
- * told apart by `existClass`. The buffer is drained first in either case, so a
- * stale "not found" diagnostic doesn't reach the next caller. A failed
- * `existClass` probe falls back to OMC's reason rather than replacing it.
+ * told apart by `existClass`. The error buffer can't name the instantiation
+ * failure: OMC reports it only on a class's first elaboration, and nothing
+ * clears the buffer before this call, so its text may belong to an earlier one.
  */
 export async function modelInstanceJson(
   ctx: CallContext,
@@ -23,11 +23,9 @@ export async function modelInstanceJson(
 ): Promise<string> {
   const value = parse(raw);
   if (!isNull(value)) return expectString(value);
-  const failure = await readFailure(ctx, fnName);
-  const exists = await existClass(ctx, { typeName: className }).then(
-    (out) => out.exists,
-    () => true,
-  );
+  const { exists } = await existClass(ctx, { typeName: className });
   if (!exists) throw new ModelInstanceNotFoundError(className);
-  throw failure;
+  throw new OmcDiagnosticError(
+    `${fnName}: OMC returned no model instance for "${className}". The class is loaded but fails to instantiate; check it for errors.`,
+  );
 }
