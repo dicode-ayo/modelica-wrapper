@@ -13,6 +13,8 @@ import {
 } from "@dicode/omc-client";
 import { LruCache } from "@dicode/diagram-ui/lru-cache";
 
+import { log } from "../logger.js";
+
 import { fetchDiagramLayout } from "./open-diagram.js";
 
 /**
@@ -91,6 +93,11 @@ export class NestedDiagramCache {
       let layout: DiagramLayout;
       try {
         layout = await this.fetch(this.client, className);
+      } catch (err) {
+        // Logged here, where concurrent requests share the fetch, so one
+        // failure writes one line.
+        log.debug("nestedDiagram", `fetch failed for ${className}`, err);
+        throw err;
       } finally {
         this.inFlight.delete(changed);
       }

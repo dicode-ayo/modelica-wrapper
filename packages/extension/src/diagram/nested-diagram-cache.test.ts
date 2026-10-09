@@ -2,11 +2,14 @@ import { describe, expect, it, vi, type Mock } from "vitest";
 import type { DiagramLayout, OmcClient } from "@dicode/omc-client";
 
 import { ClassInvalidationRegistry } from "../invalidation.js";
+import { log } from "../logger.js";
 import {
   evictNestedDiagramsOnChange,
   NestedDiagramCache,
   nestedDiagramCache,
 } from "./nested-diagram-cache.js";
+
+vi.mock("../logger.js", () => import("../../test-support/logger-mock.js"));
 
 function layout(className: string): DiagramLayout {
   return { kind: "diagram", className } as unknown as DiagramLayout;
@@ -67,6 +70,33 @@ describe("NestedDiagramCache", () => {
     await expect(cache.get("A.B")).rejects.toThrow("OMC unavailable");
     await expect(cache.get("A.B")).resolves.toEqual(layout("A.B"));
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("logs one debug line per failed fetch, however many gets share it", async () => {
+    const debug = vi.mocked(log.debug);
+    debug.mockClear();
+    let rejectFetch: (err: Error) => void = () => {};
+    const fetch = vi.fn(
+      () =>
+        new Promise<DiagramLayout>((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    );
+    const cache = new NestedDiagramCache({} as OmcClient, fetch);
+    const failure = new Error("OMC unavailable");
+
+    const gets = [cache.get("A.B"), cache.get("A.B")];
+    rejectFetch(failure);
+
+    await Promise.all(
+      gets.map((get) => expect(get).rejects.toThrow("OMC unavailable")),
+    );
+    expect(debug).toHaveBeenCalledOnce();
+    expect(debug).toHaveBeenCalledWith(
+      "nestedDiagram",
+      expect.stringContaining("A.B"),
+      failure,
+    );
   });
 
   it("evicts the least-recently-used class once past capacity", async () => {
