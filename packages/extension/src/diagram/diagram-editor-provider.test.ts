@@ -92,6 +92,7 @@ import {
 } from "./diagram-editor-provider.js";
 import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
 import { ClassInvalidationRegistry } from "../invalidation.js";
+import { retryMissingClasses } from "../missing-class.js";
 
 /** Stands in for whatever sentence the write verdict refuses with. */
 const REFUSAL = "Cannot edit Pkg.M — its source file is read-only.";
@@ -494,7 +495,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       "diagram",
     );
     await flush();
-    DiagramEditorProvider.retryMissingClasses();
+    retryMissingClasses();
     releaseFirst();
     await flush();
 

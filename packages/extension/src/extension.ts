@@ -44,6 +44,7 @@ import {
 } from "./documentation/documentation-html-provider.js";
 import { registerLanguageFeatures } from "./language/index.js";
 import { log } from "./logger.js";
+import { retryMissingClasses } from "./missing-class.js";
 import { registerMcpServerProvider } from "./mcp/index.js";
 import { recoverRestoredCustomEditors } from "./restore-recovery.js";
 import { ResultViewEditorProvider } from "./results/result-view-provider.js";
@@ -180,9 +181,9 @@ export async function activate(
     ensureClient,
     refresh: () => {
       libraryTree.childrenChanged(null);
-      // A restored diagram tab may have asked for one of these classes before
+      // A restored editor tab may have asked for one of these classes before
       // the sweep loaded it, and its document read as empty then.
-      for (const className of DiagramEditorProvider.retryMissingClasses()) {
+      for (const className of retryMissingClasses()) {
         sourceProvider.notifySourceChanged(className);
       }
     },
@@ -296,6 +297,7 @@ export async function activate(
       ensureClient,
       writeVerdicts,
       DOCUMENTATION_VIEW_TYPE,
+      invalidation,
     ),
     registerLanguageFeatures(context, ensureClient, invalidation),
     registerMcpServerProvider(
