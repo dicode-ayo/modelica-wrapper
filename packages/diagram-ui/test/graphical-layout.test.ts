@@ -166,7 +166,7 @@ describe("<om-graphical-layout>", () => {
     expect(standaloneConnectorIds(el)).toEqual(["u", PLACEMENT_PREVIEW_ID]);
   });
 
-  it("fits an icon to its graphics and public connectors only", () => {
+  it("fits an icon to its drawn graphics and public connectors only", () => {
     const icon = withPorts(tinyLayout(), "icon");
     icon.iconLayers = [
       {
@@ -179,6 +179,14 @@ describe("<om-graphical-layout>", () => {
               [150, 150],
             ],
             textString: "%name",
+          },
+          {
+            kind: "rectangle",
+            visible: false,
+            extent: [
+              [-400, -400],
+              [400, 400],
+            ],
           },
         ],
       },

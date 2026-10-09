@@ -112,8 +112,9 @@ function rectsOverlap(a: DiagramRect, b: DiagramRect): boolean {
 
 /**
  * Returns the keys of every component, connector and own-layer shape the band
- * touches. Overlap decides rather than centre-containment: an entity placed on
- * the class boundary has its centre outside any band drawable over the canvas.
+ * touches, among those the view shows (`viewComponents`). Overlap decides
+ * rather than centre-containment: an entity placed on the class boundary has
+ * its centre outside any band drawable over the canvas.
  *
  * Connections aren't selected by rubber-band — their waypoints would force
  * extra geometry awareness.
@@ -147,9 +148,9 @@ export function selectByDiagramRect(
 }
 
 /**
- * Every selectable entity in the layout, regardless of where it sits. A
- * rubber band can only take what it covers, and a class routinely places
- * connectors and labels outside its own coordinate system.
+ * Every entity the view shows (`viewComponents`), regardless of where it
+ * sits. A rubber band can only take what it covers, and a class routinely
+ * places connectors and labels outside its own coordinate system.
  */
 export function selectAllKeys(layout: DiagramLayout): Set<string> {
   const keys = new Set<string>();

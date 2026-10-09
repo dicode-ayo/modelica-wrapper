@@ -125,6 +125,10 @@ interface BBox {
   maxY: number;
 }
 
+/**
+ * The extent of what the view shows: its placed instances and connection
+ * waypoints, plus an icon's own graphics and coordinate system.
+ */
 export function layoutBoundingBox(layout: DiagramLayout): BBox | null {
   let minX = Infinity;
   let minY = Infinity;
@@ -155,6 +159,7 @@ export function layoutBoundingBox(layout: DiagramLayout): BBox | null {
     addPoint(cs.cx + cs.width / 2, cs.cy + cs.height / 2);
     for (const layer of layout.iconLayers) {
       for (const shape of layer.shapes) {
+        if (shape.visible === false) continue;
         const b = shapeBoundsOf(shape);
         addPoint(b.x1, b.y1);
         addPoint(b.x2, b.y2);
@@ -653,8 +658,8 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   /**
-   * Compute the bounding box of all components + connectors in the
-   * current layout, then set the scene's zoom + pan so the box fills
+   * Compute the bounding box of what the view shows (see
+   * `layoutBoundingBox`), then set the scene's zoom + pan so the box fills
    * the viewport with a small padding. Returns `true` if the fit was
    * applied, `false` if the layout was empty or the scene wasn't
    * mounted yet.
