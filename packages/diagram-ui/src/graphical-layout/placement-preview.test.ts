@@ -37,16 +37,20 @@ const gain: ClassDef = {
   parameters: {},
 };
 
+/** The preview component's class key resolves to `classDef`. */
+function expectPreviewClass(layout: DiagramLayout, classDef: ClassDef): void {
+  const ref = layout.components[PLACEMENT_PREVIEW_ID]?.classRef ?? "";
+  expect(layout.classes[ref]).toBe(classDef);
+  expect(classNameOf(layout, ref)).toBe(classDef.name);
+}
+
 describe("buildPlacementPreview", () => {
   it("injects the class and a square instance at the point", () => {
     const layout = buildPlacementPreview(baseLayout(), gain, { x: 40, y: 25 });
 
-    const preview = layout.components[PLACEMENT_PREVIEW_ID];
-    if (preview === undefined) throw new Error("no preview component");
-    expect(layout.classes[preview.classRef]).toBe(gain);
-    expect(classNameOf(layout, preview.classRef)).toBe(gain.name);
+    expectPreviewClass(layout, gain);
     const h = PLACEMENT_HALF_EXTENT;
-    expect(preview.placement.extent).toEqual([
+    expect(layout.components[PLACEMENT_PREVIEW_ID]?.placement.extent).toEqual([
       [40 - h, 25 - h],
       [40 + h, 25 + h],
     ]);
@@ -72,6 +76,7 @@ describe("buildPlacementPreview", () => {
       "r1",
     ]);
     expect(layout.classes["R"]).toBe(base.classes["R"]);
+    expectPreviewClass(layout, gain);
     expect(Object.keys(layout.classes)).toHaveLength(2);
   });
 
@@ -105,9 +110,6 @@ describe("buildPlacementPreview", () => {
 
     expect(layout.classes[withSupport.name]).toBe(withSupport);
     expect(layout.classes[`${withSupport.name}#2`]).toBe(withoutSupport);
-    const previewRef = layout.components[PLACEMENT_PREVIEW_ID]?.classRef;
-    if (previewRef === undefined) throw new Error("no preview component");
-    expect(layout.classes[previewRef]).toBe(dragged);
-    expect(classNameOf(layout, previewRef)).toBe(dragged.name);
+    expectPreviewClass(layout, dragged);
   });
 });
