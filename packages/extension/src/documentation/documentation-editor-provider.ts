@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 
 import type { ModelInstance, OmcClient } from "@dicode/omc-client";
-import { ModelInstanceNotFoundError } from "@dicode/omc-client";
 import type { DocumentationInterface } from "@dicode/documentation-ui/interface-model";
 
 import {
@@ -21,7 +20,6 @@ import { DOCUMENTATION_VIEW_TYPE } from "../diagram/view-type.js";
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import {
-  isMissingClassError,
   MissingClassWatch,
   renderMissingClassPage,
   type ClassSetEvents,
@@ -125,14 +123,15 @@ export class DocumentationEditorProvider
   // Tracks the focused documentation editor so the title-bar view switcher can
   // resolve its class when flipping away from the documentation view.
   private static activeToken: object | undefined;
-  private static activeName: string | undefined;
+  private static activeName: (() => string | undefined) | undefined;
 
   /** Class of the focused documentation editor, or undefined when none is. */
   static activeClassName(): string | undefined {
-    return DocumentationEditorProvider.activeName;
+    return DocumentationEditorProvider.activeName?.();
   }
 
-  static setActive(token: object, className: string): void {
+  /** `className` answers undefined while the editor shows no class. */
+  static setActive(token: object, className: () => string | undefined): void {
     DocumentationEditorProvider.activeToken = token;
     DocumentationEditorProvider.activeName = className;
   }
@@ -221,9 +220,11 @@ export function resolveDocumentationEditor(
   });
 
   const token = {};
+  const shownClassName = (): string | undefined =>
+    watch.missing ? undefined : className;
   const viewStateSub = webviewPanel.onDidChangeViewState((e) => {
     if (e.webviewPanel.active) {
-      DocumentationEditorProvider.setActive(token, className);
+      DocumentationEditorProvider.setActive(token, shownClassName);
     } else {
       DocumentationEditorProvider.clearActive(token);
     }
@@ -238,7 +239,7 @@ export function resolveDocumentationEditor(
     controller?.dispose();
   });
   if (webviewPanel.active) {
-    DocumentationEditorProvider.setActive(token, className);
+    DocumentationEditorProvider.setActive(token, shownClassName);
   }
 
   const load = async (): Promise<void> => {
@@ -262,6 +263,7 @@ export function resolveDocumentationEditor(
       controller = undefined;
       watch.notFound();
     } catch (err) {
+      if (disposed) return;
       watch.settled();
       const message = `Failed to load documentation for ${className}: ${errorDetail(err)}`;
       controllerGate.send({ type: "error", message });
@@ -376,12 +378,21 @@ export class DocumentationEditController {
     let found = true;
     await this.enqueue(async () => {
       try {
-        await this.refetchAndSend();
-      } catch (err) {
-        if (isMissingClassError(err)) {
-          found = false;
-          return;
+        const info = await this.fetchInfo();
+        // OMC answers a class it doesn't have with an empty annotation, and
+        // only after the annotation fetch has resolved a not-yet-loaded class
+        // can existClass be trusted.
+        if (info === "") {
+          const { exists } = await this.deps.client.existClass({
+            typeName: this.deps.className,
+          });
+          if (!exists) {
+            found = false;
+            return;
+          }
         }
+        await this.send(info);
+      } catch (err) {
         this.reportError(
           `Failed to load documentation for ${this.deps.className}: ${errorDetail(err)}`,
         );
@@ -496,15 +507,18 @@ export class DocumentationEditController {
   }
 
   private async refetchAndSend(): Promise<void> {
-    const { client, className, gate, document } = this.deps;
-    const { info } = await client.getDocumentationAnnotation({
-      typeName: className,
+    await this.send(await this.fetchInfo());
+  }
+
+  private async fetchInfo(): Promise<string> {
+    const { info } = await this.deps.client.getDocumentationAnnotation({
+      typeName: this.deps.className,
     });
-    // OMC answers a class it doesn't have with an empty annotation.
-    if (info === "") {
-      const { exists } = await client.existClass({ typeName: className });
-      if (!exists) throw new ModelInstanceNotFoundError(className);
-    }
+    return info;
+  }
+
+  private async send(info: string): Promise<void> {
+    const { client, className, gate, document } = this.deps;
     this.seeded = true;
     // Evaluated after the fetch, which resolves a not-yet-loaded class (a
     // restored tab): a verdict taken earlier would read as writable and strand

@@ -443,7 +443,8 @@ describe("resolveDocumentationEditor", () => {
     }
 
     it("shows the missing-class page, then the doc once the class loads", async () => {
-      const { panel, webview, posted, fireReady, fireDispose } = makePanel();
+      const { panel, webview, posted, fireReady, fireDispose } =
+        makePanel(true);
       const { client, load, fetches } = missingUntilLoaded();
       const invalidation = new ClassInvalidationRegistry();
 
@@ -463,6 +464,7 @@ describe("resolveDocumentationEditor", () => {
       expect(webview.html).toContain("ResistorDemo.NewModel");
       expect(webview.html).not.toContain("om-documentation-root");
       expect(posted).toEqual([]);
+      expect(DocumentationEditorProvider.activeClassName()).toBeUndefined();
 
       invalidation.classChanged("ResistorDemo.Other");
       await flush();
@@ -475,6 +477,9 @@ describe("resolveDocumentationEditor", () => {
       fireReady();
       await flush();
       expect(posted.map((m) => m.type)).toEqual(["doc", "interface"]);
+      expect(DocumentationEditorProvider.activeClassName()).toBe(
+        "ResistorDemo.NewModel",
+      );
       fireDispose();
     });
 

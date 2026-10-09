@@ -10,6 +10,7 @@ import type {
 } from "@dicode/omc-client";
 import {
   looksLikeError,
+  ModelInstanceNotFoundError,
   produceSimulationModel,
   withErrorBuffer,
 } from "@dicode/omc-client";
@@ -22,11 +23,7 @@ import { pathExists } from "../fs-util.js";
 import { omcRangeToVscodeRange } from "../language/position.js";
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
-import {
-  isMissingClassError,
-  MissingClassWatch,
-  renderMissingClassPage,
-} from "../missing-class.js";
+import { MissingClassWatch, renderMissingClassPage } from "../missing-class.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import {
   iconHonorsGesture,
@@ -382,8 +379,8 @@ export function resolveDiagramEditor(
     booted = true;
   };
 
-  const load = (watch: MissingClassWatch): void => {
-    const { className } = watch;
+  const load = (tracked: MissingClassWatch): void => {
+    const { className } = tracked;
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
@@ -430,15 +427,15 @@ export function resolveDiagramEditor(
           readOnly: !verdict.ok,
           hasClipboard: !diagramClipboard.isEmpty,
         });
-        watch.settled();
+        tracked.settled();
       } catch (err) {
         if (disposed) return;
-        if (isMissingClassError(err)) {
+        if (err instanceof ModelInstanceNotFoundError) {
           log.info("diagramEditor", errorDetail(err));
-          watch.notFound();
+          tracked.notFound();
           return;
         }
-        watch.settled();
+        tracked.settled();
         if (!booted) boot(className);
         const detail = errorDetail(err);
         gate.send({ type: "renderError", className, mode, detail });
@@ -451,6 +448,7 @@ export function resolveDiagramEditor(
   };
 
   const start = (className: string): void => {
+    if (disposed) return;
     boot(className);
     const started: MissingClassWatch = new MissingClassWatch(
       className,

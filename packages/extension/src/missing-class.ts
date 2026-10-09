@@ -1,6 +1,4 @@
 import * as vscode from "vscode";
-
-import { ModelInstanceNotFoundError } from "@dicode/omc-client";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { renderPlaceholderPage } from "./webview/webview-page.js";
@@ -33,16 +31,11 @@ const watches = new Set<MissingClassWatch>();
  * classes.
  */
 export function retryMissingClasses(): string[] {
-  const retried: string[] = [];
+  const retried = new Set<string>();
   for (const watch of watches) {
-    if (watch.retry(null)) retried.push(watch.className);
+    if (watch.retry(null)) retried.add(watch.className);
   }
-  return retried;
-}
-
-/** Whether `err` is OMC's answer that it has no such class. */
-export function isMissingClassError(err: unknown): boolean {
-  return err instanceof ModelInstanceNotFoundError;
+  return [...retried];
 }
 
 /**
