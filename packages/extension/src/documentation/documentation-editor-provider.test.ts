@@ -752,6 +752,28 @@ describe("DocumentationEditController write path", () => {
     expect(posted.filter((m) => m.type === "doc").length).toBeGreaterThan(0);
   });
 
+  it("posts nothing for work that runs after it is disposed", async () => {
+    const { client } = makeEditClient({ info: "<html><p>x</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      {
+        client,
+        document: srcDoc(),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
+      factory,
+    );
+
+    controller.dispose();
+    await controller.refreshFromExternalWrite();
+    await controller.handle({ type: "edit", info: "<html></html>" });
+
+    expect(posted).toEqual([]);
+  });
+
   it("refuses an external-write refresh on a read-only class and never reflects it", async () => {
     const { client } = makeEditClient(
       { info: "<html><p>after</p></html>" },

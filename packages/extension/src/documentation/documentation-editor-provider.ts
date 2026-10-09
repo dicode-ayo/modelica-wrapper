@@ -203,6 +203,18 @@ export function resolveDocumentationEditor(
     },
     markReady: () => gate.markReady(),
   };
+  const watch = new MissingClassWatch(
+    className,
+    {
+      fetch: () => void load(),
+      showMissing: () => {
+        booted = false;
+        webview.html = renderMissingClassPage(webview.cspSource, className);
+        log.info("documentationEditor", `OMC has no class ${className}`);
+      },
+    },
+    classSetEvents,
+  );
   const sub = webview.onDidReceiveMessage((msg: DocWebviewToExtension) => {
     if (msg.type === "ready") {
       gate.markReady();
@@ -270,18 +282,6 @@ export function resolveDocumentationEditor(
       log.warn("documentationEditor", message);
     }
   };
-  const watch = new MissingClassWatch(
-    className,
-    {
-      fetch: () => void load(),
-      showMissing: () => {
-        booted = false;
-        webview.html = renderMissingClassPage(webview.cspSource, className);
-        log.info("documentationEditor", `OMC has no class ${className}`);
-      },
-    },
-    classSetEvents,
-  );
 
   boot();
   watch.fetch();
@@ -353,6 +353,7 @@ export class DocumentationEditController {
   // A successful fetch confirms the class resolved to something real. An edit
   // before that is refused rather than targeting a not-yet-confirmed class.
   private seeded = false;
+  private disposed = false;
 
   // Safe default until `refetchAndSend` resolves the class and judges it.
   private verdict: WriteVerdict = {
@@ -408,6 +409,7 @@ export class DocumentationEditController {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.reverseTimer?.cancel();
     this.shadow.dispose();
   }
@@ -415,9 +417,13 @@ export class DocumentationEditController {
   private enqueue(unit: () => Promise<void>): Promise<void> {
     // A single rejection would sever the chain, so the one place the chain is
     // built is the one place the catch belongs.
-    this.queue = this.queue.then(unit).catch((err) => {
-      this.reportError(`documentation edit failed: ${errorDetail(err)}`);
-    });
+    // A controller is disposed when its class turns out missing, and units it
+    // queued before then must not post over the missing-class page.
+    this.queue = this.queue
+      .then(() => (this.disposed ? undefined : unit()))
+      .catch((err) => {
+        this.reportError(`documentation edit failed: ${errorDetail(err)}`);
+      });
     return this.queue;
   }
 
