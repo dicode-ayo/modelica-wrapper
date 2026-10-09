@@ -185,6 +185,96 @@ describe("produceParameterModel — class params", () => {
     expect(typeof weird.value).toBe("string");
   });
 
+  it("lists a replaceable local class read-only with its current class and Dialog placement (World.gravityAcceleration)", () => {
+    const enable = {
+      $kind: "binary_op",
+      lhs: { $kind: "cref", parts: [{ name: "gravityType" }] },
+      op: "==",
+      rhs: {
+        $kind: "enum",
+        name: "Modelica.Mechanics.MultiBody.Types.GravityTypes.UniformGravity",
+        index: 2,
+      },
+    };
+    const mi = instance([
+      {
+        $kind: "class",
+        name: "gravityAcceleration",
+        restriction: "function",
+        prefixes: {
+          replaceable: {
+            constrainedby:
+              "Modelica.Mechanics.MultiBody.Interfaces.partialGravityAcceleration",
+            comment: "Function to compute the gravity acceleration",
+            annotation: {
+              choicesAllMatching: true,
+              Dialog: { tab: "Gravity", enable },
+            },
+          },
+        },
+        baseClass:
+          "Modelica.Mechanics.MultiBody.Forces.Internal.standardGravityAcceleration",
+      },
+      {
+        $kind: "class",
+        name: "LocalType",
+        restriction: "type",
+        baseClass: "Real",
+      },
+    ]);
+    const model = produceParameterModel(mi);
+    expect(model.fields.map((f) => f.name)).toEqual(["gravityAcceleration"]);
+    const field = fieldByName(model, "gravityAcceleration");
+    expect(field.kind).toBe("unsupported");
+    expect(field.value).toBe(
+      "Modelica.Mechanics.MultiBody.Forces.Internal.standardGravityAcceleration",
+    );
+    expect(field.label).toBe("Function to compute the gravity acceleration");
+    expect(field.dialog).toEqual({
+      tab: "Gravity",
+      group: "Parameters",
+      enable,
+    });
+  });
+
+  it("takes a bare replaceable's Dialog from the class, and lets a redeclaring host override the inherited entry", () => {
+    const base = {
+      name: "Test.Base",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "class",
+          name: "Medium",
+          restriction: "package",
+          comment: "Medium in the component",
+          prefixes: { replaceable: true },
+          annotation: { Dialog: { tab: "Fluid" } },
+          baseClass: "Media.Air",
+        },
+      ],
+    };
+    const mi = instance([
+      { $kind: "extends", baseClass: base },
+      {
+        $kind: "class",
+        name: "Medium",
+        restriction: "package",
+        prefixes: { redeclare: true },
+        baseClass: "Media.Water",
+      },
+    ]);
+    const model = produceParameterModel(mi);
+    expect(model.fields.map((f) => f.name)).toEqual(["Medium"]);
+    const medium = fieldByName(model, "Medium");
+    expect(medium.value).toBe("Media.Water");
+    expect(medium.dialog.tab).toBe("Fluid");
+    expect(medium.label).toBe("Medium in the component");
+    expect(medium.inheritedFrom).toBeUndefined();
+
+    const baseOnly = produceParameterModel(ModelInstanceSchema.parse(base));
+    expect(fieldByName(baseOnly, "Medium").dialog.tab).toBe("Fluid");
+  });
+
   it("carries the raw Dialog.enable AST when present, omits it otherwise", () => {
     const enableExpr = {
       $kind: "binary_op" as const,

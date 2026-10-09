@@ -4,9 +4,10 @@
  *
  * No OMC contact, no rendering. The producer:
  *  1. Walks the (component's) type extends chain in post-order (ancestors
- *     first, host last), collecting `variability == "parameter"` elements.
- *     A more-derived re-declaration overrides the inherited entry by name,
- *     matching Modelica flattening / override semantics.
+ *     first, host last), collecting `variability == "parameter"` elements
+ *     and replaceable (or redeclared) local classes. A more-derived
+ *     re-declaration overrides the inherited entry by name, matching Modelica
+ *     flattening / override semantics.
  *  2. Resolves each value as instance-modifier-over-type-default, classifying
  *     the field kind (scalar / enum / unsupported) off the (possibly aliased)
  *     declaration type.
@@ -27,6 +28,7 @@
 
 import type {
   Annotation,
+  ClassElement,
   ComponentElement,
   Expression,
   ExtendsElement,
@@ -108,22 +110,35 @@ export function produceParameterModel(
     // is an ancestor reached via `extends`, so its params are inherited.
     const inheritedFrom = klass === instance ? undefined : directBase;
     for (const el of klass.elements ?? []) {
-      if (el.$kind !== "component") continue;
-      if (el.prefixes?.variability !== "parameter") continue;
-      const field = buildField(
-        el,
-        inheritedFrom,
-        opts.component ? overrides[el.name] : undefined,
-        opts.unitTable,
-      );
-      const existing = indexByName.get(el.name);
+      const existing =
+        el.$kind === "extends" ? undefined : indexByName.get(el.name);
+      let field: ParameterField | undefined;
+      if (
+        el.$kind === "component" &&
+        el.prefixes?.variability === "parameter"
+      ) {
+        field = buildField(
+          el,
+          inheritedFrom,
+          opts.component ? overrides[el.name] : undefined,
+          opts.unitTable,
+        );
+      } else if (el.$kind === "class") {
+        field = replaceableClassField(
+          el,
+          klass.name,
+          inheritedFrom,
+          existing === undefined ? undefined : fields[existing],
+        );
+      }
+      if (field === undefined) continue;
       if (existing !== undefined) {
         // More-derived re-declaration overrides the inherited entry, in place
         // (preserves first-seen order, last-write-wins on content) — matches
         // the form builders' last-write-wins-by-name semantics.
         fields[existing] = field;
       } else {
-        indexByName.set(el.name, fields.length);
+        indexByName.set(field.name, fields.length);
         fields.push(field);
       }
     }
@@ -224,6 +239,53 @@ function buildField(
     kind: "unsupported",
     value: display,
   };
+}
+
+/**
+ * A replaceable local class, e.g. MultiBody `World.gravityAcceleration`, or a
+ * redeclaration of one, shown read-only with its current class: the form has
+ * no redeclare widget. A constrained replaceable carries its description and
+ * `Dialog` on the constraining clause rather than on the class. A
+ * redeclaration that brings neither keeps the `inherited` entry's.
+ */
+function replaceableClassField(
+  el: ClassElement,
+  enclosingClass: string,
+  inheritedFrom: string | undefined,
+  inherited: ParameterField | undefined,
+): ParameterField | undefined {
+  const { replaceable, redeclare } = el.prefixes ?? {};
+  if (!replaceable && !redeclare) return undefined;
+  const clause = typeof replaceable === "object" ? replaceable : undefined;
+  const comment =
+    typeof clause?.comment === "string" ? clause.comment : el.comment;
+  const clauseAnnotation = clause?.annotation as Annotation | undefined;
+  const dialogSource = [clauseAnnotation, el.annotation].find(hasDialog);
+  const field: ParameterField = {
+    name: el.name,
+    label: comment ?? inherited?.label ?? el.name,
+    kind: "unsupported",
+    value:
+      typeof el.baseClass === "string"
+        ? el.baseClass
+        : `${enclosingClass}.${el.name}`,
+    dialog:
+      dialogSource === undefined && inherited !== undefined
+        ? inherited.dialog
+        : readDialogInfo(dialogSource),
+    unitOptions: [],
+  };
+  if (inheritedFrom !== undefined) field.inheritedFrom = inheritedFrom;
+  return field;
+}
+
+/** Whether `annotation` carries a `Dialog` record `readDialogInfo` would read. */
+function hasDialog(annotation: Annotation | undefined): boolean {
+  if (typeof annotation !== "object" || annotation === null) return false;
+  const dialog = (annotation as { Dialog?: unknown }).Dialog;
+  return (
+    typeof dialog === "object" && dialog !== null && !Array.isArray(dialog)
+  );
 }
 
 // ---------- type-shape resolution (was parameter-shape.ts) ----------
