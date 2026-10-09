@@ -57,6 +57,7 @@ reaches the host as the `change` the mutation commits.
 | `om-change-class-request` | `<om-graphical-layout>` | `changeClassRequest` |
 | `om-clipboard-request` | `<om-graphical-layout>` | `copySelection` or `paste` |
 | `om-go-to-source` | `<om-graphical-layout>` | `goToSource` |
+| `om-open-diagram-request` | `<om-graphical-layout>` | `openDiagram` |
 | `om-tool-change` | `<om-graphical-layout>` | bridge state — mirrors the armed tool into the action panel |
 | `om-action-check` | `<om-action-panel>` | `actionCheck` |
 | `om-action-simulate` | `<om-action-panel>` | `actionSimulate` |
@@ -115,6 +116,7 @@ answer all four.
 | `changeClassRequest` | `{ componentName, currentClass }` | Swap a sub-component's type. |
 | `copySelection` | `{ keys }` | Copy — the host owns the window-wide clipboard and resolves the keys itself. |
 | `goToSource` | `{ source, fallbackClassName }` | Open an entity's source in a text editor. `source` is the OMC-reported `SourceLocation` the webview already holds on the layout entity (the type's class for go-to-definition, the declaration for go-to-declaration); `fallbackClassName` names the class whose `modelica-source:` view opens when `source.filename` is not a real file on disk. |
+| `openDiagram` | `{ className }` | Open `className` (a selected component's type) as a diagram in its own `modelica.diagram` editor, via the `modelica.openDiagram` path. Opens an editor only, so a queued commit may stay queued, and the icon editor honors it. |
 | `paste` | — | Paste the host clipboard into this diagram. |
 | `nestedDiagramRequest` | `{ requestId, className }` | Request `className`'s own diagram layout — the semantic in-place nesting zoom feature's box content (issue #629). Read-only and unrelated to the bound class, so a queued commit may stay queued. Answered by `nestedDiagramResult`. |
 

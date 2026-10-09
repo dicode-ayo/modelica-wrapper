@@ -93,6 +93,7 @@ In a Lit/HTML template the same element is just:
 | `om-double-click` | `{ key }` |
 | `om-context-menu` | context-menu target |
 | `om-add-component-request` | `{ className, position }` |
+| `om-open-diagram-request` | `{ className }` |
 | `om-resize` | resize details |
 
 The parameter form (`<om-parameter-panel>` / `<om-parameter-form>`) emits

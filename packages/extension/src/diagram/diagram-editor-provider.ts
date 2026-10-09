@@ -81,6 +81,7 @@ import {
   keyToCref,
   layoutFromInstance,
   guardAddComponent,
+  openDiagram,
   pickClassToSwap,
   placementAt,
   resetComponentParameters,
@@ -840,6 +841,9 @@ export class DiagramEditController {
       case "goToSource":
         await this.onGoToSource(msg.source, msg.fallbackClassName);
         return;
+      case "openDiagram":
+        await this.onOpenDiagram(msg.className);
+        return;
       case "resetComponentParameters":
         await this.onResetComponentParameters(msg.componentName);
         return;
@@ -1521,6 +1525,16 @@ export class DiagramEditController {
     } catch (err) {
       this.reportError(
         `go to source for ${fallbackClassName} failed: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async onOpenDiagram(className: string): Promise<void> {
+    try {
+      await openDiagram(className);
+    } catch (err) {
+      this.reportError(
+        `open diagram for ${className} failed: ${(err as Error).message}`,
       );
     }
   }

@@ -18,8 +18,9 @@ interface LayoutEl extends HTMLElement {
   layout: {
     components: Record<
       string,
-      { placement: { extent: number[][]; rotation?: number } }
+      { classRef: string; placement: { extent: number[][]; rotation?: number } }
     >;
+    classes: Record<string, { name?: string }>;
   };
   selection: string[];
   setSelection: (keys: string[]) => void;
@@ -98,7 +99,42 @@ test("right-click selects the clicked component and opens its menu", async ({
     "Flip horizontal",
     "Flip vertical",
     "Change class…",
+    "Open Diagram",
   ]);
+});
+
+test("Open Diagram reports the clicked component's class to the host", async ({
+  page,
+}) => {
+  const { name, centre } = await firstComponent(page);
+  const requested = page.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        document
+          .querySelector("om-graphical-layout")
+          ?.addEventListener(
+            "om-open-diagram-request",
+            (e) =>
+              resolve(
+                (e as CustomEvent<{ className: string }>).detail.className,
+              ),
+            { once: true },
+          );
+      }),
+  );
+  await page.mouse.click(centre.x, centre.y, { button: "right" });
+  await page
+    .locator('om-context-menu button[data-id="diagram.openDiagram"]')
+    .click();
+
+  const expected = await page.evaluate((n: string) => {
+    const { layout } = document.querySelector(
+      "om-graphical-layout",
+    ) as LayoutEl;
+    const { classRef } = layout.components[n];
+    return layout.classes[classRef]?.name ?? classRef;
+  }, name);
+  expect(await requested).toBe(expected);
 });
 
 test("right-click on empty space clears the selection and offers host navigation only", async ({

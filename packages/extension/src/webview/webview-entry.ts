@@ -195,6 +195,7 @@ class OmWebviewRoot extends LitElement {
         @om-change-class-request=${this.onChangeClassRequest}
         @om-clipboard-request=${this.onClipboardRequest}
         @om-go-to-source=${this.onGoToSource}
+        @om-open-diagram-request=${this.onOpenDiagramRequest}
       ></om-graphical-layout>
       <om-overlay-stack anchor="top-right">
         <om-action-panel
@@ -394,6 +395,12 @@ class OmWebviewRoot extends LitElement {
   ): void => {
     const { source, fallbackClassName } = e.detail;
     this.post({ type: "goToSource", source, fallbackClassName });
+  };
+
+  private onOpenDiagramRequest = (
+    e: CustomEvent<LayoutEvents["om-open-diagram-request"]>,
+  ): void => {
+    this.post({ type: "openDiagram", className: e.detail.className });
   };
 
   private onClipboardRequest = (

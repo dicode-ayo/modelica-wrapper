@@ -20,6 +20,7 @@ const env = {
   hasClipboard: false,
   vertexTarget: false,
   polySelection: false,
+  hasOpenDiagramClass: false,
   hasDefinitionSource: false,
   hasDeclarationSource: false,
 };
@@ -71,6 +72,7 @@ describe("deriveContextKeys", () => {
         hasClipboard: true,
         vertexTarget: false,
         polySelection: false,
+        hasOpenDiagramClass: false,
         hasDefinitionSource: false,
         hasDeclarationSource: false,
       },

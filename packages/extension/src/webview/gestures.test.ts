@@ -50,6 +50,7 @@ const SAMPLES: WebviewToExtension[] = [
   { type: "resetComponentParameters", componentName: "r1" },
   { type: "addComponent", className: "A.B", position: { x: 1, y: 2 } },
   { type: "changeClassRequest", componentName: "r1", currentClass: "A" },
+  { type: "openDiagram", className: "A.B" },
   {
     type: "goToSource",
     source: {

@@ -89,6 +89,24 @@ const navigateMenu = (order: number): CommandPlacement => ({
 });
 
 /**
+ * The class "Open Diagram" opens for the current selection, or `null` when
+ * nothing resolves (so the command is not offered): a single selected
+ * component's TYPE. A bare canvas is excluded — that class is already the one
+ * on screen.
+ */
+export function resolveOpenDiagramClass(
+  layout: DiagramLayout | null,
+  selectedKeys: ReadonlySet<string>,
+): string | null {
+  if (!layout) return null;
+  const parsed = soleSelectedKey(selectedKeys);
+  if (parsed?.kind !== "component") return null;
+  const comp = layout.components[parsed.nodeId];
+  if (comp === undefined) return null;
+  return classNameOf(layout, comp.classRef);
+}
+
+/**
  * The source a "Go to Definition" on the current selection opens, or `null`
  * when nothing resolves (so the command is not offered): a selected
  * component / standalone connector opens its TYPE's class, a connection its
@@ -369,6 +387,22 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     run: (target) => target.requestClipboard?.("paste"),
   },
   {
+    id: "diagram.openDiagram",
+    title: "Open Diagram",
+    category: "Navigate",
+    // Opening an editor never writes the class, so readonly keeps it.
+    when: (ctx) => ctx.hasOpenDiagramClass,
+    placements: [navigateMenu(0)],
+    run: (target) => {
+      const className = resolveOpenDiagramClass(
+        target.layout,
+        target.selectedKeys,
+      );
+      if (className === null) return;
+      target.requestOpenDiagram?.(className);
+    },
+  },
+  {
     id: "diagram.goToDefinition",
     title: "Go to Definition",
     category: "Navigate",
@@ -376,7 +410,7 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     // key already encodes what the selection (or bare canvas) resolves —
     // nothing is offered where nothing would open.
     when: (ctx) => ctx.hasDefinitionSource,
-    placements: [navigateMenu(0)],
+    placements: [navigateMenu(1)],
     run: (target) => {
       const request = resolveDefinitionSource(
         target.layout,
@@ -391,7 +425,7 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     title: "Go to Declaration",
     category: "Navigate",
     when: (ctx) => ctx.hasDeclarationSource,
-    placements: [navigateMenu(1)],
+    placements: [navigateMenu(2)],
     run: (target) => {
       const request = resolveDeclarationSource(
         target.layout,

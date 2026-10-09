@@ -299,6 +299,17 @@ const GESTURES = {
     icon: "honored",
   }),
 
+  /**
+   * User asked to open a class as its own diagram. Opens an editor only, so
+   * a queued commit may stay queued; honored by the icon editor like
+   * `goToSource`.
+   */
+  openDiagram: gesture({
+    payload: { className: isString },
+    ordering: "uiOnly",
+    icon: "honored",
+  }),
+
   /** User asked to swap a sub-component's type. */
   changeClassRequest: gesture({
     payload: { componentName: isString, currentClass: isString },

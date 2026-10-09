@@ -13,5 +13,6 @@ export {
   DEFAULT_KEYMAP,
   resolveDeclarationSource,
   resolveDefinitionSource,
+  resolveOpenDiagramClass,
   type DiagramCommandId,
 } from "./diagram-commands.js";
