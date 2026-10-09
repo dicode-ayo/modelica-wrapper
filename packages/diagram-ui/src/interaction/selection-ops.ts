@@ -9,7 +9,7 @@ import type {
 import { placementCentre } from "../base/placement-math.js";
 import { formatShapeKey, parseKey } from "./entity-keys.js";
 import { isPolyShape, ownLayer } from "./own-layer.js";
-import { viewComponents, viewConnectors } from "./view-entities.js";
+import { viewComponents, viewConnectors } from "../base/view-entities.js";
 
 /**
  * Derives selections from a layout. These return `Set<string>` of entity
@@ -164,26 +164,25 @@ export function selectAllKeys(layout: DiagramLayout): Set<string> {
 
 /**
  * Filters `keys` down to those still backed by an entity in `layout`:
- * a component / connector by id, or a host shape by its own-layer
- * `(kind, index)`. Selection survives an in-place edit (move / rotate /
- * resize echoed back from the host) but drops anything the layout no
- * longer contains. Edge / junction keys, whose indices can shift on
+ * a component / connector the view shows, by id, or a host shape by its
+ * own-layer `(kind, index)`. Selection survives an in-place edit (move /
+ * rotate / resize echoed back from the host) but drops anything the layout
+ * no longer contains. Edge / junction keys, whose indices can shift on
  * relayout, are not retained.
  */
 export function retainExistingSelection(
   layout: DiagramLayout,
   keys: Iterable<string>,
 ): Set<string> {
+  const components = new Set(viewComponents(layout).map(([id]) => id));
+  const connectors = new Set(viewConnectors(layout).map(([id]) => id));
   const out = new Set<string>();
   for (const k of keys) {
     const parsed = parseKey(k);
     if (!parsed) continue;
-    if (parsed.kind === "component" && layout.components[parsed.nodeId]) {
+    if (parsed.kind === "component" && components.has(parsed.nodeId)) {
       out.add(k);
-    } else if (
-      parsed.kind === "connector" &&
-      layout.connectors[parsed.nodeId]
-    ) {
+    } else if (parsed.kind === "connector" && connectors.has(parsed.nodeId)) {
       out.add(k);
     } else if (parsed.kind === "shape") {
       // Positional re-key: keep the selection only if the same own-layer

@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { DiagramLayout, Placement } from "@dicode/omc-client";
 
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
+import {
+  buildPlacementPreview,
+  PLACEMENT_PREVIEW_ID,
+} from "../src/graphical-layout/placement-preview.js";
 import { mountLayout } from "./harness/interaction-fixtures.js";
 import { emptyLayout } from "./harness/layout-fixtures.js";
 
@@ -146,6 +150,17 @@ describe("<om-graphical-layout>", () => {
     const el = await mountLayout({ layout: withPorts(tinyLayout(), "icon") });
     expect(el.shadowRoot?.querySelectorAll("om-component")).toHaveLength(0);
     expect(standaloneConnectorIds(el)).toEqual(["u"]);
+  });
+
+  it("draws the placement preview as a connector in an icon-kind layout", async () => {
+    const icon = withPorts(tinyLayout(), "icon");
+    const pin = icon.classes["Test.Block"];
+    if (pin === undefined) throw new Error("expected Test.Block");
+    const el = await mountLayout({
+      layout: buildPlacementPreview(icon, pin, { x: 0, y: 0 }),
+    });
+    expect(el.shadowRoot?.querySelectorAll("om-component")).toHaveLength(0);
+    expect(standaloneConnectorIds(el)).toEqual(["u", PLACEMENT_PREVIEW_ID]);
   });
 
   it("draws every component and connector in a diagram-kind layout", async () => {

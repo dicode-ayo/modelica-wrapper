@@ -102,11 +102,9 @@ import {
   type PlacementPoint,
 } from "./placement-mode.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
+import { coordSystemSize } from "../base/placement-math.js";
 import { renderLayoutContent } from "./render-entities.js";
-import {
-  viewComponents,
-  viewConnectors,
-} from "../interaction/view-entities.js";
+import { viewComponents, viewConnectors } from "../base/view-entities.js";
 import {
   sharedNestedSource,
   type NestedDiagramSource,
@@ -130,22 +128,29 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
   let maxX = -Infinity;
   let maxY = -Infinity;
   let seen = false;
+  const addPoint = (x: number, y: number): void => {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    seen = true;
+  };
   const addPlacement = (
     placement: import("@dicode/omc-client").Placement,
   ): void => {
     const [[x1, y1], [x2, y2]] = placement.extent;
     const ox = placement.origin?.[0] ?? 0;
     const oy = placement.origin?.[1] ?? 0;
-    const lo = Math.min(x1, x2);
-    const hi = Math.max(x1, x2);
-    const bo = Math.min(y1, y2);
-    const to = Math.max(y1, y2);
-    minX = Math.min(minX, ox + lo);
-    maxX = Math.max(maxX, ox + hi);
-    minY = Math.min(minY, oy + bo);
-    maxY = Math.max(maxY, oy + to);
-    seen = true;
+    addPoint(ox + x1, oy + y1);
+    addPoint(ox + x2, oy + y2);
   };
+  if (layout.kind === "icon") {
+    // An icon's graphics fill its coordinate system, and an icon without a
+    // public connector has nothing else to frame.
+    const cs = coordSystemSize(layout.coordinateSystem);
+    addPoint(cs.cx - cs.width / 2, cs.cy - cs.height / 2);
+    addPoint(cs.cx + cs.width / 2, cs.cy + cs.height / 2);
+  }
   for (const [, c] of viewComponents(layout)) {
     addPlacement(c.placement);
   }
@@ -153,13 +158,7 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
     addPlacement(k.placement);
   }
   for (const conn of layout.connections) {
-    for (const [x, y] of conn.waypoints) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      seen = true;
-    }
+    for (const [x, y] of conn.waypoints) addPoint(x, y);
   }
   return seen ? { minX, minY, maxX, maxY } : null;
 }

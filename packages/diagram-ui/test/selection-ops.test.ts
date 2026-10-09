@@ -21,7 +21,6 @@ function iconLayout(): DiagramLayout {
   return {
     ...layout,
     kind: "icon",
-    connections: [],
     connectors: {
       ...layout.connectors,
       q: { ...p, name: "q", prefixes: { public: false } },
@@ -245,6 +244,11 @@ describe("retainExistingSelection", () => {
       "edge:0",
     ]);
     expect([...out].sort()).toEqual(["c:R1", "k:p"]);
+  });
+
+  it("drops keys an icon neither draws nor selects", () => {
+    const out = retainExistingSelection(iconLayout(), ["c:R1", "k:p", "k:q"]);
+    expect([...out]).toEqual(["k:p"]);
   });
 
   it("retains a host-shape key only when its index still holds the same kind", () => {

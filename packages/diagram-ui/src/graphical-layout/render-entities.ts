@@ -28,10 +28,7 @@ import {
 import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
 import { nestedPortShift, type NestingViews } from "../nesting/nested-ports.js";
 import { renderShape } from "../primitives/render-shape.js";
-import {
-  viewComponents,
-  viewConnectors,
-} from "../interaction/view-entities.js";
+import { viewComponents, viewConnectors } from "../base/view-entities.js";
 
 /**
  * Puts host shapes between the grid (`zIndex` -1) and components (0) as
