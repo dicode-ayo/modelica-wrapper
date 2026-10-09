@@ -81,9 +81,6 @@ describe("buildPlacementPreview", () => {
   });
 
   it("leaves the diagram's own entries for the dragged class untouched", () => {
-    // The catalog keys a class by content: `Torque` and `Torque#2` are two
-    // use-site variants of one class, and either can differ from the
-    // dragged class's default definition.
     const torque = (useSupport: boolean): ClassDef => ({
       name: "Modelica.Mechanics.Rotational.Sources.Torque",
       restriction: "model",
@@ -104,7 +101,10 @@ describe("buildPlacementPreview", () => {
       t1: { name: "t1", classRef: withSupport.name } as never,
       t2: { name: "t2", classRef: `${withSupport.name}#2` } as never,
     };
-    const dragged = torque(false);
+    const dragged: ClassDef = {
+      ...torque(true),
+      iconLayers: [{ from: withSupport.name, shapes: [] }],
+    };
 
     const layout = buildPlacementPreview(base, dragged, { x: 0, y: 0 });
 
