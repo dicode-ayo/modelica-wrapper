@@ -132,6 +132,7 @@ export {
   classNameToFilePrefix,
   ModelInstanceSchema,
   ModelInstanceAnnotationSchema,
+  ModelInstanceNotFoundError,
   ModelInstanceNotFullyLoadedError,
   parseModelInstanceOutput,
   ComponentRefSchema,

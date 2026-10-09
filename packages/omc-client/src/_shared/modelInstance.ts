@@ -43,6 +43,8 @@
 
 import { z } from "zod";
 
+import { OmcDiagnosticError } from "../diagnostic-error.js";
+
 import { formatSchemaMismatch } from "./formatSchemaMismatch.js";
 
 export const SourceLocationSchema = z
@@ -619,6 +621,20 @@ export class ModelInstanceNotFullyLoadedError extends Error {
       `Class "${className}" is not fully loaded — OMC returned an incomplete model instance. Try loading its enclosing package first.`,
     );
     this.name = "ModelInstanceNotFullyLoadedError";
+  }
+}
+
+/**
+ * Thrown when OMC's `getModelInstance`/`getModelInstanceAnnotation` reply is
+ * empty and `existClass` confirms OMC has no definition of the class: one never
+ * loaded, or one deleted or never saved.
+ */
+export class ModelInstanceNotFoundError extends OmcDiagnosticError {
+  constructor(public readonly className: string) {
+    super(
+      `Class "${className}" is not loaded or does not exist. Load the package that defines it, or check the class name.`,
+    );
+    this.name = "ModelInstanceNotFoundError";
   }
 }
 

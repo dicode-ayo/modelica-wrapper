@@ -31,6 +31,7 @@ export { ValueSchema } from "./value.js";
 export {
   ModelInstanceSchema,
   ModelInstanceAnnotationSchema,
+  ModelInstanceNotFoundError,
   ModelInstanceNotFullyLoadedError,
   parseModelInstanceOutput,
   ComponentRefSchema,

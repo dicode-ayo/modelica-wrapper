@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  ModelInstanceNotFoundError,
   OmcClient,
   asString,
   diagram,
@@ -22,6 +23,7 @@ import {
   ADD_RESULT_TO_VIEW_COMMAND,
   type AddResultToViewArgs,
 } from "../commands/results.js";
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 
@@ -599,14 +601,15 @@ async function fetchIconInstance(
       // A class that simply has no Icon is not a failed call. Instantiating it
       // to look again costs seconds on deep hierarchies, and never returns for
       // the builtins, all to rediscover there is nothing to paint. The cheap
-      // call can only fail to answer by throwing — an empty reply fails
-      // `JSON.parse`, a malformed one fails the schema — so the fallback
-      // belongs in the catch.
+      // call can only fail to answer by throwing, so the fallback belongs in
+      // the catch.
       return instance;
     } catch (err) {
+      // The full call can't find a class OMC doesn't have either.
+      if (err instanceof ModelInstanceNotFoundError) throw err;
       log.warn(
         "fetchIconInstance",
-        `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${(err as Error).message}`,
+        `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${errorDetail(err)}`,
       );
     }
   }
@@ -685,7 +688,7 @@ export async function libraryIconSvg(
   } catch (err) {
     log.warn(
       "libraryIconSvg",
-      `icon render failed for ${className}: ${(err as Error).message}`,
+      `icon render failed for ${className}: ${errorDetail(err)}`,
     );
     return { svg: undefined, dependsOn: undefined };
   }
