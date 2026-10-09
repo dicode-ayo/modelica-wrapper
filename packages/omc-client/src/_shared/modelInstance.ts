@@ -616,9 +616,13 @@ export type ModelInstanceAnnotation = ModelInstance;
  * `parseOutput` error.
  */
 export class ModelInstanceNotFullyLoadedError extends OmcDiagnosticError {
-  constructor(public readonly className: string) {
+  constructor(
+    public readonly className: string,
+    options?: ErrorOptions,
+  ) {
     super(
       `Class "${className}" is not fully loaded — OMC returned an incomplete model instance. Try loading its enclosing package first.`,
+      options,
     );
     this.name = "ModelInstanceNotFullyLoadedError";
   }
@@ -656,6 +660,10 @@ export function parseModelInstanceOutput<T extends { instance: unknown }>(
   const missingName = result.error.issues.some(
     (issue) => issue.path.join(".") === "instance.name",
   );
-  if (missingName) throw new ModelInstanceNotFullyLoadedError(className);
+  if (missingName) {
+    throw new ModelInstanceNotFullyLoadedError(className, {
+      cause: result.error,
+    });
+  }
   throw new Error(formatSchemaMismatch(cmd, result.error));
 }
