@@ -38,7 +38,10 @@ import {
   applyAddGraphic,
   applyShapeVertexInsert,
 } from "../interaction/layout-ops.js";
-import { retainExistingSelection } from "../interaction/selection-ops.js";
+import {
+  retainExistingSelection,
+  shapeBoundsOf,
+} from "../interaction/selection-ops.js";
 import {
   applyWaypointDelete,
   applyWaypointInsert,
@@ -122,7 +125,7 @@ interface BBox {
   maxY: number;
 }
 
-function layoutBoundingBox(layout: DiagramLayout): BBox | null {
+export function layoutBoundingBox(layout: DiagramLayout): BBox | null {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -145,11 +148,18 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
     addPoint(ox + x2, oy + y2);
   };
   if (layout.kind === "icon") {
-    // An icon's graphics fill its coordinate system, and an icon without a
-    // public connector has nothing else to frame.
+    // The icon is its graphics, and those routinely reach past the
+    // coordinate system (a `%name` Text above it).
     const cs = coordSystemSize(layout.coordinateSystem);
     addPoint(cs.cx - cs.width / 2, cs.cy - cs.height / 2);
     addPoint(cs.cx + cs.width / 2, cs.cy + cs.height / 2);
+    for (const layer of layout.iconLayers) {
+      for (const shape of layer.shapes) {
+        const b = shapeBoundsOf(shape);
+        addPoint(b.x1, b.y1);
+        addPoint(b.x2, b.y2);
+      }
+    }
   }
   for (const [, c] of viewComponents(layout)) {
     addPlacement(c.placement);

@@ -95,7 +95,7 @@ function placementBounds(p: Placement): DiagramRect {
 /** A host shape sits at its `origin` and rotates about it, per
  *  `setDiagramBounds`. A poly is bounded by its points, not its stroke path,
  *  so a band clipping only the drawn width of a line misses it. */
-function shapeBoundsOf(s: Shape): DiagramRect {
+export function shapeBoundsOf(s: Shape): DiagramRect {
   const origin: Point = [s.origin?.[0] ?? 0, s.origin?.[1] ?? 0];
   if (isPolyShape(s)) {
     return s.points.length === 0

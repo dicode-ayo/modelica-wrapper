@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { DiagramLayout, Placement } from "@dicode/omc-client";
 
-import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
+import {
+  layoutBoundingBox,
+  type OmGraphicalLayout,
+} from "../src/graphical-layout/graphical-layout.component.js";
 import {
   buildPlacementPreview,
   PLACEMENT_PREVIEW_ID,
@@ -161,6 +164,48 @@ describe("<om-graphical-layout>", () => {
     });
     expect(el.shadowRoot?.querySelectorAll("om-component")).toHaveLength(0);
     expect(standaloneConnectorIds(el)).toEqual(["u", PLACEMENT_PREVIEW_ID]);
+  });
+
+  it("fits an icon to its graphics and public connectors only", () => {
+    const icon = withPorts(tinyLayout(), "icon");
+    icon.iconLayers = [
+      {
+        from: "T",
+        shapes: [
+          {
+            kind: "text",
+            extent: [
+              [-150, 110],
+              [150, 150],
+            ],
+            textString: "%name",
+          },
+        ],
+      },
+    ];
+    // Outside the frame, so counting either would widen it.
+    const b1 = icon.components["b1"];
+    if (b1 === undefined) throw new Error("expected b1");
+    b1.placement = {
+      extent: [
+        [500, 500],
+        [520, 520],
+      ],
+    };
+    const secret = icon.connectors["secret"];
+    if (secret === undefined) throw new Error("expected secret");
+    secret.placement = {
+      extent: [
+        [-500, -500],
+        [-480, -480],
+      ],
+    };
+    expect(layoutBoundingBox(icon)).toEqual({
+      minX: -150,
+      minY: -100,
+      maxX: 150,
+      maxY: 150,
+    });
   });
 
   it("draws every component and connector in a diagram-kind layout", async () => {
