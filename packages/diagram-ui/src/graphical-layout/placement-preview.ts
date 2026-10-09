@@ -12,14 +12,10 @@ import type {
   DiagramLayout,
 } from "@dicode/omc-client";
 
-/** Instance id of the preview component. The `$` prefix keeps it clear of
- *  ordinary Modelica identifiers so it won't shadow a real component. */
+/** Instance id of the preview component, and the prefix of its class's
+ *  catalog key. The `$` keeps both clear of Modelica identifiers, so the
+ *  preview shadows neither a real component nor a catalog entry. */
 export const PLACEMENT_PREVIEW_ID = "$placement-preview";
-
-/** Catalog key of the preview's class. The diagram's entry under the bare class
- *  name can be a use-site variant of that class, and a `$` key can't collide
- *  with any catalog key. */
-const PLACEMENT_PREVIEW_CLASS_KEY = "$placement-preview";
 
 /** Half the side of the placement extent, in diagram units. Matches the extent
  *  the host writes on commit, so the preview is the size of the result. */
@@ -37,9 +33,13 @@ export function buildPlacementPreview(
   point: { x: number; y: number },
 ): DiagramLayout {
   const h = PLACEMENT_HALF_EXTENT;
+  // The diagram's entry under the bare class name can be a use-site variant
+  // of this class. The name stays in the key because a component's render key
+  // includes its classRef, so a preview of another class remounts.
+  const classKey = `${PLACEMENT_PREVIEW_ID}:${classDef.name}`;
   const preview: ComponentInstance = {
     name: PLACEMENT_PREVIEW_ID,
-    classRef: PLACEMENT_PREVIEW_CLASS_KEY,
+    classRef: classKey,
     placement: {
       extent: [
         [point.x - h, point.y - h],
@@ -49,7 +49,7 @@ export function buildPlacementPreview(
   };
   return {
     ...base,
-    classes: { ...base.classes, [PLACEMENT_PREVIEW_CLASS_KEY]: classDef },
+    classes: { ...base.classes, [classKey]: classDef },
     components: { ...base.components, [PLACEMENT_PREVIEW_ID]: preview },
   };
 }
