@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ClassDef, DiagramLayout } from "@dicode/omc-client";
+import { classNameOf } from "@dicode/omc-client/layout";
 
 import {
   PLACEMENT_HALF_EXTENT,
@@ -40,11 +41,12 @@ describe("buildPlacementPreview", () => {
   it("injects the class and a square instance at the point", () => {
     const layout = buildPlacementPreview(baseLayout(), gain, { x: 40, y: 25 });
 
-    expect(layout.classes[gain.name]).toBe(gain);
     const preview = layout.components[PLACEMENT_PREVIEW_ID];
-    expect(preview?.classRef).toBe(gain.name);
+    if (preview === undefined) throw new Error("no preview component");
+    expect(layout.classes[preview.classRef]).toBe(gain);
+    expect(classNameOf(layout, preview.classRef)).toBe(gain.name);
     const h = PLACEMENT_HALF_EXTENT;
-    expect(preview?.placement.extent).toEqual([
+    expect(preview.placement.extent).toEqual([
       [40 - h, 25 - h],
       [40 + h, 25 + h],
     ]);
@@ -69,9 +71,43 @@ describe("buildPlacementPreview", () => {
       PLACEMENT_PREVIEW_ID,
       "r1",
     ]);
-    expect(Object.keys(layout.classes).sort()).toEqual([
-      "Modelica.Blocks.Math.Gain",
-      "R",
-    ]);
+    expect(layout.classes["R"]).toBe(base.classes["R"]);
+    expect(Object.keys(layout.classes)).toHaveLength(2);
+  });
+
+  it("leaves the diagram's own entries for the dragged class untouched", () => {
+    // The catalog keys a class by content: `Torque` and `Torque#2` are two
+    // use-site variants of one class, and either can differ from the
+    // dragged class's default definition.
+    const torque = (useSupport: boolean): ClassDef => ({
+      name: "Modelica.Mechanics.Rotational.Sources.Torque",
+      restriction: "model",
+      iconLayers: [],
+      connectors: useSupport
+        ? { flange: {} as never, support: {} as never }
+        : { flange: {} as never },
+      parameters: {},
+    });
+    const withSupport = torque(true);
+    const withoutSupport = torque(false);
+    const base = baseLayout();
+    base.classes = {
+      [withSupport.name]: withSupport,
+      [`${withSupport.name}#2`]: withoutSupport,
+    };
+    base.components = {
+      t1: { name: "t1", classRef: withSupport.name } as never,
+      t2: { name: "t2", classRef: `${withSupport.name}#2` } as never,
+    };
+    const dragged = torque(false);
+
+    const layout = buildPlacementPreview(base, dragged, { x: 0, y: 0 });
+
+    expect(layout.classes[withSupport.name]).toBe(withSupport);
+    expect(layout.classes[`${withSupport.name}#2`]).toBe(withoutSupport);
+    const previewRef = layout.components[PLACEMENT_PREVIEW_ID]?.classRef;
+    if (previewRef === undefined) throw new Error("no preview component");
+    expect(layout.classes[previewRef]).toBe(dragged);
+    expect(classNameOf(layout, previewRef)).toBe(dragged.name);
   });
 });

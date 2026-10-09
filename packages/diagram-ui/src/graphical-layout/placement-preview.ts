@@ -32,9 +32,13 @@ export function buildPlacementPreview(
   point: { x: number; y: number },
 ): DiagramLayout {
   const h = PLACEMENT_HALF_EXTENT;
+  // The catalog keys a class by content, so the diagram's entry under the bare
+  // name can be a use-site variant of this class. A `$` key can't be a catalog
+  // key, and naming the class in it remounts the preview when the class changes.
+  const classKey = `${PLACEMENT_PREVIEW_ID}:${classDef.name}`;
   const preview: ComponentInstance = {
     name: PLACEMENT_PREVIEW_ID,
-    classRef: classDef.name,
+    classRef: classKey,
     placement: {
       extent: [
         [point.x - h, point.y - h],
@@ -44,7 +48,7 @@ export function buildPlacementPreview(
   };
   return {
     ...base,
-    classes: { ...base.classes, [classDef.name]: classDef },
+    classes: { ...base.classes, [classKey]: classDef },
     components: { ...base.components, [PLACEMENT_PREVIEW_ID]: preview },
   };
 }
