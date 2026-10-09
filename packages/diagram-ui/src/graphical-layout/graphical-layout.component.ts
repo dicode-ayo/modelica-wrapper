@@ -104,6 +104,10 @@ import {
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 import { renderLayoutContent } from "./render-entities.js";
 import {
+  viewComponents,
+  viewConnectors,
+} from "../interaction/view-entities.js";
+import {
   sharedNestedSource,
   type NestedDiagramSource,
   type SharedNestedSource,
@@ -142,10 +146,10 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
     maxY = Math.max(maxY, oy + to);
     seen = true;
   };
-  for (const c of Object.values(layout.components)) {
+  for (const [, c] of viewComponents(layout)) {
     addPlacement(c.placement);
   }
-  for (const k of Object.values(layout.connectors)) {
+  for (const [, k] of viewConnectors(layout)) {
     addPlacement(k.placement);
   }
   for (const conn of layout.connections) {

@@ -9,6 +9,7 @@ import type {
 import { placementCentre } from "../base/placement-math.js";
 import { formatShapeKey, parseKey } from "./entity-keys.js";
 import { isPolyShape, ownLayer } from "./own-layer.js";
+import { viewComponents, viewConnectors } from "./view-entities.js";
 
 /**
  * Derives selections from a layout. These return `Set<string>` of entity
@@ -126,12 +127,12 @@ export function selectByDiagramRect(
 ): Set<string> {
   const r = normaliseRect(rect);
   const keys = new Set<string>();
-  for (const [id, c] of Object.entries(layout.components)) {
+  for (const [id, c] of viewComponents(layout)) {
     if (rectsOverlap(r, placementBounds(c.placement))) {
       keys.add(`c:${id}`);
     }
   }
-  for (const [id, c] of Object.entries(layout.connectors)) {
+  for (const [id, c] of viewConnectors(layout)) {
     if (rectsOverlap(r, placementBounds(c.placement))) {
       keys.add(`k:${id}`);
     }
@@ -152,8 +153,8 @@ export function selectByDiagramRect(
  */
 export function selectAllKeys(layout: DiagramLayout): Set<string> {
   const keys = new Set<string>();
-  for (const id of Object.keys(layout.components)) keys.add(`c:${id}`);
-  for (const id of Object.keys(layout.connectors)) keys.add(`k:${id}`);
+  for (const [id] of viewComponents(layout)) keys.add(`c:${id}`);
+  for (const [id] of viewConnectors(layout)) keys.add(`k:${id}`);
   const own = ownLayer(layout);
   own?.shapes.forEach((shape, index) => {
     keys.add(formatShapeKey(shape.kind, index));
