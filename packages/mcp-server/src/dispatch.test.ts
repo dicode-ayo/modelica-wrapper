@@ -11,6 +11,7 @@ import * as path from "node:path";
 
 import {
   ModelInstanceNotFoundError,
+  ModelInstanceNotFullyLoadedError,
   OmcDiagnosticError,
   REGISTRY,
 } from "@dicode/omc-client";
@@ -356,12 +357,15 @@ describe("dispatchByName's logging and failure notification", () => {
     expect(notified).toEqual([]);
   });
 
-  it("keeps a read of a class OMC doesn't have between the model and the tool", async () => {
+  it.each([
+    ["a class OMC doesn't have", ModelInstanceNotFoundError],
+    ["a partly loaded class", ModelInstanceNotFullyLoadedError],
+  ])("keeps a read of %s between the model and the tool", async (_, Err) => {
     const { log, warnings } = makeLog();
     const notified: string[] = [];
     const client = baseClient({
       invoke: async () => {
-        throw new ModelInstanceNotFoundError("Modelica.NoSuchClass");
+        throw new Err("Modelica.NoSuchClass");
       },
     });
     const deps: McpToolDeps = {
