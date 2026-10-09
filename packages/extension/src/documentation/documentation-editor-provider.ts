@@ -319,6 +319,13 @@ interface EditControllerDeps {
   gate: ReadyGate<DocExtensionToWebview>;
 }
 
+const PREDEFINED_TYPES: ReadonlySet<string> = new Set([
+  "Real",
+  "Integer",
+  "Boolean",
+  "String",
+]);
+
 /**
  * Class restrictions whose interface sections are worth a full instantiate.
  * Anything else — packages, functions, `type` aliases, the builtins — is
@@ -382,8 +389,8 @@ export class DocumentationEditController {
         const info = await this.fetchInfo();
         // OMC answers a class it doesn't have with an empty annotation, and
         // only after the annotation fetch has resolved a not-yet-loaded class
-        // can existClass be trusted.
-        if (info === "") {
+        // can existClass be trusted. existClass denies the predefined types.
+        if (info === "" && !PREDEFINED_TYPES.has(this.deps.className)) {
           const { exists } = await this.deps.client.existClass({
             typeName: this.deps.className,
           });

@@ -12,7 +12,7 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import { ModelInstanceSchema, type OmcClient } from "@dicode/omc-client";
 
@@ -211,6 +211,8 @@ describe("resolveDocumentationEditor", () => {
     await flush();
     // The HTML paints first; the interface follows in its own message.
     expect(posted.map((m) => m.type)).toEqual(["doc", "interface"]);
+    const client = await ensureClient.mock.results[0]?.value;
+    expect(client.existClass).not.toHaveBeenCalled();
     const doc = posted[0];
     expect(doc?.type).toBe("doc");
     if (doc?.type === "doc") {
@@ -409,6 +411,11 @@ describe("resolveDocumentationEditor", () => {
   });
 
   describe("a restored tab whose class OMC doesn't have", () => {
+    // A panel left open would keep its watch in the process-wide retry set.
+    const disposers: (() => void)[] = [];
+    afterEach(() => {
+      for (const dispose of disposers.splice(0)) dispose();
+    });
     const NEW_DOC = docFor(
       vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo"),
     );
@@ -445,6 +452,7 @@ describe("resolveDocumentationEditor", () => {
     it("shows the missing-class page, then the doc once the class loads", async () => {
       const { panel, webview, posted, fireReady, fireDispose } =
         makePanel(true);
+      disposers.push(fireDispose);
       const { client, load, fetches } = missingUntilLoaded();
       const invalidation = new ClassInvalidationRegistry();
 
@@ -480,11 +488,35 @@ describe("resolveDocumentationEditor", () => {
       expect(DocumentationEditorProvider.activeClassName()).toBe(
         "ResistorDemo.NewModel",
       );
-      fireDispose();
+    });
+
+    it("shows a builtin type's empty documentation, not the missing-class page", async () => {
+      // OMC answers existClass(Real) with false, the same as for a missing class.
+      const { panel, webview, posted, fireReady, fireDispose } = makePanel();
+      disposers.push(fireDispose);
+      const client = {
+        ...makeResolveClient({ info: "", restriction: "" }),
+        existClass: vi.fn(() => Promise.resolve({ exists: false })),
+      } as unknown as OmcClient;
+
+      resolveDocumentationEditor(
+        panel,
+        EXT_URI,
+        () => Promise.resolve(client),
+        new WriteVerdicts(),
+        docFor(vscode.Uri.parse("modelica-source:/Real.mo")),
+      );
+      await flush();
+      fireReady();
+      await flush();
+
+      expect(webview.html).toContain("om-documentation-root");
+      expect(posted.map((m) => m.type)).toEqual(["doc"]);
     });
 
     it("recovers when the autoload sweep retries missing classes", async () => {
       const { panel, webview, posted, fireReady, fireDispose } = makePanel();
+      disposers.push(fireDispose);
       const { client, load } = missingUntilLoaded();
 
       resolveDocumentationEditor(
@@ -503,7 +535,6 @@ describe("resolveDocumentationEditor", () => {
       fireReady();
       await flush();
       expect(posted.map((m) => m.type)).toEqual(["doc", "interface"]);
-      fireDispose();
     });
   });
 
