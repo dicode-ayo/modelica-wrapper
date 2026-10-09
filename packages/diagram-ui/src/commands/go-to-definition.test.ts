@@ -12,7 +12,11 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { DiagramLayout, SourceLocation } from "@dicode/omc-client";
+import type {
+  ClassDef,
+  DiagramLayout,
+  SourceLocation,
+} from "@dicode/omc-client";
 
 import {
   DEFAULT_KEYMAP,
@@ -115,6 +119,39 @@ describe("resolveDefinitionSource", () => {
       source: GAIN_TYPE_SOURCE,
       fallbackClassName: "Modelica.Blocks.Math.Gain",
     });
+  });
+
+  it("falls back to a second-keyed entity's class name, not its catalog key", () => {
+    const base = makeLayout();
+    const gain = base.components["gain1"];
+    const pin = base.connectors["p"];
+    if (!gain || !pin) throw new Error("fixture has no gain1 or p");
+    const secondKey = (name: string): ClassDef => ({
+      name,
+      restriction: "block",
+      iconLayers: [],
+      connectors: {},
+      parameters: {},
+    });
+    const keyed: DiagramLayout = {
+      ...base,
+      classes: {
+        "Modelica.Blocks.Math.Gain#2": secondKey("Modelica.Blocks.Math.Gain"),
+        "Modelica.Electrical.Analog.Interfaces.Pin#2": secondKey(
+          "Modelica.Electrical.Analog.Interfaces.Pin",
+        ),
+      },
+      components: {
+        gain1: { ...gain, classRef: "Modelica.Blocks.Math.Gain#2" },
+      },
+      connectors: {
+        p: { ...pin, classRef: "Modelica.Electrical.Analog.Interfaces.Pin#2" },
+      },
+    };
+    const fallback = (key: string): string | undefined =>
+      resolveDefinitionSource(keyed, new Set([key]))?.fallbackClassName;
+    expect(fallback("c:gain1")).toBe("Modelica.Blocks.Math.Gain");
+    expect(fallback("k:p")).toBe("Modelica.Electrical.Analog.Interfaces.Pin");
   });
 
   it("resolves a standalone connector to its type's class source", () => {

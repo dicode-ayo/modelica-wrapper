@@ -36,11 +36,14 @@ import { extentToRect } from "../primitives/shape-utils.js";
  *
  * Typical usage:
  *
+ *     const cls = layout.classes[componentInstance.classRef];
  *     <om-component
  *       nodeId="R1"
+ *       .nestedClass=${classNameOf(layout, componentInstance.classRef)}
+ *       .nestedSource=${componentInstance.openable ? source : null}
  *       .placement=${componentInstance.placement}
- *       .layers=${layout.classes[componentInstance.classRef].iconLayers}
- *       .coordinateSystem=${layout.classes[componentInstance.classRef].coordinateSystem}>
+ *       .layers=${cls?.iconLayers ?? []}
+ *       .coordinateSystem=${cls?.coordinateSystem}>
  *       <om-connector nodeId="p" ...></om-connector>
  *       <om-connector nodeId="n" ...></om-connector>
  *     </om-component>
@@ -67,7 +70,8 @@ export class OmComponent extends OmShapeElement {
   @property({ attribute: false })
   substitutions: TextSubstitutions | null = null;
 
-  @property() classRef = "";
+  /** The class name `nestedSource` is asked for — a name, not a catalog key. */
+  @property({ attribute: false }) nestedClass = "";
 
   /** `null` keeps the component an icon. */
   @property({ attribute: false })
@@ -118,7 +122,7 @@ export class OmComponent extends OmShapeElement {
 
   override willUpdate(changed: Map<string, unknown>): void {
     super.willUpdate(changed);
-    if (changed.has("classRef") || changed.has("nestedSource")) {
+    if (changed.has("nestedClass") || changed.has("nestedSource")) {
       this.nestedLayout = null;
       this.requestedClass = null;
     }
@@ -133,7 +137,7 @@ export class OmComponent extends OmShapeElement {
       }
     }
     if (
-      changed.has("classRef") ||
+      changed.has("nestedClass") ||
       changed.has("nestedSource") ||
       changed.has("placement")
     ) {
@@ -211,14 +215,14 @@ export class OmComponent extends OmShapeElement {
 
   private requestNested(): void {
     const source = this.nestedSource;
-    const className = this.classRef;
+    const className = this.nestedClass;
     if (!source || className === "" || this.requestedClass === className) {
       return;
     }
     this.requestedClass = className;
     source(className).then(
       (layout) => {
-        if (this.nestedSource === source && this.classRef === className) {
+        if (this.nestedSource === source && this.nestedClass === className) {
           this.nestedLayout = layout;
           this.syncNesting();
         }

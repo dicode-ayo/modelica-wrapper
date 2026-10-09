@@ -10,6 +10,7 @@ import type {
   IconLayer,
   Shape,
 } from "@dicode/omc-client";
+import { classNameOf } from "@dicode/omc-client/layout";
 import { hasDrawnShapes } from "@dicode/omc-client/shapes";
 import { colorToCss } from "@dicode/diagram-svg";
 
@@ -171,7 +172,7 @@ function renderComponent(
   );
   return html`<om-component
     .nodeId=${id}
-    .classRef=${comp.classRef}
+    .nestedClass=${classNameOf(layout, comp.classRef)}
     .nestedSource=${comp.openable === true ? opts.nestedSource : null}
     .placement=${comp.placement}
     .layers=${withNoIconFallback(cls?.iconLayers ?? [])}

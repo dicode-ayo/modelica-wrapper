@@ -1,4 +1,5 @@
 import type { ConnectionEndpoint, DiagramLayout } from "@dicode/omc-client";
+import { classNameOf } from "@dicode/omc-client/layout";
 
 import {
   applyPlacement,
@@ -45,7 +46,7 @@ export function nestedPortShift(
   const view = views.get(ep.component);
   const comp = layout.components[ep.component];
   if (!view || view.progress <= 0 || !comp) return null;
-  if (view.layout.className !== comp.classRef) return null;
+  if (view.layout.className !== classNameOf(layout, comp.classRef)) return null;
   const cls = layout.classes[comp.classRef];
   const ownPort = view.layout.connectors[ep.port];
   const icon = endpointCentreFromLayout(layout, ep);
