@@ -10,16 +10,18 @@ import type {
 } from "@dicode/omc-client";
 import {
   looksLikeError,
+  ModelInstanceNotFoundError,
   produceSimulationModel,
   withErrorBuffer,
 } from "@dicode/omc-client";
 
-import { assertUnreachable } from "@dicode/modelica-lang-core";
+import { assertUnreachable, enclosingScope } from "@dicode/modelica-lang-core";
 
 import { showInRepl } from "../commands/repl.js";
 import { resolveGroupImages } from "../documentation/documentation-resources.js";
 import { pathExists } from "../fs-util.js";
 import { omcRangeToVscodeRange } from "../language/position.js";
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import {
@@ -239,6 +241,16 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     DiagramEditorProvider.sessions.delete(session);
   }
 
+  /** Re-fetch every open editor's class that OMC didn't have; returns those classes. */
+  static retryMissingClasses(): string[] {
+    const retried: string[] = [];
+    for (const session of DiagramEditorProvider.sessions) {
+      const className = session.retryIfMissing(null);
+      if (className !== undefined) retried.push(className);
+    }
+    return retried;
+  }
+
   /** Tell every open editor whether the shared clipboard holds anything. */
   static broadcastClipboard(): void {
     const hasClipboard = !diagramClipboard.isEmpty;
@@ -267,7 +279,21 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 interface EditorSession {
   className(): string | undefined;
   send(msg: ExtensionToWebview): void;
+  /**
+   * Re-fetch a class OMC didn't have, if `announced` (`null`: any class) could
+   * have added it. Returns the class it re-fetched.
+   */
+  retryIfMissing(announced: string | null): string | undefined;
   inputFocused: boolean;
+}
+
+/** Whether a change announced for `announced` (`null`: any class) can reach `className`. */
+function announces(announced: string | null, className: string): boolean {
+  if (announced === null) return true;
+  for (let scope = className; scope !== ""; scope = enclosingScope(scope)) {
+    if (scope === announced) return true;
+  }
+  return false;
 }
 
 /**
@@ -297,12 +323,31 @@ export function resolveDiagramEditor(
     localResourceRoots: [vscode.Uri.joinPath(extensionUri, "out")],
   };
 
-  const gate = createReadyGate(webview);
+  let gate = createReadyGate(webview);
   let controller: DiagramEditController | undefined;
-  let resolvedClassName: string | undefined;
+  let shownClassName: string | undefined;
+  let disposed = false;
+  let booted = false;
+  // `missing`: OMC didn't have the class and the page is the placeholder.
+  let phase: "idle" | "fetching" | "missing" = "idle";
+  // The class set changed while the fetch was in flight, so a not-found answer
+  // from it is already out of date.
+  let changedWhileFetching = false;
+
+  const retryIfMissing = (announced: string | null): string | undefined => {
+    if (shownClassName === undefined) return undefined;
+    if (!announces(announced, shownClassName)) return undefined;
+    if (phase === "fetching") changedWhileFetching = true;
+    if (phase !== "missing") return undefined;
+    load(shownClassName);
+    return shownClassName;
+  };
   const session: EditorSession = {
-    className: () => resolvedClassName,
-    send: (msg) => gate.send(msg),
+    className: () => (phase === "missing" ? undefined : shownClassName),
+    send: (msg) => {
+      if (phase !== "missing") gate.send(msg);
+    },
+    retryIfMissing,
     inputFocused: false,
   };
   DiagramEditorProvider.addSession(session);
@@ -316,8 +361,14 @@ export function resolveDiagramEditor(
   const invalidationSub = vscode.Disposable.from(
     ...(invalidation
       ? [
-          invalidation.register(nestedStale),
-          invalidation.registerAllClassesChanged(() => nestedStale(null)),
+          invalidation.register((className) => {
+            nestedStale(className);
+            retryIfMissing(className);
+          }),
+          invalidation.registerAllClassesChanged(() => {
+            nestedStale(null);
+            retryIfMissing(null);
+          }),
           invalidation.registerSessionReplaced(() => nestedStale(null)),
         ]
       : []),
@@ -353,6 +404,7 @@ export function resolveDiagramEditor(
     else DiagramEditorProvider.clearActive(session);
   });
   webviewPanel.onDidDispose(() => {
+    disposed = true;
     sub.dispose();
     viewStateSub.dispose();
     invalidationSub.dispose();
@@ -361,9 +413,15 @@ export function resolveDiagramEditor(
     controller?.dispose();
   });
 
-  const start = (className: string): void => {
-    resolvedClassName = className;
+  const boot = (className: string): void => {
+    gate = createReadyGate(webview);
     webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
+    booted = true;
+  };
+
+  const load = (className: string): void => {
+    phase = "fetching";
+    changedWhileFetching = false;
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
@@ -382,6 +440,8 @@ export function resolveDiagramEditor(
           className,
           "edit",
         );
+        if (disposed) return;
+        if (!booted) boot(className);
         controller = new DiagramEditController(
           {
             client,
@@ -408,8 +468,31 @@ export function resolveDiagramEditor(
           readOnly: !verdict.ok,
           hasClipboard: !diagramClipboard.isEmpty,
         });
+        phase = "idle";
       } catch (err) {
-        const detail = (err as Error).message;
+        if (disposed) return;
+        // A restored tab can name a class OMC doesn't have (yet): one never
+        // saved, or one whose package loads after the tab. The tab retries
+        // when the class set changes, so the page holds no bundle and the
+        // session names no class until then.
+        if (err instanceof ModelInstanceNotFoundError) {
+          if (changedWhileFetching) {
+            load(className);
+            return;
+          }
+          phase = "missing";
+          booted = false;
+          webview.html = renderPlaceholderPage({
+            cspSource: webview.cspSource,
+            title: "Class not found",
+            message: `OMC has no class named ${className}. It may have been deleted, or created in an earlier session and never saved. If its package isn't loaded yet, this tab shows the class once it is.`,
+          });
+          log.info("diagramEditor", err.message);
+          return;
+        }
+        phase = "idle";
+        if (!booted) boot(className);
+        const detail = errorDetail(err);
         gate.send({ type: "renderError", className, mode, detail });
         log.warn(
           "diagramEditor",
@@ -417,6 +500,12 @@ export function resolveDiagramEditor(
         );
       }
     })();
+  };
+
+  const start = (className: string): void => {
+    shownClassName = className;
+    boot(className);
+    load(className);
     if (webviewPanel.active) DiagramEditorProvider.setActive(session);
   };
 

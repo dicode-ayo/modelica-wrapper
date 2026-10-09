@@ -20,6 +20,7 @@ import type {
   OmcClient,
   ParameterModel,
 } from "@dicode/omc-client";
+import { ModelInstanceNotFoundError } from "@dicode/omc-client";
 
 import * as vscodeMock from "../../test-support/vscode-mock.js";
 import {
@@ -391,6 +392,117 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       mode: "diagram",
       detail: "OMC down",
     });
+  });
+
+  it("shows a class-not-found page instead of the render error card, and renders the class once it loads", async () => {
+    const { panel, webview, posted, fireReady, fireDispose } = makePanel();
+    let loaded = false;
+    let fetches = 0;
+    const { client, seenTypeName } = makeClient({
+      getModelInstance: (typeName) => {
+        fetches += 1;
+        return loaded
+          ? Promise.resolve({ instance: INSTANCE })
+          : Promise.reject(new ModelInstanceNotFoundError(typeName));
+      },
+    });
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+    const invalidation = new ClassInvalidationRegistry();
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
+      "diagram",
+      undefined,
+      invalidation,
+    );
+
+    await flush();
+    expect(posted).toEqual([]);
+    expect(webview.html).not.toContain("om-webview-root");
+    expect(webview.html).toContain("ResistorDemo.NewModel");
+    expect(webview.html).toContain("Class not found");
+
+    invalidation.classChanged("ResistorDemo.Other");
+    await flush();
+    expect(fetches).toBe(1);
+
+    loaded = true;
+    invalidation.allClassesChanged();
+    await flush();
+    expect(webview.html).toContain("om-webview-root");
+    expect(seenTypeName()).toBe("ResistorDemo.NewModel");
+    fireReady();
+    expect(posted.map((m) => m.type)).toEqual(["init"]);
+    fireDispose();
+  });
+
+  it("retries a missing class when its enclosing package is announced", async () => {
+    const { panel, webview, fireDispose } = makePanel();
+    let loaded = false;
+    const { client } = makeClient({
+      getModelInstance: (typeName) =>
+        loaded
+          ? Promise.resolve({ instance: INSTANCE })
+          : Promise.reject(new ModelInstanceNotFoundError(typeName)),
+    });
+    const invalidation = new ClassInvalidationRegistry();
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      () => Promise.resolve(client),
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
+      "diagram",
+      undefined,
+      invalidation,
+    );
+    await flush();
+    expect(webview.html).toContain("Class not found");
+
+    loaded = true;
+    invalidation.classChanged("ResistorDemo");
+    await flush();
+    expect(webview.html).toContain("om-webview-root");
+    fireDispose();
+  });
+
+  it("retries a missing class when the class set changed while its fetch was in flight", async () => {
+    const { panel, webview, posted, fireReady, fireDispose } = makePanel();
+    let calls = 0;
+    let releaseFirst: () => void = () => {};
+    const { client } = makeClient({
+      getModelInstance: (typeName) => {
+        calls += 1;
+        if (calls > 1) return Promise.resolve({ instance: INSTANCE });
+        return new Promise((_resolve, reject) => {
+          releaseFirst = () => reject(new ModelInstanceNotFoundError(typeName));
+        });
+      },
+    });
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      () => Promise.resolve(client),
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
+      "diagram",
+    );
+    await flush();
+    DiagramEditorProvider.retryMissingClasses();
+    releaseFirst();
+    await flush();
+
+    expect(calls).toBe(2);
+    expect(webview.html).toContain("om-webview-root");
+    fireReady();
+    expect(posted.map((m) => m.type)).toEqual(["init"]);
+    fireDispose();
   });
 
   it("evaluates readOnly after the layout fetch resolves the class", async () => {

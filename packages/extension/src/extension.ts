@@ -178,7 +178,14 @@ export async function activate(
     folders: () =>
       (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
     ensureClient,
-    refresh: () => libraryTree.childrenChanged(null),
+    refresh: () => {
+      libraryTree.childrenChanged(null);
+      // A restored diagram tab may have asked for one of these classes before
+      // the sweep loaded it, and its document read as empty then.
+      for (const className of DiagramEditorProvider.retryMissingClasses()) {
+        sourceProvider.notifySourceChanged(className);
+      }
+    },
     onSkipped: (skipped) => {
       void vscode.window.showWarningMessage(
         multiEntityBatchToast(skipped.map((s) => s.fileName)),
