@@ -131,8 +131,9 @@ test("Open Diagram reports the clicked component's class to the host", async ({
     const { layout } = document.querySelector(
       "om-graphical-layout",
     ) as LayoutEl;
-    const { classRef } = layout.components[n];
-    return layout.classes[classRef]?.name ?? classRef;
+    const comp = layout.components[n];
+    if (comp === undefined) throw new Error(`no component ${n}`);
+    return layout.classes[comp.classRef]?.name ?? comp.classRef;
   }, name);
   expect(await requested).toBe(expected);
 });

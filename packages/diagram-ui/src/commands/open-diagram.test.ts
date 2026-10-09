@@ -1,9 +1,3 @@
-/**
- * Unit tests for `diagram.openDiagram`: resolution of the selection to a
- * class, the `when` gate, and its placement above the source-navigation
- * entries in the context menu.
- */
-
 import { describe, expect, it, vi } from "vitest";
 import type { DiagramLayout } from "@dicode/omc-client";
 

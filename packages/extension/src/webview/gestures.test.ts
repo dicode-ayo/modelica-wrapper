@@ -198,6 +198,12 @@ describe("isGestureMessage", () => {
 });
 
 describe("iconHonorsGesture", () => {
+  it("honors openDiagram, which only opens another editor", () => {
+    expect(iconHonorsGesture({ type: "openDiagram", className: "A.B" })).toBe(
+      true,
+    );
+  });
+
   it("honors shape work, connector placement and the clipboard", () => {
     expect(
       iconHonorsGesture({ type: "change", layout: layout(), basedOn: 1 }),

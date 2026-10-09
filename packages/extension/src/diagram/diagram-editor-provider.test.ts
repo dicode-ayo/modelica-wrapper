@@ -4026,6 +4026,16 @@ describe("DiagramEditController: open diagram", () => {
     expect(viewType).toBe(DIAGRAM_VIEW_TYPE);
   });
 
+  it("ignores an empty class name instead of prompting the user for one", async () => {
+    vscodeMock.queuePromptAnswers("Pkg.Prompted");
+
+    await makeController().handle({ type: "openDiagram", className: "" });
+
+    expect(
+      executedCommands.filter((c) => c.command === "vscode.openWith"),
+    ).toHaveLength(0);
+  });
+
   it("still opens from a read-only class", async () => {
     const { client } = makeEditClient();
     const { gate, posted } = makeGate();

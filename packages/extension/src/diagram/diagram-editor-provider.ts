@@ -1530,6 +1530,9 @@ export class DiagramEditController {
   }
 
   private async onOpenDiagram(className: string): Promise<void> {
+    // openDiagram treats "" as "no argument" and prompts for a class, which
+    // the webview never asked for.
+    if (className === "") return;
     try {
       await openDiagram(className);
     } catch (err) {
