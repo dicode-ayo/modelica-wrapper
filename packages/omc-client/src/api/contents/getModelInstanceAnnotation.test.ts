@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
 import { ModelInstanceNotFullyLoadedError } from "../../_shared/modelInstance.js";
+import { OmcDiagnosticError } from "../../diagnostic-error.js";
 
 import { getModelInstanceAnnotation } from "./getModelInstanceAnnotation.js";
 
@@ -124,9 +125,9 @@ describe("getModelInstanceAnnotation: response handling", () => {
       quote(JSON.stringify({ name: null, restriction: null })),
     );
 
-    await expect(
-      getModelInstanceAnnotation(ctx, { typeName: "Some.Child" }),
-    ).rejects.toThrow(ModelInstanceNotFullyLoadedError);
+    const read = getModelInstanceAnnotation(ctx, { typeName: "Some.Child" });
+    await expect(read).rejects.toThrow(ModelInstanceNotFullyLoadedError);
+    await expect(read).rejects.toBeInstanceOf(OmcDiagnosticError);
   });
 
   it("still throws the generic shape-mismatch error for an unrelated malformed field", async () => {

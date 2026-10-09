@@ -74,9 +74,9 @@ describe("getModelInstance: response handling", () => {
   it("throws ModelInstanceNotFullyLoadedError when name is missing entirely", async () => {
     const { ctx } = stubCtx(quote(JSON.stringify({ restriction: "model" })));
 
-    await expect(
-      getModelInstance(ctx, { typeName: "Some.Child" }),
-    ).rejects.toThrow(ModelInstanceNotFullyLoadedError);
+    const read = getModelInstance(ctx, { typeName: "Some.Child" });
+    await expect(read).rejects.toThrow(ModelInstanceNotFullyLoadedError);
+    await expect(read).rejects.toBeInstanceOf(OmcDiagnosticError);
   });
 
   it("parses a class whose constrained-replaceable carries an array-bearing modifier (a redeclare's dims)", async () => {
