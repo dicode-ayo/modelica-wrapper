@@ -117,6 +117,41 @@ describe("getModelInstance: response handling", () => {
     expect(out.instance.name).toBe("Pkg.ArrayModifier");
   });
 
+  it("parses a local class element (MultiBody World's replaceable gravityAcceleration)", async () => {
+    const { ctx } = stubCtx(
+      quote(
+        JSON.stringify({
+          name: "Modelica.Mechanics.MultiBody.World",
+          restriction: "model",
+          elements: [
+            {
+              $kind: "class",
+              name: "gravityAcceleration",
+              restriction: "function",
+              prefixes: {
+                replaceable: {
+                  constrainedby:
+                    "Modelica.Mechanics.MultiBody.Interfaces.partialGravityAcceleration",
+                  annotation: { choicesAllMatching: true },
+                },
+              },
+              modifiers: { mu: "mu" },
+            },
+          ],
+        }),
+      ),
+    );
+
+    const out = await getModelInstance(ctx, {
+      typeName: "Modelica.Mechanics.MultiBody.World",
+    });
+    expect(out.instance.elements?.[0]).toMatchObject({
+      $kind: "class",
+      name: "gravityAcceleration",
+      restriction: "function",
+    });
+  });
+
   it("still throws the generic shape-mismatch error for an unrelated malformed field", async () => {
     const { ctx } = stubCtx(
       quote(

@@ -198,9 +198,10 @@ describe("schemas zod cannot fully project", () => {
       "getModelInstance/output",
       "getModelInstanceAnnotation/output",
     ]);
+    // The instance's own `prefixes`, plus a component's and a local class's.
     expect(
       markedPaths(describeFunctionAsJsonSchema("getModelInstance").output),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 });
 
