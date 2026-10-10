@@ -2,6 +2,7 @@ import type {
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
+  Placement,
 } from "@dicode/omc-client";
 
 /**
@@ -14,14 +15,21 @@ import type {
 export function viewComponents(
   layout: DiagramLayout,
 ): [string, ComponentInstance][] {
-  return layout.kind === "icon" ? [] : Object.entries(layout.components);
+  return layout.kind === "icon"
+    ? []
+    : Object.entries(layout.components).filter(([, c]) => isShown(c.placement));
+}
+
+export function isShown(placement: Placement): boolean {
+  return placement.visible !== false;
 }
 
 export function viewConnectors(
   layout: DiagramLayout,
 ): [string, ConnectorInstance][] {
-  const all = Object.entries(layout.connectors);
-  return layout.kind === "icon"
-    ? all.filter(([, c]) => c.prefixes?.public !== false)
-    : all;
+  return Object.entries(layout.connectors).filter(
+    ([, c]) =>
+      isShown(c.placement) &&
+      (layout.kind !== "icon" || c.prefixes?.public !== false),
+  );
 }

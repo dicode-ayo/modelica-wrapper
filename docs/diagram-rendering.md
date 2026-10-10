@@ -89,6 +89,16 @@ filled quads/strokes for rectangles, polylines for lines, etc. Component icons
 that come in as SVG are rasterized to a texture and painted on a plane — the
 texture is cached by SVG hash and shared across all instances of the same class.
 
+### Hidden placements
+
+An instance whose `Placement` annotation says `visible = false` (carried as
+`placement.visible === false` by `placementFor`) gets no element, in the Diagram
+and Icon views alike. This holds for components, for host connectors, and for the
+ports drawn on a component's icon (the port's own declaration decides). The check
+lives in `viewComponents` / `viewConnectors` (`base/view-entities.ts`), so
+drawing, selection and fit agree. The instance stays in the layout, so
+connections to it still route to its position, as in OMEdit.
+
 ### Picking and selection
 
 Interaction is mouse-driven via raycasting:
