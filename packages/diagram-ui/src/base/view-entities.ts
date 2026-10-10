@@ -1,4 +1,5 @@
 import type {
+  ClassDef,
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
@@ -20,10 +21,6 @@ export function viewComponents(
     : Object.entries(layout.components).filter(([, c]) => isShown(c.placement));
 }
 
-export function isShown(placement: Placement): boolean {
-  return placement.visible !== false;
-}
-
 export function viewConnectors(
   layout: DiagramLayout,
 ): [string, ConnectorInstance][] {
@@ -32,4 +29,23 @@ export function viewConnectors(
       isShown(c.placement) &&
       (layout.kind !== "icon" || c.prefixes?.public !== false),
   );
+}
+
+/**
+ * The ports drawn on a component's icon: not those whose `condition` is false
+ * for this instance (`hiddenPorts`), nor those declared `visible = false`.
+ */
+export function viewPorts(
+  comp: ComponentInstance,
+  cls: ClassDef,
+): [string, ClassDef["connectors"][string]][] {
+  return Object.entries(cls.connectors).filter(
+    ([pid, port]) =>
+      !comp.hiddenPorts?.includes(pid) && isShown(port.placement),
+  );
+}
+
+/** Whether a `Placement` annotation leaves its instance drawn (`visible` defaults to true). */
+export function isShown(placement: Placement): boolean {
+  return placement.visible !== false;
 }

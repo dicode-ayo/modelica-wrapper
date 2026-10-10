@@ -295,3 +295,41 @@ describe("selectAllKeys", () => {
     expect([...keys].some((k) => k.startsWith("shape:"))).toBe(false);
   });
 });
+
+describe("hidden placements (Placement visible=false)", () => {
+  const BAND = { x1: -100, y1: -100, x2: 100, y2: 100 };
+
+  /** `baseLayout()` with component `C1` and connector `p` hidden. */
+  function hiddenLayout(): DiagramLayout {
+    const layout = baseLayout();
+    const c1 = layout.components.C1;
+    const p = layout.connectors.p;
+    if (!c1 || !p) throw new Error("fixture lost C1 or p");
+    return {
+      ...layout,
+      components: {
+        ...layout.components,
+        C1: { ...c1, placement: { ...c1.placement, visible: false } },
+      },
+      connectors: {
+        p: { ...p, placement: { ...p.placement, visible: false } },
+      },
+    };
+  }
+
+  it("selectAllKeys leaves a hidden component and connector out", () => {
+    expect([...selectAllKeys(hiddenLayout())]).toEqual(["c:R1"]);
+  });
+
+  it("selectByDiagramRect leaves them out of a band covering them", () => {
+    expect([...selectByDiagramRect(hiddenLayout(), BAND)]).toEqual(["c:R1"]);
+  });
+
+  it("retainExistingSelection drops a hidden entity from a selection", () => {
+    const kept = retainExistingSelection(
+      hiddenLayout(),
+      new Set(["c:R1", "c:C1", "k:p"]),
+    );
+    expect([...kept]).toEqual(["c:R1"]);
+  });
+});

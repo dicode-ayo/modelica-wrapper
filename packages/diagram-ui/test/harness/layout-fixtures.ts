@@ -1,5 +1,7 @@
 import type {
+  ClassDef,
   DiagramLayout,
+  IconLayer,
   LineStyle,
   Point,
   Shape,
@@ -161,4 +163,57 @@ export function withShapes(shapes: Shape[]): DiagramLayout {
 /** The host-own (`from === "Demo"`) layer's shapes after an op. */
 export function ownShapes(layout: DiagramLayout): Shape[] {
   return layout.diagramLayers.find((l) => l.from === "Demo")?.shapes ?? [];
+}
+
+/** A drawable one-polygon icon, so a class using it never gets the NoIcon placeholder. */
+export const ICON_LAYERS: IconLayer[] = [
+  {
+    from: "Demo.Pin",
+    shapes: [
+      {
+        kind: "polygon",
+        points: [
+          [-100, 100],
+          [100, 0],
+          [-100, -100],
+        ],
+      },
+    ],
+  },
+];
+
+/** A `ClassDef` that is a bare connector unless `overrides` say otherwise. */
+export function classDef(overrides: Partial<ClassDef> = {}): ClassDef {
+  return {
+    name: "Demo.Pin",
+    restriction: "connector",
+    iconLayers: [],
+    connectors: {},
+    parameters: {},
+    ...overrides,
+  };
+}
+
+/** One standalone connector `p` of class `cls`, in a layout of the given kind. */
+export function connectorLayout(
+  kind: DiagramLayout["kind"],
+  cls: ClassDef,
+): DiagramLayout {
+  return {
+    ...emptyLayout(),
+    kind,
+    classes: { [cls.name]: cls },
+    connectors: {
+      p: {
+        name: "p",
+        classRef: cls.name,
+        placement: {
+          extent: [
+            [-10, -10],
+            [10, 10],
+          ],
+        },
+      },
+    },
+  };
 }

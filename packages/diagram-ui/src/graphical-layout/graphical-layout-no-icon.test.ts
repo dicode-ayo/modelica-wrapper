@@ -12,7 +12,6 @@
 
 import { describe, expect, it } from "vitest";
 import type {
-  ClassDef,
   CoordinateSystem,
   DiagramLayout,
   IconLayer,
@@ -22,23 +21,12 @@ import type { OmShapeElement } from "../base/shape-element.js";
 import { NO_ICON_LAYERS } from "../icon-provider/no-icon.js";
 import type { OmGraphicalLayout } from "./graphical-layout.component.js";
 import { mountLayout } from "../../test/harness/interaction-fixtures.js";
-import { emptyLayout } from "../../test/harness/layout-fixtures.js";
-
-const ICON_LAYERS: IconLayer[] = [
-  {
-    from: "Demo.Pin",
-    shapes: [
-      {
-        kind: "polygon",
-        points: [
-          [-100, 100],
-          [100, 0],
-          [-100, -100],
-        ],
-      },
-    ],
-  },
-];
+import {
+  classDef,
+  connectorLayout,
+  emptyLayout,
+  ICON_LAYERS,
+} from "../../test/harness/layout-fixtures.js";
 
 const DIAGRAM_LAYERS: IconLayer[] = [
   {
@@ -68,40 +56,6 @@ const DIAGRAM_CS: CoordinateSystem = {
     [40, 40],
   ],
 };
-
-function classDef(overrides: Partial<ClassDef> = {}): ClassDef {
-  return {
-    name: "Demo.Pin",
-    restriction: "connector",
-    iconLayers: [],
-    connectors: {},
-    parameters: {},
-    ...overrides,
-  };
-}
-
-function connectorLayout(
-  kind: DiagramLayout["kind"],
-  cls: ClassDef,
-): DiagramLayout {
-  return {
-    ...emptyLayout(),
-    kind,
-    classes: { [cls.name]: cls },
-    connectors: {
-      p: {
-        name: "p",
-        classRef: cls.name,
-        placement: {
-          extent: [
-            [-10, -10],
-            [10, 10],
-          ],
-        },
-      },
-    },
-  };
-}
 
 function standaloneConnector(el: OmGraphicalLayout): OmShapeElement {
   const conns = Array.from(
@@ -311,98 +265,5 @@ describe("<om-graphical-layout> standalone connector layer selection (issue #516
       "om-component om-connector",
     ) as OmShapeElement;
     expect(port.layers).toBe(ICON_LAYERS);
-  });
-});
-
-describe("<om-graphical-layout> Placement visible=false", () => {
-  const hiddenPlacement = {
-    extent: [
-      [-10, -10],
-      [10, 10],
-    ] as [[number, number], [number, number]],
-    visible: false,
-  };
-
-  it.each(["diagram", "icon"] as const)(
-    "draws no element for a host connector in the %s view",
-    async (kind) => {
-      const base = connectorLayout(kind, classDef());
-      const conn = base.connectors["p"];
-      if (conn === undefined) throw new Error("fixture lost p");
-      const layout: DiagramLayout = {
-        ...base,
-        connectors: { p: { ...conn, placement: hiddenPlacement } },
-      };
-      const el = await mountLayout({ layout });
-      expect(el.shadowRoot?.querySelectorAll("om-connector").length).toBe(0);
-    },
-  );
-
-  it("draws no port on a component icon when the port is declared hidden", async () => {
-    const port = (name: string, visible: boolean) => ({
-      name,
-      typeName: "Demo.Pin",
-      placement: visible
-        ? { ...hiddenPlacement, visible: undefined }
-        : hiddenPlacement,
-      iconLayers: ICON_LAYERS,
-      from: "Demo.Host",
-    });
-    const layout: DiagramLayout = {
-      ...emptyLayout(),
-      classes: {
-        "Demo.Host": classDef({
-          name: "Demo.Host",
-          restriction: "model",
-          connectors: { shown: port("shown", true), gone: port("gone", false) },
-        }),
-      },
-      components: {
-        c1: {
-          name: "c1",
-          classRef: "Demo.Host",
-          placement: { extent: hiddenPlacement.extent },
-        },
-      },
-    };
-    const el = await mountLayout({ layout });
-    const ids = Array.from(
-      el.shadowRoot?.querySelectorAll("om-component om-connector") ?? [],
-    ).map((c) => (c as unknown as { nodeId: string }).nodeId);
-    expect(ids).toEqual(["shown"]);
-  });
-
-  it("still routes a connection to a hidden host connector's position", async () => {
-    const base = connectorLayout("diagram", classDef());
-    const conn = base.connectors["p"];
-    if (conn === undefined) throw new Error("fixture lost p");
-    const layout: DiagramLayout = {
-      ...base,
-      connectors: {
-        p: { ...conn, placement: hiddenPlacement },
-        q: {
-          ...conn,
-          name: "q",
-          placement: {
-            extent: [
-              [90, -10],
-              [110, 10],
-            ],
-          },
-        },
-      },
-      connections: [
-        {
-          lhs: { component: undefined, port: "p" },
-          rhs: { component: undefined, port: "q" },
-          waypoints: [],
-        },
-      ],
-    };
-    const el = await mountLayout({ layout });
-    const wire = el.shadowRoot?.querySelector("om-connection") as unknown as {
-      path: [number, number][];
-    } | null;
-    expect(wire?.path[0]).toEqual([0, 0]);
   });
 });

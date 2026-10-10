@@ -29,9 +29,9 @@ import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
 import { nestedPortShift, type NestingViews } from "../nesting/nested-ports.js";
 import { renderShape } from "../primitives/render-shape.js";
 import {
-  isShown,
   viewComponents,
   viewConnectors,
+  viewPorts,
 } from "../base/view-entities.js";
 
 /**
@@ -180,24 +180,17 @@ function renderComponent(
   >
     ${
       cls
-        ? Object.entries(cls.connectors)
-            // Ports whose `condition` is false for this instance only; a
-            // port declared `visible = false` is undrawn for every instance.
-            .filter(
-              ([pid, port]) =>
-                !comp.hiddenPorts?.includes(pid) && isShown(port.placement),
-            )
-            .map(
-              ([pid, port]) =>
-                html`<om-connector
-                  .nodeId=${pid}
-                  .placement=${port.placement}
-                  .layers=${withNoIconFallback(port.iconLayers)}
-                  .coordinateSystem=${cls.coordinateSystem ?? undefined}
-                  .lineThicknessScale=${opts.lineThicknessScale}
-                  ?readonly=${opts.readonly}
-                ></om-connector>`,
-            )
+        ? viewPorts(comp, cls).map(
+            ([pid, port]) =>
+              html`<om-connector
+                .nodeId=${pid}
+                .placement=${port.placement}
+                .layers=${withNoIconFallback(port.iconLayers)}
+                .coordinateSystem=${cls.coordinateSystem ?? undefined}
+                .lineThicknessScale=${opts.lineThicknessScale}
+                ?readonly=${opts.readonly}
+              ></om-connector>`,
+          )
         : nothing
     }
   </om-component>`;
