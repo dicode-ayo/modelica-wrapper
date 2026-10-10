@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Shape } from "@dicode/omc-client";
+import type { DiagramLayout, Shape } from "@dicode/omc-client";
 
 import {
   retainExistingSelection,
@@ -12,6 +12,21 @@ import {
   RECT_0,
   withShapes,
 } from "./harness/layout-fixtures.js";
+
+/** `baseLayout()` as an icon, plus a protected connector `q` beside `p`. */
+function iconLayout(): DiagramLayout {
+  const layout = baseLayout();
+  const p = layout.connectors.p;
+  if (!p) throw new Error("expected connector p");
+  return {
+    ...layout,
+    kind: "icon",
+    connectors: {
+      ...layout.connectors,
+      q: { ...p, name: "q", prefixes: { public: false } },
+    },
+  };
+}
 
 describe("selectByDiagramRect", () => {
   it("selects components the band covers", () => {
@@ -199,6 +214,16 @@ describe("selectByDiagramRect", () => {
     expect(keys.has("k:p")).toBe(true);
   });
 
+  it("takes only public connectors from an icon (MLS §18.6)", () => {
+    const keys = selectByDiagramRect(iconLayout(), {
+      x1: -100,
+      y1: -100,
+      x2: 100,
+      y2: 100,
+    });
+    expect(keys).toEqual(new Set(["k:p"]));
+  });
+
   it("normalises an inverted rect (x1>x2)", () => {
     const keys = selectByDiagramRect(baseLayout(), {
       x1: 100,
@@ -221,6 +246,11 @@ describe("retainExistingSelection", () => {
     expect([...out].sort()).toEqual(["c:R1", "k:p"]);
   });
 
+  it("drops keys an icon neither draws nor selects", () => {
+    const out = retainExistingSelection(iconLayout(), ["c:R1", "k:p", "k:q"]);
+    expect([...out]).toEqual(["k:p"]);
+  });
+
   it("retains a host-shape key only when its index still holds the same kind", () => {
     const layout = withShapes([RECT_0, LINE_1]);
     const out = retainExistingSelection(layout, [
@@ -239,6 +269,10 @@ describe("selectAllKeys", () => {
     expect(keys).toEqual(
       new Set(["c:R1", "c:C1", "k:p", "shape:rectangle:0", "shape:line:1"]),
     );
+  });
+
+  it("takes only public connectors from an icon (MLS §18.6)", () => {
+    expect(selectAllKeys(iconLayout())).toEqual(new Set(["k:p"]));
   });
 
   it("takes entities placed outside the coordinate system", () => {

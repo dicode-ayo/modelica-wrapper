@@ -2307,6 +2307,25 @@ describe("produceDiagramLayout: standalone connector placement by kind (issue #5
     expect(icon.connectors.u?.diagramPlacement).toBeUndefined();
     expect(diagram.connectors.u?.iconPlacement).toBeUndefined();
   });
+
+  it("keeps sub-components and protected connectors in an icon-kind layout", () => {
+    // The renderer, not the producer, leaves these off the icon: the icon
+    // editor still reads them to pick a free instance name.
+    const host = makeHostModelInstance();
+    host.elements?.push({
+      $kind: "component",
+      name: "hidden",
+      type: RealInputClass,
+      prefixes: { public: false },
+      annotation: placementAnno([
+        [-110, 30],
+        [-90, 50],
+      ]),
+    });
+    const icon = produceDiagramLayout(host, "icon");
+    expect(Object.keys(icon.components)).toContain("gain1");
+    expect(icon.connectors.hidden?.prefixes?.public).toBe(false);
+  });
 });
 
 // =====================================================================

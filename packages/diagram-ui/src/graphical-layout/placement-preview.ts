@@ -6,11 +6,7 @@
  * and ports — no bespoke ghost geometry.
  */
 
-import type {
-  ClassDef,
-  ComponentInstance,
-  DiagramLayout,
-} from "@dicode/omc-client";
+import type { ClassDef, DiagramLayout, Placement } from "@dicode/omc-client";
 
 /** Instance id of the preview component. The `$` prefix keeps it clear of
  *  ordinary Modelica identifiers so it won't shadow a real component. */
@@ -23,8 +19,9 @@ export const PLACEMENT_HALF_EXTENT = 10;
 /**
  * Merge a preview of `classDef` at `point` (diagram coords) into `base`. The
  * preview instance carries the same square placement the host assigns on drop,
- * so what the cursor shows is what lands. Returns a new layout; `base` is not
- * mutated.
+ * so what the cursor shows is what lands. An icon only takes connectors, so
+ * there the preview is a standalone connector, drawn as the drop will be.
+ * Returns a new layout; `base` is not mutated.
  */
 export function buildPlacementPreview(
   base: DiagramLayout,
@@ -32,19 +29,27 @@ export function buildPlacementPreview(
   point: { x: number; y: number },
 ): DiagramLayout {
   const h = PLACEMENT_HALF_EXTENT;
-  const preview: ComponentInstance = {
+  const placement: Placement = {
+    extent: [
+      [point.x - h, point.y - h],
+      [point.x + h, point.y + h],
+    ],
+  };
+  const preview = {
     name: PLACEMENT_PREVIEW_ID,
     classRef: classDef.name,
-    placement: {
-      extent: [
-        [point.x - h, point.y - h],
-        [point.x + h, point.y + h],
-      ],
-    },
+    placement,
   };
-  return {
-    ...base,
-    classes: { ...base.classes, [classDef.name]: classDef },
-    components: { ...base.components, [PLACEMENT_PREVIEW_ID]: preview },
-  };
+  const classes = { ...base.classes, [classDef.name]: classDef };
+  return base.kind === "icon"
+    ? {
+        ...base,
+        classes,
+        connectors: { ...base.connectors, [PLACEMENT_PREVIEW_ID]: preview },
+      }
+    : {
+        ...base,
+        classes,
+        components: { ...base.components, [PLACEMENT_PREVIEW_ID]: preview },
+      };
 }

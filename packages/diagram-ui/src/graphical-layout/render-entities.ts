@@ -28,6 +28,7 @@ import {
 import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
 import { nestedPortShift, type NestingViews } from "../nesting/nested-ports.js";
 import { renderShape } from "../primitives/render-shape.js";
+import { viewComponents, viewConnectors } from "../base/view-entities.js";
 
 /**
  * Puts host shapes between the grid (`zIndex` -1) and components (0) as
@@ -64,7 +65,7 @@ export function renderLayoutContent(
       renderComponent(id, comp, layout, opts),
     ),
     repeat(
-      Object.entries(layout.connectors),
+      viewConnectors(layout),
       ([id]) => id,
       ([id, conn]) => renderStandaloneConnector(id, conn, layout, opts),
     ),
@@ -132,7 +133,7 @@ function activeLayers(layout: DiagramLayout): IconLayer[] {
 function visibleComponents(
   layout: DiagramLayout,
 ): [string, ComponentInstance][] {
-  return Object.entries(layout.components).filter(
+  return viewComponents(layout).filter(
     ([, comp]) => comp.placement.visible !== false,
   );
 }

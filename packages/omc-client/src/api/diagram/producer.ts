@@ -790,7 +790,8 @@ function emitConnection(c: ConnectionNode): ConnectionLayout | undefined {
  *
  * The choice doesn't filter `classes` or `components`/`connectors` — those
  * always describe the full host-class structure. Only what gets DRAWN
- * differs by kind.
+ * differs by kind: an icon draws none of `components` and only the public
+ * `connectors` (MLS §18.6).
  */
 export function produceDiagramLayout(
   mi: ModelInstance,

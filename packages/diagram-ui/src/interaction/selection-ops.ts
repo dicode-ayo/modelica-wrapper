@@ -9,6 +9,7 @@ import type {
 import { placementCentre } from "../base/placement-math.js";
 import { formatShapeKey, parseKey } from "./entity-keys.js";
 import { isPolyShape, ownLayer } from "./own-layer.js";
+import { viewComponents, viewConnectors } from "../base/view-entities.js";
 
 /**
  * Derives selections from a layout. These return `Set<string>` of entity
@@ -94,7 +95,7 @@ function placementBounds(p: Placement): DiagramRect {
 /** A host shape sits at its `origin` and rotates about it, per
  *  `setDiagramBounds`. A poly is bounded by its points, not its stroke path,
  *  so a band clipping only the drawn width of a line misses it. */
-function shapeBoundsOf(s: Shape): DiagramRect {
+export function shapeBoundsOf(s: Shape): DiagramRect {
   const origin: Point = [s.origin?.[0] ?? 0, s.origin?.[1] ?? 0];
   if (isPolyShape(s)) {
     return s.points.length === 0
@@ -111,8 +112,9 @@ function rectsOverlap(a: DiagramRect, b: DiagramRect): boolean {
 
 /**
  * Returns the keys of every component, connector and own-layer shape the band
- * touches. Overlap decides rather than centre-containment: an entity placed on
- * the class boundary has its centre outside any band drawable over the canvas.
+ * touches, among those the view shows (`viewComponents`). Overlap decides
+ * rather than centre-containment: an entity placed on the class boundary has
+ * its centre outside any band drawable over the canvas.
  *
  * Connections aren't selected by rubber-band — their waypoints would force
  * extra geometry awareness.
@@ -126,12 +128,12 @@ export function selectByDiagramRect(
 ): Set<string> {
   const r = normaliseRect(rect);
   const keys = new Set<string>();
-  for (const [id, c] of Object.entries(layout.components)) {
+  for (const [id, c] of viewComponents(layout)) {
     if (rectsOverlap(r, placementBounds(c.placement))) {
       keys.add(`c:${id}`);
     }
   }
-  for (const [id, c] of Object.entries(layout.connectors)) {
+  for (const [id, c] of viewConnectors(layout)) {
     if (rectsOverlap(r, placementBounds(c.placement))) {
       keys.add(`k:${id}`);
     }
@@ -146,14 +148,14 @@ export function selectByDiagramRect(
 }
 
 /**
- * Every selectable entity in the layout, regardless of where it sits. A
- * rubber band can only take what it covers, and a class routinely places
- * connectors and labels outside its own coordinate system.
+ * Every entity the view shows (`viewComponents`), regardless of where it
+ * sits. A rubber band can only take what it covers, and a class routinely
+ * places connectors and labels outside its own coordinate system.
  */
 export function selectAllKeys(layout: DiagramLayout): Set<string> {
   const keys = new Set<string>();
-  for (const id of Object.keys(layout.components)) keys.add(`c:${id}`);
-  for (const id of Object.keys(layout.connectors)) keys.add(`k:${id}`);
+  for (const [id] of viewComponents(layout)) keys.add(`c:${id}`);
+  for (const [id] of viewConnectors(layout)) keys.add(`k:${id}`);
   const own = ownLayer(layout);
   own?.shapes.forEach((shape, index) => {
     keys.add(formatShapeKey(shape.kind, index));
@@ -163,26 +165,25 @@ export function selectAllKeys(layout: DiagramLayout): Set<string> {
 
 /**
  * Filters `keys` down to those still backed by an entity in `layout`:
- * a component / connector by id, or a host shape by its own-layer
- * `(kind, index)`. Selection survives an in-place edit (move / rotate /
- * resize echoed back from the host) but drops anything the layout no
- * longer contains. Edge / junction keys, whose indices can shift on
+ * a component / connector the view shows, by id, or a host shape by its
+ * own-layer `(kind, index)`. Selection survives an in-place edit (move /
+ * rotate / resize echoed back from the host) but drops anything the layout
+ * no longer contains. Edge / junction keys, whose indices can shift on
  * relayout, are not retained.
  */
 export function retainExistingSelection(
   layout: DiagramLayout,
   keys: Iterable<string>,
 ): Set<string> {
+  const components = new Set(viewComponents(layout).map(([id]) => id));
+  const connectors = new Set(viewConnectors(layout).map(([id]) => id));
   const out = new Set<string>();
   for (const k of keys) {
     const parsed = parseKey(k);
     if (!parsed) continue;
-    if (parsed.kind === "component" && layout.components[parsed.nodeId]) {
+    if (parsed.kind === "component" && components.has(parsed.nodeId)) {
       out.add(k);
-    } else if (
-      parsed.kind === "connector" &&
-      layout.connectors[parsed.nodeId]
-    ) {
+    } else if (parsed.kind === "connector" && connectors.has(parsed.nodeId)) {
       out.add(k);
     } else if (parsed.kind === "shape") {
       // Positional re-key: keep the selection only if the same own-layer

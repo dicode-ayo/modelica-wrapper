@@ -38,7 +38,10 @@ import {
   applyAddGraphic,
   applyShapeVertexInsert,
 } from "../interaction/layout-ops.js";
-import { retainExistingSelection } from "../interaction/selection-ops.js";
+import {
+  retainExistingSelection,
+  shapeBoundsOf,
+} from "../interaction/selection-ops.js";
 import {
   applyWaypointDelete,
   applyWaypointInsert,
@@ -103,7 +106,9 @@ import {
   type PlacementPoint,
 } from "./placement-mode.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
+import { coordSystemSize } from "../base/placement-math.js";
 import { renderLayoutContent } from "./render-entities.js";
+import { viewComponents, viewConnectors } from "../base/view-entities.js";
 import {
   sharedNestedSource,
   type NestedDiagramSource,
@@ -121,42 +126,55 @@ interface BBox {
   maxY: number;
 }
 
-function layoutBoundingBox(layout: DiagramLayout): BBox | null {
+/**
+ * The extent of what the view shows: its placed instances and connection
+ * waypoints, plus an icon's own graphics and coordinate system.
+ */
+export function layoutBoundingBox(layout: DiagramLayout): BBox | null {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
   let seen = false;
+  const addPoint = (x: number, y: number): void => {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+    seen = true;
+  };
   const addPlacement = (
     placement: import("@dicode/omc-client").Placement,
   ): void => {
     const [[x1, y1], [x2, y2]] = placement.extent;
     const ox = placement.origin?.[0] ?? 0;
     const oy = placement.origin?.[1] ?? 0;
-    const lo = Math.min(x1, x2);
-    const hi = Math.max(x1, x2);
-    const bo = Math.min(y1, y2);
-    const to = Math.max(y1, y2);
-    minX = Math.min(minX, ox + lo);
-    maxX = Math.max(maxX, ox + hi);
-    minY = Math.min(minY, oy + bo);
-    maxY = Math.max(maxY, oy + to);
-    seen = true;
+    addPoint(ox + x1, oy + y1);
+    addPoint(ox + x2, oy + y2);
   };
-  for (const c of Object.values(layout.components)) {
+  if (layout.kind === "icon") {
+    // The icon is its graphics, and those routinely reach past the
+    // coordinate system (a `%name` Text above it).
+    const cs = coordSystemSize(layout.coordinateSystem);
+    addPoint(cs.cx - cs.width / 2, cs.cy - cs.height / 2);
+    addPoint(cs.cx + cs.width / 2, cs.cy + cs.height / 2);
+    for (const layer of layout.iconLayers) {
+      for (const shape of layer.shapes) {
+        if (shape.visible === false) continue;
+        const b = shapeBoundsOf(shape);
+        addPoint(b.x1, b.y1);
+        addPoint(b.x2, b.y2);
+      }
+    }
+  }
+  for (const [, c] of viewComponents(layout)) {
     addPlacement(c.placement);
   }
-  for (const k of Object.values(layout.connectors)) {
+  for (const [, k] of viewConnectors(layout)) {
     addPlacement(k.placement);
   }
   for (const conn of layout.connections) {
-    for (const [x, y] of conn.waypoints) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      seen = true;
-    }
+    for (const [x, y] of conn.waypoints) addPoint(x, y);
   }
   return seen ? { minX, minY, maxX, maxY } : null;
 }
@@ -641,8 +659,8 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   /**
-   * Compute the bounding box of all components + connectors in the
-   * current layout, then set the scene's zoom + pan so the box fills
+   * Compute the bounding box of what the view shows (see
+   * `layoutBoundingBox`), then set the scene's zoom + pan so the box fills
    * the viewport with a small padding. Returns `true` if the fit was
    * applied, `false` if the layout was empty or the scene wasn't
    * mounted yet.

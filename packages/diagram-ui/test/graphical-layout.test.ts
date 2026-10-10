@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout } from "@dicode/omc-client";
+import type { DiagramLayout, Placement } from "@dicode/omc-client";
 
-import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
+import {
+  layoutBoundingBox,
+  type OmGraphicalLayout,
+} from "../src/graphical-layout/graphical-layout.component.js";
+import {
+  buildPlacementPreview,
+  PLACEMENT_PREVIEW_ID,
+} from "../src/graphical-layout/placement-preview.js";
 import { mountLayout } from "./harness/interaction-fixtures.js";
 import { emptyLayout } from "./harness/layout-fixtures.js";
 
@@ -31,6 +38,38 @@ function tinyLayout(): DiagramLayout {
       },
     },
   };
+}
+
+/** A public port `u` and a protected port `secret`, both on the host. */
+function withPorts(
+  layout: DiagramLayout,
+  kind: DiagramLayout["kind"],
+): DiagramLayout {
+  const placement: Placement = {
+    extent: [
+      [-110, -10],
+      [-90, 10],
+    ],
+  };
+  return {
+    ...layout,
+    kind,
+    connectors: {
+      u: { name: "u", classRef: "Test.Block", placement },
+      secret: {
+        name: "secret",
+        classRef: "Test.Block",
+        placement,
+        prefixes: { public: false },
+      },
+    },
+  };
+}
+
+function standaloneConnectorIds(el: OmGraphicalLayout): string[] {
+  return Array.from(el.shadowRoot?.querySelectorAll("om-connector") ?? [])
+    .filter((c) => !c.closest("om-component"))
+    .map((c) => String((c as { nodeId?: string }).nodeId));
 }
 
 describe("<om-graphical-layout>", () => {
@@ -108,6 +147,81 @@ describe("<om-graphical-layout>", () => {
     const comps = el.shadowRoot?.querySelectorAll("om-component");
     expect(comps?.length).toBe(1);
     expect((comps?.[0] as { nodeId?: string }).nodeId).toBe("b1");
+  });
+
+  it("draws only public connectors in an icon-kind layout (MLS §18.6)", async () => {
+    const el = await mountLayout({ layout: withPorts(tinyLayout(), "icon") });
+    expect(el.shadowRoot?.querySelectorAll("om-component")).toHaveLength(0);
+    expect(standaloneConnectorIds(el)).toEqual(["u"]);
+  });
+
+  it("draws the placement preview as a connector in an icon-kind layout", async () => {
+    const icon = withPorts(tinyLayout(), "icon");
+    const pin = icon.classes["Test.Block"];
+    if (pin === undefined) throw new Error("expected Test.Block");
+    const el = await mountLayout({
+      layout: buildPlacementPreview(icon, pin, { x: 0, y: 0 }),
+    });
+    expect(el.shadowRoot?.querySelectorAll("om-component")).toHaveLength(0);
+    expect(standaloneConnectorIds(el)).toEqual(["u", PLACEMENT_PREVIEW_ID]);
+  });
+
+  it("fits an icon to its drawn graphics and public connectors only", () => {
+    const icon = withPorts(tinyLayout(), "icon");
+    icon.iconLayers = [
+      {
+        from: "T",
+        shapes: [
+          {
+            kind: "text",
+            extent: [
+              [-150, 110],
+              [150, 150],
+            ],
+            textString: "%name",
+          },
+          {
+            kind: "rectangle",
+            visible: false,
+            extent: [
+              [-400, -400],
+              [400, 400],
+            ],
+          },
+        ],
+      },
+    ];
+    // Outside the frame, so counting either would widen it.
+    const b1 = icon.components["b1"];
+    if (b1 === undefined) throw new Error("expected b1");
+    b1.placement = {
+      extent: [
+        [500, 500],
+        [520, 520],
+      ],
+    };
+    const secret = icon.connectors["secret"];
+    if (secret === undefined) throw new Error("expected secret");
+    secret.placement = {
+      extent: [
+        [-500, -500],
+        [-480, -480],
+      ],
+    };
+    expect(layoutBoundingBox(icon)).toEqual({
+      minX: -150,
+      minY: -100,
+      maxX: 150,
+      maxY: 150,
+    });
+  });
+
+  it("draws every component and connector in a diagram-kind layout", async () => {
+    const el = await mountLayout({
+      layout: withPorts(tinyLayout(), "diagram"),
+    });
+    expect(el.shadowRoot?.querySelectorAll("om-component")).toHaveLength(1);
+    expect(standaloneConnectorIds(el)).toEqual(["u", "secret"]);
   });
 
   it("still routes a connection anchored to a hidden component's port", async () => {
