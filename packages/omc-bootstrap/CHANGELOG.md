@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-bootstrap-v0.0.2...@dicode/omc-bootstrap-v0.0.3) (2026-10-10)
+
+
+### Bug Fixes
+
+* **omc-bootstrap:** build the managed prefix in its final slot instead of moving it ([#764](https://github.com/dicode-ayo/modelica-wrapper/issues/764)) ([9d41de6](https://github.com/dicode-ayo/modelica-wrapper/commit/9d41de654380f626d1615591809a1d28c2f8e77f))
+
 ## [0.0.2](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-bootstrap-v0.0.1...@dicode/omc-bootstrap-v0.0.2) (2026-09-08)
 
 
