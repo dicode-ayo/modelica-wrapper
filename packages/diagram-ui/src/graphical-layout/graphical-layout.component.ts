@@ -51,6 +51,7 @@ import {
   DIAGRAM_COMMANDS,
   resolveDeclarationSource,
   resolveDefinitionSource,
+  resolveOpenDiagramClass,
   type CommandTarget,
   type DiagramCommandId,
 } from "../commands/index.js";
@@ -1411,6 +1412,9 @@ export class OmGraphicalLayout extends LitElement {
       requestGoToSource: (request) => {
         this.emit("om-go-to-source", request);
       },
+      requestOpenDiagram: (className) => {
+        this.emit("om-open-diagram-request", { className });
+      },
       showKeymapHelp: () => this.openKeymapHelp(),
     };
   }
@@ -1465,6 +1469,8 @@ export class OmGraphicalLayout extends LitElement {
         hasClipboard: this.hasClipboard,
         vertexTarget: this.contextVertex !== null,
         polySelection: this.singlePolyShapeSelected(),
+        hasOpenDiagramClass:
+          resolveOpenDiagramClass(this.layout, this.selectedKeys) !== null,
         hasDefinitionSource:
           resolveDefinitionSource(this.layout, this.selectedKeys) !== null,
         hasDeclarationSource:

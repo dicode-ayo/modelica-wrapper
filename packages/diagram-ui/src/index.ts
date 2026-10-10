@@ -64,6 +64,7 @@ export type {
   ChangeClassRequestDetail,
   ClipboardRequestDetail,
   GoToSourceRequestDetail,
+  OpenDiagramRequestDetail,
 } from "./graphical-layout/layout-events.js";
 export { OmComponent } from "./component/component.component.js";
 export { OmLayerGroup } from "./base/layer-group.component.js";

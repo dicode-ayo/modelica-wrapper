@@ -3999,6 +3999,64 @@ describe("DiagramEditController: go to source (issue #514)", () => {
   });
 });
 
+describe("DiagramEditController: open diagram", () => {
+  function makeController(): DiagramEditController {
+    const { client } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    return new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+  }
+
+  it("opens the named class in the diagram editor bound to its modelica-source: document", async () => {
+    await makeController().handle({
+      type: "openDiagram",
+      className: "Modelica.Blocks.Math.Gain",
+    });
+
+    const opened = executedCommands.filter(
+      (c) => c.command === "vscode.openWith",
+    );
+    expect(opened).toHaveLength(1);
+    const [uri, viewType] = opened[0]?.args ?? [];
+    expect(String(uri)).toBe("modelica-source:/Modelica.Blocks.Math.Gain.mo");
+    expect(viewType).toBe(DIAGRAM_VIEW_TYPE);
+  });
+
+  it("ignores an empty class name instead of prompting the user for one", async () => {
+    vscodeMock.queuePromptAnswers("Pkg.Prompted");
+
+    await makeController().handle({ type: "openDiagram", className: "" });
+
+    expect(
+      executedCommands.filter((c) => c.command === "vscode.openWith"),
+    ).toHaveLength(0);
+  });
+
+  it("still opens from a read-only class", async () => {
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+      defaultScheduler,
+      { ok: false, reason: REFUSAL },
+    );
+
+    await controller.handle({ type: "openDiagram", className: "Pkg.N" });
+
+    expect(
+      executedCommands.filter((c) => c.command === "vscode.openWith"),
+    ).toHaveLength(1);
+    expect(posted.filter((m) => m.type === "error")).toHaveLength(0);
+  });
+});
+
 describe("resolveDiagramEditor: a changed class staling nested diagrams", () => {
   function open(invalidation: ClassInvalidationRegistry): {
     posted: ExtensionToWebview[];

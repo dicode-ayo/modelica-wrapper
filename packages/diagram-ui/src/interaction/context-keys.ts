@@ -21,6 +21,8 @@ export interface ContextEnv {
   vertexTarget: boolean;
   /** The selection is a single line / polygon host shape (enables smooth). */
   polySelection: boolean;
+  /** The selection is a component whose class can be opened as a diagram. */
+  hasOpenDiagramClass: boolean;
   /** The selection (or bare canvas) resolves a definition source (enables
    *  go-to-definition). */
   hasDefinitionSource: boolean;
@@ -39,6 +41,7 @@ export interface ContextKeys {
   hasClipboard: boolean;
   vertexTarget: boolean;
   polySelection: boolean;
+  hasOpenDiagramClass: boolean;
   hasDefinitionSource: boolean;
   hasDeclarationSource: boolean;
 }
@@ -58,6 +61,7 @@ export function deriveContextKeys(
     hasClipboard: env.hasClipboard,
     vertexTarget: env.vertexTarget,
     polySelection: env.polySelection,
+    hasOpenDiagramClass: env.hasOpenDiagramClass,
     hasDefinitionSource: env.hasDefinitionSource,
     hasDeclarationSource: env.hasDeclarationSource,
   };

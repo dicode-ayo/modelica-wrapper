@@ -80,6 +80,14 @@ export type ClipboardRequestDetail =
 export type GoToSourceRequestDetail = GoToSourceRequest;
 
 /**
+ * User asked to open a class as its own diagram. Editors live host-side, so
+ * the layout reports the already-resolved class name.
+ */
+export interface OpenDiagramRequestDetail {
+  className: string;
+}
+
+/**
  * Event-name → detail-type map. Source of truth shared by:
  *   - `emit<K extends LayoutEventName>(name, detail)` inside the component,
  *   - external listeners typed `CustomEvent<LayoutEvents["om-foo"]>`.
@@ -95,6 +103,7 @@ export interface LayoutEvents {
   "om-change-class-request": ChangeClassRequestDetail;
   "om-clipboard-request": ClipboardRequestDetail;
   "om-go-to-source": GoToSourceRequestDetail;
+  "om-open-diagram-request": OpenDiagramRequestDetail;
 }
 
 export type LayoutEventName = keyof LayoutEvents;

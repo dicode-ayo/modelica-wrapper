@@ -50,6 +50,7 @@ const SAMPLES: WebviewToExtension[] = [
   { type: "resetComponentParameters", componentName: "r1" },
   { type: "addComponent", className: "A.B", position: { x: 1, y: 2 } },
   { type: "changeClassRequest", componentName: "r1", currentClass: "A" },
+  { type: "openDiagram", className: "A.B" },
   {
     type: "goToSource",
     source: {
@@ -197,6 +198,12 @@ describe("isGestureMessage", () => {
 });
 
 describe("iconHonorsGesture", () => {
+  it("honors openDiagram, which only opens another editor", () => {
+    expect(iconHonorsGesture({ type: "openDiagram", className: "A.B" })).toBe(
+      true,
+    );
+  });
+
   it("honors shape work, connector placement and the clipboard", () => {
     expect(
       iconHonorsGesture({ type: "change", layout: layout(), basedOn: 1 }),

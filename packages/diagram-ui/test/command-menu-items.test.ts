@@ -45,6 +45,7 @@ describe("commandsToMenuItems", () => {
         ctx({
           selectionKind: "shape",
           hasClipboard: true,
+          hasOpenDiagramClass: true,
           hasDefinitionSource: true,
         }),
       ),

@@ -34,6 +34,9 @@ install as a subprocess.
   - draw, move, and delete connections
   - move/resize/rotate components
   - diagram-local **undo**
+  - right-click a component for **Open Diagram**, which opens that
+    component's class in its own diagram editor (listed above Go to
+    Definition / Go to Declaration; **F12** still opens source)
 - **Parameter panels** — double-click a component (or use the toolbar for
   class-level params) to edit parameters in a floating panel, with **live unit
   conversion** + unit dropdowns, `Dialog` tab/group layout, `Dialog.enable`

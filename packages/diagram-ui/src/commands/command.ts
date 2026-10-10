@@ -39,6 +39,8 @@ export interface CommandTarget {
   requestClipboard?(action: "copy" | "paste"): void;
   /** Delegates opening an entity's source to the host, which owns editors. */
   requestGoToSource?(request: GoToSourceRequest): void;
+  /** Delegates opening a class's diagram to the host, which owns editors. */
+  requestOpenDiagram?(className: string): void;
   /** Opens the keyboard-shortcuts help dialog. */
   showKeymapHelp?(): void;
 }
