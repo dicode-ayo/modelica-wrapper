@@ -615,7 +615,7 @@ export type ModelInstanceAnnotation = ModelInstance;
  * mismatch — a mismatch further into the tree still throws the generic
  * `parseOutput` error.
  */
-export class ModelInstanceNotFullyLoadedError extends Error {
+export class ModelInstanceNotFullyLoadedError extends OmcDiagnosticError {
   constructor(public readonly className: string) {
     super(
       `Class "${className}" is not fully loaded — OMC returned an incomplete model instance. Try loading its enclosing package first.`,

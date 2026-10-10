@@ -11,6 +11,7 @@ import * as path from "node:path";
 
 import {
   ModelInstanceNotFoundError,
+  ModelInstanceNotFullyLoadedError,
   OmcDiagnosticError,
   REGISTRY,
 } from "@dicode/omc-client";
@@ -356,30 +357,47 @@ describe("dispatchByName's logging and failure notification", () => {
     expect(notified).toEqual([]);
   });
 
-  it("keeps a read of a class OMC doesn't have between the model and the tool", async () => {
-    const { log, warnings } = makeLog();
-    const notified: string[] = [];
-    const client = baseClient({
-      invoke: async () => {
-        throw new ModelInstanceNotFoundError("Modelica.NoSuchClass");
-      },
-    });
-    const deps: McpToolDeps = {
-      ensureClient: async () => client,
-      verdicts,
-      log,
-      notifyFailure: (m) => notified.push(m),
-    };
+  it.each([
+    [
+      "a class OMC doesn't have",
+      ModelInstanceNotFoundError,
+      "Modelica.NoSuchClass",
+      "does not exist",
+    ],
+    [
+      "a partly loaded class",
+      ModelInstanceNotFullyLoadedError,
+      "Pkg.Child",
+      "not fully loaded",
+    ],
+  ])(
+    "keeps a read of %s between the model and the tool",
+    async (_, Err, className, reason) => {
+      const { log, warnings } = makeLog();
+      const notified: string[] = [];
+      const client = baseClient({
+        invoke: async () => {
+          throw new Err(className);
+        },
+      });
+      const deps: McpToolDeps = {
+        ensureClient: async () => client,
+        verdicts,
+        log,
+        notifyFailure: (m) => notified.push(m),
+      };
 
-    const result = await dispatchByName(deps, "getModelInstance", {
-      typeName: "Modelica.NoSuchClass",
-    });
+      const result = await dispatchByName(deps, "getModelInstance", {
+        typeName: className,
+      });
 
-    expect(result.isError).toBe(true);
-    expect(text(result)).toContain("Modelica.NoSuchClass");
-    expect(warnings).toHaveLength(1);
-    expect(notified).toEqual([]);
-  });
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain(className);
+      expect(text(result)).toContain(reason);
+      expect(warnings).toHaveLength(1);
+      expect(notified).toEqual([]);
+    },
+  );
 
   it("notifies a mutation that raised OMC's reason itself, unlike a read", async () => {
     // parseMutationSuccess throws the same OmcDiagnosticError type a read's

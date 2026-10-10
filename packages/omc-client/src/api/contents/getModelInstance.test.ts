@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import type { CallContext } from "../../_shared/callContext.js";
 import { ModelInstanceNotFullyLoadedError } from "../../_shared/modelInstance.js";
 import { quote } from "../../_shared/format.js";
+import { OmcDiagnosticError } from "../../diagnostic-error.js";
 
 import { getModelInstance } from "./getModelInstance.js";
 
@@ -59,25 +60,23 @@ describe("getModelInstance: response handling", () => {
     expect(out.instance.annotation).toBeNull();
   });
 
-  it("throws ModelInstanceNotFullyLoadedError when name is null (partial-load shape)", async () => {
+  it("throws ModelInstanceNotFullyLoadedError, an OMC diagnostic, when name is null (partial-load shape)", async () => {
     const { ctx } = stubCtx(
       quote(JSON.stringify({ name: null, restriction: null })),
     );
 
-    await expect(
-      getModelInstance(ctx, { typeName: "Some.Child" }),
-    ).rejects.toThrow(ModelInstanceNotFullyLoadedError);
-    await expect(
-      getModelInstance(ctx, { typeName: "Some.Child" }),
-    ).rejects.toThrow(/Some\.Child.*not fully loaded/);
+    const read = getModelInstance(ctx, { typeName: "Some.Child" });
+    await expect(read).rejects.toThrow(ModelInstanceNotFullyLoadedError);
+    await expect(read).rejects.toThrow(/Some\.Child.*not fully loaded/);
+    await expect(read).rejects.toBeInstanceOf(OmcDiagnosticError);
   });
 
   it("throws ModelInstanceNotFullyLoadedError when name is missing entirely", async () => {
     const { ctx } = stubCtx(quote(JSON.stringify({ restriction: "model" })));
 
-    await expect(
-      getModelInstance(ctx, { typeName: "Some.Child" }),
-    ).rejects.toThrow(ModelInstanceNotFullyLoadedError);
+    const read = getModelInstance(ctx, { typeName: "Some.Child" });
+    await expect(read).rejects.toThrow(ModelInstanceNotFullyLoadedError);
+    await expect(read).rejects.toBeInstanceOf(OmcDiagnosticError);
   });
 
   it("parses a class whose constrained-replaceable carries an array-bearing modifier (a redeclare's dims)", async () => {
