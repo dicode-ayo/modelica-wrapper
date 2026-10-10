@@ -12,7 +12,7 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import { ModelInstanceSchema, type OmcClient } from "@dicode/omc-client";
 
@@ -20,6 +20,8 @@ import type { DocExtensionToWebview } from "../webview/documentation-protocol.js
 import type { ReadyGate } from "../webview/ready-gate.js";
 import { WriteVerdicts } from "../write-verdict.js";
 import { type Scheduler } from "../diagram/buffer-sync.js";
+import { ClassInvalidationRegistry } from "../invalidation.js";
+import { retryMissingClasses } from "../missing-class.js";
 
 import {
   DocumentationEditController,
@@ -132,6 +134,7 @@ function makeResolveClient(anno: {
         infoHeader: anno.infoHeader ?? "",
       }),
     ),
+    existClass: vi.fn(() => Promise.resolve({ exists: true })),
     getClassRestriction: vi.fn(() =>
       Promise.resolve({ restriction: anno.restriction ?? "block" }),
     ),
@@ -208,6 +211,8 @@ describe("resolveDocumentationEditor", () => {
     await flush();
     // The HTML paints first; the interface follows in its own message.
     expect(posted.map((m) => m.type)).toEqual(["doc", "interface"]);
+    const client = await ensureClient.mock.results[0]?.value;
+    expect(client.existClass).not.toHaveBeenCalled();
     const doc = posted[0];
     expect(doc?.type).toBe("doc");
     if (doc?.type === "doc") {
@@ -405,6 +410,134 @@ describe("resolveDocumentationEditor", () => {
     expect(DocumentationEditorProvider.activeClassName()).toBeUndefined();
   });
 
+  describe("a restored tab whose class OMC doesn't have", () => {
+    // A panel left open would keep its watch in the process-wide retry set.
+    const disposers: (() => void)[] = [];
+    afterEach(() => {
+      for (const dispose of disposers.splice(0)) dispose();
+    });
+    const NEW_DOC = docFor(
+      vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo"),
+    );
+
+    function missingUntilLoaded(): {
+      client: OmcClient;
+      load: () => void;
+      fetches: () => number;
+    } {
+      let loaded = false;
+      let fetches = 0;
+      const base = makeResolveClient({ info: "" });
+      const client = {
+        ...base,
+        getDocumentationAnnotation: vi.fn(() => {
+          fetches += 1;
+          return Promise.resolve({
+            info: loaded ? "<html><p>new</p></html>" : "",
+            revision: "",
+            infoHeader: "",
+          });
+        }),
+        existClass: vi.fn(() => Promise.resolve({ exists: loaded })),
+      } as unknown as OmcClient;
+      return {
+        client,
+        load: () => {
+          loaded = true;
+        },
+        fetches: () => fetches,
+      };
+    }
+
+    it("shows the missing-class page, then the doc once the class loads", async () => {
+      const { panel, webview, posted, fireReady, fireDispose } =
+        makePanel(true);
+      disposers.push(fireDispose);
+      const { client, load, fetches } = missingUntilLoaded();
+      const invalidation = new ClassInvalidationRegistry();
+
+      resolveDocumentationEditor(
+        panel,
+        EXT_URI,
+        () => Promise.resolve(client),
+        new WriteVerdicts(),
+        NEW_DOC,
+        invalidation,
+      );
+      await flush();
+      fireReady();
+      await flush();
+
+      expect(webview.html).toContain("Class not found");
+      expect(webview.html).toContain("ResistorDemo.NewModel");
+      expect(webview.html).not.toContain("om-documentation-root");
+      expect(posted).toEqual([]);
+      expect(DocumentationEditorProvider.activeClassName()).toBeUndefined();
+
+      invalidation.classChanged("ResistorDemo.Other");
+      await flush();
+      expect(fetches()).toBe(1);
+
+      load();
+      invalidation.classChanged("ResistorDemo");
+      await flush();
+      expect(webview.html).toContain("om-documentation-root");
+      fireReady();
+      await flush();
+      expect(posted.map((m) => m.type)).toEqual(["doc", "interface"]);
+      expect(DocumentationEditorProvider.activeClassName()).toBe(
+        "ResistorDemo.NewModel",
+      );
+    });
+
+    it("shows a builtin type's empty documentation, not the missing-class page", async () => {
+      // OMC answers existClass(Real) with false, the same as for a missing class.
+      const { panel, webview, posted, fireReady, fireDispose } = makePanel();
+      disposers.push(fireDispose);
+      const client = {
+        ...makeResolveClient({ info: "", restriction: "" }),
+        existClass: vi.fn(() => Promise.resolve({ exists: false })),
+      } as unknown as OmcClient;
+
+      resolveDocumentationEditor(
+        panel,
+        EXT_URI,
+        () => Promise.resolve(client),
+        new WriteVerdicts(),
+        docFor(vscode.Uri.parse("modelica-source:/Real.mo")),
+      );
+      await flush();
+      fireReady();
+      await flush();
+
+      expect(webview.html).toContain("om-documentation-root");
+      expect(posted.map((m) => m.type)).toEqual(["doc"]);
+    });
+
+    it("recovers when the autoload sweep retries missing classes", async () => {
+      const { panel, webview, posted, fireReady, fireDispose } = makePanel();
+      disposers.push(fireDispose);
+      const { client, load } = missingUntilLoaded();
+
+      resolveDocumentationEditor(
+        panel,
+        EXT_URI,
+        () => Promise.resolve(client),
+        new WriteVerdicts(),
+        NEW_DOC,
+      );
+      await flush();
+      expect(webview.html).toContain("Class not found");
+
+      load();
+      expect(retryMissingClasses()).toEqual(["ResistorDemo.NewModel"]);
+      await flush();
+      fireReady();
+      await flush();
+      expect(posted.map((m) => m.type)).toEqual(["doc", "interface"]);
+    });
+  });
+
   it("renders a placeholder and never reads OMC for an unresolved class", async () => {
     const { panel, webview, posted } = makePanel();
     const ensureClient = vi.fn(() =>
@@ -524,6 +657,7 @@ function makeEditClient(
         ? Promise.reject(new Error("OMC down"))
         : Promise.resolve({ info: anno.info }),
     ),
+    existClass: vi.fn(() => Promise.resolve({ exists: true })),
     getClassRestriction: vi.fn(() => Promise.resolve({ restriction: "block" })),
     getModelInstance: vi.fn(() => Promise.resolve({ instance: PID_INSTANCE })),
     setFullDocumentationAnnotation: vi.fn(
@@ -647,6 +781,28 @@ describe("DocumentationEditController write path", () => {
     // canonical source into the (possibly dirty) buffer and re-sends the doc.
     expect(writes).toEqual([LISTED]);
     expect(posted.filter((m) => m.type === "doc").length).toBeGreaterThan(0);
+  });
+
+  it("posts nothing for work that runs after it is disposed", async () => {
+    const { client } = makeEditClient({ info: "<html><p>x</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      {
+        client,
+        document: srcDoc(),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
+      factory,
+    );
+
+    controller.dispose();
+    await controller.refreshFromExternalWrite();
+    await controller.handle({ type: "edit", info: "<html></html>" });
+
+    expect(posted).toEqual([]);
   });
 
   it("refuses an external-write refresh on a read-only class and never reflects it", async () => {
