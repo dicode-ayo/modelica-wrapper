@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/ui-common-v0.0.6...@dicode/ui-common-v0.0.7) (2026-10-10)
+
+
+### Bug Fixes
+
+* **deps:** update dependency [@awesome](https://github.com/awesome).me/webawesome to ^3.14.0 ([#736](https://github.com/dicode-ayo/modelica-wrapper/issues/736)) ([52e80ed](https://github.com/dicode-ayo/modelica-wrapper/commit/52e80ed908d54c8e41e6dd1465581a7173a4dbc0))
+* **omc-client,diagram-ui:** readable schema-mismatch detail in the error state ([#772](https://github.com/dicode-ayo/modelica-wrapper/issues/772)) ([fd40dd6](https://github.com/dicode-ayo/modelica-wrapper/commit/fd40dd6d0444d201f8cf474c8761c80897bd4557))
+
 ## [0.0.6](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/ui-common-v0.0.5...@dicode/ui-common-v0.0.6) (2026-09-12)
 
 

@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.0.8](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.7...modelica-wrapper-v0.0.8) (2026-10-10)
+
+
+### Features
+
+* **diagram-ui:** render Dialog(groupImage) in the parameter form ([#754](https://github.com/dicode-ayo/modelica-wrapper/issues/754)) ([0a9f276](https://github.com/dicode-ayo/modelica-wrapper/commit/0a9f2764058407c4fbda165d68f3de18e119e91e))
+* **diagram:** host+protocol for semantic in-place nesting on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#745](https://github.com/dicode-ayo/modelica-wrapper/issues/745)) ([b7fd25b](https://github.com/dicode-ayo/modelica-wrapper/commit/b7fd25b6902d824095cd88ef3fab44244f7b7eb7))
+* **diagram:** log failed nested-diagram fetches at debug level ([#785](https://github.com/dicode-ayo/modelica-wrapper/issues/785)) ([e065a0a](https://github.com/dicode-ayo/modelica-wrapper/commit/e065a0a1882a03791dcf5a55b0a7fa38525a86ae))
+* **diagram:** open a component's diagram from the canvas context menu ([#799](https://github.com/dicode-ayo/modelica-wrapper/issues/799)) ([985255c](https://github.com/dicode-ayo/modelica-wrapper/commit/985255ca42936a4667de69cb508dfda7dc866faa))
+* **diagram:** render a nested class diagram in place on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#761](https://github.com/dicode-ayo/modelica-wrapper/issues/761)) ([056ca56](https://github.com/dicode-ayo/modelica-wrapper/commit/056ca56f953b467543ccf43ec39419d9883b804f))
+
+
+### Bug Fixes
+
+* **deps:** update dependency @modelcontextprotocol/sdk to ^1.32.0 ([#749](https://github.com/dicode-ayo/modelica-wrapper/issues/749)) ([0d6b257](https://github.com/dicode-ayo/modelica-wrapper/commit/0d6b2571cfd27219495008d01c1514f4ece71742))
+* **diagram:** explain a restored tab whose class no longer exists ([#780](https://github.com/dicode-ayo/modelica-wrapper/issues/780)) ([58f0b0f](https://github.com/dicode-ayo/modelica-wrapper/commit/58f0b0fc64358bb6d9ebbeb72019262b6b64665e))
+* **extension:** dedupe concurrent ResultCache lookups for the same file ([#726](https://github.com/dicode-ayo/modelica-wrapper/issues/726)) ([1b5bee3](https://github.com/dicode-ayo/modelica-wrapper/commit/1b5bee392353922b340b07d5900560aab1a776a4))
+* **extension:** probe existClass before fetchSimulationOptions ([#747](https://github.com/dicode-ayo/modelica-wrapper/issues/747)) ([a76aeea](https://github.com/dicode-ayo/modelica-wrapper/commit/a76aeeabbfd3d4653405a542eae170126a2c4a07))
+* **extension:** take a turn for the save path's screens before loadString ([#755](https://github.com/dicode-ayo/modelica-wrapper/issues/755)) ([5d6b2cf](https://github.com/dicode-ayo/modelica-wrapper/commit/5d6b2cf5e3b9e9f4bc0b70adf7a9a677f7d79c1c))
+* **omc-bootstrap:** build the managed prefix in its final slot instead of moving it ([#764](https://github.com/dicode-ayo/modelica-wrapper/issues/764)) ([9d41de6](https://github.com/dicode-ayo/modelica-wrapper/commit/9d41de654380f626d1615591809a1d28c2f8e77f))
+* **omc-client:** refuse addComponent writes that would corrupt the model ([#738](https://github.com/dicode-ayo/modelica-wrapper/issues/738)) ([84b7a42](https://github.com/dicode-ayo/modelica-wrapper/commit/84b7a42b292d5807c9f9ad199c57baa7341de984))
+* **omc-client:** throw a typed not-found error for an unknown class ([#779](https://github.com/dicode-ayo/modelica-wrapper/issues/779)) ([16e219d](https://github.com/dicode-ayo/modelica-wrapper/commit/16e219d5f0d0ff113a16a9dc9b7fb74e79b872b8))
+
+
+### Performance Improvements
+
+* **extension:** read MODELICAPATH once per client, not per class verdict ([#753](https://github.com/dicode-ayo/modelica-wrapper/issues/753)) ([a8191f9](https://github.com/dicode-ayo/modelica-wrapper/commit/a8191f9482d0026cb1505c64bd8ce1a529ac45b3))
+
+
+### Tests
+
+* **extension:** fix ResultCache-dedup mismatch in the generation-drop test ([#742](https://github.com/dicode-ayo/modelica-wrapper/issues/742)) ([246f4d4](https://github.com/dicode-ayo/modelica-wrapper/commit/246f4d4add02ea214dc945110581c58168aa5916))
+
 ## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.6...modelica-wrapper-v0.0.7) (2026-09-20)
 
 

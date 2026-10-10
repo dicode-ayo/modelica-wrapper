@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-ui-v0.0.6...@dicode/diagram-ui-v0.0.7) (2026-10-10)
+
+
+### Features
+
+* **diagram-ui:** render Dialog(groupImage) in the parameter form ([#754](https://github.com/dicode-ayo/modelica-wrapper/issues/754)) ([0a9f276](https://github.com/dicode-ayo/modelica-wrapper/commit/0a9f2764058407c4fbda165d68f3de18e119e91e))
+* **diagram:** host+protocol for semantic in-place nesting on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#745](https://github.com/dicode-ayo/modelica-wrapper/issues/745)) ([b7fd25b](https://github.com/dicode-ayo/modelica-wrapper/commit/b7fd25b6902d824095cd88ef3fab44244f7b7eb7))
+* **diagram:** let parent wires meet a nested class's own ports ([#630](https://github.com/dicode-ayo/modelica-wrapper/issues/630)) ([#769](https://github.com/dicode-ayo/modelica-wrapper/issues/769)) ([17008a7](https://github.com/dicode-ayo/modelica-wrapper/commit/17008a7df3ca8e7d68f9eb72b2ab96f114b4f4f1))
+* **diagram:** open a component's diagram from the canvas context menu ([#799](https://github.com/dicode-ayo/modelica-wrapper/issues/799)) ([985255c](https://github.com/dicode-ayo/modelica-wrapper/commit/985255ca42936a4667de69cb508dfda7dc866faa))
+* **diagram:** render a nested class diagram in place on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#761](https://github.com/dicode-ayo/modelica-wrapper/issues/761)) ([056ca56](https://github.com/dicode-ayo/modelica-wrapper/commit/056ca56f953b467543ccf43ec39419d9883b804f))
+
+
+### Bug Fixes
+
+* **deps:** update dependency [@awesome](https://github.com/awesome).me/webawesome to ^3.14.0 ([#736](https://github.com/dicode-ayo/modelica-wrapper/issues/736)) ([52e80ed](https://github.com/dicode-ayo/modelica-wrapper/commit/52e80ed908d54c8e41e6dd1465581a7173a4dbc0))
+* **diagram-ui:** draw only icon graphics and public connectors in the Icon view ([#797](https://github.com/dicode-ayo/modelica-wrapper/issues/797)) ([88b9cb4](https://github.com/dicode-ayo/modelica-wrapper/commit/88b9cb4e6c5ae9b74be4b046d51c4b20b2e42f3e))
+* **diagram-ui:** open a nested diagram by class name, not catalog key ([#778](https://github.com/dicode-ayo/modelica-wrapper/issues/778)) ([e4625ef](https://github.com/dicode-ayo/modelica-wrapper/commit/e4625ef34f0ffffd5b98143115df2954346f70a1))
+* **diagram-ui:** reverse a root-class connector's causality in canConnect ([#768](https://github.com/dicode-ayo/modelica-wrapper/issues/768)) ([a4439a0](https://github.com/dicode-ayo/modelica-wrapper/commit/a4439a055c0fcebd898f89ef715160c94b6a6325))
+* **omc-client,diagram-ui:** readable schema-mismatch detail in the error state ([#772](https://github.com/dicode-ayo/modelica-wrapper/issues/772)) ([fd40dd6](https://github.com/dicode-ayo/modelica-wrapper/commit/fd40dd6d0444d201f8cf474c8761c80897bd4557))
+
 ## [0.0.6](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-ui-v0.0.5...@dicode/diagram-ui-v0.0.6) (2026-09-20)
 
 

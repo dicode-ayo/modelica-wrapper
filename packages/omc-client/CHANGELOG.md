@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.1.2](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.1.1...@dicode/omc-client-v0.1.2) (2026-10-10)
+
+
+### Features
+
+* **diagram-ui:** render Dialog(groupImage) in the parameter form ([#754](https://github.com/dicode-ayo/modelica-wrapper/issues/754)) ([0a9f276](https://github.com/dicode-ayo/modelica-wrapper/commit/0a9f2764058407c4fbda165d68f3de18e119e91e))
+* **diagram:** host+protocol for semantic in-place nesting on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#745](https://github.com/dicode-ayo/modelica-wrapper/issues/745)) ([b7fd25b](https://github.com/dicode-ayo/modelica-wrapper/commit/b7fd25b6902d824095cd88ef3fab44244f7b7eb7))
+* **diagram:** render a nested class diagram in place on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#761](https://github.com/dicode-ayo/modelica-wrapper/issues/761)) ([056ca56](https://github.com/dicode-ayo/modelica-wrapper/commit/056ca56f953b467543ccf43ec39419d9883b804f))
+
+
+### Bug Fixes
+
+* **diagram-ui:** draw only icon graphics and public connectors in the Icon view ([#797](https://github.com/dicode-ayo/modelica-wrapper/issues/797)) ([88b9cb4](https://github.com/dicode-ayo/modelica-wrapper/commit/88b9cb4e6c5ae9b74be4b046d51c4b20b2e42f3e))
+* **mcp-server:** gate the destination simulate's simflags and cflags can carry ([#750](https://github.com/dicode-ayo/modelica-wrapper/issues/750)) ([b31a4a3](https://github.com/dicode-ayo/modelica-wrapper/commit/b31a4a3ba8a2ac1c325479c913925df25f4f3bfc))
+* **mcp-server:** make a dispatched call's write-gate check and its guarded invoke one atomic turn ([#748](https://github.com/dicode-ayo/modelica-wrapper/issues/748)) ([6ca7368](https://github.com/dicode-ayo/modelica-wrapper/commit/6ca73680a3257dffe3ecc1912708ca32f67084d4))
+* **omc-client,diagram-ui:** readable schema-mismatch detail in the error state ([#772](https://github.com/dicode-ayo/modelica-wrapper/issues/772)) ([fd40dd6](https://github.com/dicode-ayo/modelica-wrapper/commit/fd40dd6d0444d201f8cf474c8761c80897bd4557))
+* **omc-client,mcp-server:** surface OMC's own error text and cap tool-error length ([#741](https://github.com/dicode-ayo/modelica-wrapper/issues/741)) ([e5ef376](https://github.com/dicode-ayo/modelica-wrapper/commit/e5ef3761a793086cd0888a30b82f8d945ddd2f6c))
+* **omc-client:** accept local class elements in getModelInstance ([#773](https://github.com/dicode-ayo/modelica-wrapper/issues/773)) ([8bebe46](https://github.com/dicode-ayo/modelica-wrapper/commit/8bebe46f7bec046963f14dc7d19e210f12090445))
+* **omc-client:** keep a read of a partly loaded class quiet in MCP ([#791](https://github.com/dicode-ayo/modelica-wrapper/issues/791)) ([d819d49](https://github.com/dicode-ayo/modelica-wrapper/commit/d819d49f988cacf0a588eea6c7ca8c1643cc77f6))
+* **omc-client:** list replaceable local classes in the parameters dialog ([#783](https://github.com/dicode-ayo/modelica-wrapper/issues/783)) ([bf08d38](https://github.com/dicode-ayo/modelica-wrapper/commit/bf08d3856aba86508a2035d545ef77a80d817b30))
+* **omc-client:** make OmcClient's error-buffer readers take a turn ([#752](https://github.com/dicode-ayo/modelica-wrapper/issues/752)) ([434b571](https://github.com/dicode-ayo/modelica-wrapper/commit/434b571248daac6b64082579b7d18da4e287772d))
+* **omc-client:** refuse addComponent writes that would corrupt the model ([#738](https://github.com/dicode-ayo/modelica-wrapper/issues/738)) ([84b7a42](https://github.com/dicode-ayo/modelica-wrapper/commit/84b7a42b292d5807c9f9ad199c57baa7341de984))
+* **omc-client:** throw a typed not-found error for an unknown class ([#779](https://github.com/dicode-ayo/modelica-wrapper/issues/779)) ([16e219d](https://github.com/dicode-ayo/modelica-wrapper/commit/16e219d5f0d0ff113a16a9dc9b7fb74e79b872b8))
+
+
+### Code Refactoring
+
+* **omc-client,mcp-server:** follow-up fixes from [#743](https://github.com/dicode-ayo/modelica-wrapper/issues/743)'s independent review ([#746](https://github.com/dicode-ayo/modelica-wrapper/issues/746)) ([05f9da0](https://github.com/dicode-ayo/modelica-wrapper/commit/05f9da0f5079d3c44fcbd1013ad0c334bd7549f1))
+* **omc-client:** align parseMutationSuccess's thrown type on OmcDiagnosticError ([#743](https://github.com/dicode-ayo/modelica-wrapper/issues/743)) ([228fd77](https://github.com/dicode-ayo/modelica-wrapper/commit/228fd77a8963edb467543c994ae58e491801c129))
+
 ## [0.1.1](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.1.0...@dicode/omc-client-v0.1.1) (2026-09-20)
 
 
