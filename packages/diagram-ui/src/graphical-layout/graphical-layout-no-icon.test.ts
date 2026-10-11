@@ -12,7 +12,6 @@
 
 import { describe, expect, it } from "vitest";
 import type {
-  ClassDef,
   CoordinateSystem,
   DiagramLayout,
   IconLayer,
@@ -22,23 +21,12 @@ import type { OmShapeElement } from "../base/shape-element.js";
 import { NO_ICON_LAYERS } from "../icon-provider/no-icon.js";
 import type { OmGraphicalLayout } from "./graphical-layout.component.js";
 import { mountLayout } from "../../test/harness/interaction-fixtures.js";
-import { emptyLayout } from "../../test/harness/layout-fixtures.js";
-
-const ICON_LAYERS: IconLayer[] = [
-  {
-    from: "Demo.Pin",
-    shapes: [
-      {
-        kind: "polygon",
-        points: [
-          [-100, 100],
-          [100, 0],
-          [-100, -100],
-        ],
-      },
-    ],
-  },
-];
+import {
+  classDef,
+  connectorLayout,
+  emptyLayout,
+  ICON_LAYERS,
+} from "../../test/harness/layout-fixtures.js";
 
 const DIAGRAM_LAYERS: IconLayer[] = [
   {
@@ -68,40 +56,6 @@ const DIAGRAM_CS: CoordinateSystem = {
     [40, 40],
   ],
 };
-
-function classDef(overrides: Partial<ClassDef> = {}): ClassDef {
-  return {
-    name: "Demo.Pin",
-    restriction: "connector",
-    iconLayers: [],
-    connectors: {},
-    parameters: {},
-    ...overrides,
-  };
-}
-
-function connectorLayout(
-  kind: DiagramLayout["kind"],
-  cls: ClassDef,
-): DiagramLayout {
-  return {
-    ...emptyLayout(),
-    kind,
-    classes: { [cls.name]: cls },
-    connectors: {
-      p: {
-        name: "p",
-        classRef: cls.name,
-        placement: {
-          extent: [
-            [-10, -10],
-            [10, 10],
-          ],
-        },
-      },
-    },
-  };
-}
 
 function standaloneConnector(el: OmGraphicalLayout): OmShapeElement {
   const conns = Array.from(

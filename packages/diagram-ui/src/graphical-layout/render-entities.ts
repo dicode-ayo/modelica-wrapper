@@ -28,7 +28,11 @@ import {
 import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
 import { nestedPortShift, type NestingViews } from "../nesting/nested-ports.js";
 import { renderShape } from "../primitives/render-shape.js";
-import { viewComponents, viewConnectors } from "../base/view-entities.js";
+import {
+  viewComponents,
+  viewConnectors,
+  viewPorts,
+} from "../base/view-entities.js";
 
 /**
  * Puts host shapes between the grid (`zIndex` -1) and components (0) as
@@ -61,7 +65,7 @@ export function renderLayoutContent(
   // `nesting` changes on every zoom step through a fade; only wires read it.
   const entities = guard([layout, ...Object.values(opts)], () => [
     renderHostShapes(layout, opts),
-    repeat(visibleComponents(layout), componentRepeatKey, ([id, comp]) =>
+    repeat(viewComponents(layout), componentRepeatKey, ([id, comp]) =>
       renderComponent(id, comp, layout, opts),
     ),
     repeat(
@@ -129,15 +133,6 @@ function activeLayers(layout: DiagramLayout): IconLayer[] {
   return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
 }
 
-/** A hidden component gets no element, as in OMEdit; its connections still anchor from the layout. */
-function visibleComponents(
-  layout: DiagramLayout,
-): [string, ComponentInstance][] {
-  return viewComponents(layout).filter(
-    ([, comp]) => comp.placement.visible !== false,
-  );
-}
-
 /** Keyed by class too, so "Change class" remounts rather than overlaying the old icon. */
 function componentRepeatKey([id, comp]: [string, ComponentInstance]): string {
   return `${id}\u0000${comp.classRef}`;
@@ -185,20 +180,17 @@ function renderComponent(
   >
     ${
       cls
-        ? Object.entries(cls.connectors)
-            // Ports whose `condition` is false for this instance only.
-            .filter(([pid]) => !comp.hiddenPorts?.includes(pid))
-            .map(
-              ([pid, port]) =>
-                html`<om-connector
-                  .nodeId=${pid}
-                  .placement=${port.placement}
-                  .layers=${withNoIconFallback(port.iconLayers)}
-                  .coordinateSystem=${cls.coordinateSystem ?? undefined}
-                  .lineThicknessScale=${opts.lineThicknessScale}
-                  ?readonly=${opts.readonly}
-                ></om-connector>`,
-            )
+        ? viewPorts(comp, cls).map(
+            ([pid, port]) =>
+              html`<om-connector
+                .nodeId=${pid}
+                .placement=${port.placement}
+                .layers=${withNoIconFallback(port.iconLayers)}
+                .coordinateSystem=${cls.coordinateSystem ?? undefined}
+                .lineThicknessScale=${opts.lineThicknessScale}
+                ?readonly=${opts.readonly}
+              ></om-connector>`,
+          )
         : nothing
     }
   </om-component>`;
