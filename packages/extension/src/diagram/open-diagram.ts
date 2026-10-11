@@ -88,7 +88,7 @@ export function pickClassToSwap(
     quickPick.title = `Change class of ${componentName}`;
     quickPick.placeholder = `Search for a class (currently ${currentClass})`;
     quickPick.matchOnDescription = true;
-    const requiredPorts = connectedPortsOf(layout, currentClass, componentName);
+    const requiredPorts = connectedPortsOf(layout, componentName);
     const portCache: PortMapCache = new Map();
     // Guards against a slow earlier query overwriting a newer one's results.
     let seq = 0;

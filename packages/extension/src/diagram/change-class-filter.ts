@@ -41,10 +41,13 @@ export interface ConnectedPortProfile {
  * `layout`. Empty when the component has no connections (nothing to
  * preserve) or its port shapes are unresolved — requiring nothing beats
  * blocking every candidate.
+ *
+ * The connectors are read through the component's `classRef`: the catalog
+ * keys a class variant by content (`Foo`, `Foo#2`), so the class name would
+ * land on a sibling variant's connectors.
  */
 export function connectedPortsOf(
   layout: DiagramLayout,
-  componentClass: string,
   componentName: string,
 ): ConnectedPortProfile[] {
   const portNames = new Set<string>();
@@ -53,7 +56,9 @@ export function connectedPortsOf(
     if (conn.rhs.component === componentName) portNames.add(conn.rhs.port);
   }
   if (portNames.size === 0) return [];
-  const connectors = layout.classes[componentClass]?.connectors ?? {};
+  const classRef = layout.components[componentName]?.classRef;
+  if (classRef === undefined) return [];
+  const connectors = layout.classes[classRef]?.connectors ?? {};
   const profiles: ConnectedPortProfile[] = [];
   for (const name of portNames) {
     const port = connectors[name];
