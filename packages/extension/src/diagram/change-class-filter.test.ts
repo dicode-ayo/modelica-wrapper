@@ -68,7 +68,7 @@ function layoutWithConnections(
             [10, 10],
           ],
         },
-      } as DiagramLayout["components"][string],
+      },
     },
     connectors: {},
     connections,
@@ -206,20 +206,38 @@ describe("connectedPortsOf", () => {
           waypoints: [],
         },
       ],
-      { support: makePort({ name: "support", typeName: "Support" }) },
+      { support: makePort({ name: "support", typeName: "BaseSupport" }) },
     );
     const variant = {
       name: GAIN,
       restriction: "block",
       iconLayers: [],
-      connectors: { u: makePort() },
+      connectors: {
+        support: makePort({ name: "support", typeName: "VariantSupport" }),
+      },
       parameters: {},
     };
     const component = layout.components["gain1"];
     if (component === undefined) throw new Error("fixture lacks gain1");
     layout.classes[`${GAIN}#2`] = variant;
     layout.components["gain1"] = { ...component, classRef: `${GAIN}#2` };
-    expect(connectedPortsOf(layout, "gain1")).toEqual([]);
+    expect(connectedPortsOf(layout, "gain1")).toEqual([
+      { name: "support", typeName: "VariantSupport" },
+    ]);
+  });
+
+  it("requires nothing when the connected component is missing from the layout", () => {
+    const layout = layoutWithConnections(
+      [
+        {
+          lhs: { component: "ghost1", port: "u" },
+          rhs: { component: "src1", port: "y" },
+          waypoints: [],
+        },
+      ],
+      { u: makePort() },
+    );
+    expect(connectedPortsOf(layout, "ghost1")).toEqual([]);
   });
 
   it("skips a connected port name that isn't in the class's connector map", () => {

@@ -39,7 +39,7 @@ export interface ConnectedPortProfile {
 /**
  * Profiles of every port `componentName` currently has wired up in
  * `layout`. Empty when the component has no connections (nothing to
- * preserve) or its port shapes are unresolved — requiring nothing beats
+ * preserve), is absent from the layout, or its port shapes are unresolved — requiring nothing beats
  * blocking every candidate.
  *
  * The connectors are read through the component's `classRef`: the catalog
