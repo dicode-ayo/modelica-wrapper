@@ -195,6 +195,12 @@ export interface PortDef {
   /** Class that DECLARED this port — host class name, or an ancestor in its extends chain. */
   from: string;
   /**
+   * Declared `protected`, absent when public. A class's icon draws its public
+   * connectors only (MLS §18.6), but equations inside the class may still
+   * name a protected one, so it stays in the catalog.
+   */
+  protected?: true | undefined;
+  /**
    * Causality + flow prefixes lifted from `ComponentElement.prefixes`.
    * Carried on the port so client-side compatibility checks (input ↔
    * output, flow ↔ flow) can run without an extra OMC round-trip per

@@ -33,7 +33,8 @@ export function viewConnectors(
 
 /**
  * The ports drawn on a component's icon: not those whose `condition` is false
- * for this instance (`hiddenPorts`), nor those declared `visible = false`.
+ * for this instance (`hiddenPorts`), nor those declared `visible = false`, nor
+ * protected ones (MLS §18.6: an icon shows public connectors only).
  */
 export function viewPorts(
   comp: ComponentInstance,
@@ -41,7 +42,9 @@ export function viewPorts(
 ): [string, ClassDef["connectors"][string]][] {
   return Object.entries(cls.connectors).filter(
     ([pid, port]) =>
-      !comp.hiddenPorts?.includes(pid) && isShown(port.placement),
+      !comp.hiddenPorts?.includes(pid) &&
+      isShown(port.placement) &&
+      port.protected !== true,
   );
 }
 

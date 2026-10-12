@@ -2328,6 +2328,66 @@ describe("produceDiagramLayout: standalone connector placement by kind (issue #5
   });
 });
 
+describe("produceDiagramLayout: protected connectors in a class def (issue #796)", () => {
+  function hostWith(prefixes?: { public: boolean }): ModelInstance {
+    const type: unknown = {
+      name: "Synth.WithSupport",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "flange",
+          type: RealInputClass,
+          annotation: placementAnno([
+            [-110, -10],
+            [-90, 10],
+          ]),
+        },
+        {
+          $kind: "component",
+          name: "support",
+          type: RealInputClass,
+          ...(prefixes && { prefixes }),
+          annotation: placementAnno([
+            [-10, -110],
+            [10, -90],
+          ]),
+        },
+      ],
+    };
+    const host: unknown = {
+      name: "Synth.Outer",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "w",
+          type,
+          annotation: placementAnno([
+            [-20, -20],
+            [20, 20],
+          ]),
+        },
+      ],
+    };
+    return host as ModelInstance;
+  }
+
+  it("marks a protected connector on the class def and keeps it in the catalog", () => {
+    const layout = produceDiagramLayout(hostWith({ public: false }), "diagram");
+    const ref = layout.components.w?.classRef ?? "";
+    const connectors = layout.classes[ref]?.connectors;
+    expect(connectors?.support?.protected).toBe(true);
+    expect(connectors?.flange?.protected).toBeUndefined();
+  });
+
+  it("leaves a public connector unmarked", () => {
+    const layout = produceDiagramLayout(hostWith({ public: true }), "diagram");
+    const ref = layout.components.w?.classRef ?? "";
+    expect(layout.classes[ref]?.connectors.support?.protected).toBeUndefined();
+  });
+});
+
 // =====================================================================
 // Source locations for go-to-definition / go-to-declaration (issue #514).
 // =====================================================================

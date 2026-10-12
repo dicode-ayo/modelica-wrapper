@@ -1,6 +1,7 @@
 /**
  * `Placement(visible = false)` leaves an instance undrawn in both views while
- * the layout keeps it, so connections to it still anchor (issue #798).
+ * the layout keeps it, so connections to it still anchor (issue #798). A
+ * protected connector of a component's class is undrawn the same way (#796).
  */
 
 import { describe, expect, it } from "vitest";
@@ -69,6 +70,37 @@ describe("<om-graphical-layout> Placement visible=false", () => {
             shown: port("shown", { extent }),
             gone: port("gone", hiddenPlacement),
           },
+        }),
+      },
+      components: {
+        c1: { name: "c1", classRef: "Demo.Host", placement: { extent } },
+      },
+    };
+    const el = await mountLayout({ layout });
+    const ids = Array.from(
+      el.shadowRoot?.querySelectorAll<OmConnector>(
+        "om-component om-connector",
+      ) ?? [],
+    ).map((c) => c.nodeId);
+    expect(ids).toEqual(["shown"]);
+  });
+
+  it("draws no port on a component icon for a protected connector of its class", async () => {
+    const port = (name: string, isProtected?: true) => ({
+      name,
+      typeName: "Demo.Pin",
+      placement: { extent },
+      iconLayers: ICON_LAYERS,
+      from: "Demo.Host",
+      protected: isProtected,
+    });
+    const layout: DiagramLayout = {
+      ...emptyLayout(),
+      classes: {
+        "Demo.Host": classDef({
+          name: "Demo.Host",
+          restriction: "model",
+          connectors: { shown: port("shown"), inner: port("inner", true) },
         }),
       },
       components: {

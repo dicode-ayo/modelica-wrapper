@@ -453,6 +453,7 @@ function portFromConnector(
   // else (Modelica reserves the field but doesn't constrain it).
   const prefixes = el.prefixes;
   if (prefixes) {
+    if (prefixes.public === false) port.protected = true;
     if (prefixes.direction === "input" || prefixes.direction === "output") {
       port.direction = prefixes.direction;
     } else if (prefixes.direction === "") {
