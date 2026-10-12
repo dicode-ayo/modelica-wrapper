@@ -2329,7 +2329,7 @@ describe("produceDiagramLayout: standalone connector placement by kind (issue #5
 });
 
 describe("produceDiagramLayout: protected connectors in a class def (issue #796)", () => {
-  function hostWith(prefixes?: { public: boolean }): ModelInstance {
+  function hostWith(prefixes?: Record<string, unknown>): ModelInstance {
     const type: unknown = {
       name: "Synth.WithSupport",
       restriction: "model",
@@ -2381,8 +2381,11 @@ describe("produceDiagramLayout: protected connectors in a class def (issue #796)
     expect(connectors?.flange?.protected).toBeUndefined();
   });
 
-  it("leaves a public connector unmarked", () => {
-    const layout = produceDiagramLayout(hostWith({ public: true }), "diagram");
+  it("leaves a connector unmarked when its prefixes carry no `public`", () => {
+    const layout = produceDiagramLayout(
+      hostWith({ direction: "input" }),
+      "diagram",
+    );
     const ref = layout.components.w?.classRef ?? "";
     expect(layout.classes[ref]?.connectors.support?.protected).toBeUndefined();
   });

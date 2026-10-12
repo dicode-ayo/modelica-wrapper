@@ -10,7 +10,11 @@ import {
   PLACEMENT_PREVIEW_ID,
 } from "../src/graphical-layout/placement-preview.js";
 import { mountLayout } from "./harness/interaction-fixtures.js";
-import { emptyLayout } from "./harness/layout-fixtures.js";
+import {
+  classDef,
+  emptyLayout,
+  ICON_LAYERS,
+} from "./harness/layout-fixtures.js";
 
 function tinyLayout(): DiagramLayout {
   return {
@@ -153,6 +157,39 @@ describe("<om-graphical-layout>", () => {
     const el = await mountLayout({ layout: withPorts(tinyLayout(), "icon") });
     expect(el.shadowRoot?.querySelectorAll("om-component")).toHaveLength(0);
     expect(standaloneConnectorIds(el)).toEqual(["u"]);
+  });
+
+  it("draws no port on a component icon for a protected connector of its class", async () => {
+    const extent: Placement["extent"] = [
+      [-10, -10],
+      [10, 10],
+    ];
+    const port = (name: string, isProtected?: true) => ({
+      name,
+      typeName: "Demo.Pin",
+      placement: { extent },
+      iconLayers: ICON_LAYERS,
+      from: "Demo.Host",
+      protected: isProtected,
+    });
+    const layout: DiagramLayout = {
+      ...emptyLayout(),
+      classes: {
+        "Demo.Host": classDef({
+          name: "Demo.Host",
+          restriction: "model",
+          connectors: { shown: port("shown"), inner: port("inner", true) },
+        }),
+      },
+      components: {
+        c1: { name: "c1", classRef: "Demo.Host", placement: { extent } },
+      },
+    };
+    const el = await mountLayout({ layout });
+    const ids = Array.from(
+      el.shadowRoot?.querySelectorAll("om-component om-connector") ?? [],
+    ).map((c) => String((c as { nodeId?: string }).nodeId));
+    expect(ids).toEqual(["shown"]);
   });
 
   it("draws the placement preview as a connector in an icon-kind layout", async () => {

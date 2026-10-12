@@ -196,8 +196,8 @@ export interface PortDef {
   from: string;
   /**
    * Declared `protected`, absent when public. A class's icon draws its public
-   * connectors only (MLS §18.6), but equations inside the class may still
-   * name a protected one, so it stays in the catalog.
+   * connectors only (MLS §18.6), but the port stays in the catalog so a
+   * connection that names it still resolves an anchor.
    */
   protected?: true | undefined;
   /**

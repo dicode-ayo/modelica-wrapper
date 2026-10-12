@@ -446,6 +446,7 @@ function portFromConnector(
     iconLayers,
     from,
   };
+  if (el.prefixes?.public === false) port.protected = true;
   // Forward direction/flow/stream so connection-creation UIs can do
   // a local compatibility check (input ↔ output, flow ↔ flow) before
   // calling `addConnection`. `direction` is a free-form string from
@@ -453,7 +454,6 @@ function portFromConnector(
   // else (Modelica reserves the field but doesn't constrain it).
   const prefixes = el.prefixes;
   if (prefixes) {
-    if (prefixes.public === false) port.protected = true;
     if (prefixes.direction === "input" || prefixes.direction === "output") {
       port.direction = prefixes.direction;
     } else if (prefixes.direction === "") {
