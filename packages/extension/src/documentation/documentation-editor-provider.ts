@@ -19,6 +19,11 @@ import {
 import { DOCUMENTATION_VIEW_TYPE } from "../diagram/view-type.js";
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
+import {
+  MissingClassWatch,
+  renderMissingClassPage,
+  type ClassSetEvents,
+} from "../missing-class.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
 import type {
   DocExtensionToWebview,
@@ -46,6 +51,7 @@ export interface DocumentationClient
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string }>;
+  existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
   getClassRestriction(input: {
     typeName: string;
   }): Promise<{ restriction: string }>;
@@ -76,6 +82,7 @@ export class DocumentationEditorProvider
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<OmcClient>,
     private readonly writeVerdicts: WriteVerdicts,
+    private readonly classSetEvents?: ClassSetEvents,
   ) {}
 
   static register(
@@ -83,11 +90,13 @@ export class DocumentationEditorProvider
     ensureClient: () => Promise<OmcClient>,
     writeVerdicts: WriteVerdicts,
     viewType: string,
+    classSetEvents?: ClassSetEvents,
   ): vscode.Disposable {
     const provider = new DocumentationEditorProvider(
       context.extensionUri,
       ensureClient,
       writeVerdicts,
+      classSetEvents,
     );
     return vscode.window.registerCustomEditorProvider(viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -106,6 +115,7 @@ export class DocumentationEditorProvider
       this.ensureClient,
       this.writeVerdicts,
       document,
+      this.classSetEvents,
     );
   }
 
@@ -113,14 +123,15 @@ export class DocumentationEditorProvider
   // Tracks the focused documentation editor so the title-bar view switcher can
   // resolve its class when flipping away from the documentation view.
   private static activeToken: object | undefined;
-  private static activeName: string | undefined;
+  private static activeName: (() => string | undefined) | undefined;
 
   /** Class of the focused documentation editor, or undefined when none is. */
   static activeClassName(): string | undefined {
-    return DocumentationEditorProvider.activeName;
+    return DocumentationEditorProvider.activeName?.();
   }
 
-  static setActive(token: object, className: string): void {
+  /** `className` answers undefined while the editor shows no class. */
+  static setActive(token: object, className: () => string | undefined): void {
     DocumentationEditorProvider.activeToken = token;
     DocumentationEditorProvider.activeName = className;
   }
@@ -138,7 +149,8 @@ export class DocumentationEditorProvider
  * the `.mo` document stands for, boot the documentation-ui bundle, seed it with
  * the class's `info` HTML once the webview signals `ready`, and route edits
  * through a write controller. A document whose class can't be resolved renders a
- * static placeholder.
+ * static placeholder, and one whose class OMC doesn't have renders a
+ * missing-class page until the class set changes to include it.
  */
 export function resolveDocumentationEditor(
   webviewPanel: vscode.WebviewPanel,
@@ -146,6 +158,7 @@ export function resolveDocumentationEditor(
   ensureClient: () => Promise<OmcClient>,
   writeVerdicts: WriteVerdicts,
   document: vscode.TextDocument,
+  classSetEvents?: ClassSetEvents,
 ): void {
   const { webview } = webviewPanel;
   webview.options = {
@@ -167,8 +180,41 @@ export function resolveDocumentationEditor(
     return;
   }
 
-  const gate = createReadyGate<DocExtensionToWebview>(webview);
+  let gate: ReadyGate<DocExtensionToWebview> =
+    createReadyGate<DocExtensionToWebview>(webview);
+  let booted = false;
+  let disposed = false;
   let controller: DocumentationEditController | undefined;
+  const boot = (): void => {
+    gate = createReadyGate<DocExtensionToWebview>(webview);
+    webview.html = renderDocumentationWebviewHtml(
+      webview,
+      extensionUri,
+      className,
+    );
+    booted = true;
+  };
+  // Boots the bundle on the first message, so a retry that still finds no
+  // class keeps the missing-class page up instead of flashing the bundle.
+  const controllerGate: ReadyGate<DocExtensionToWebview> = {
+    send: (msg) => {
+      if (!booted) boot();
+      gate.send(msg);
+    },
+    markReady: () => gate.markReady(),
+  };
+  const watch = new MissingClassWatch(
+    className,
+    {
+      fetch: () => void load(),
+      showMissing: () => {
+        booted = false;
+        webview.html = renderMissingClassPage(webview.cspSource, className);
+        log.info("documentationEditor", `OMC has no class ${className}`);
+      },
+    },
+    classSetEvents,
+  );
   const sub = webview.onDidReceiveMessage((msg: DocWebviewToExtension) => {
     if (msg.type === "ready") {
       gate.markReady();
@@ -186,14 +232,18 @@ export function resolveDocumentationEditor(
   });
 
   const token = {};
+  const shownClassName = (): string | undefined =>
+    watch.missing ? undefined : className;
   const viewStateSub = webviewPanel.onDidChangeViewState((e) => {
     if (e.webviewPanel.active) {
-      DocumentationEditorProvider.setActive(token, className);
+      DocumentationEditorProvider.setActive(token, shownClassName);
     } else {
       DocumentationEditorProvider.clearActive(token);
     }
   });
   webviewPanel.onDidDispose(() => {
+    disposed = true;
+    watch.dispose();
     sub.dispose();
     viewStateSub.dispose();
     DocumentationEditorProvider.clearActive(token);
@@ -201,30 +251,40 @@ export function resolveDocumentationEditor(
     controller?.dispose();
   });
   if (webviewPanel.active) {
-    DocumentationEditorProvider.setActive(token, className);
+    DocumentationEditorProvider.setActive(token, shownClassName);
   }
 
-  webview.html = renderDocumentationWebviewHtml(
-    webview,
-    extensionUri,
-    className,
-  );
-
-  void (async (): Promise<void> => {
+  const load = async (): Promise<void> => {
     try {
       const client: DocumentationClient = await ensureClient();
-      controller = new DocumentationEditController(
-        { client, document, className, gate, writeVerdicts },
+      if (disposed) return;
+      const loading = new DocumentationEditController(
+        { client, document, className, gate: controllerGate, writeVerdicts },
         (onForeignChange) => createShadowBuffer(document, onForeignChange),
       );
-      registerController(className, controller);
-      controller.start();
+      controller = loading;
+      registerController(className, loading);
+      const found = await loading.start();
+      if (disposed) return;
+      if (found) {
+        watch.settled();
+        return;
+      }
+      unregisterController(className, loading);
+      loading.dispose();
+      controller = undefined;
+      watch.notFound();
     } catch (err) {
+      if (disposed) return;
+      watch.settled();
       const message = `Failed to load documentation for ${className}: ${errorDetail(err)}`;
-      gate.send({ type: "error", message });
+      controllerGate.send({ type: "error", message });
       log.warn("documentationEditor", message);
     }
-  })();
+  };
+
+  boot();
+  watch.fetch();
 }
 
 // Focused-class → controller, so a write from the native HTML editor can re-sync
@@ -258,6 +318,13 @@ interface EditControllerDeps {
   className: string;
   gate: ReadyGate<DocExtensionToWebview>;
 }
+
+const PREDEFINED_TYPES: ReadonlySet<string> = new Set([
+  "Real",
+  "Integer",
+  "Boolean",
+  "String",
+]);
 
 /**
  * Class restrictions whose interface sections are worth a full instantiate.
@@ -293,6 +360,7 @@ export class DocumentationEditController {
   // A successful fetch confirms the class resolved to something real. An edit
   // before that is refused rather than targeting a not-yet-confirmed class.
   private seeded = false;
+  private disposed = false;
 
   // Safe default until `refetchAndSend` resolves the class and judges it.
   private verdict: WriteVerdict = {
@@ -310,17 +378,35 @@ export class DocumentationEditController {
     this.shadow = makeShadow(() => this.onForeignChange());
   }
 
-  /** Fetch the annotation and seed the webview. */
-  start(): void {
-    void this.enqueue(async () => {
+  /**
+   * Fetch the annotation and seed the webview. Resolves false, having sent
+   * nothing, when OMC has no such class.
+   */
+  async start(): Promise<boolean> {
+    let found = true;
+    await this.enqueue(async () => {
       try {
-        await this.refetchAndSend();
+        const info = await this.fetchInfo();
+        // OMC answers a class it doesn't have with an empty annotation, and
+        // only after the annotation fetch has resolved a not-yet-loaded class
+        // can existClass be trusted. existClass denies the predefined types.
+        if (info === "" && !PREDEFINED_TYPES.has(this.deps.className)) {
+          const { exists } = await this.deps.client.existClass({
+            typeName: this.deps.className,
+          });
+          if (!exists) {
+            found = false;
+            return;
+          }
+        }
+        await this.send(info);
       } catch (err) {
         this.reportError(
           `Failed to load documentation for ${this.deps.className}: ${errorDetail(err)}`,
         );
       }
     });
+    return found;
   }
 
   handle(msg: DocWebviewToExtension): Promise<void> {
@@ -330,6 +416,7 @@ export class DocumentationEditController {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.reverseTimer?.cancel();
     this.shadow.dispose();
   }
@@ -337,9 +424,13 @@ export class DocumentationEditController {
   private enqueue(unit: () => Promise<void>): Promise<void> {
     // A single rejection would sever the chain, so the one place the chain is
     // built is the one place the catch belongs.
-    this.queue = this.queue.then(unit).catch((err) => {
-      this.reportError(`documentation edit failed: ${errorDetail(err)}`);
-    });
+    // A controller is disposed when its class turns out missing, and units it
+    // queued before then must not post over the missing-class page.
+    this.queue = this.queue
+      .then(() => (this.disposed ? undefined : unit()))
+      .catch((err) => {
+        this.reportError(`documentation edit failed: ${errorDetail(err)}`);
+      });
     return this.queue;
   }
 
@@ -429,10 +520,18 @@ export class DocumentationEditController {
   }
 
   private async refetchAndSend(): Promise<void> {
-    const { client, className, gate, document } = this.deps;
-    const { info } = await client.getDocumentationAnnotation({
-      typeName: className,
+    await this.send(await this.fetchInfo());
+  }
+
+  private async fetchInfo(): Promise<string> {
+    const { info } = await this.deps.client.getDocumentationAnnotation({
+      typeName: this.deps.className,
     });
+    return info;
+  }
+
+  private async send(info: string): Promise<void> {
+    const { client, className, gate, document } = this.deps;
     this.seeded = true;
     // Evaluated after the fetch, which resolves a not-yet-loaded class (a
     // restored tab): a verdict taken earlier would read as writable and strand
