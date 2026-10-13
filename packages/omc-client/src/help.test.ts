@@ -198,8 +198,9 @@ describe("schemas zod cannot fully project", () => {
       "getModelInstance/output",
       "getModelInstanceAnnotation/output",
     ]);
-    // `prefixes` and `modifiers` each reach the degrading schema from the
-    // instance's own prefixes, a component, and a local class.
+    // A constrained replaceable's `prefixes` reach the degrading schema from the
+    // instance, a component, and a local class; `modifiers` from a component, an
+    // extends clause, and a local class.
     expect(
       markedPaths(describeFunctionAsJsonSchema("getModelInstance").output),
     ).toHaveLength(6);
