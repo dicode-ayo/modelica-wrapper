@@ -97,7 +97,10 @@ and Icon views alike. Components and host connectors are filtered in
 `viewComponents` / `viewConnectors` (`base/view-entities.ts`); the ports drawn
 on a component's icon are filtered in `renderComponent`
 (`graphical-layout/render-entities.ts`) through `viewPorts`, where the port's
-own declaration decides. Because selection and fit read the same helpers, a
+own declaration decides. A port whose connector the class declares
+`protected` (`PortDef.protected`, from `prefixes.public === false`) is left off the
+icon too, per MLS §18.6, but stays in the class def so a connection that names it
+still resolves an anchor (`endpointCentreFromLayout`). Because selection and fit read the same helpers, a
 hidden instance is not selectable (click, rubber band, Select All) and does not
 widen the fit bounds. The instance stays in the layout, so connections to it
 still route to its position, as in OMEdit.

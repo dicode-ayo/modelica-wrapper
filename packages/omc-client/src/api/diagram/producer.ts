@@ -446,6 +446,7 @@ function portFromConnector(
     iconLayers,
     from,
   };
+  if (el.prefixes?.public === false) port.protected = true;
   // Forward direction/flow/stream so connection-creation UIs can do
   // a local compatibility check (input ↔ output, flow ↔ flow) before
   // calling `addConnection`. `direction` is a free-form string from
