@@ -355,9 +355,8 @@ export const ModifierSchema = ModifierLazy as unknown as z.ZodType<Modifier>;
  * {@link ModifierSchema}) at every level means only the array itself is
  * dropped from its immediate parent, at whatever depth it occurs, leaving
  * the surrounding structure — sibling keys, and any non-array fields of the
- * same redeclare entry — intact. Used where a rejection here would fail the
- * entire instance parse (`ReplaceableConstraintSchema.modifiers`); every
- * other `modifiers` site still uses {@link ModifierSchema} directly.
+ * same redeclare entry — intact. Used at every `modifiers` site of the
+ * instance tree, since a rejection at any of them fails the entire parse.
  */
 const DegradingModifierSchema: z.ZodType<Modifier> = z.lazy(() =>
   z.union([
@@ -532,7 +531,7 @@ const ComponentElementBranch = z.lazy(() =>
       type: z.union([ModelInstanceSchema, z.string()]).optional(),
       comment: z.string().optional(),
       prefixes: PrefixesSchema.optional(),
-      modifiers: ModifierSchema.optional(),
+      modifiers: DegradingModifierSchema.optional(),
       value: z.unknown().optional(),
       condition: z.unknown().optional(),
       dims: z.unknown().optional(),
@@ -548,7 +547,7 @@ const ExtendsElementBranch = z.lazy(() =>
     .object({
       $kind: z.literal("extends"),
       baseClass: z.union([ModelInstanceSchema, z.string()]),
-      modifiers: ModifierSchema.optional(),
+      modifiers: DegradingModifierSchema.optional(),
       annotation: AnnotationSchema.optional(),
     })
     .passthrough(),
@@ -564,7 +563,7 @@ const ClassElementBranch = z.lazy(() =>
       restriction: z.string(),
       comment: z.string().optional(),
       prefixes: PrefixesSchema.optional(),
-      modifiers: ModifierSchema.optional(),
+      modifiers: DegradingModifierSchema.optional(),
       annotation: AnnotationSchema.optional(),
     })
     .passthrough(),

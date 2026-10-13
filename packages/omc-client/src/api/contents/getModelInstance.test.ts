@@ -116,6 +116,81 @@ describe("getModelInstance: response handling", () => {
     expect(out.instance.name).toBe("Pkg.ArrayModifier");
   });
 
+  it("parses a component whose modifier tree carries a redeclare's array dims, keeping sibling modifiers", async () => {
+    const { ctx } = stubCtx(
+      quote(
+        JSON.stringify({
+          name: "Pkg.RedeclaredMedium",
+          restriction: "model",
+          elements: [
+            {
+              $kind: "component",
+              name: "air",
+              type: "Pkg.Volume",
+              modifiers: {
+                k: "2",
+                Medium: {
+                  $type: "Modelica.Media.Air.DryAirNasa",
+                  $value: {
+                    name: "Medium",
+                    dims: { absyn: ["1", "2"], typed: ["1", "2"] },
+                    annotation: [{ name: "choices" }],
+                  },
+                },
+              },
+            },
+          ],
+        }),
+      ),
+    );
+
+    const out = await getModelInstance(ctx, {
+      typeName: "Pkg.RedeclaredMedium",
+    });
+    const component = out.instance.elements?.[0];
+    expect(component).toMatchObject({
+      name: "air",
+      modifiers: {
+        k: "2",
+        Medium: {
+          $type: "Modelica.Media.Air.DryAirNasa",
+          $value: { name: "Medium" },
+        },
+      },
+    });
+  });
+
+  it("parses an extends clause whose modifier tree carries a redeclare's array dims, keeping sibling modifiers", async () => {
+    const { ctx } = stubCtx(
+      quote(
+        JSON.stringify({
+          name: "Pkg.ExtendsRedeclare",
+          restriction: "model",
+          elements: [
+            {
+              $kind: "extends",
+              baseClass: "Pkg.Base",
+              modifiers: {
+                n: "3",
+                Medium: {
+                  $value: { dims: { absyn: ["1"], typed: ["1"] } },
+                },
+              },
+            },
+          ],
+        }),
+      ),
+    );
+
+    const out = await getModelInstance(ctx, {
+      typeName: "Pkg.ExtendsRedeclare",
+    });
+    expect(out.instance.elements?.[0]).toMatchObject({
+      $kind: "extends",
+      modifiers: { n: "3", Medium: { $value: {} } },
+    });
+  });
+
   it("parses a local class element (MultiBody World's replaceable gravityAcceleration)", async () => {
     const { ctx } = stubCtx(
       quote(
