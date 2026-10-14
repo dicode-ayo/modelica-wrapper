@@ -80,10 +80,9 @@ describe("getModelInstance: response handling", () => {
   });
 
   it("parses a class whose constrained-replaceable carries an array-bearing modifier (a redeclare's dims)", async () => {
-    // A redeclare's `$value` (`scodeModifier`) can carry a `scodeElement`
-    // whose `dims`/`annotation` are arrays — `Modifier` has no branch for
-    // that, so `ReplaceableConstraintSchema.modifiers` (`DegradingModifierSchema`)
-    // drops just the array rather than failing this whole parse.
+    // A redeclare's `$value` can carry a `scodeElement` whose `dims`/`annotation`
+    // are arrays, which `Modifier` has no branch for; the degrading schema drops
+    // just those arrays rather than failing the whole parse.
     const { ctx } = stubCtx(
       quote(
         JSON.stringify({
@@ -115,6 +114,48 @@ describe("getModelInstance: response handling", () => {
     const out = await getModelInstance(ctx, { typeName: "Pkg.ArrayModifier" });
     expect(out.instance.name).toBe("Pkg.ArrayModifier");
   });
+
+  it.each([
+    { kind: "component", extra: { name: "air", type: "Pkg.Volume" } },
+    { kind: "extends", extra: { baseClass: "Pkg.Base" } },
+    { kind: "class", extra: { name: "Local", restriction: "model" } },
+  ])(
+    "drops only a redeclare's arrays from a $kind's modifiers, keeping siblings",
+    async ({ kind, extra }) => {
+      const { ctx } = stubCtx(
+        quote(
+          JSON.stringify({
+            name: "Pkg.RedeclaredMedium",
+            restriction: "model",
+            elements: [
+              {
+                $kind: kind,
+                ...extra,
+                modifiers: {
+                  k: "2",
+                  Medium: {
+                    $value: {
+                      name: "Medium",
+                      dims: { absyn: ["1"], typed: ["1"] },
+                      annotation: [{ name: "choices" }],
+                    },
+                  },
+                },
+              },
+            ],
+          }),
+        ),
+      );
+
+      const out = await getModelInstance(ctx, {
+        typeName: "Pkg.RedeclaredMedium",
+      });
+      expect(out.instance.elements?.[0]).toHaveProperty("modifiers", {
+        k: "2",
+        Medium: { $value: { name: "Medium", dims: {} } },
+      });
+    },
+  );
 
   it("parses a local class element (MultiBody World's replaceable gravityAcceleration)", async () => {
     const { ctx } = stubCtx(
