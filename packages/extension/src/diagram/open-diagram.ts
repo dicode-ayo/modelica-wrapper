@@ -43,7 +43,13 @@ import {
   type ComponentParameterRef,
 } from "./parameter-edits.js";
 import { clearComponentModifiers } from "./clear-modifiers.js";
-import { diffLayouts, TRUSTED_ON_STALE_BASE } from "./diff-layout.js";
+import {
+  diffLayouts,
+  driftedGraphicsLayers,
+  isPositionalGraphicsEdit,
+  TRUSTED_ON_STALE_BASE,
+  type GraphicsLayer,
+} from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
 import { LibrarySource, SearchAbortedError } from "./library-source.js";
@@ -393,6 +399,11 @@ export async function fetchDiagramLayout(
  * `false` is dropped in that case — see its doc for why each one can't be
  * trusted from such a report.
  *
+ * `base`: the layout the report was computed against. A positional graphics
+ * edit (modify / delete / reorder) on a layer whose own shapes in `base`
+ * differ from `prevLayout`'s is refused, not applied: the index it carries
+ * names a different shape on disk than the one the user acted on.
+ *
  * Re-reading the layout is the caller's job, so a burst of edits can share one
  * re-fetch instead of paying for one each.
  */
@@ -401,14 +412,34 @@ export async function applyDiagramEdits(
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
-  options?: { staleBase?: boolean },
+  options?: { staleBase?: boolean; base?: DiagramLayout },
 ): Promise<ApplyEditsResult | null> {
   const diffed = diffLayouts(prevLayout, next);
-  const edits = options?.staleBase
+  const trusted = options?.staleBase
     ? diffed.filter((edit) => TRUSTED_ON_STALE_BASE[edit.kind])
     : diffed;
-  if (edits.length === 0) return null;
-  return applyEdits(client, className, edits, undefined, { snapshot: true });
+  const drifted = options?.base
+    ? driftedGraphicsLayers(options.base, prevLayout)
+    : new Set<GraphicsLayer>();
+  const refused: ApplyEditsResult["failed"] = [];
+  const edits = trusted.filter((edit) => {
+    if (!isPositionalGraphicsEdit(edit) || !drifted.has(edit.layer)) {
+      return true;
+    }
+    refused.push({
+      edit,
+      error: `the ${edit.layer} graphics changed since the diagram was loaded; edit refused`,
+    });
+    return false;
+  });
+  if (edits.length === 0 && refused.length === 0) return null;
+  const applied =
+    edits.length === 0
+      ? { applied: 0, failed: [], rolledBack: false }
+      : await applyEdits(client, className, edits, undefined, {
+          snapshot: true,
+        });
+  return { ...applied, failed: [...refused, ...applied.failed] };
 }
 
 /**

@@ -1943,15 +1943,19 @@ describe("DiagramEditController: reconciling reports", () => {
   it("does not settle a reported graphics write, same as any other reported edit", async () => {
     const { client, invoked } = makeEditClient({
       instance: diagramRectInstance([
-        [0, 0],
-        [10, 10],
+        [-40, -40],
+        [40, 40],
       ]),
     });
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
       controllerDeps({ client, gate }),
-      shapeLayout(),
+      layout({
+        diagramLayers: [
+          { from: "Pkg.M", shapes: [OMC_RECT] },
+        ] as unknown as DiagramLayout["diagramLayers"],
+      }),
       factory,
     );
 
@@ -2063,6 +2067,35 @@ describe("DiagramEditController: reconciling reports", () => {
     expect(posted.some((m) => m.type === "error")).toBe(true);
     // The webview moved it optimistically; nothing else would put it back.
     expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    expect(posted.find((m) => m.type === "layout")).toMatchObject({
+      rejected: true,
+    });
+    controller.dispose();
+  });
+
+  it("marks the settle after a failed write as rejected, so the webview drops its positional shape selection", async () => {
+    const { client } = makeEditClient({
+      placementWriteFails: true,
+      instance: instanceWithComponent("gain1", AT(-10)),
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      movedComponent(AT(-10)),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent(AT(0)),
+      basedOn: 1,
+    });
+    await drain();
+
+    expect(posted.find((m) => m.type === "layout")).toMatchObject({
+      rejected: true,
+    });
     controller.dispose();
   });
 
@@ -2573,6 +2606,18 @@ const RECT = {
     [40, 40],
   ],
   lineColor: [0, 0, 0],
+};
+
+// What `rectRecord` decodes to, so a base built from it matches the class on
+// disk and a graphics edit against it is not refused as drifted.
+const OMC_RECT = {
+  ...RECT,
+  fillColor: [255, 255, 255],
+  pattern: "Solid",
+  fillPattern: "Solid",
+  lineThickness: 1,
+  borderPattern: "None",
+  radius: 0,
 };
 
 function shapeLayout(): DiagramLayout {

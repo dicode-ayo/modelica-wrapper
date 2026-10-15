@@ -272,6 +272,7 @@ class OmWebviewRoot extends LitElement {
           return;
         }
         this.adoptPush(message);
+        if (message.rejected === true) this.diagram?.clearShapeSelection();
         return;
       case "renderError":
         this.renderError = message;

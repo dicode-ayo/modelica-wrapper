@@ -721,6 +721,50 @@ function diffGraphics(
   }
 }
 
+/**
+ * Whether an edit addresses a graphics shape by array index, so it is only
+ * meaningful against the array it was computed from.
+ */
+export function isPositionalGraphicsEdit(
+  edit: LayoutEdit,
+): edit is Extract<
+  LayoutEdit,
+  { kind: "graphicsModified" | "graphicsDeleted" | "graphicsReordered" }
+> {
+  return (
+    edit.kind === "graphicsModified" ||
+    edit.kind === "graphicsDeleted" ||
+    edit.kind === "graphicsReordered"
+  );
+}
+
+/**
+ * The layers whose own shapes differ between `base` and `current`, under the
+ * same normalization `diffGraphics` uses so a shape OMC re-materialized with
+ * defaults doesn't read as drift. A positional edit computed against
+ * `current` for a user gesture made on `base` addresses whatever now sits at
+ * that index, not the shape the user acted on.
+ */
+export function driftedGraphicsLayers(
+  base: DiagramLayout,
+  current: DiagramLayout,
+): Set<GraphicsLayer> {
+  const drifted = new Set<GraphicsLayer>();
+  const layers: ReadonlyArray<[GraphicsLayer, "iconLayers" | "diagramLayers"]> =
+    [
+      ["icon", "iconLayers"],
+      ["diagram", "diagramLayers"],
+    ];
+  for (const [layer, field] of layers) {
+    const keys = (l: DiagramLayout): string =>
+      stableJson(
+        ownShapes(l[field], l.className).map((s) => normalizeShape(s)),
+      );
+    if (keys(base) !== keys(current)) drifted.add(layer);
+  }
+  return drifted;
+}
+
 /** A connection endpoint reference reduced to its diffable parts. */
 interface Conn {
   from: string;

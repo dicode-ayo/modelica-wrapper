@@ -544,6 +544,8 @@ export class DiagramEditController {
    * carrying something the webview has no other way to learn.
    */
   private settleOwed = false;
+  /** A rejected-edit push was withheld; the next push to go out carries `rejected`. */
+  private rejectedOwed = false;
   /**
    * The class's canonical source as of the render the webview holds, so a sync
    * whose buffer matched can tell this editor's own announced edit from
@@ -876,7 +878,7 @@ export class DiagramEditController {
       // The webview has already moved what the user dragged. Nothing else will
       // correct it — a reported edit gets no settle of its own — so it would
       // otherwise keep showing an edit the class never took.
-      await this.pushCanonicalLayout();
+      await this.pushCanonicalLayout(true);
       return;
     }
     const staleBase = basedOn !== this.layoutVersion;
@@ -885,6 +887,7 @@ export class DiagramEditController {
       const current = await this.refetch(client, className);
       const result = await applyDiagramEdits(client, className, current, next, {
         staleBase,
+        base: this.prevLayout,
       });
       const mustSettle = this.settleOwed || staleBase;
       if (result === null) {
@@ -905,12 +908,12 @@ export class DiagramEditController {
         // buffer would dirty the document and record an undo step for an edit
         // that did not happen. A partial failure did change it, so it still
         // reflects.
-        if (!result.rolledBack) await this.writeBuffer();
+        if (!result.rolledBack && result.applied > 0) await this.writeBuffer();
         // Now the screen and the class disagree, which is the one thing a
         // push is for. A further report reconciles against whatever the failed
         // batch left behind — the base is read fresh, so it closes the gap from
         // there rather than needing the burst dropped.
-        await this.pushCanonicalLayout();
+        await this.pushCanonicalLayout(true);
         return;
       }
       await this.writeBuffer();
@@ -925,7 +928,7 @@ export class DiagramEditController {
       this.prevLayout = next;
     } catch (err) {
       this.reportError(`applying edits failed: ${(err as Error).message}`);
-      await this.pushCanonicalLayout();
+      await this.pushCanonicalLayout(true);
     }
   }
 
@@ -936,15 +939,16 @@ export class DiagramEditController {
    * all mid-gesture moves what is under the pointer — which the webview guards
    * separately, since a gesture in flight has reported nothing yet.
    */
-  private async pushCanonicalLayout(): Promise<void> {
+  private async pushCanonicalLayout(rejected = false): Promise<void> {
     // The re-fetch is the expensive half, so skip it outright when a report is
     // already waiting; `publishLayout` checks again on the far side of it.
     if (this.pendingChange !== null) {
       this.settleOwed = true;
+      if (rejected) this.rejectedOwed = true;
       return;
     }
     const { client, className } = this.deps;
-    this.publishLayout(await this.refetch(client, className));
+    this.publishLayout(await this.refetch(client, className), rejected);
   }
 
   /**
@@ -956,18 +960,22 @@ export class DiagramEditController {
    * and the stamp gap is what keeps its omissions from being read as
    * deletions when it drains (see `applyChange`).
    */
-  private publishLayout(layout: DiagramLayout): void {
+  private publishLayout(layout: DiagramLayout, rejected = false): void {
     this.prevLayout = layout;
     this.layoutVersion += 1;
     if (this.pendingChange !== null) {
       this.settleOwed = true;
+      if (rejected) this.rejectedOwed = true;
       return;
     }
     this.settleOwed = false;
+    const carriesRejection = rejected || this.rejectedOwed;
+    this.rejectedOwed = false;
     this.deps.gate.send({
       type: "layout",
       layout,
       layoutVersion: this.layoutVersion,
+      ...(carriesRejection ? { rejected: true } : {}),
     });
   }
 
