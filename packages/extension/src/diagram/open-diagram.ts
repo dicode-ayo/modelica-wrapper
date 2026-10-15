@@ -433,7 +433,7 @@ export async function applyDiagramEdits(
     if (!isGraphicsEdit(edit) || !drifted.has(edit.layer)) return true;
     refused.push({
       edit,
-      error: `the ${edit.layer} graphics changed since the diagram was loaded; edit refused`,
+      error: `the ${edit.layer} graphics changed outside this editor; edit refused`,
     });
     return false;
   });

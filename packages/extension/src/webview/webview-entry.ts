@@ -120,11 +120,9 @@ class OmWebviewRoot extends LitElement {
    *  `basedOn` so the host can tell which layouts this report has seen. */
   private layoutVersion = 0;
 
-  private readonly layoutPushes = new LayoutPushReceiver<{
-    layout: DiagramLayout;
-    layoutVersion: number;
-    rejected?: boolean;
-  }>({
+  private readonly layoutPushes = new LayoutPushReceiver<
+    Extract<ExtensionToWebview, { type: "layout" }>
+  >({
     canApply: () =>
       this.commits.canApplyPush(this.diagram?.gestureActive === true),
     adopt: (push) => this.adoptPush(push),

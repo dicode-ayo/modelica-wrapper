@@ -630,14 +630,9 @@ const GRAPHICS_LAYERS: ReadonlyArray<
   ["diagram", "diagramLayers"],
 ];
 
-/** One layer's own shapes as comparable keys, defaults materialised. */
-function shapeKeys(
-  layout: DiagramLayout,
-  field: "iconLayers" | "diagramLayers",
-): string[] {
-  return ownShapes(layout[field], layout.className).map((s) =>
-    stableJson(normalizeShape(s)),
-  );
+/** One layer's own shapes as comparable keys, defaults materialized. */
+function shapeKeys(shapes: readonly Shape[]): string[] {
+  return shapes.map((s) => stableJson(normalizeShape(s)));
 }
 
 /**
@@ -676,8 +671,8 @@ function diffGraphics(
     const after = ownShapes(next[field], next.className);
     // Serialize once per layer: the reorder probe, the positional scans and
     // the shrink path's LCS below all reuse these same normalized keys.
-    const beforeKeys = shapeKeys(prev, field);
-    const afterKeys = shapeKeys(next, field);
+    const beforeKeys = shapeKeys(before);
+    const afterKeys = shapeKeys(after);
 
     if (before.length === after.length) {
       // A reorder permutes the array, which the positional scan below would
@@ -734,22 +729,10 @@ function diffGraphics(
 }
 
 /** Whether an edit rewrites a layer's shape array. */
-export function isGraphicsEdit(edit: LayoutEdit): edit is Extract<
-  LayoutEdit,
-  {
-    kind:
-      | "graphicsAdded"
-      | "graphicsModified"
-      | "graphicsDeleted"
-      | "graphicsReordered";
-  }
-> {
-  return (
-    edit.kind === "graphicsAdded" ||
-    edit.kind === "graphicsModified" ||
-    edit.kind === "graphicsDeleted" ||
-    edit.kind === "graphicsReordered"
-  );
+export function isGraphicsEdit(
+  edit: LayoutEdit,
+): edit is Extract<LayoutEdit, { layer: GraphicsLayer }> {
+  return "layer" in edit;
 }
 
 /**
@@ -766,10 +749,9 @@ export function driftedGraphicsLayers(
 ): Set<GraphicsLayer> {
   const drifted = new Set<GraphicsLayer>();
   for (const [layer, field] of GRAPHICS_LAYERS) {
-    if (
-      stableJson(shapeKeys(base, field)) !==
-      stableJson(shapeKeys(current, field))
-    ) {
+    const baseKeys = shapeKeys(ownShapes(base[field], base.className));
+    const currentKeys = shapeKeys(ownShapes(current[field], current.className));
+    if (!deepEqual(baseKeys, currentKeys)) {
       drifted.add(layer);
     }
   }

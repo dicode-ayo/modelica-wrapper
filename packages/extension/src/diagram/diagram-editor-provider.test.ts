@@ -1978,7 +1978,7 @@ describe("DiagramEditController: reconciling reports", () => {
   });
 
   it("does not refuse a second graphics report that follows an unsettled first", async () => {
-    // The webview's copy omits what OMC materialises on read, so the base the
+    // The webview's copy omits what OMC materializes on read, so the base the
     // controller keeps after the first write must still match the class.
     const sparse = (extent: number[][]) => ({
       kind: "rectangle",
