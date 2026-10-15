@@ -520,7 +520,49 @@ describe("applyDiagramEdits: drifted graphics base (issue #388)", () => {
     });
 
     expect(invoked).not.toContain("writeClassGraphics");
-    expect(result?.failed.length).toBeGreaterThan(0);
+    expect(result?.failed.map((f) => f.edit.kind)).toEqual(["graphicsDeleted"]);
+  });
+
+  it("refuses an add rather than resurrecting a shape the class has since lost", async () => {
+    const { client, invoked } = stubEditClient();
+    const a = rect(0);
+    const b = rect(10);
+    const base = withDiagramShapes([a, b]);
+    const current = withDiagramShapes([a]);
+    const next = withDiagramShapes([a, b]);
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      base,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+    expect(result?.applied).toBe(0);
+    expect(result?.failed.map((f) => f.edit.kind)).toEqual(["graphicsAdded"]);
+  });
+
+  it("does not hold a non-graphics edit back for a drifted layer it never touches", async () => {
+    const { client, invoked } = stubEditClient();
+    const base = withDiagramShapes([rect(0)]);
+    const current = withDiagramShapes([rect(5)]);
+    const next = withDiagramShapes([rect(5)]);
+    const gain = next.components["gain1"];
+    if (gain === undefined) throw new Error("fixture has no gain1");
+    next.components["gain1"] = {
+      ...gain,
+      placement: {
+        extent: [
+          [60, 60],
+          [80, 80],
+        ],
+      },
+    };
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      base,
+    });
+
+    expect(invoked).toContain("setElementAnnotation");
+    expect(result?.failed).toEqual([]);
   });
 
   it("applies the positional edits when the base still matches the class", async () => {
@@ -562,7 +604,10 @@ describe("applyDiagramEdits: drifted graphics base (issue #388)", () => {
     expect(invoked).not.toContain("writeClassGraphics");
     expect(invoked).toContain("setElementAnnotation");
     expect(result?.applied).toBe(1);
-    expect(result?.failed.length).toBeGreaterThan(0);
+    expect(result?.failed.map((f) => f.edit.kind)).toEqual([
+      "graphicsModified",
+      "graphicsModified",
+    ]);
   });
 });
 

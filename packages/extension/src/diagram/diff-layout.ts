@@ -623,6 +623,23 @@ function singleMove(
   return null;
 }
 
+const GRAPHICS_LAYERS: ReadonlyArray<
+  [GraphicsLayer, "iconLayers" | "diagramLayers"]
+> = [
+  ["icon", "iconLayers"],
+  ["diagram", "diagramLayers"],
+];
+
+/** One layer's own shapes as comparable keys, defaults materialised. */
+function shapeKeys(
+  layout: DiagramLayout,
+  field: "iconLayers" | "diagramLayers",
+): string[] {
+  return ownShapes(layout[field], layout.className).map((s) =>
+    stableJson(normalizeShape(s)),
+  );
+}
+
 /**
  * Diff the host's OWN icon/diagram shapes (never inherited ancestor layers —
  * the write targets only `className`'s annotation).
@@ -654,18 +671,13 @@ function diffGraphics(
   next: DiagramLayout,
   edits: LayoutEdit[],
 ): void {
-  const layers: ReadonlyArray<[GraphicsLayer, "iconLayers" | "diagramLayers"]> =
-    [
-      ["icon", "iconLayers"],
-      ["diagram", "diagramLayers"],
-    ];
-  for (const [layer, field] of layers) {
+  for (const [layer, field] of GRAPHICS_LAYERS) {
     const before = ownShapes(prev[field], prev.className);
     const after = ownShapes(next[field], next.className);
     // Serialize once per layer: the reorder probe, the positional scans and
     // the shrink path's LCS below all reuse these same normalized keys.
-    const beforeKeys = before.map((s) => stableJson(normalizeShape(s)));
-    const afterKeys = after.map((s) => stableJson(normalizeShape(s)));
+    const beforeKeys = shapeKeys(prev, field);
+    const afterKeys = shapeKeys(next, field);
 
     if (before.length === after.length) {
       // A reorder permutes the array, which the positional scan below would
@@ -721,17 +733,19 @@ function diffGraphics(
   }
 }
 
-/**
- * Whether an edit addresses a graphics shape by array index, so it is only
- * meaningful against the array it was computed from.
- */
-export function isPositionalGraphicsEdit(
-  edit: LayoutEdit,
-): edit is Extract<
+/** Whether an edit rewrites a layer's shape array. */
+export function isGraphicsEdit(edit: LayoutEdit): edit is Extract<
   LayoutEdit,
-  { kind: "graphicsModified" | "graphicsDeleted" | "graphicsReordered" }
+  {
+    kind:
+      | "graphicsAdded"
+      | "graphicsModified"
+      | "graphicsDeleted"
+      | "graphicsReordered";
+  }
 > {
   return (
+    edit.kind === "graphicsAdded" ||
     edit.kind === "graphicsModified" ||
     edit.kind === "graphicsDeleted" ||
     edit.kind === "graphicsReordered"
@@ -742,25 +756,22 @@ export function isPositionalGraphicsEdit(
  * The layers whose own shapes differ between `base` and `current`, under the
  * same normalization `diffGraphics` uses so a shape OMC re-materialized with
  * defaults doesn't read as drift. A positional edit computed against
- * `current` for a user gesture made on `base` addresses whatever now sits at
- * that index, not the shape the user acted on.
+ * `current` for a user gesture made on `base` mixes the external change into
+ * the gesture: an index names another shape, and an add can resurrect one the
+ * class lost.
  */
 export function driftedGraphicsLayers(
   base: DiagramLayout,
   current: DiagramLayout,
 ): Set<GraphicsLayer> {
   const drifted = new Set<GraphicsLayer>();
-  const layers: ReadonlyArray<[GraphicsLayer, "iconLayers" | "diagramLayers"]> =
-    [
-      ["icon", "iconLayers"],
-      ["diagram", "diagramLayers"],
-    ];
-  for (const [layer, field] of layers) {
-    const keys = (l: DiagramLayout): string =>
-      stableJson(
-        ownShapes(l[field], l.className).map((s) => normalizeShape(s)),
-      );
-    if (keys(base) !== keys(current)) drifted.add(layer);
+  for (const [layer, field] of GRAPHICS_LAYERS) {
+    if (
+      stableJson(shapeKeys(base, field)) !==
+      stableJson(shapeKeys(current, field))
+    ) {
+      drifted.add(layer);
+    }
   }
   return drifted;
 }

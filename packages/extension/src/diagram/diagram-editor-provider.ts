@@ -541,11 +541,11 @@ export class DiagramEditController {
    * Set when a settle was suppressed because a report was already queued. The
    * reconcile of that report pays it: a reported edit needs no settle of its
    * own, but one owed to some other path — a paste, a drop, a parameter — is
-   * carrying something the webview has no other way to learn.
+   * carrying something the webview has no other way to learn. `"rejected"`
+   * means a withheld push was one that undoes a refused or failed edit, so the
+   * push that pays it must carry `rejected` too.
    */
-  private settleOwed = false;
-  /** A rejected-edit push was withheld; the next push to go out carries `rejected`. */
-  private rejectedOwed = false;
+  private settleOwed: "none" | "plain" | "rejected" = "none";
   /**
    * The class's canonical source as of the render the webview holds, so a sync
    * whose buffer matched can tell this editor's own announced edit from
@@ -877,8 +877,9 @@ export class DiagramEditController {
     if (this.rejectIfReadOnly()) {
       // The webview has already moved what the user dragged. Nothing else will
       // correct it — a reported edit gets no settle of its own — so it would
-      // otherwise keep showing an edit the class never took.
-      await this.pushCanonicalLayout(true);
+      // otherwise keep showing an edit the class never took. No `rejected`:
+      // nothing was re-keyed against a write, so the selection still holds.
+      await this.pushCanonicalLayout();
       return;
     }
     const staleBase = basedOn !== this.layoutVersion;
@@ -889,7 +890,7 @@ export class DiagramEditController {
         staleBase,
         base: this.prevLayout,
       });
-      const mustSettle = this.settleOwed || staleBase;
+      const mustSettle = this.settleOwed !== "none" || staleBase;
       if (result === null) {
         // Nothing to write, but a withheld settle may have left `prevLayout`
         // behind what OMC and the screen both already hold. A null diff only
@@ -913,7 +914,7 @@ export class DiagramEditController {
         // push is for. A further report reconciles against whatever the failed
         // batch left behind — the base is read fresh, so it closes the gap from
         // there rather than needing the burst dropped.
-        await this.pushCanonicalLayout(true);
+        await this.pushCanonicalLayout({ rejected: true });
         return;
       }
       await this.writeBuffer();
@@ -928,7 +929,7 @@ export class DiagramEditController {
       this.prevLayout = next;
     } catch (err) {
       this.reportError(`applying edits failed: ${(err as Error).message}`);
-      await this.pushCanonicalLayout(true);
+      await this.pushCanonicalLayout({ rejected: true });
     }
   }
 
@@ -939,16 +940,17 @@ export class DiagramEditController {
    * all mid-gesture moves what is under the pointer — which the webview guards
    * separately, since a gesture in flight has reported nothing yet.
    */
-  private async pushCanonicalLayout(rejected = false): Promise<void> {
+  private async pushCanonicalLayout(options?: {
+    rejected?: boolean;
+  }): Promise<void> {
     // The re-fetch is the expensive half, so skip it outright when a report is
     // already waiting; `publishLayout` checks again on the far side of it.
     if (this.pendingChange !== null) {
-      this.settleOwed = true;
-      if (rejected) this.rejectedOwed = true;
+      this.oweSettle(options?.rejected === true);
       return;
     }
     const { client, className } = this.deps;
-    this.publishLayout(await this.refetch(client, className), rejected);
+    this.publishLayout(await this.refetch(client, className), options);
   }
 
   /**
@@ -959,24 +961,35 @@ export class DiagramEditController {
    * still bumps: the queued report was computed without sight of this layout,
    * and the stamp gap is what keeps its omissions from being read as
    * deletions when it drains (see `applyChange`).
+   *
+   * `options.rejected` marks the push as undoing an edit the host refused or
+   * whose write failed; the webview then drops its host-shape selection.
    */
-  private publishLayout(layout: DiagramLayout, rejected = false): void {
+  private publishLayout(
+    layout: DiagramLayout,
+    options?: { rejected?: boolean },
+  ): void {
     this.prevLayout = layout;
     this.layoutVersion += 1;
+    const rejected = options?.rejected === true;
     if (this.pendingChange !== null) {
-      this.settleOwed = true;
-      if (rejected) this.rejectedOwed = true;
+      this.oweSettle(rejected);
       return;
     }
-    this.settleOwed = false;
-    const carriesRejection = rejected || this.rejectedOwed;
-    this.rejectedOwed = false;
+    const carriesRejection = rejected || this.settleOwed === "rejected";
+    this.settleOwed = "none";
     this.deps.gate.send({
       type: "layout",
       layout,
       layoutVersion: this.layoutVersion,
       ...(carriesRejection ? { rejected: true } : {}),
     });
+  }
+
+  /** A rejection owed once stays owed until a push carries it. */
+  private oweSettle(rejected: boolean): void {
+    if (rejected) this.settleOwed = "rejected";
+    else if (this.settleOwed === "none") this.settleOwed = "plain";
   }
 
   private async onAddComponent(

@@ -1977,6 +1977,159 @@ describe("DiagramEditController: reconciling reports", () => {
     controller.dispose();
   });
 
+  it("does not refuse a second graphics report that follows an unsettled first", async () => {
+    // The webview's copy omits what OMC materialises on read, so the base the
+    // controller keeps after the first write must still match the class.
+    const sparse = (extent: number[][]) => ({
+      kind: "rectangle",
+      extent,
+      fillColor: [255, 255, 255],
+      fillPattern: "Solid",
+      lineThickness: 1,
+    });
+    const E1 = [
+      [-30, -30],
+      [30, 30],
+    ];
+    const E2 = [
+      [-20, -20],
+      [20, 20],
+    ];
+    const withShape = (shape: unknown) =>
+      layout({
+        diagramLayers: [
+          { from: "Pkg.M", shapes: [shape] },
+        ] as unknown as DiagramLayout["diagramLayers"],
+      });
+    let writeCount = 0;
+    const opts: NonNullable<Parameters<typeof makeEditClient>[0]> = {
+      instance: diagramRectInstance([
+        [-40, -40],
+        [40, 40],
+      ]),
+      onInvoke: (fn) => {
+        if (fn !== "writeClassGraphics") return;
+        writeCount += 1;
+        opts.instance = diagramRectInstance(writeCount === 1 ? E1 : E2);
+      },
+    };
+    const { client, graphicsWrites } = makeEditClient(opts);
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      withShape(OMC_RECT),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: withShape(sparse(E1)),
+      basedOn: 1,
+    });
+    await drain();
+    await controller.handle({
+      type: "change",
+      layout: withShape(sparse(E2)),
+      basedOn: 1,
+    });
+    await drain();
+
+    expect(graphicsWrites).toHaveLength(2);
+    expect(posted.some((m) => m.type === "error")).toBe(false);
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(0);
+    controller.dispose();
+  });
+
+  it("refuses every edit on a drifted layer without touching the buffer, and tells the webview to drop its selection", async () => {
+    const { client, invoked } = makeEditClient({
+      instance: diagramRectInstance([
+        [-50, -50],
+        [50, 50],
+      ]),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({
+        diagramLayers: [
+          { from: "Pkg.M", shapes: [OMC_RECT] },
+        ] as unknown as DiagramLayout["diagramLayers"],
+      }),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: layout({
+        diagramLayers: [
+          {
+            from: "Pkg.M",
+            shapes: [
+              {
+                ...OMC_RECT,
+                extent: [
+                  [-10, -10],
+                  [10, 10],
+                ],
+              },
+            ],
+          },
+        ] as unknown as DiagramLayout["diagramLayers"],
+      }),
+      basedOn: 1,
+    });
+    await drain();
+
+    expect(invoked).not.toContain("writeClassGraphics");
+    expect(writes).toEqual([]);
+    expect(posted.filter((m) => m.type === "layout")).toEqual([
+      expect.objectContaining({ rejected: true }),
+    ]);
+    controller.dispose();
+  });
+
+  it("carries a withheld rejection onto the push that finally goes out", async () => {
+    const live: { controller?: DiagramEditController } = {};
+    let fired = false;
+    const { client } = makeEditClient({
+      placementWriteFails: true,
+      instance: instanceWithComponent("gain1", AT(-10)),
+      onInvoke: (fn) => {
+        if (fn !== "setElementAnnotation" || fired) return;
+        fired = true;
+        // Matches the class, so the queued report diffs to nothing and only
+        // pays the settle that was owed.
+        void live.controller?.handle({
+          type: "change",
+          layout: movedComponent(AT(-10)),
+          basedOn: 1,
+        });
+      },
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      movedComponent(AT(-10)),
+      factory,
+    );
+    live.controller = controller;
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent(AT(0)),
+      basedOn: 1,
+    });
+    await drain();
+
+    const pushes = posted.filter((m) => m.type === "layout");
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0]).toMatchObject({ rejected: true });
+    controller.dispose();
+  });
+
   it("pays an owed settle even when the report that carried it diffs to nothing", async () => {
     // A null diff proves the diffed projection matches — placements, wires,
     // own shapes. A debt owed by a parameter edit or a class swap is carrying
@@ -2067,9 +2220,10 @@ describe("DiagramEditController: reconciling reports", () => {
     expect(posted.some((m) => m.type === "error")).toBe(true);
     // The webview moved it optimistically; nothing else would put it back.
     expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
-    expect(posted.find((m) => m.type === "layout")).toMatchObject({
-      rejected: true,
-    });
+    // Nothing was re-keyed against a write, so the selection is still valid.
+    expect(posted.find((m) => m.type === "layout")).not.toHaveProperty(
+      "rejected",
+    );
     controller.dispose();
   });
 
