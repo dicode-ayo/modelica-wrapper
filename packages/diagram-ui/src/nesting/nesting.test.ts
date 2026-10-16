@@ -206,14 +206,18 @@ function frame(el: OmGraphicalLayout): { space: Container; g: Graphics } {
   return { space, g };
 }
 
-function strokeWidth(g: Graphics): number {
+function strokeStyle(g: Graphics): { width?: number; alpha?: number } {
   const stroke = (
     g.context.instructions as ReadonlyArray<{
       action: string;
-      data: { style: { width?: number } };
+      data: { style: { width?: number; alpha?: number } };
     }>
   ).find((i) => i.action === "stroke");
-  return stroke?.data.style.width ?? Number.NaN;
+  return stroke?.data.style ?? {};
+}
+
+function strokeWidth(g: Graphics): number {
+  return strokeStyle(g).width ?? Number.NaN;
 }
 
 /** The frame's stroke as drawn on screen, in CSS px. */
@@ -358,6 +362,15 @@ describe("semantic in-place nesting", () => {
     expect(onScreenStrokePx(el)).toBeCloseTo(NESTING_CHROME.strokeWidthPx);
     await zoomTo(el, OPEN / 10);
     expect(onScreenStrokePx(el)).toBeCloseTo(NESTING_CHROME.strokeWidthPx);
+  });
+
+  it("draws the frame fainter than model geometry, yet more visible than its fill", async () => {
+    const el = await mountWithSource(pidSource());
+    await zoomTo(el, OPEN);
+    const alpha = strokeStyle(frame(el).g).alpha ?? Number.NaN;
+    expect(alpha).toBe(NESTING_CHROME.strokeAlpha);
+    expect(alpha).toBeLessThan(0.5);
+    expect(alpha).toBeGreaterThan(NESTING_CHROME.fillOpacity);
   });
 
   it("names the opened box by its class, not by the instance", async () => {

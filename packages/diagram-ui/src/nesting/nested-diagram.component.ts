@@ -182,6 +182,7 @@ export class OmNestedDiagram extends LitElement {
       })
       .stroke({
         color: NESTING_CHROME.strokeColor,
+        alpha: NESTING_CHROME.strokeAlpha,
         width: NESTING_CHROME.strokeWidthPx * this.worldPerPixel,
       });
   }

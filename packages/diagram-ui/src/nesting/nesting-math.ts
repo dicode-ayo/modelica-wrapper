@@ -13,6 +13,7 @@ export const NESTING_THRESHOLDS = {
 export const NESTING_CHROME = {
   strokeWidthPx: 1.5,
   strokeColor: OVERLAY_BLUE,
+  strokeAlpha: 0.35,
   fillColor: OVERLAY_BLUE,
   fillOpacity: 0.04,
 } as const;
