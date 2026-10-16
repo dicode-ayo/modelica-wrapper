@@ -33,9 +33,8 @@ const meta: Meta = {
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Zoom onto PI: its LimPID diagram cross-fades in once the box is about
         140 px on screen and is fully open at 200 px. Leaves never open. Nothing
-        inside an open box is pickable. The frame round an open box is a faint
-        translucent outline (<code>NESTING_CHROME.strokeAlpha</code>) so it
-        groups the content without competing with it.
+        inside an open box is pickable. The frame around an open box is a faint
+        translucent outline, so it groups the content without competing with it.
       </p>
       <div class="om-story-canvas-host" style="height: 600px;">
         <om-graphical-layout

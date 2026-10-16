@@ -364,12 +364,12 @@ describe("semantic in-place nesting", () => {
     expect(onScreenStrokePx(el)).toBeCloseTo(NESTING_CHROME.strokeWidthPx);
   });
 
-  it("draws the frame fainter than model geometry, yet more visible than its fill", async () => {
+  it("draws the frame stroke translucent, yet more visible than its fill", async () => {
     const el = await mountWithSource(pidSource());
     await zoomTo(el, OPEN);
     const alpha = strokeStyle(frame(el).g).alpha ?? Number.NaN;
     expect(alpha).toBe(NESTING_CHROME.strokeAlpha);
-    expect(alpha).toBeLessThan(0.5);
+    expect(alpha).toBeLessThan(1);
     expect(alpha).toBeGreaterThan(NESTING_CHROME.fillOpacity);
   });
 

@@ -9,7 +9,7 @@ export const NESTING_THRESHOLDS = {
   exitPx: 140,
 } as const;
 
-/** Frame round an opened box; widths in CSS px. */
+/** Frame around an opened box; widths in CSS px. */
 export const NESTING_CHROME = {
   strokeWidthPx: 1.5,
   strokeColor: OVERLAY_BLUE,
