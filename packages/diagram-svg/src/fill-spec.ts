@@ -19,6 +19,8 @@
  * `objectBoundingBox` gradient units and the GL renderer maps them to UVs.
  */
 
+import { isFillPattern, type FillPattern } from "@dicode/omc-client/shapes";
+
 import type { Color } from "./types.js";
 
 export const DEFAULT_EDGE_COLOR: Color = [0, 0, 0];
@@ -109,6 +111,13 @@ export function fillSpec(opts: {
 
   if (pattern === "None") return { kind: "none" };
 
+  // An unknown pattern is drawn as a solid fill.
+  if (!isFillPattern(pattern)) {
+    return isColor(fillColor)
+      ? { kind: "solid", color: fillColor }
+      : { kind: "none" };
+  }
+
   const gradient = gradientKindFor(pattern);
   if (gradient) {
     // A gradient with no fillColor has nothing to shade — draw nothing.
@@ -137,9 +146,7 @@ export function fillSpec(opts: {
 
 type GradientKind = "hcyl" | "vcyl" | "sphere";
 
-function gradientKindFor(
-  pattern: string | undefined,
-): GradientKind | undefined {
+function gradientKindFor(pattern: FillPattern): GradientKind | undefined {
   switch (pattern) {
     case "HorizontalCylinder":
       return "hcyl";
@@ -152,9 +159,7 @@ function gradientKindFor(
   }
 }
 
-function hatchDirectionFor(
-  pattern: string | undefined,
-): HatchDirection | undefined {
+function hatchDirectionFor(pattern: FillPattern): HatchDirection | undefined {
   switch (pattern) {
     case "Horizontal":
       return "horizontal";

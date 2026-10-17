@@ -68,7 +68,7 @@ interface ParameterField {
   kind: ParameterFieldKind;
   value: Expression | string | number | boolean | null;  // instance modifier ?? type default
   defaultValue?: Expression | string | number | boolean;  // type default — for dirty-detection / reset
-  enumChoices?: string[];
+  enumChoices?: readonly string[];
   enumTypeName?: string;        // qualifies a leaf ("PI") to <typeName>.PI on submit / for Dialog.enable
   dialog: { tab: string; group: string; enable?: Expression; groupImage?: string };  // tab/group always set (spec §18.7 defaults)
   unit?: string;                // base unit from the AST

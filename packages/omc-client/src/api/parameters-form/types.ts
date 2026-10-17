@@ -112,7 +112,7 @@ export interface ParameterField {
    */
   defaultValue?: Expression | string | number | boolean | undefined;
   /** Enumeration leaf names, in declaration order. Set only for `kind: "enum"`. */
-  enumChoices?: string[] | undefined;
+  enumChoices?: readonly string[] | undefined;
   /**
    * Qualified enumeration type name (e.g. `Modelica.Blocks.Types.Init`) for
    * `kind: "enum"`. Used to qualify a leaf value (`"PI"`) into the

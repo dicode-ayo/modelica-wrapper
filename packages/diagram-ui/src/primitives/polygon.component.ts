@@ -1,11 +1,8 @@
 import { customElement, property } from "lit/decorators.js";
 import type { Container } from "pixi.js";
 import type { Point, PolygonShape } from "@dicode/omc-client";
-import {
-  fillSpec,
-  isBezierSmooth,
-  smoothPolygonPoints,
-} from "@dicode/diagram-svg";
+import { fillSpec, smoothPolygonPoints } from "@dicode/diagram-svg";
+import { isBezierSmooth } from "@dicode/omc-client/shapes";
 
 import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {

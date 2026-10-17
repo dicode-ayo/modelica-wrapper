@@ -86,7 +86,6 @@ export {
   ellipseArcPoints,
 } from "./ellipse-arc.js";
 export {
-  isBezierSmooth,
   smoothLinePathData,
   smoothLinePoints,
   smoothPolygonPathData,

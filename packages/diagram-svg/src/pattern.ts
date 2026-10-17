@@ -16,6 +16,8 @@
  * and identical fills on multiple shapes share one def.
  */
 
+import { isLinePattern } from "@dicode/omc-client/shapes";
+
 import type { Color } from "./types.js";
 import { colorToCss } from "./color.js";
 import { fillSpec, type FillSpec } from "./fill-spec.js";
@@ -30,8 +32,9 @@ import { fillSpec, type FillSpec } from "./fill-spec.js";
  * callers that prefer hiding the stroke can check for `"None"` themselves.
  */
 export function linePatternToDashArray(pattern?: string): string | undefined {
+  // Unknown enum value — be lenient, treat as solid.
+  if (!isLinePattern(pattern)) return undefined;
   switch (pattern) {
-    case undefined:
     case "Solid":
       return undefined;
     case "Dash":
@@ -44,9 +47,6 @@ export function linePatternToDashArray(pattern?: string): string | undefined {
       return "8 4 1 4 1 4";
     case "None":
       return "0 1";
-    default:
-      // Unknown enum value — be lenient, treat as solid.
-      return undefined;
   }
 }
 

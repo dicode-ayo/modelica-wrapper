@@ -1,11 +1,8 @@
 import { customElement, property } from "lit/decorators.js";
 import type { Container } from "pixi.js";
 import type { LineShape, Point } from "@dicode/omc-client";
-import {
-  isBezierSmooth,
-  lineArrowheads,
-  smoothLinePoints,
-} from "@dicode/diagram-svg";
+import { lineArrowheads, smoothLinePoints } from "@dicode/diagram-svg";
+import { isBezierSmooth } from "@dicode/omc-client/shapes";
 
 import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {

@@ -47,11 +47,6 @@ export function formatPoint([x, y]: readonly [number, number]): string {
   return `${formatCoord(x)} ${formatCoord(y)}`;
 }
 
-/** True when a shape's `smooth` field selects `Smooth.Bezier`. */
-export function isBezierSmooth(smooth: string | undefined): boolean {
-  return smooth === "Bezier";
-}
-
 /**
  * SVG path `d` for a `Smooth.Bezier` `Line` over `points`. Fewer than three
  * points cannot describe a curve and degrade to a straight segment.

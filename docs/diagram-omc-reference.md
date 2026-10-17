@@ -279,6 +279,14 @@ re-investigated:
    cref unresolvable. Port conditions reduce through the same evaluator, so a
    port and the graphics drawn for it cannot disagree.
 
+6. **Enum vocabularies.** The member lists of the graphical-annotation enums
+   (`LinePattern`, `FillPattern`, `Smooth`, `BorderPattern`, `TextAlignment`,
+   `EllipseClosure`) are declared once, beside the §18.6 defaults in
+   [defaults.ts](../packages/omc-client/src/shapes/defaults.ts), each with a
+   derived union type and an `is…` narrowing guard. The renderers narrow an
+   annotated string through the guard and the properties panel offers the list
+   as its dropdown choices, so a new member lands in every consumer at once.
+
    Because a field resolves against the use site, one class can need more than
    one icon. `DiagramLayout.classes` is therefore keyed by class name plus the
    content it resolved to — identical content shares an entry, a name that

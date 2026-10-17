@@ -9,7 +9,7 @@ import type {
   Shape,
 } from "@dicode/omc-client";
 
-import { isBezierSmooth } from "@dicode/diagram-svg";
+import { isBezierSmooth } from "@dicode/omc-client/shapes";
 
 import { placementCentre } from "../base/placement-math.js";
 import { formatShapeKey, parseKey, type EntityKey } from "./entity-keys.js";
