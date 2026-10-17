@@ -1,7 +1,8 @@
 /**
  * The Modelica §18.6 graphical-annotation defaults, grouped by the record that
  * declares them. They live beside the schemas and the decoder because that is
- * what defines these records; three consumers in two packages read them.
+ * what defines these records; the renderers, the diff and the properties
+ * panel all read them.
  *
  * Each answers "what does an unset field mean", but each does something
  * different with the answer: the diff normalizes both sides of a comparison so
