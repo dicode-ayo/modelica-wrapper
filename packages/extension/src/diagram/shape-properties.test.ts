@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   BORDER_PATTERNS,
+  ELLIPSE_CLOSURES,
   FILL_PATTERNS,
   LINE_PATTERNS,
+  SMOOTH_VALUES,
+  TEXT_ALIGNMENTS,
 } from "@dicode/omc-client/shapes";
 
 import {
@@ -423,6 +426,17 @@ describe("buildShapePropertiesForm", () => {
     expect(
       model.fields.find((x) => x.name === "borderPattern")?.enumChoices,
     ).toBe(BORDER_PATTERNS);
+    const choices = (shape: Shape, name: string) =>
+      buildShapePropertiesForm(shape).fields.find((x) => x.name === name)
+        ?.enumChoices;
+    const extent = RECT.extent;
+    expect(choices({ kind: "line", points: [] }, "smooth")).toBe(SMOOTH_VALUES);
+    expect(choices({ kind: "ellipse", extent }, "closure")).toBe(
+      ELLIPSE_CLOSURES,
+    );
+    expect(
+      choices({ kind: "text", extent, textString: "x" }, "horizontalAlignment"),
+    ).toBe(TEXT_ALIGNMENTS);
   });
 
   it("seeds a property the shape omits with its Modelica default", () => {

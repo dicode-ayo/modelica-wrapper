@@ -31,9 +31,9 @@ import { colorToCss } from "./color.js";
 // Sub-path import: the evaluator subtree only, so the browser bundles
 // this renderer lands in don't drag the OMC transport along.
 import { expressionToString } from "@dicode/omc-client/eval";
+import { isBezierSmooth, isTextAlignment } from "@dicode/omc-client/shapes";
 import { ellipseArc, ellipseArcPathData } from "./ellipse-arc.js";
 import { linePatternToDashArray, resolveFill } from "./pattern.js";
-import { isBezierSmooth, isTextAlignment } from "@dicode/omc-client/shapes";
 import {
   formatCoord,
   smoothLinePathData,

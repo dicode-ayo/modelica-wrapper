@@ -32,7 +32,7 @@ import { fillSpec, type FillSpec } from "./fill-spec.js";
  * callers that prefer hiding the stroke can check for `"None"` themselves.
  */
 export function linePatternToDashArray(pattern?: string): string | undefined {
-  // Unknown enum value — be lenient, treat as solid.
+  // An absent or unknown pattern draws solid.
   if (!isLinePattern(pattern)) return undefined;
   switch (pattern) {
     case "Solid":

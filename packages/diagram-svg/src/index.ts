@@ -85,6 +85,8 @@ export {
   ellipseArcPathData,
   ellipseArcPoints,
 } from "./ellipse-arc.js";
+// Kept for consumers of the published package; the declaration lives in omc-client.
+export { isBezierSmooth } from "@dicode/omc-client/shapes";
 export {
   smoothLinePathData,
   smoothLinePoints,

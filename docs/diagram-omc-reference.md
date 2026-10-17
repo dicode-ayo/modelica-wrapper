@@ -285,6 +285,9 @@ re-investigated:
    resolves two ways gets a suffixed second key, and `ClassDef.name` stays the
    real class name. A catalog key is an identifier, not a name to display.
 
+   The DYNAMIC (simulation-time) branch of `DynamicSelect` stays out of scope —
+   re-evaluating it per-instance would need a simulation result to bind to.
+
 6. **Enum vocabularies.** The member lists of the graphical-annotation enums
    (`LinePattern`, `FillPattern`, `Smooth`, `BorderPattern`, `TextAlignment`,
    `EllipseClosure`) are declared once, beside the §18.6 defaults in
@@ -292,9 +295,6 @@ re-investigated:
    derived union type and an `is…` narrowing guard. The renderers narrow an
    annotated string through the guard and the properties panel offers the list
    as its dropdown choices, so a new member lands in every consumer at once.
-
-   The DYNAMIC (simulation-time) branch of `DynamicSelect` stays out of scope —
-   re-evaluating it per-instance would need a simulation result to bind to.
 
 ---
 

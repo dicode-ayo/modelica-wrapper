@@ -46,6 +46,20 @@ describe("enum vocabularies", () => {
       "DashDot",
       "DashDotDot",
     ]);
+    expect(FILL_PATTERNS).toEqual([
+      "None",
+      "Solid",
+      "Horizontal",
+      "Vertical",
+      "Cross",
+      "Forward",
+      "Backward",
+      "CrossDiag",
+      "HorizontalCylinder",
+      "VerticalCylinder",
+      "Sphere",
+    ]);
+    expect(ELLIPSE_CLOSURES).toEqual(["None", "Chord", "Radial"]);
     expect(SMOOTH_VALUES).toEqual(["None", "Bezier"]);
     expect(BORDER_PATTERNS).toEqual(["None", "Raised", "Sunken", "Engraved"]);
     expect(TEXT_ALIGNMENTS).toEqual(["Left", "Center", "Right"]);

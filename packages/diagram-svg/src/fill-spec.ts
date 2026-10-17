@@ -111,7 +111,6 @@ export function fillSpec(opts: {
 
   if (pattern === "None") return { kind: "none" };
 
-  // An unknown pattern is drawn as a solid fill.
   if (!isFillPattern(pattern)) {
     return isColor(fillColor)
       ? { kind: "solid", color: fillColor }
