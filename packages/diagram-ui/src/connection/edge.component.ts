@@ -3,7 +3,8 @@ import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { Container } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
-import { isBezierSmooth, smoothLinePoints } from "@dicode/diagram-svg";
+import { smoothLinePoints } from "@dicode/diagram-svg";
+import { isBezierSmooth } from "@dicode/omc-client/shapes";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";

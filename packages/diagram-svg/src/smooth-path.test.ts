@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  isBezierSmooth,
   smoothLinePathData,
   smoothLinePoints,
   smoothPolygonPathData,
@@ -45,15 +44,6 @@ function maxTurnDegrees(
   }
   return worst;
 }
-
-describe("isBezierSmooth", () => {
-  it("selects only Smooth.Bezier", () => {
-    expect(isBezierSmooth("Bezier")).toBe(true);
-    expect(isBezierSmooth("None")).toBe(false);
-    expect(isBezierSmooth(undefined)).toBe(false);
-    expect(isBezierSmooth("bezier")).toBe(false);
-  });
-});
 
 describe("smoothLinePathData", () => {
   it("draws midpoint-anchored cubics through the interior vertices", () => {

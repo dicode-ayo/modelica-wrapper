@@ -1,7 +1,8 @@
 /**
  * The Modelica §18.6 graphical-annotation defaults, grouped by the record that
  * declares them. They live beside the schemas and the decoder because that is
- * what defines these records; three consumers in two packages read them.
+ * what defines these records; the renderers, the diff and the properties
+ * panel all read them.
  *
  * Each answers "what does an unset field mean", but each does something
  * different with the answer: the diff normalizes both sides of a comparison so
@@ -99,6 +100,86 @@ export const BITMAP_DEFAULTS: { fileName: string; imageSource: string } = {
   fileName: "",
   imageSource: "",
 };
+
+/** §18.6.5.1 `LinePattern`, in declaration order. */
+export const LINE_PATTERNS = [
+  "None",
+  "Solid",
+  "Dash",
+  "Dot",
+  "DashDot",
+  "DashDotDot",
+] as const;
+
+export type LinePattern = (typeof LINE_PATTERNS)[number];
+
+/** Narrows an annotated pattern — decoded from OMC, or free text the
+ *  properties panel wrote — to a value the renderers understand. */
+export function isLinePattern(value: string | undefined): value is LinePattern {
+  return LINE_PATTERNS.some((pattern) => pattern === value);
+}
+
+/** §18.6.5.1 `FillPattern`, in declaration order. */
+export const FILL_PATTERNS = [
+  "None",
+  "Solid",
+  "Horizontal",
+  "Vertical",
+  "Cross",
+  "Forward",
+  "Backward",
+  "CrossDiag",
+  "HorizontalCylinder",
+  "VerticalCylinder",
+  "Sphere",
+] as const;
+
+export type FillPattern = (typeof FILL_PATTERNS)[number];
+
+export function isFillPattern(value: string | undefined): value is FillPattern {
+  return FILL_PATTERNS.some((pattern) => pattern === value);
+}
+
+/** §18.6.5.1 `Smooth`, in declaration order. */
+export const SMOOTH_VALUES = ["None", "Bezier"] as const;
+
+export type Smooth = (typeof SMOOTH_VALUES)[number];
+
+export function isSmooth(value: string | undefined): value is Smooth {
+  return SMOOTH_VALUES.some((smooth) => smooth === value);
+}
+
+/** True when a shape's `smooth` field selects `Smooth.Bezier`. */
+export function isBezierSmooth(smooth: string | undefined): boolean {
+  return smooth === "Bezier";
+}
+
+/** §18.6.5.1 `BorderPattern`, in declaration order. */
+export const BORDER_PATTERNS = [
+  "None",
+  "Raised",
+  "Sunken",
+  "Engraved",
+] as const;
+
+export type BorderPattern = (typeof BORDER_PATTERNS)[number];
+
+export function isBorderPattern(
+  value: string | undefined,
+): value is BorderPattern {
+  return BORDER_PATTERNS.some((pattern) => pattern === value);
+}
+
+/** §18.6.5.6 `TextAlignment`, in declaration order. */
+export const TEXT_ALIGNMENTS = ["Left", "Center", "Right"] as const;
+
+export type TextAlignment = (typeof TEXT_ALIGNMENTS)[number];
+
+export function isTextAlignment(
+  value: string | undefined,
+): value is TextAlignment {
+  return TEXT_ALIGNMENTS.some((alignment) => alignment === value);
+}
 
 /** §18.6.5.5 `EllipseClosure`, in declaration order. */
 export const ELLIPSE_CLOSURES = ["None", "Chord", "Radial"] as const;

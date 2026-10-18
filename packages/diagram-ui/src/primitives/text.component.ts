@@ -7,6 +7,7 @@ import {
 } from "@dicode/diagram-svg";
 import type { TextShape } from "@dicode/omc-client";
 import { expressionToString } from "@dicode/omc-client/eval";
+import { isTextAlignment } from "@dicode/omc-client/shapes";
 
 import {
   OmShapePrimitive,
@@ -285,12 +286,13 @@ function fittedFontSize(
 type Align = "left" | "center" | "right";
 
 function horizontalAlign(value: string | undefined): Align {
+  if (!isTextAlignment(value)) return "center";
   switch (value) {
     case "Left":
       return "left";
     case "Right":
       return "right";
-    default:
+    case "Center":
       return "center";
   }
 }

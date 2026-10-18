@@ -33,14 +33,19 @@ import type { ParameterField, ParameterModel } from "@dicode/omc-client";
 import type { GraphicsLayer } from "./diff-layout.js";
 import {
   BITMAP_DEFAULTS,
+  BORDER_PATTERNS,
   defaultEllipseClosure,
   ELLIPSE_CLOSURES,
   ELLIPSE_DEFAULTS,
+  FILL_PATTERNS,
   FILLED_SHAPE_DEFAULTS,
   GRAPHIC_ITEM_DEFAULTS,
   LINE_DEFAULTS,
+  LINE_PATTERNS,
   POLYGON_DEFAULTS,
   RECTANGLE_DEFAULTS,
+  SMOOTH_VALUES,
+  TEXT_ALIGNMENTS,
   TEXT_DEFAULTS,
 } from "@dicode/omc-client/shapes";
 
@@ -119,26 +124,6 @@ export function lookupHostShape(
   return null;
 }
 
-// ── Enum vocabularies ─────────────────────────────────────────────────────────
-
-const LINE_PATTERNS = ["None", "Solid", "Dash", "Dot", "DashDot", "DashDotDot"];
-const FILL_PATTERNS = [
-  "None",
-  "Solid",
-  "Horizontal",
-  "Vertical",
-  "Cross",
-  "Forward",
-  "Backward",
-  "CrossDiag",
-  "HorizontalCylinder",
-  "VerticalCylinder",
-  "Sphere",
-];
-const SMOOTH_VALUES = ["None", "Bezier"];
-const BORDER_PATTERNS = ["None", "Raised", "Sunken", "Engraved"];
-const TEXT_ALIGNMENTS = ["Left", "Center", "Right"];
-
 // ── Field codecs ──────────────────────────────────────────────────────────────
 
 /**
@@ -153,7 +138,7 @@ const TEXT_ALIGNMENTS = ["Left", "Center", "Right"];
  */
 interface Codec<T> {
   readonly kind: ParameterField["kind"];
-  readonly enumChoices?: string[] | undefined;
+  readonly enumChoices?: readonly string[] | undefined;
   readonly enumTypeName?: string | undefined;
   readonly encode: (value: T) => ParameterField["value"];
   readonly decode: (raw: unknown) => T | undefined;
@@ -212,7 +197,10 @@ const textStringCodec: Codec<NonNullable<Expression>> = {
   decode: (raw) => (typeof raw === "string" ? raw : undefined),
 };
 
-function enumCodec(enumTypeName: string, enumChoices: string[]): Codec<string> {
+function enumCodec(
+  enumTypeName: string,
+  enumChoices: readonly string[],
+): Codec<string> {
   return {
     kind: "enum",
     enumChoices,
@@ -497,7 +485,7 @@ const ELLIPSE_FIELDS: ShapeField<EllipseShape>[] = [
     name: "closure",
     label: "Closure",
     group: "Arc",
-    codec: enumCodec("EllipseClosure", [...ELLIPSE_CLOSURES]),
+    codec: enumCodec("EllipseClosure", ELLIPSE_CLOSURES),
     fallbackFrom: defaultEllipseClosure,
   }),
 ];

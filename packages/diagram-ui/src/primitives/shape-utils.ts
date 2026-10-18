@@ -1,5 +1,6 @@
 import { Container, Graphics, Matrix, type Renderer } from "pixi.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
+import { isLinePattern, type LinePattern } from "@dicode/omc-client/shapes";
 import {
   FILLED_SHAPE_DEFAULTS,
   LINE_DEFAULTS,
@@ -624,7 +625,9 @@ const DEFAULT_DOT_SIZE = 1;
 
 /** Dash / gap run lengths (diagram units) keyed by Modelica `LinePattern`; even
  *  indices draw, odd indices skip. */
-const DASH_RUNS: Readonly<Record<string, readonly number[]>> = {
+const DASH_RUNS: Readonly<
+  Record<Exclude<LinePattern, "None" | "Solid">, readonly number[]>
+> = {
   Dash: [DEFAULT_DASH_SIZE, DEFAULT_DASH_GAP],
   Dot: [DEFAULT_DOT_SIZE, DEFAULT_DASH_GAP],
   DashDot: [
@@ -650,8 +653,7 @@ const DASH_RUNS: Readonly<Record<string, readonly number[]>> = {
 export function dashRunsFor(
   pattern: string | undefined,
 ): readonly number[] | null {
-  if (pattern === undefined || pattern === "None" || pattern === "Solid") {
-    return null;
-  }
-  return DASH_RUNS[pattern] ?? DASH_RUNS.Dash ?? null;
+  if (pattern === undefined) return null;
+  if (!isLinePattern(pattern)) return DASH_RUNS.Dash;
+  return pattern === "None" || pattern === "Solid" ? null : DASH_RUNS[pattern];
 }

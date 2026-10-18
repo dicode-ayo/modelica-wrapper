@@ -1,4 +1,12 @@
 import { describe, expect, it } from "vitest";
+import {
+  BORDER_PATTERNS,
+  ELLIPSE_CLOSURES,
+  FILL_PATTERNS,
+  LINE_PATTERNS,
+  SMOOTH_VALUES,
+  TEXT_ALIGNMENTS,
+} from "@dicode/omc-client/shapes";
 
 import {
   applyShapeProperties,
@@ -405,6 +413,30 @@ describe("buildShapePropertiesForm", () => {
     expect(patternField?.kind).toBe("enum");
     expect(patternField?.enumTypeName).toBe("LinePattern");
     expect(patternField?.enumChoices).toContain("Solid");
+  });
+
+  it("offers each enum field the shared vocabulary, not a local copy", () => {
+    const model = buildShapePropertiesForm(RECT);
+    expect(model.fields.find((x) => x.name === "pattern")?.enumChoices).toBe(
+      LINE_PATTERNS,
+    );
+    expect(
+      model.fields.find((x) => x.name === "fillPattern")?.enumChoices,
+    ).toBe(FILL_PATTERNS);
+    expect(
+      model.fields.find((x) => x.name === "borderPattern")?.enumChoices,
+    ).toBe(BORDER_PATTERNS);
+    const choices = (shape: Shape, name: string) =>
+      buildShapePropertiesForm(shape).fields.find((x) => x.name === name)
+        ?.enumChoices;
+    const extent = RECT.extent;
+    expect(choices({ kind: "line", points: [] }, "smooth")).toBe(SMOOTH_VALUES);
+    expect(choices({ kind: "ellipse", extent }, "closure")).toBe(
+      ELLIPSE_CLOSURES,
+    );
+    expect(
+      choices({ kind: "text", extent, textString: "x" }, "horizontalAlignment"),
+    ).toBe(TEXT_ALIGNMENTS);
   });
 
   it("seeds a property the shape omits with its Modelica default", () => {

@@ -31,11 +31,11 @@ import { colorToCss } from "./color.js";
 // Sub-path import: the evaluator subtree only, so the browser bundles
 // this renderer lands in don't drag the OMC transport along.
 import { expressionToString } from "@dicode/omc-client/eval";
+import { isBezierSmooth, isTextAlignment } from "@dicode/omc-client/shapes";
 import { ellipseArc, ellipseArcPathData } from "./ellipse-arc.js";
 import { linePatternToDashArray, resolveFill } from "./pattern.js";
 import {
   formatCoord,
-  isBezierSmooth,
   smoothLinePathData,
   smoothPolygonPathData,
 } from "./smooth-path.js";
@@ -535,7 +535,9 @@ function renderText(s: TextShape): string {
   const { x: ex1, y: ey1, width, height } = extentToRect(s.extent);
   const ex2 = ex1 + width;
 
-  const align = s.horizontalAlignment ?? "Center";
+  const align = isTextAlignment(s.horizontalAlignment)
+    ? s.horizontalAlignment
+    : "Center";
   let xPos: number;
   let textAnchor: string;
   switch (align) {
@@ -548,7 +550,6 @@ function renderText(s: TextShape): string {
       textAnchor = "end";
       break;
     case "Center":
-    default:
       xPos = ex1 + width / 2;
       textAnchor = "middle";
       break;
