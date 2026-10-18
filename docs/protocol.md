@@ -20,6 +20,10 @@ separate webviews with protocols of their own
 ([library-view-protocol.ts](../packages/extension/src/webview/library-view-protocol.ts),
 [documentation-protocol.ts](../packages/extension/src/webview/documentation-protocol.ts),
 [postprocessing-protocol.ts](../packages/extension/src/webview/postprocessing-protocol.ts)).
+The documentation editor's host side routes every inbound variant through
+`dispatchWebviewMessage`, which takes one handler per `DocWebviewToExtension`
+type and ends in `satisfies never`: a new variant without a handler is a
+compile error, not a silently ignored message.
 Only the request/response idiom the library browser uses is described here, at
 the bottom — the diagram protocol is fire-and-forget throughout, with one
 exception: `nestedDiagramRequest`/`nestedDiagramResult` (below), correlated by
