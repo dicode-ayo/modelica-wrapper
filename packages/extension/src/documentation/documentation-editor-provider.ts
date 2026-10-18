@@ -334,21 +334,10 @@ const INTERFACE_RESTRICTIONS: ReadonlySet<string> = new Set([
   "operator record",
 ]);
 
-/**
- * Per-editor write controller. Forward: an `edit` from the webview carries the
- * new `info`; it is written through `setFullDocumentationAnnotation`, which
- * reads the class's current `revisions`/`infoHeader` itself and reconstructs
- * the whole annotation so neither section is cleared, then the class's
- * canonical `listFile` source is reflected into the shadow buffer. Reverse: a
- * foreign buffer change is `loadString`ed back into OMC and the annotation
- * re-fetched and re-sent. Every unit runs through one serialized queue so an
- * edit can't diff against a half-applied reverse sync on the single OMC
- * socket.
- */
 type DocEditMessage = Extract<DocWebviewToExtension, { type: "edit" }>;
 
 /** One handler per inbound variant, so an unrouted message is a type error. */
-export type DocWebviewHandlers = {
+type DocWebviewHandlers = {
   [T in DocWebviewToExtension["type"]]: (
     msg: Extract<DocWebviewToExtension, { type: T }>,
   ) => void;
@@ -372,6 +361,17 @@ export function dispatchWebviewMessage(
   }
 }
 
+/**
+ * Per-editor write controller. Forward: an `edit` from the webview carries the
+ * new `info`; it is written through `setFullDocumentationAnnotation`, which
+ * reads the class's current `revisions`/`infoHeader` itself and reconstructs
+ * the whole annotation so neither section is cleared, then the class's
+ * canonical `listFile` source is reflected into the shadow buffer. Reverse: a
+ * foreign buffer change is `loadString`ed back into OMC and the annotation
+ * re-fetched and re-sent. Every unit runs through one serialized queue so an
+ * edit can't diff against a half-applied reverse sync on the single OMC
+ * socket.
+ */
 export class DocumentationEditController {
   private queue: Promise<void> = Promise.resolve();
   private readonly shadow: ShadowBuffer;
