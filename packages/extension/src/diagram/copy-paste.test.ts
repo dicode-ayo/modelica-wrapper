@@ -457,7 +457,7 @@ describe("captureClipboardItems: connections", () => {
         ...base,
         connectors: {
           ...base.connectors,
-          u: { ...u, ...(dims !== undefined && { dims }) },
+          u: dims === undefined ? u : { ...u, dims },
         },
         connections: [
           {

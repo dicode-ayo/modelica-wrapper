@@ -212,8 +212,7 @@ function connectionsWithin(
     // A subscript only indexes something if the declaration carries the
     // dimensions to match. Where `dimsFromElement` could not read them, the
     // paste would write a scalar and a `connect()` that subscripts it — which
-    // OMC accepts and writes out. A host-class port has no component part, so
-    // its subscript indexes the declaration itself.
+    // OMC accepts and writes out.
     const subscripts =
       endpoint.component === undefined
         ? endpoint.portSubscripts
