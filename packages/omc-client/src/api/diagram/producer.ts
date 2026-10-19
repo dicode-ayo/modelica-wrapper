@@ -606,6 +606,8 @@ function instanceFromConnector(
   }
   if (el.comment !== undefined) inst.comment = el.comment;
   if (el.prefixes !== undefined) inst.prefixes = el.prefixes;
+  const dims = dimsFromElement(el);
+  if (dims !== undefined) inst.dims = dims;
   if (el.type.source) inst.source = el.type.source;
   const declared = sourceOf(el);
   if (declared) inst.declarationSource = declared;
