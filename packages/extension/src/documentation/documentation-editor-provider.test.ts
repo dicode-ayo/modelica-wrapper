@@ -26,6 +26,7 @@ import { retryMissingClasses } from "../missing-class.js";
 import {
   DocumentationEditController,
   DocumentationEditorProvider,
+  dispatchWebviewMessage,
   resolveDocumentationEditor,
   type DocumentationClient,
 } from "./documentation-editor-provider.js";
@@ -927,5 +928,45 @@ describe("DocumentationEditController write path", () => {
 
     expect(calls.loaded).toEqual([]);
     expect(posted.some((m) => m.type === "error")).toBe(true);
+  });
+});
+
+describe("dispatchWebviewMessage", () => {
+  const messages = [
+    { type: "ready" },
+    { type: "edit", info: "<p>x</p>" },
+    { type: "editSource" },
+    { type: "openLink", href: "modelica://A.B" },
+  ] as const;
+
+  it.each(messages)(
+    "routes a $type message to its own handler and no other",
+    (msg) => {
+      const calls: string[] = [];
+      const handlers = {
+        ready: () => calls.push("ready"),
+        edit: () => calls.push("edit"),
+        editSource: () => calls.push("editSource"),
+        openLink: () => calls.push("openLink"),
+      };
+
+      dispatchWebviewMessage(msg, handlers);
+
+      expect(calls).toEqual([msg.type]);
+    },
+  );
+
+  it("hands the handler the narrowed payload", () => {
+    const edit = vi.fn();
+    dispatchWebviewMessage(
+      { type: "edit", info: "<p>x</p>" },
+      {
+        ready: vi.fn(),
+        edit,
+        editSource: vi.fn(),
+        openLink: vi.fn(),
+      },
+    );
+    expect(edit).toHaveBeenCalledWith({ type: "edit", info: "<p>x</p>" });
   });
 });

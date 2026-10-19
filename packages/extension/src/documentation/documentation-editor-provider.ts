@@ -215,21 +215,14 @@ export function resolveDocumentationEditor(
     },
     classSetEvents,
   );
-  const sub = webview.onDidReceiveMessage((msg: DocWebviewToExtension) => {
-    if (msg.type === "ready") {
-      gate.markReady();
-      return;
-    }
-    if (msg.type === "editSource") {
-      void openHtmlSourceEditor(className);
-      return;
-    }
-    if (msg.type === "openLink") {
-      void openModelicaLink(msg.href, ensureClient);
-      return;
-    }
-    void controller?.handle(msg);
-  });
+  const sub = webview.onDidReceiveMessage((msg: DocWebviewToExtension) =>
+    dispatchWebviewMessage(msg, {
+      ready: () => gate.markReady(),
+      edit: (edit) => void controller?.handle(edit),
+      editSource: () => void openHtmlSourceEditor(className),
+      openLink: ({ href }) => void openModelicaLink(href, ensureClient),
+    }),
+  );
 
   const token = {};
   const shownClassName = (): string | undefined =>
@@ -341,6 +334,33 @@ const INTERFACE_RESTRICTIONS: ReadonlySet<string> = new Set([
   "operator record",
 ]);
 
+type DocEditMessage = Extract<DocWebviewToExtension, { type: "edit" }>;
+
+/** One handler per inbound variant, so an unrouted message is a type error. */
+type DocWebviewHandlers = {
+  [T in DocWebviewToExtension["type"]]: (
+    msg: Extract<DocWebviewToExtension, { type: T }>,
+  ) => void;
+};
+
+export function dispatchWebviewMessage(
+  msg: DocWebviewToExtension,
+  handlers: DocWebviewHandlers,
+): void {
+  switch (msg.type) {
+    case "ready":
+      return handlers.ready(msg);
+    case "edit":
+      return handlers.edit(msg);
+    case "editSource":
+      return handlers.editSource(msg);
+    case "openLink":
+      return handlers.openLink(msg);
+    default:
+      return msg satisfies never;
+  }
+}
+
 /**
  * Per-editor write controller. Forward: an `edit` from the webview carries the
  * new `info`; it is written through `setFullDocumentationAnnotation`, which
@@ -409,9 +429,7 @@ export class DocumentationEditController {
     return found;
   }
 
-  handle(msg: DocWebviewToExtension): Promise<void> {
-    if (msg.type !== "edit") return Promise.resolve();
-    const { info } = msg;
+  handle({ info }: DocEditMessage): Promise<void> {
     return this.enqueue(() => this.onEdit(info));
   }
 
