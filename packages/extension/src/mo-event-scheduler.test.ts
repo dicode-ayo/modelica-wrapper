@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createEventScheduler } from "./mo-event-scheduler.js";
+import {
+  createEventScheduler,
+  type EventSchedulerDeps,
+} from "./mo-event-scheduler.js";
 
 interface Deferred {
   promise: Promise<void>;
@@ -21,10 +24,11 @@ const flush = async (): Promise<void> => {
 
 function setup(ready: () => Promise<void> = () => Promise.resolve()) {
   const errors: Array<[string, unknown]> = [];
-  const scheduler = createEventScheduler({
+  const deps: EventSchedulerDeps = {
     ready,
     onError: (p, err) => errors.push([p, err]),
-  });
+  };
+  const scheduler = createEventScheduler(deps);
   const started: string[] = [];
   const gates = new Map<string, Deferred>();
   const queue = (key: string, name: string, describedPath = name): void => {
@@ -85,17 +89,17 @@ describe("conflict ordering", () => {
     expect(t.started).toEqual(["1", "2", "3"]);
   });
 
-  it("serializes a parent package key against nested package and member keys", async () => {
+  it("serializes a parent key against a nested package key, then a later same-key event", async () => {
     const t = setup();
     t.queue("/ws/Pkg/package.mo", "parent");
     t.queue("/ws/Pkg/Sub/package.mo", "child");
-    t.queue("/ws/Pkg/package.mo", "member");
+    t.queue("/ws/Pkg/package.mo", "later");
     await flush();
     expect(t.started).toEqual(["parent"]);
     await t.finish("parent");
     expect(t.started).toEqual(["parent", "child"]);
     await t.finish("child");
-    expect(t.started).toEqual(["parent", "child", "member"]);
+    expect(t.started).toEqual(["parent", "child", "later"]);
   });
 
   it("serializes a nested child that was queued before its parent", async () => {
@@ -114,6 +118,16 @@ describe("conflict ordering", () => {
     t.queue("/ws/Pkg2/package.mo", "b");
     await flush();
     expect(t.started).toEqual(["a", "b"]);
+  });
+
+  it("treats a directory named with a leading '..' as nested", async () => {
+    const t = setup();
+    t.queue("/ws/Pkg/package.mo", "parent");
+    t.queue("/ws/Pkg/..hidden/package.mo", "child");
+    await flush();
+    expect(t.started).toEqual(["parent"]);
+    await t.finish("parent");
+    expect(t.started).toEqual(["parent", "child"]);
   });
 
   it("runs sibling packages and unrelated directories concurrently", async () => {
@@ -150,6 +164,25 @@ describe("failure handling", () => {
     await flush();
     expect(t.errors).toEqual([["/ws/A/Model.mo", boom]]);
     expect(t.started).toEqual(["next"]);
+  });
+
+  it("keeps later conflicting events running when onError throws", async () => {
+    const scheduler = createEventScheduler({
+      ready: () => Promise.resolve(),
+      onError: () => {
+        throw new Error("reporter failed");
+      },
+    });
+    const started: string[] = [];
+    scheduler.run("/ws/A/package.mo", "x", () =>
+      Promise.reject(new Error("e")),
+    );
+    scheduler.run("/ws/A/package.mo", "next", () => {
+      started.push("next");
+      return Promise.resolve();
+    });
+    await flush();
+    expect(started).toEqual(["next"]);
   });
 
   it("does not re-report a failure on events that waited behind it", async () => {

@@ -300,7 +300,7 @@ export async function handleMoChange(
   try {
     ({ classNames: names } = await client.parseFile({ fileName: fsPath }));
   } catch (err) {
-    log.warn("moWatcher", `parseFile ${fsPath} failed: ${asMessage(err)}`);
+    log.warn("moWatcher", `parseFile ${fsPath} failed: ${errorDetail(err)}`);
     return;
   }
   if (names.length > 1) {
@@ -399,7 +399,7 @@ async function reorderPackage(
   try {
     ({ success: loaded } = await client.loadFile({ fileName: pkgFile }));
   } catch (err) {
-    log.warn("moWatcher", `reload of ${pkgFile} threw: ${asMessage(err)}`);
+    log.warn("moWatcher", `reload of ${pkgFile} threw: ${errorDetail(err)}`);
   }
 
   // A reorder doesn't change which classes exist, so `names` (unchanged
@@ -584,14 +584,10 @@ export async function seedPathClassIndex(
     } catch (err) {
       log.warn(
         "moWatcher",
-        `seed parseFile ${fsPath} failed: ${asMessage(err)}`,
+        `seed parseFile ${fsPath} failed: ${errorDetail(err)}`,
       );
     }
   }
-}
-
-function asMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -654,16 +650,12 @@ export function registerMoFileWatcher(deps: {
     vscode.workspace.createFileSystemWatcher("**/package.order");
   const subs = [
     watcher,
-    // Every event is keyed by its owning package's file (`orderOwner`), and the
-    // scheduler serializes events whose keys are equal or whose `package.mo`
-    // directory contains the other's: a member's event, a reorder, and a
-    // cascaded delete of the package (or of an ancestor package, whose handler
-    // also walks nested packages and shares `index`) all touch overlapping
-    // state. Sibling packages and unrelated directories run concurrently.
-    // Lexical, not index-derived: computing it from the index instead would
-    // leave events racing during the window before the workspace seed
-    // finishes populating it. The cost is a standalone `.mo` file with no
-    // `package.mo` sibling serializing against others in its directory.
+    // Keys come from `orderOwner`, which is lexical, so every key is a
+    // `package.mo` path. A `.mo` with no `package.mo` sibling keys on a file
+    // that doesn't exist yet still subsumes its directory's subtree (a
+    // root-level file keys `/ws/package.mo`, which conflicts with every event
+    // in the workspace). Index-derived keys would race the workspace seed.
+    // Conflict rules: see `createEventScheduler`.
     watcher.onDidChange((uri) =>
       run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleMoChange(watcherDeps, uri.fsPath),
@@ -723,6 +715,6 @@ async function seedWorkspaceIndex(
     const client = await ensureClient();
     await seedPathClassIndex(client, files, index);
   } catch (err) {
-    log.warn("moWatcher", `index seed failed: ${asMessage(err)}`);
+    log.warn("moWatcher", `index seed failed: ${errorDetail(err)}`);
   }
 }

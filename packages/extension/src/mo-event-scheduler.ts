@@ -4,6 +4,11 @@ export interface EventScheduler {
   run(key: string, describedPath: string, fn: () => Promise<void>): void;
 }
 
+export interface EventSchedulerDeps {
+  ready: () => Promise<void>;
+  onError: (describedPath: string, err: unknown) => void;
+}
+
 interface Entry {
   readonly key: string;
   readonly settled: Promise<void>;
@@ -15,7 +20,10 @@ function isPackageFile(key: string): boolean {
 
 function dirContains(dir: string, target: string): boolean {
   const rel = path.relative(dir, target);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  return (
+    rel === "" ||
+    (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
+  );
 }
 
 /**
@@ -38,10 +46,7 @@ function conflicts(a: string, b: string): boolean {
  * `key` and `describedPath` differ when an event is queued under its owning
  * package's path; the failure report names the file that triggered it.
  */
-export function createEventScheduler(deps: {
-  ready: () => Promise<void>;
-  onError: (describedPath: string, err: unknown) => void;
-}): EventScheduler {
+export function createEventScheduler(deps: EventSchedulerDeps): EventScheduler {
   const inFlight = new Set<Entry>();
 
   return {
