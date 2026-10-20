@@ -241,3 +241,18 @@ pressing undo repeatedly walks into stale session states
   the webview gets no direct OMC or filesystem access, only `postMessage`.
 - **Bundle is not hot-reloaded** — editing `diagram-ui`/webview-entry needs a
   rebuild + window reload, or the panel serves a stale bundle.
+
+### The `.mo` watcher's event scheduler
+
+`registerMoFileWatcher` keeps the path-to-class index current from filesystem
+events. Its events share that index, so `mo-event-scheduler.ts` orders them:
+
+- Every event is keyed by its owning `package.mo` (`dirname/package.mo`).
+- Two events conflict, and run one at a time in arrival order, when their keys
+  are equal or one key is a `package.mo` whose directory contains the other's.
+  A parent package therefore subsumes its subtree: deleting `/ws/Pkg` cascades
+  through `Pkg/package.mo` and `Pkg/Sub/package.mo` without interleaving.
+- Sibling packages and unrelated directories run concurrently.
+- Every event first awaits the workspace index seed, so a delete never resolves
+  its classes from a half-populated index.
+- A failing event is logged once and never blocks later events.
