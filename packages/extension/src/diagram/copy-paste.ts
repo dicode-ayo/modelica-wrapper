@@ -126,6 +126,7 @@ export async function captureClipboardItems(
             diagramPlacement: views.diagramPlacement,
             prefixes: connector.prefixes,
             comment: connector.comment,
+            dims: connector.dims,
           },
         ),
       );
@@ -189,7 +190,7 @@ function endpointDeclaration(endpoint: ConnectionEndpoint): string {
  * `componentDeclaration` writes onto the declaration, so `gain1[1].y` indexes
  * a cref that really is an array. A subscript on a *port* comes from the
  * port's own type, except on a standalone connector — there the port is the
- * declaration, and its dimensions are not carried (issue #411).
+ * declaration, and `portSubscripts` indexes the connector's own `dims`.
  *
  * `flattenCref` (`omc-client/api/diagram/placement.ts`) collapses a 3+-part
  * cref like `sub.inner.x` to its first and last parts, so a connection into a
@@ -212,9 +213,11 @@ function connectionsWithin(
     // dimensions to match. Where `dimsFromElement` could not read them, the
     // paste would write a scalar and a `connect()` that subscripts it — which
     // OMC accepts and writes out.
-    return (
-      endpoint.componentSubscripts === undefined || item.dims !== undefined
-    );
+    const subscripts =
+      endpoint.component === undefined
+        ? endpoint.portSubscripts
+        : endpoint.componentSubscripts;
+    return subscripts === undefined || item.dims !== undefined;
   };
   return layout.connections
     .filter((c) => inCopy(c.lhs) && inCopy(c.rhs))

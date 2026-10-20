@@ -413,6 +413,9 @@ export interface ConnectorInstance {
   iconPlacement?: Placement | undefined;
   comment?: string | undefined;
   prefixes?: Prefixes | undefined;
+  /** Array dimension sizes of a connector array (`RealInput u[2]`); see
+   *  {@link ComponentInstance.dims}. Absent for a scalar connector. */
+  dims?: string[] | undefined;
   /** Location of the connector TYPE's class definition, not of this
    *  connector's declaration — that is `declarationSource`. */
   source?: SourceLocation | undefined;
@@ -725,6 +728,7 @@ export const ConnectorInstanceSchema = z
     diagramPlacement: PlacementSchema.optional(),
     iconPlacement: PlacementSchema.optional(),
     comment: z.string().optional(),
+    dims: z.array(z.string()).optional(),
     source: SourceLocationSchema.optional(),
     declarationSource: SourceLocationSchema.optional(),
   })

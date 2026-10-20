@@ -1616,6 +1616,44 @@ describe("produceDiagramLayout: array dimensions on sub-components", () => {
   });
 });
 
+describe("produceDiagramLayout: array dimensions on standalone connectors", () => {
+  function hostWithConnector(dims: unknown): ModelInstance {
+    const compEl: Record<string, unknown> = {
+      $kind: "component",
+      name: "u",
+      type: RealInputClass,
+      annotation: placementAnno([
+        [-120, -10],
+        [-100, 10],
+      ]),
+    };
+    if (dims !== undefined) compEl.dims = dims;
+    return ModelInstanceSchema.parse({
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      elements: [compEl],
+    });
+  }
+
+  it("surfaces a connector array's dimensions on the instance", () => {
+    const layout = produceDiagramLayout(
+      hostWithConnector({ absyn: ["2"], typed: ["2"] }),
+      "diagram",
+    );
+    expect(layout.connectors.u?.dims).toEqual(["2"]);
+  });
+
+  it("leaves dims undefined for a scalar connector", () => {
+    const layout = produceDiagramLayout(
+      hostWithConnector(undefined),
+      "diagram",
+    );
+    expect(layout.connectors.u).toBeDefined();
+    expect(layout.connectors.u?.dims).toBeUndefined();
+  });
+});
+
 describe("produceDiagramLayout: parameter displayUnit", () => {
   function outerWithAngle(): ModelInstance {
     const AngleClass: unknown = {

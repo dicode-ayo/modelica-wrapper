@@ -241,11 +241,10 @@ like a `package` (issue #345).
 - **Connection styling at render time** — `ConnectionLayout` carries
   `color`/`thickness`/`pattern`/`arrow`/`smooth` and `<om-line>` can draw all
   of it, but the edge still renders as a bespoke 1px GL line. Issue #219.
-- **Array dimensions on paste, precisely** — a pasted vector/matrix
-  sub-component carries the *evaluated* shape rather than the *declared* one
-  (a symbolic dimension bakes to a literal, or fails the whole cross-class
-  paste when OMC can't reduce it), and a standalone connector array has no
-  dimensions carried at all. Issue #411.
+- **Declared array dimensions on paste** — a pasted vector/matrix component
+  or standalone connector carries the *evaluated* shape rather than the
+  *declared* one (a symbolic dimension bakes to a literal, or fails the whole
+  cross-class paste when OMC can't reduce it). Issue #411.
 
 **Rendering correctness — settled (#138, PR #220).** The four classic
 misreadings of §2/§3, and where each is handled. Listed so they are not

@@ -215,6 +215,20 @@ describe("captureClipboardItems", () => {
     ]);
   });
 
+  it("captures a standalone connector array's dimensions", async () => {
+    const base = layout();
+    const u = base.connectors["u"];
+    if (u === undefined) throw new Error("expected connector u in the layout");
+    const arrayed: DiagramLayout = {
+      ...base,
+      connectors: { ...base.connectors, u: { ...u, dims: ["2"] } },
+    };
+    const items = await captureClipboardItems(copyClient(), arrayed, ["k:u"]);
+    expect(items).toEqual([
+      expect.objectContaining({ kind: "component", name: "u", dims: ["2"] }),
+    ]);
+  });
+
   it("captures a standalone connector", async () => {
     const items = await captureClipboardItems(copyClient(), layout(), ["k:u"]);
     expect(items).toHaveLength(1);
@@ -432,6 +446,46 @@ describe("captureClipboardItems: connections", () => {
       "c:gain1",
     ]);
     expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
+  });
+
+  describe("a wire subscripting a standalone connector", () => {
+    function withSubscriptedPort(dims: string[] | undefined): DiagramLayout {
+      const base = wired();
+      const u = base.connectors["u"];
+      if (u === undefined) throw new Error("expected connector u");
+      return {
+        ...base,
+        connectors: {
+          ...base.connectors,
+          u: dims === undefined ? u : { ...u, dims },
+        },
+        connections: [
+          {
+            lhs: { component: undefined, port: "u", portSubscripts: "[1]" },
+            rhs: { component: "gain1", port: "u" },
+            waypoints: [],
+          },
+        ],
+      };
+    }
+
+    it("is carried when the connector's dimensions are", async () => {
+      const items = await captureClipboardItems(
+        copyClient(),
+        withSubscriptedPort(["2"]),
+        ["k:u", "c:gain1"],
+      );
+      expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
+    });
+
+    it("is dropped when the connector's dimensions are unknown, rather than pasting a subscript against a scalar", async () => {
+      const items = await captureClipboardItems(
+        copyClient(),
+        withSubscriptedPort(undefined),
+        ["k:u", "c:gain1"],
+      );
+      expect(items.filter((i) => i.kind === "connection")).toHaveLength(0);
+    });
   });
 
   it("drops a connection with one endpoint outside the copy", async () => {
