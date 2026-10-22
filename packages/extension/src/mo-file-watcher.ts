@@ -43,7 +43,9 @@ import * as vscode from "vscode";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
+import { errorDetail } from "./error-detail.js";
 import { pathExists } from "./fs-util.js";
+import { createEventScheduler } from "./mo-event-scheduler.js";
 import type { FilesUnderEntry, PathClassIndex } from "./path-class-index.js";
 import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
@@ -298,7 +300,7 @@ export async function handleMoChange(
   try {
     ({ classNames: names } = await client.parseFile({ fileName: fsPath }));
   } catch (err) {
-    log.warn("moWatcher", `parseFile ${fsPath} failed: ${asMessage(err)}`);
+    log.warn("moWatcher", `parseFile ${fsPath} failed: ${errorDetail(err)}`);
     return;
   }
   if (names.length > 1) {
@@ -397,7 +399,7 @@ async function reorderPackage(
   try {
     ({ success: loaded } = await client.loadFile({ fileName: pkgFile }));
   } catch (err) {
-    log.warn("moWatcher", `reload of ${pkgFile} threw: ${asMessage(err)}`);
+    log.warn("moWatcher", `reload of ${pkgFile} threw: ${errorDetail(err)}`);
   }
 
   // A reorder doesn't change which classes exist, so `names` (unchanged
@@ -582,14 +584,10 @@ export async function seedPathClassIndex(
     } catch (err) {
       log.warn(
         "moWatcher",
-        `seed parseFile ${fsPath} failed: ${asMessage(err)}`,
+        `seed parseFile ${fsPath} failed: ${errorDetail(err)}`,
       );
     }
   }
-}
-
-function asMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -638,47 +636,26 @@ export function registerMoFileWatcher(deps: {
     seedWorkspaceIndex(deps.ensureClient, deps.scanMoFiles, index),
   );
 
-  // Serialize per path so overlapping events (a rename is delete+create; rapid
-  // saves) can't interleave their index writes and leave it out of sync.
-  // `key` and `describedPath` differ whenever an event is queued under its
-  // owning package's path rather than its own — the failure log should
-  // still name the file that actually triggered the event.
-  const inFlight = new Map<string, Promise<void>>();
-  const run = (
-    key: string,
-    describedPath: string,
-    fn: () => Promise<void>,
-  ): void => {
-    const resolvedKey = path.resolve(key);
-    const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
-    const next = prior
-      .then(() => seedQueue.current)
-      .then(fn)
-      .catch((err) =>
-        log.warn(
-          "moWatcher",
-          `handling ${describedPath} failed: ${asMessage(err)}`,
-        ),
-      );
-    inFlight.set(resolvedKey, next);
-    void next.finally(() => {
-      if (inFlight.get(resolvedKey) === next) inFlight.delete(resolvedKey);
-    });
-  };
+  const { run } = createEventScheduler({
+    ready: () => seedQueue.current,
+    onError: (describedPath, err) =>
+      log.warn(
+        "moWatcher",
+        `handling ${describedPath} failed: ${errorDetail(err)}`,
+      ),
+  });
 
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
   const orderWatcher =
     vscode.workspace.createFileSystemWatcher("**/package.order");
   const subs = [
     watcher,
-    // Keyed by the owning package's file (`orderOwner`), not the event's own
-    // path, so a member file's event and a reorder or cascaded delete of its
-    // package — which touch that member too — can't run concurrently.
-    // Lexical, not index-derived: computing it from the index instead would
-    // leave events racing during the window before the workspace seed
-    // finishes populating it. The cost is a standalone `.mo` file with no
-    // `package.mo` sibling keying on a path nothing else ever touches,
-    // serializing needlessly against unrelated files sharing its directory.
+    // Keys come from `orderOwner`, which is lexical, so every key is a
+    // `package.mo` path. A `.mo` with no `package.mo` sibling keys on a file
+    // that doesn't exist yet still subsumes its directory's subtree (a
+    // root-level file keys `/ws/package.mo`, which conflicts with every event
+    // in the workspace). Index-derived keys would race the workspace seed.
+    // Conflict rules: see `createEventScheduler`.
     watcher.onDidChange((uri) =>
       run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleMoChange(watcherDeps, uri.fsPath),
@@ -696,8 +673,7 @@ export function registerMoFileWatcher(deps: {
     ),
     orderWatcher,
     // Keyed by the owning package.mo, not the package.order path itself, so a
-    // reorder and a `.mo` event for that same package.mo can't run
-    // concurrently.
+    // reorder conflicts with `.mo` events for that package.
     orderWatcher.onDidChange((uri) =>
       run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleOrderChange(watcherDeps, uri.fsPath),
@@ -739,6 +715,6 @@ async function seedWorkspaceIndex(
     const client = await ensureClient();
     await seedPathClassIndex(client, files, index);
   } catch (err) {
-    log.warn("moWatcher", `index seed failed: ${asMessage(err)}`);
+    log.warn("moWatcher", `index seed failed: ${errorDetail(err)}`);
   }
 }
