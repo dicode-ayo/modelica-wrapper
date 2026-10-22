@@ -7,6 +7,8 @@
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/packages/extension",
+        // The OMC call trace is logged at debug level and is the first thing
+        // anyone debugging the extension wants.
         "--log=drojdestvensky.modelica-wrapper=debug"
       ],
       "outFiles": ["${workspaceFolder}/packages/extension/out/**/*.js"],

@@ -5,9 +5,6 @@
  * from the dropdown. Webview-side logs go to the webview's own devtools
  * console — `Developer: Open Webview Developer Tools` — and are prefixed
  * with `[modelica.<topic>]` for easy filtering.
- *
- * The channel is a `LogOutputChannel`, so levels, timestamps and the
- * per-extension log level ("Developer: Set Log Level…") are VSCode's.
  */
 
 import * as vscode from "vscode";
@@ -48,8 +45,11 @@ export const log = {
    * Level…" reveals it in a running window.
    */
   debug(topic: string, message: string, data?: unknown): void {
+    // The channel drops the line, but not the serialising a payload costs.
+    const ch = ensureChannel();
+    if (ch.logLevel > vscode.LogLevel.Debug) return;
     const payload = data === undefined ? "" : ` ${describe(data)}`;
-    ensureChannel().debug(bounded(`[${topic}] ${message}${payload}`));
+    ch.debug(bounded(`[${topic}] ${message}${payload}`));
   },
   info(topic: string, message: string, data?: unknown): void {
     const payload = data === undefined ? "" : ` ${safeStringify(data)}`;
@@ -61,9 +61,7 @@ export const log = {
   },
   error(topic: string, message: string, err: unknown): void {
     const detail =
-      err instanceof Error
-        ? `${err.message}\n${err.stack ?? ""}`
-        : safeStringify(err);
+      err instanceof Error ? (err.stack ?? err.message) : safeStringify(err);
     ensureChannel().error(bounded(`[${topic}] ${message}\n${detail}`));
   },
   /** Reveal the output panel so the user can see logs without hunting for it. */
