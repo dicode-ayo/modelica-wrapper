@@ -352,6 +352,15 @@ export interface RecordedMessage {
 
 export const recordedMessages: RecordedMessage[] = [];
 
+/** A line written through a `{ log: true }` output channel's level methods. */
+export interface LoggedLine {
+  channel: string;
+  level: "trace" | "debug" | "info" | "warn" | "error";
+  message: string;
+}
+
+export const loggedLines: LoggedLine[] = [];
+
 /**
  * A message that offered actions: what it said, what it offered, and whether it
  * was modal. Kept apart from {@link recordedMessages} so tests asserting the
@@ -848,8 +857,13 @@ export const window = {
     statusBarItems.push(stub);
     return stub;
   },
-  createOutputChannel(_name: string) {
+  createOutputChannel(name: string, options?: { log: true }) {
+    const record = (level: LoggedLine["level"]) => (message: string) => {
+      loggedLines.push({ channel: name, level, message });
+    };
     return {
+      name,
+      logLevel: options?.log ? 2 : undefined,
       append: () => {},
       appendLine: () => {},
       replace: () => {},
@@ -857,6 +871,11 @@ export const window = {
       show: () => {},
       hide: () => {},
       dispose: () => {},
+      trace: record("trace"),
+      debug: record("debug"),
+      info: record("info"),
+      warn: record("warn"),
+      error: record("error"),
     };
   },
   showInformationMessage(

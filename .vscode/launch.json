@@ -6,16 +6,12 @@
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/packages/extension"
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/extension",
+        "--log=drojdestvensky.modelica-wrapper=debug"
       ],
       "outFiles": ["${workspaceFolder}/packages/extension/out/**/*.js"],
       "preLaunchTask": "extension: build",
-      "sourceMaps": true,
-      // `log.debug` is silent unless this is set, and the OMC call trace it
-      // writes is the first thing anyone debugging the extension wants.
-      "env": {
-        "MODELICA_DEBUG": "1"
-      }
+      "sourceMaps": true
     },
     {
       "name": "Run Extension (ResistorDemo)",
@@ -23,14 +19,12 @@
       "request": "launch",
       "args": [
         "${workspaceFolder}/examples/ResistorDemo",
-        "--extensionDevelopmentPath=${workspaceFolder}/packages/extension"
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/extension",
+        "--log=drojdestvensky.modelica-wrapper=debug"
       ],
       "outFiles": ["${workspaceFolder}/packages/extension/out/**/*.js"],
       "preLaunchTask": "extension: build",
-      "sourceMaps": true,
-      "env": {
-        "MODELICA_DEBUG": "1"
-      }
+      "sourceMaps": true
     }
   ]
 }
