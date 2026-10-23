@@ -147,7 +147,7 @@ export function registerClassCommands(
 /**
  * Where a title-bar (no tree node) `createClass` should land. `ok: false`
  * means the user was already told why, or dismissed a prompt, and the
- * command should stop; `parent: undefined` is a deliberate top-level create.
+ * command should stop; `parent: undefined` means create at top level.
  */
 type TopLevelDestination =
   { ok: true; parent: string | undefined } | { ok: false };
