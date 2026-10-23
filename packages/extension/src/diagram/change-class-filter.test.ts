@@ -58,7 +58,18 @@ function layoutWithConnections(
         parameters: {},
       },
     },
-    components: {},
+    components: {
+      gain1: {
+        name: "gain1",
+        classRef: GAIN,
+        placement: {
+          extent: [
+            [0, 0],
+            [10, 10],
+          ],
+        },
+      },
+    },
     connectors: {},
     connections,
   };
@@ -141,7 +152,7 @@ const ELECTRICAL = {
 describe("connectedPortsOf", () => {
   it("returns [] when the component has no connections", () => {
     const layout = layoutWithConnections([], { u: makePort() });
-    expect(connectedPortsOf(layout, GAIN, "gain1")).toEqual([]);
+    expect(connectedPortsOf(layout, "gain1")).toEqual([]);
   });
 
   it("collects every port the component has wired up, on either side of the connection", () => {
@@ -163,13 +174,13 @@ describe("connectedPortsOf", () => {
         y: makePort({ name: "y", typeName: REAL_OUTPUT }),
       },
     );
-    expect(connectedPortsOf(layout, GAIN, "gain1")).toEqual(
+    expect(connectedPortsOf(layout, "gain1")).toEqual(
       expect.arrayContaining([
         { name: "u", typeName: REAL_INPUT },
         { name: "y", typeName: REAL_OUTPUT },
       ]),
     );
-    expect(connectedPortsOf(layout, GAIN, "gain1")).toHaveLength(2);
+    expect(connectedPortsOf(layout, "gain1")).toHaveLength(2);
   });
 
   it("ignores connections belonging to other components", () => {
@@ -183,7 +194,50 @@ describe("connectedPortsOf", () => {
       ],
       { u: makePort() },
     );
-    expect(connectedPortsOf(layout, GAIN, "gain1")).toEqual([]);
+    expect(connectedPortsOf(layout, "gain1")).toEqual([]);
+  });
+
+  it("reads the connectors of the component's catalog key, not of its class name", () => {
+    const layout = layoutWithConnections(
+      [
+        {
+          lhs: { component: "gain1", port: "support" },
+          rhs: { component: "src1", port: "y" },
+          waypoints: [],
+        },
+      ],
+      { support: makePort({ name: "support", typeName: "BaseSupport" }) },
+    );
+    const variant = {
+      name: GAIN,
+      restriction: "block",
+      iconLayers: [],
+      connectors: {
+        support: makePort({ name: "support", typeName: "VariantSupport" }),
+      },
+      parameters: {},
+    };
+    const component = layout.components["gain1"];
+    if (component === undefined) throw new Error("fixture lacks gain1");
+    layout.classes[`${GAIN}#2`] = variant;
+    layout.components["gain1"] = { ...component, classRef: `${GAIN}#2` };
+    expect(connectedPortsOf(layout, "gain1")).toEqual([
+      { name: "support", typeName: "VariantSupport" },
+    ]);
+  });
+
+  it("requires nothing when the connected component is missing from the layout", () => {
+    const layout = layoutWithConnections(
+      [
+        {
+          lhs: { component: "ghost1", port: "u" },
+          rhs: { component: "src1", port: "y" },
+          waypoints: [],
+        },
+      ],
+      { u: makePort() },
+    );
+    expect(connectedPortsOf(layout, "ghost1")).toEqual([]);
   });
 
   it("skips a connected port name that isn't in the class's connector map", () => {
@@ -197,7 +251,7 @@ describe("connectedPortsOf", () => {
       ],
       { u: makePort() },
     );
-    expect(connectedPortsOf(layout, GAIN, "gain1")).toEqual([]);
+    expect(connectedPortsOf(layout, "gain1")).toEqual([]);
   });
 });
 
