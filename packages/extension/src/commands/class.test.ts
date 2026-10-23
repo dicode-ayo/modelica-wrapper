@@ -204,5 +204,39 @@ describe("modelica.createClass", () => {
         expect.objectContaining({ data: "model MyModel\nend MyModel;\n" }),
       );
     });
+
+    it("surfaces readable text when resolving the root package rejects with a non-Error", async () => {
+      const { ctx: base, loadString } = makeContext(
+        path.join(tmp, "package.mo"),
+      );
+      const ctx = {
+        ...base,
+        ensureClient: () => Promise.reject("omc failed to start"),
+      } as unknown as CommandContext;
+      registerClassCommands(ctx);
+      queuePromptAnswers("model", "MyModel");
+
+      await runCommand("modelica.createClass");
+
+      expect(loadString).not.toHaveBeenCalled();
+      expect(recordedMessages).toContainEqual({
+        level: "error",
+        message:
+          "Modelica: failed to resolve the workspace root package: omc failed to start",
+      });
+    });
+
+    it("creates top-level when the empty workspace's root-package offer is declined", async () => {
+      await fsp.rm(path.join(tmp, "package.mo"));
+      const { ctx, loadString } = makeContext(path.join(tmp, "MyModel.mo"));
+      registerClassCommands(ctx);
+      queuePromptAnswers("model", "MyModel", "No");
+
+      await runCommand("modelica.createClass");
+
+      expect(loadString).toHaveBeenCalledWith(
+        expect.objectContaining({ data: "model MyModel\nend MyModel;\n" }),
+      );
+    });
   });
 });
