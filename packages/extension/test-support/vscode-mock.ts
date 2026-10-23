@@ -352,6 +352,28 @@ export interface RecordedMessage {
 
 export const recordedMessages: RecordedMessage[] = [];
 
+/** A line written through a `{ log: true }` output channel's level methods. */
+export interface LoggedLine {
+  channel: string;
+  level: "trace" | "debug" | "info" | "warn" | "error";
+  message: string;
+}
+
+export const loggedLines: LoggedLine[] = [];
+
+/** Mirrors `vscode.LogLevel`. */
+export enum LogLevel {
+  Off = 0,
+  Trace = 1,
+  Debug = 2,
+  Info = 3,
+  Warning = 4,
+  Error = 5,
+}
+
+/** The level a `{ log: true }` channel reports; lines below it are dropped. */
+export const outputChannelLogLevel = { value: LogLevel.Info };
+
 /**
  * A message that offered actions: what it said, what it offered, and whether it
  * was modal. Kept apart from {@link recordedMessages} so tests asserting the
@@ -848,8 +870,18 @@ export const window = {
     statusBarItems.push(stub);
     return stub;
   },
-  createOutputChannel(_name: string) {
+  createOutputChannel(name: string, options?: { log: true }) {
+    const record =
+      (level: LoggedLine["level"], threshold: LogLevel) =>
+      (message: string) => {
+        if (outputChannelLogLevel.value > threshold) return;
+        loggedLines.push({ channel: name, level, message });
+      };
     return {
+      name,
+      get logLevel() {
+        return options?.log ? outputChannelLogLevel.value : undefined;
+      },
       append: () => {},
       appendLine: () => {},
       replace: () => {},
@@ -857,6 +889,11 @@ export const window = {
       show: () => {},
       hide: () => {},
       dispose: () => {},
+      trace: record("trace", LogLevel.Trace),
+      debug: record("debug", LogLevel.Debug),
+      info: record("info", LogLevel.Info),
+      warn: record("warn", LogLevel.Warning),
+      error: record("error", LogLevel.Error),
     };
   },
   showInformationMessage(

@@ -254,3 +254,11 @@ events. Its events share that index, so `mo-event-scheduler.ts` orders them:
   and never blocks later ones.
 
 Conflict rules and failure handling are detailed in `mo-event-scheduler.ts`.
+
+## Logging
+
+The extension host writes to one `LogOutputChannel` named "Modelica" (View →
+Output). Debug output, such as the OMC call trace, is hidden at the default log
+level; reveal it in a running window with "Developer: Set Log Level…" — no
+relaunch. The `host` script and the launch configurations start the development
+host with `--log=drojdestvensky.modelica-wrapper=debug`.
