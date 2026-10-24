@@ -25,6 +25,7 @@ import type { OmcClient } from "@dicode/omc-client";
 import type { OmcCommand } from "@dicode/omc-client";
 
 import { errorDetail } from "../error-detail.js";
+
 import { diagnoseOmcError } from "./repl-diagnose.js";
 import { formatHelp, type MetaCommandName } from "./repl-help.js";
 

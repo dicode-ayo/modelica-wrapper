@@ -12,7 +12,6 @@
 
 import * as vscode from "vscode";
 
-import { errorDetail } from "../error-detail.js";
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { openDiagram } from "../diagram/open-diagram.js";
 import {
@@ -21,6 +20,7 @@ import {
   ICON_VIEW_TYPE,
 } from "../diagram/view-type.js";
 import { DocumentationEditorProvider } from "../documentation/documentation-editor-provider.js";
+import { errorDetail } from "../error-detail.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import type { DiagramCommandId } from "../webview/protocol.js";
 

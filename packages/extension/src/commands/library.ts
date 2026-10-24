@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 
 import { errorDetail } from "../error-detail.js";
+
 import type { CommandContext } from "./context.js";
 import { createReplLog } from "./repl.js";
 

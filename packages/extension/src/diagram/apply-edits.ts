@@ -2,6 +2,7 @@ import { OmcClient } from "@dicode/omc-client";
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 
 import { errorDetail } from "../error-detail.js";
+
 import {
   lineAnnotation,
   placementAnnotation,
