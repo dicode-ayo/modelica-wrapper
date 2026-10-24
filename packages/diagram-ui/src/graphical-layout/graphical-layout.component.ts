@@ -39,6 +39,7 @@ import {
   applyShapeVertexInsert,
 } from "../interaction/layout-ops.js";
 import {
+  dropShapeKeys,
   retainExistingSelection,
   shapeBoundsOf,
 } from "../interaction/selection-ops.js";
@@ -1611,6 +1612,18 @@ export class OmGraphicalLayout extends LitElement {
     const next = Array.from(this.selectedKeys);
     this.emit("om-selection-change", { keys: next });
     this.interactionStore.next({ selectedKeys: next });
+  }
+
+  /**
+   * Deselect every host shape, keeping components and connectors. Shape keys
+   * are positional, so a selection re-keyed ahead of a write the host then
+   * rejected would otherwise land on whichever shape now holds that index.
+   */
+  clearShapeSelection(): void {
+    const kept = dropShapeKeys(this.selectedKeys);
+    if (kept.length !== this.selectedKeys.size) {
+      this.setSelection(kept);
+    }
   }
 
   /** Read-only access to the live interaction state. Useful for tests

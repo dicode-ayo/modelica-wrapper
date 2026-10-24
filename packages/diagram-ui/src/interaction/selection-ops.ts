@@ -164,6 +164,15 @@ export function selectAllKeys(layout: DiagramLayout): Set<string> {
 }
 
 /**
+ * `keys` without the host-shape ones. Shape keys are positional, so after a
+ * layout that replaces the shapes wholesale an index no longer identifies the
+ * shape the user selected.
+ */
+export function dropShapeKeys(keys: Iterable<string>): string[] {
+  return Array.from(keys).filter((k) => parseKey(k)?.kind !== "shape");
+}
+
+/**
  * Filters `keys` down to those still backed by an entity in `layout`:
  * a component / connector the view shows, by id, or a host shape by its
  * own-layer `(kind, index)`. Selection survives an in-place edit (move /
