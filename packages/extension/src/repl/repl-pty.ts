@@ -23,6 +23,7 @@
 
 import * as vscode from "vscode";
 
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 
 import {
@@ -493,7 +494,7 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
       result = await evalLine(line, this.deps);
     } catch (err) {
       result = {
-        output: `error: ${(err as Error).message}`,
+        output: `error: ${errorDetail(err)}`,
         isError: true,
       };
     }

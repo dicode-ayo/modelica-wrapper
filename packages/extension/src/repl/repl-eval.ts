@@ -24,6 +24,7 @@ import { looksLikeError, withErrorBuffer } from "@dicode/omc-client";
 import type { OmcClient } from "@dicode/omc-client";
 import type { OmcCommand } from "@dicode/omc-client";
 
+import { errorDetail } from "../error-detail.js";
 import { diagnoseOmcError } from "./repl-diagnose.js";
 import { formatHelp, type MetaCommandName } from "./repl-help.js";
 
@@ -97,7 +98,7 @@ export async function evalLine(
     return { output: trimmedReply, isError: false };
   } catch (err) {
     return {
-      output: `error: ${(err as Error).message}`,
+      output: `error: ${errorDetail(err)}`,
       isError: true,
     };
   }
@@ -172,7 +173,7 @@ async function metaLoad(
     return { output: "loaded", isError: false };
   } catch (err) {
     return {
-      output: `error: ${(err as Error).message}`,
+      output: `error: ${errorDetail(err)}`,
       isError: true,
     };
   }
@@ -206,7 +207,7 @@ async function metaCd(
     return { output: workingDirectory, isError: false };
   } catch (err) {
     return {
-      output: `error: ${(err as Error).message}`,
+      output: `error: ${errorDetail(err)}`,
       isError: true,
     };
   }
@@ -218,7 +219,7 @@ async function metaReset(deps: ReplDependencies): Promise<ReplResult> {
     return { output: "OMC reset (fresh state)", isError: false };
   } catch (err) {
     return {
-      output: `error: reset failed: ${(err as Error).message}`,
+      output: `error: reset failed: ${errorDetail(err)}`,
       isError: true,
     };
   }

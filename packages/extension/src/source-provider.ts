@@ -44,6 +44,7 @@ import {
   type OmcClient,
 } from "@dicode/omc-client";
 
+import { errorDetail } from "./error-detail.js";
 import { log } from "./logger.js";
 
 import {
@@ -106,7 +107,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     } catch (err) {
       log.warn(
         "modelicaSource",
-        `stat ${typeName} failed; resolving as empty: ${(err as Error).message}`,
+        `stat ${typeName} failed; resolving as empty: ${errorDetail(err)}`,
       );
       return { type: vscode.FileType.File, ctime: 0, mtime, size: 0 };
     }
@@ -133,7 +134,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       // empty rather than hard-failing the editor that opened it.
       log.warn(
         "modelicaSource",
-        `readFile ${typeName} failed; returning empty: ${(err as Error).message}`,
+        `readFile ${typeName} failed; returning empty: ${errorDetail(err)}`,
       );
       return new Uint8Array();
     }

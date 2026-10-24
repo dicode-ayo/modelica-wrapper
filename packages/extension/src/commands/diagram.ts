@@ -12,6 +12,7 @@
 
 import * as vscode from "vscode";
 
+import { errorDetail } from "../error-detail.js";
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { openDiagram } from "../diagram/open-diagram.js";
 import {
@@ -111,7 +112,7 @@ export function registerDiagramCommands(
         await openDiagram(arg);
       } catch (err) {
         await vscode.window.showErrorMessage(
-          `Modelica: openDiagram failed: ${(err as Error).message}`,
+          `Modelica: openDiagram failed: ${errorDetail(err)}`,
         );
       }
     }),

@@ -4,6 +4,7 @@
 
 import * as vscode from "vscode";
 
+import { errorDetail } from "../error-detail.js";
 import type { CommandContext } from "./context.js";
 import { createReplLog } from "./repl.js";
 
@@ -33,9 +34,9 @@ export function registerLibraryCommands(
         ctx.libraryTree.childrenChanged(null);
         log.success(`loaded ${name}`);
       } catch (err) {
-        log.error((err as Error).message);
+        log.error(errorDetail(err));
         await vscode.window.showErrorMessage(
-          `Modelica: loadLibrary failed: ${(err as Error).message}`,
+          `Modelica: loadLibrary failed: ${errorDetail(err)}`,
         );
       }
     }),
