@@ -33,6 +33,7 @@ import {
   type ClassKind,
 } from "@dicode/omc-client";
 
+import { errorDetail } from "../error-detail.js";
 import { pathExists } from "../fs-util.js";
 
 import {
@@ -70,89 +71,9 @@ export function registerClassCommands(
         const ws = vscode.workspace.workspaceFolders?.[0];
 
         if (!parent && ws) {
-          const rootPkg = path.join(ws.uri.fsPath, "package.mo");
-          if (await pathExists(rootPkg)) {
-            // The workspace root is itself a package — per the discovery
-            // rules in workspace-scan.ts, its package.mo is the ONLY entry
-            // point. A within-less write here lands inside that package's own
-            // directory, and OMC refuses to load the whole package on
-            // reload, not just the new file. There is exactly one valid
-            // destination: nest under the root package.
-            const rootLog = createReplLog("createClass resolve root package");
-            try {
-              const c = await ctx.ensureClient();
-              const resolved = await resolveRootPackageParent(c, rootPkg);
-              if (!resolved.ok) {
-                rootLog.error(resolved.reason);
-                await vscode.window.showErrorMessage(
-                  `Modelica: cannot create a top-level class here — ${resolved.reason}.`,
-                );
-                return;
-              }
-              parent = resolved.parent;
-            } catch (err) {
-              // Only ctx.ensureClient() can throw here — resolveRootPackageParent
-              // catches its own failures and returns `{ ok: false }` — so this
-              // is an OMC startup problem, not a workspace-layout one.
-              rootLog.error((err as Error).message);
-              await vscode.window.showErrorMessage(
-                `Modelica: failed to resolve the workspace root package: ${(err as Error).message}`,
-              );
-              return;
-            }
-          } else if (!(await hasModelicaContent(ws.uri.fsPath))) {
-            // First-time-only prompt: offer to make the workspace root a
-            // package when there is no Modelica content yet and this would
-            // be top-level.
-            const folderDefault = sanitizeIdentifier(
-              path.basename(ws.uri.fsPath),
-            );
-            const answer = await vscode.window.showInformationMessage(
-              `The workspace folder has no Modelica content yet. ` +
-                `Initialize "${folderDefault}" as a root package and nest "${name}" inside it?`,
-              { modal: true },
-              "Yes",
-              "No",
-            );
-            if (answer === "Yes") {
-              const pkgName = await vscode.window.showInputBox({
-                prompt: "Root package name",
-                value: folderDefault,
-                validateInput: validateIdentifier,
-              });
-              if (!pkgName) return;
-              const pkgLog = createReplLog(`createClass package ${pkgName}`);
-              try {
-                const c = await ctx.ensureClient();
-                const init = await loadRootPackage(
-                  c,
-                  ws.uri,
-                  pkgName,
-                  ctx.selfWriteGuard,
-                );
-                if (!init.success) {
-                  pkgLog.error(init.errorString);
-                  await vscode.window.showErrorMessage(
-                    `Modelica: failed to initialize workspace package: ${init.errorString}`,
-                  );
-                  return;
-                }
-                pkgLog.success(`initialized workspace as package ${pkgName}`);
-                parent = pkgName;
-                // The root listing changed the moment the package loaded;
-                // firing now keeps the package visible even if creating the
-                // class inside it fails below.
-                ctx.libraryTree.childrenChanged(null);
-              } catch (err) {
-                pkgLog.error((err as Error).message);
-                await vscode.window.showErrorMessage(
-                  `Modelica: failed to initialize workspace package: ${(err as Error).message}`,
-                );
-                return;
-              }
-            }
-            // "No" or dismiss: proceed as top-level (parent stays undefined).
-          }
+          const destination = await resolveTopLevelDestination(ctx, ws, name);
+          if (!destination.ok) return;
+          parent = destination.parent;
         }
 
         const qualified = parent ? `${parent}.${name}` : name;
@@ -213,14 +134,104 @@ export function registerClassCommands(
               : `created ${qualified} (OMC memory only — no workspace folder)`,
           );
         } catch (err) {
-          log.error((err as Error).message);
+          log.error(errorDetail(err));
           await vscode.window.showErrorMessage(
-            `Modelica: failed to create ${qualified}: ${(err as Error).message}`,
+            `Modelica: failed to create ${qualified}: ${errorDetail(err)}`,
           );
         }
       },
     ),
   ];
+}
+
+/**
+ * Where a title-bar (no tree node) `createClass` should land. `ok: false`
+ * means the user was already told why, or dismissed a prompt, and the
+ * command should stop; `parent: undefined` means create at top level.
+ */
+type TopLevelDestination =
+  { ok: true; parent: string | undefined } | { ok: false };
+
+async function resolveTopLevelDestination(
+  ctx: CommandContext,
+  ws: vscode.WorkspaceFolder,
+  name: string,
+): Promise<TopLevelDestination> {
+  const rootPkg = path.join(ws.uri.fsPath, "package.mo");
+  if (await pathExists(rootPkg)) {
+    // The workspace root is itself a package — per the discovery rules in
+    // workspace-scan.ts, its package.mo is the ONLY entry point. A within-less
+    // write here lands inside that package's own directory, and OMC refuses to
+    // load the whole package on reload, not just the new file. There is
+    // exactly one valid destination: nest under the root package.
+    const rootLog = createReplLog("createClass resolve root package");
+    try {
+      const c = await ctx.ensureClient();
+      const resolved = await resolveRootPackageParent(c, rootPkg);
+      if (!resolved.ok) {
+        rootLog.error(resolved.reason);
+        await vscode.window.showErrorMessage(
+          `Modelica: cannot create a top-level class here — ${resolved.reason}.`,
+        );
+        return { ok: false };
+      }
+      return { ok: true, parent: resolved.parent };
+    } catch (err) {
+      // Only ctx.ensureClient() can throw here — resolveRootPackageParent
+      // catches its own failures and returns `{ ok: false }` — so this is an
+      // OMC startup problem, not a workspace-layout one.
+      rootLog.error(errorDetail(err));
+      await vscode.window.showErrorMessage(
+        `Modelica: failed to resolve the workspace root package: ${errorDetail(err)}`,
+      );
+      return { ok: false };
+    }
+  }
+  if (await hasModelicaContent(ws.uri.fsPath))
+    return { ok: true, parent: undefined };
+
+  // First-time-only prompt: offer to make the workspace root a package when
+  // there is no Modelica content yet and this would be top-level.
+  const folderDefault = sanitizeIdentifier(path.basename(ws.uri.fsPath));
+  const answer = await vscode.window.showInformationMessage(
+    `The workspace folder has no Modelica content yet. ` +
+      `Initialize "${folderDefault}" as a root package and nest "${name}" inside it?`,
+    { modal: true },
+    "Yes",
+    "No",
+  );
+  // "No" or dismiss: proceed as top-level.
+  if (answer !== "Yes") return { ok: true, parent: undefined };
+
+  const pkgName = await vscode.window.showInputBox({
+    prompt: "Root package name",
+    value: folderDefault,
+    validateInput: validateIdentifier,
+  });
+  if (!pkgName) return { ok: false };
+  const pkgLog = createReplLog(`createClass package ${pkgName}`);
+  try {
+    const c = await ctx.ensureClient();
+    const init = await loadRootPackage(c, ws.uri, pkgName, ctx.selfWriteGuard);
+    if (!init.success) {
+      pkgLog.error(init.errorString);
+      await vscode.window.showErrorMessage(
+        `Modelica: failed to initialize workspace package: ${init.errorString}`,
+      );
+      return { ok: false };
+    }
+    pkgLog.success(`initialized workspace as package ${pkgName}`);
+    // The root listing changed the moment the package loaded; firing now keeps
+    // the package visible even if creating the class inside it fails.
+    ctx.libraryTree.childrenChanged(null);
+    return { ok: true, parent: pkgName };
+  } catch (err) {
+    pkgLog.error(errorDetail(err));
+    await vscode.window.showErrorMessage(
+      `Modelica: failed to initialize workspace package: ${errorDetail(err)}`,
+    );
+    return { ok: false };
+  }
 }
 
 /**

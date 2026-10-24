@@ -21,9 +21,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OmcClient } from "@dicode/omc-client";
 
 import {
+  queueMessageAnswers,
   queuePromptAnswers,
   recordedMessages,
+  recordedPrompts,
   resetCommands,
+  resetMessages,
   runCommand,
   setWorkspaceFolders,
 } from "../../test-support/vscode-mock.js";
@@ -83,7 +86,7 @@ function packageNode(qualifiedName: string): LibraryNode {
 describe("modelica.createClass", () => {
   beforeEach(() => {
     resetCommands();
-    recordedMessages.length = 0;
+    resetMessages();
   });
 
   it("creates a top-level class without asking for a verdict", async () => {
@@ -203,6 +206,74 @@ describe("modelica.createClass", () => {
       expect(loadString).toHaveBeenCalledWith(
         expect.objectContaining({ data: "model MyModel\nend MyModel;\n" }),
       );
+    });
+
+    it("surfaces readable text when resolving the root package rejects with a non-Error", async () => {
+      const { ctx: base, loadString } = makeContext(
+        path.join(tmp, "package.mo"),
+      );
+      const ctx: CommandContext = {
+        ...base,
+        ensureClient: () => Promise.reject("omc failed to start"),
+      };
+      registerClassCommands(ctx);
+      queuePromptAnswers("model", "MyModel");
+
+      await runCommand("modelica.createClass");
+
+      expect(loadString).not.toHaveBeenCalled();
+      expect(recordedMessages).toContainEqual({
+        level: "error",
+        message:
+          "Modelica: failed to resolve the workspace root package: omc failed to start",
+      });
+    });
+
+    it("creates top-level when the empty workspace's root-package offer is declined", async () => {
+      await fsp.rm(path.join(tmp, "package.mo"));
+      const { ctx, loadString } = makeContext(path.join(tmp, "MyModel.mo"));
+      registerClassCommands(ctx);
+      queuePromptAnswers("model", "MyModel");
+      queueMessageAnswers("No");
+
+      await runCommand("modelica.createClass");
+
+      expect(recordedPrompts).toContainEqual(
+        expect.objectContaining({ modal: true, items: ["Yes", "No"] }),
+      );
+      expect(loadString).toHaveBeenCalledWith(
+        expect.objectContaining({ data: "model MyModel\nend MyModel;\n" }),
+      );
+    });
+
+    it("initializes the workspace as a package and nests the class under it when the offer is accepted", async () => {
+      await fsp.rm(path.join(tmp, "package.mo"));
+      const { ctx, loadString } = makeContext(path.join(tmp, "Root.mo"));
+      registerClassCommands(ctx);
+      queuePromptAnswers("model", "MyModel", "Root");
+      queueMessageAnswers("Yes");
+
+      await runCommand("modelica.createClass");
+
+      expect(ctx.libraryTree.childrenChanged).toHaveBeenCalledWith(null);
+      expect(loadString).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: "within Root;\nmodel MyModel\nend MyModel;\n",
+        }),
+      );
+    });
+
+    it("stops without creating anything when the root package name prompt is dismissed", async () => {
+      await fsp.rm(path.join(tmp, "package.mo"));
+      const { ctx, loadString } = makeContext(path.join(tmp, "Root.mo"));
+      registerClassCommands(ctx);
+      queuePromptAnswers("model", "MyModel", undefined);
+      queueMessageAnswers("Yes");
+
+      await runCommand("modelica.createClass");
+
+      expect(loadString).not.toHaveBeenCalled();
+      expect(recordedMessages.filter((m) => m.level === "error")).toEqual([]);
     });
   });
 });
