@@ -12,6 +12,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
+import { errorDetail } from "../error-detail.js";
 import type { SelfWriteGuard } from "../self-write-guard.js";
 
 import {
@@ -110,9 +111,9 @@ export function registerPackageCommands(
             `Modelica: workspace initialized as package "${pkgName}"`,
           );
         } catch (err) {
-          log.error((err as Error).message);
+          log.error(errorDetail(err));
           await vscode.window.showErrorMessage(
-            `Modelica: initializeWorkspaceAsPackage failed: ${(err as Error).message}`,
+            `Modelica: initializeWorkspaceAsPackage failed: ${errorDetail(err)}`,
           );
         }
       },
@@ -170,9 +171,9 @@ export function registerPackageCommands(
             `Modelica: saved ${node.qualifiedName} to ${target.fsPath}`,
           );
         } catch (err) {
-          log.error((err as Error).message);
+          log.error(errorDetail(err));
           await vscode.window.showErrorMessage(
-            `Modelica: savePackage failed: ${(err as Error).message}`,
+            `Modelica: savePackage failed: ${errorDetail(err)}`,
           );
         }
       },

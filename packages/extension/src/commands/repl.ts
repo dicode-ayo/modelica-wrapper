@@ -132,7 +132,7 @@ export function showInRepl(
  *   }
  *   log.success(`loaded ${name}`);
  * } catch (err) {
- *   log.error((err as Error).message);
+ *   log.error(errorDetail(err));
  * }
  * ```
  *

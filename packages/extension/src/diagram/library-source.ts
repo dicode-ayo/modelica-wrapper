@@ -12,6 +12,7 @@
  * staleness of holding onto an old tree.
  */
 
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import type {
   LibraryClassInfo,
@@ -192,7 +193,7 @@ export class LibrarySource {
       // loads more libraries).
       log.debug(
         "librarySource",
-        `getClassRestriction(${qualified}) failed: ${(err as Error).message}`,
+        `getClassRestriction(${qualified}) failed: ${errorDetail(err)}`,
       );
       return "unknown";
     }

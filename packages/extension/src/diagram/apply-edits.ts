@@ -1,6 +1,8 @@
 import { OmcClient } from "@dicode/omc-client";
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 
+import { errorDetail } from "../error-detail.js";
+
 import {
   lineAnnotation,
   placementAnnotation,
@@ -92,7 +94,7 @@ export async function applyEdits(
       result.applied++;
       onApplied?.(edit, client.lastCall ?? "(no command)", undefined);
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorDetail(err);
       result.failed.push({ edit, error: msg });
       onApplied?.(edit, client.lastCall ?? "(no command)", msg);
     }

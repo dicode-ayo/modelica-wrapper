@@ -178,21 +178,28 @@ describe("evalLine — plain OMC commands", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it("captures a thrown error from client.call as an error result", async () => {
-    const fake = makeClient();
-    fake.client = {
-      async call() {
-        throw new Error("transport closed");
-      },
-      async getErrorString() {
-        return { errorString: "" };
-      },
-    } as unknown as OmcClient;
-    const { deps } = makeDeps(fake.client);
-    const result = await evalLine("getVersion()", deps);
-    expect(result.isError).toBe(true);
-    expect(result.output).toContain("transport closed");
-  });
+  it.each([
+    ["an Error", new Error("transport closed"), "transport closed"],
+    ["a string", "transport closed", "transport closed"],
+    ["a plain object", { code: 7 }, "[object Object]"],
+  ])(
+    "renders a non-Error rejection (%s) as text instead of undefined",
+    async (_label, thrown, expected) => {
+      const fake = makeClient();
+      fake.client = {
+        async call() {
+          throw thrown;
+        },
+        async getErrorString() {
+          return { errorString: "" };
+        },
+      } as unknown as OmcClient;
+      const { deps } = makeDeps(fake.client);
+      const result = await evalLine("getVersion()", deps);
+      expect(result.isError).toBe(true);
+      expect(result.output).toBe(`error: ${expected}`);
+    },
+  );
 });
 
 describe("evalLine — meta commands", () => {
