@@ -100,7 +100,12 @@ export const ErrorMessageSchema = z.object({
     lineStart: z.number().int().describe("First affected line (1-based)."),
     columnStart: z.number().int().describe("First affected column (1-based)."),
     lineEnd: z.number().int().describe("Last affected line (1-based)."),
-    columnEnd: z.number().int().describe("Last affected column (1-based)."),
+    columnEnd: z
+      .number()
+      .int()
+      .describe(
+        "End column (1-based, exclusive: the column just past the last affected character).",
+      ),
   }),
   message: z.string().describe("User-readable diagnostic text."),
   kind: z

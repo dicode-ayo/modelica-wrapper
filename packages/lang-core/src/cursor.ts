@@ -286,9 +286,15 @@ function isWordChar(code: number): boolean {
  * because a modifier name's own dotted path does NOT contain the type it
  * modifies; a caller resolves each `path` segment against the previous type.
  *
- * See {@link modifiedTypeName} for the full contract on structural detection,
- * empty parens, the name-less `ERROR` recovery (which yields an empty `path`),
- * and the value-position non-distinction.
+ * Detection is STRUCTURAL — the caret is inside a `class_modification`'s parens
+ * (or an `ERROR` recovery of `type_specifier (…)`), not keyed to an
+ * `element_modification` name. So an empty modifier list resolves a type even
+ * with no modifier name under the caret, and a declaration with no component
+ * name yet (`Resistor(|)`) resolves with an empty `path`. This does NOT
+ * distinguish a name slot from a value slot — `Resistor r(R = x|)` still
+ * returns `Resistor`; a caller that must exclude the modifier-value position
+ * gates on the cursor context itself. Returns `null` when the caret is not
+ * inside such a modifier list, or the declaring type is empty/unresolvable.
  */
 export interface ModifiedType {
   readonly type: string;
@@ -318,35 +324,6 @@ export function modifiedTypeWithPath(
     node = node.parent;
   }
   return null;
-}
-
-/**
- * The dotted *type name* of the declaration whose `(...)` class-modification the
- * cursor at `offset` is inside — the class whose parameters a TOP-LEVEL modifier
- * completion should offer. For `Resistor r(R = |)` this is `"Resistor"`; for an
- * empty `Resistor r(|)` it is still `"Resistor"`; for `extends Base(p = |)` it
- * is `"Base"`; for a dotted type `Modelica.Electrical.Resistor r(R = |)` it is
- * the full dotted text. Also covers the mid-edit case where no component name
- * has been typed yet (`Resistor(|)`, `Modelica…Resistor(|)`), which the parser
- * recovers as an `ERROR` region rather than a `component_clause`.
- *
- * Detection is STRUCTURAL — the caret is inside a `class_modification`'s parens
- * (or an `ERROR` recovery of `type_specifier (…)`), not keyed to an
- * `element_modification` name. So an empty modifier list resolves a type even
- * with no modifier name under the caret. This does NOT distinguish a name slot
- * from a value slot — `Resistor r(R = x|)` still returns `"Resistor"`; a caller
- * that must exclude the modifier-value position gates on the cursor context
- * itself. Returns `null` when the caret is not inside such a modifier list, or
- * the declaring type is empty/unresolvable.
- *
- * This reports only the outer declaration's type; for a nested modifier
- * (`Motor m(resistor(|))`) it returns `"Motor"`. {@link modifiedTypeWithPath}
- * additionally reports the `["resistor"]` chain a nested completion walks.
- *
- * @see Offset unit — module note.
- */
-export function modifiedTypeName(tree: Tree, offset: number): string | null {
-  return modifiedTypeWithPath(tree, offset)?.type ?? null;
 }
 
 /**
