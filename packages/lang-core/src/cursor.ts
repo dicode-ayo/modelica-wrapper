@@ -268,6 +268,12 @@ function isWordChar(code: number): boolean {
   );
 }
 
+/** A declaration's type plus the nested modifier path to the caret; see {@link modifiedTypeWithPath}. */
+export interface ModifiedType {
+  readonly type: string;
+  readonly path: readonly string[];
+}
+
 /**
  * The declaration type whose `(...)` class-modification the cursor at `offset`
  * is inside, plus the chain of nested modifier-component names from that
@@ -279,6 +285,8 @@ function isWordChar(code: number): boolean {
  * `element_modification` for a nested one:
  *
  *   `Resistor r(R = |)`    → { type: "Resistor", path: [] }
+ *   `extends Base(p = |)`  → { type: "Base",     path: [] }
+ *   `Modelica.Electrical.Resistor r(R = |)` → { type: "Modelica.Electrical.Resistor", path: [] }
  *   `Motor m(resistor(|))` → { type: "Motor",    path: ["resistor"] }
  *   `Motor m(a(b(|)))`     → { type: "Motor",    path: ["a", "b"] }
  *
@@ -295,12 +303,9 @@ function isWordChar(code: number): boolean {
  * returns `Resistor`; a caller that must exclude the modifier-value position
  * gates on the cursor context itself. Returns `null` when the caret is not
  * inside such a modifier list, or the declaring type is empty/unresolvable.
+ *
+ * @see Offset unit — module note.
  */
-export interface ModifiedType {
-  readonly type: string;
-  readonly path: readonly string[];
-}
-
 export function modifiedTypeWithPath(
   tree: Tree,
   offset: number,
