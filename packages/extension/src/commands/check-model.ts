@@ -8,7 +8,7 @@
  *      `modelica-source:` text).
  *   2. None — show a warning and bail.
  *
- * Behavior (decided in the planning discussion, see PR description):
+ * Behavior:
  *   - Drains OMC's error buffer before kicking off the check.
  *   - Streams progress to a Notification toast that the user can cancel.
  *   - Logs each phase (>>>, result, summary) to the shared "Modelica" output
@@ -38,14 +38,13 @@ export function registerCheckModelCommand(
   return vscode.commands.registerCommand(
     "modelica.checkModel",
     async (arg?: unknown) => {
-      // A caller can name the class directly (the diagram custom editor, which
-      // isn't a text editor and so wouldn't be found by the fallback); the
-      // arg-less panel / source-view callers keep the active-target resolution.
+      // The diagram custom editor names its class directly; arg-less callers
+      // resolve the focused class.
       const className =
         typeof arg === "string" && arg.length > 0 ? arg : focusedClass();
       if (!className) {
         await vscode.window.showWarningMessage(
-          "Modelica: no active class to check (focus a diagram or a Modelica source view first).",
+          "Modelica: no active class to check (focus a diagram, documentation, or source tab first).",
         );
         return;
       }

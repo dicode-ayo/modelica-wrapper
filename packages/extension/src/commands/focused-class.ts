@@ -8,7 +8,7 @@ import { qualifiedNameFromUri } from "../source-provider.js";
  * The Modelica class the focused editor is showing: the diagram custom editor,
  * else the documentation custom editor, else the active `modelica-source:`
  * text editor. Every command that acts on "the current class" resolves it
- * here so a tab kind cannot be recognised by one command and not another.
+ * here so a tab kind cannot be recognized by one command and not another.
  */
 export function focusedClass(): string | undefined {
   const fromCustom =
