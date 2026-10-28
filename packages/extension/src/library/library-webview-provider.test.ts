@@ -869,10 +869,12 @@ describe("LibraryWebviewProvider", () => {
     );
     const { provider, client, invalidation } = makeProvider();
     const real = client.getModelInstance.getMockImplementation();
+    if (real === undefined)
+      throw new Error("fake client has no implementation");
     let release: (() => void) | undefined;
     client.getModelInstance.mockImplementationOnce(async (...args) => {
       await new Promise<void>((r) => (release = r));
-      return (real as NonNullable<typeof real>)(...args);
+      return real(...args);
     });
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);

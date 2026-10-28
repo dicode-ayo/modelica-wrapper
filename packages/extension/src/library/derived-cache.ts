@@ -9,8 +9,10 @@ import { log } from "../logger.js";
 
 export interface Computed<K, V> {
   value: V;
-  /** The keys `value` was derived from. `undefined` means the chain is unknown
-   *  (a failed compute): the edges recorded by the last good compute stay. */
+  /** Every key `value` was derived from, transitive ancestors included:
+   *  invalidation cascades one hop along these edges. `undefined` means the
+   *  chain is unknown (a failed compute): the edges recorded by the last good
+   *  compute stay. */
   dependsOn?: readonly K[] | undefined;
 }
 
@@ -33,7 +35,7 @@ interface Flight<V> {
 }
 
 export class DerivedCache<K extends string, V> {
-  private readonly entries = new Map<K, V>();
+  private readonly entries = new Map<K, { value: V }>();
   private readonly inFlight = new Map<K, Flight<V>>();
   /** Keys invalidated since their last compute. The mark is consumed by the
    *  compute it triggers, and survives {@link clear}: it records an edit, not
@@ -50,9 +52,10 @@ export class DerivedCache<K extends string, V> {
 
   /** Concurrent callers for one key share a single compute. */
   get(key: K): Promise<V> {
-    if (this.entries.has(key)) {
+    const hit = this.entries.get(key);
+    if (hit !== undefined) {
       log.debug(this.options.topic, `cache hit ${key}`);
-      return Promise.resolve(this.entries.get(key) as V);
+      return Promise.resolve(hit.value);
     }
     const joined = this.inFlight.get(key);
     if (joined) {
@@ -110,7 +113,8 @@ export class DerivedCache<K extends string, V> {
   ): Promise<V> {
     const { value, dependsOn } = await this.options.compute(key, { fresh });
     if (!this.owns(key, owner)) return value;
-    if (this.options.shouldCache?.(value) ?? true) this.entries.set(key, value);
+    if (this.options.shouldCache?.(value) ?? true)
+      this.entries.set(key, { value });
     if (dependsOn === undefined) return value;
     this.recordDependencies(key, dependsOn);
     // A base edited mid-compute missed the cascade; now that its edge exists,

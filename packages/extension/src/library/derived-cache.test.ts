@@ -8,7 +8,7 @@ interface Deferred<T> {
 }
 
 function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
+  let resolve: (value: T) => void = () => {};
   const promise = new Promise<T>((r) => (resolve = r));
   return { promise, resolve };
 }
@@ -142,6 +142,17 @@ describe("DerivedCache", () => {
     const { cache, pending, invalidated } = makeCache();
     const sub = cache.get("Sub");
     pending[0]?.resolve({ value: "svg", dependsOn: ["Base"] });
+    await sub;
+
+    cache.invalidate("Base");
+
+    expect(invalidated).toEqual(["Base", "Sub"]);
+  });
+
+  it("reaches an entry through a transitively listed ancestor", async () => {
+    const { cache, pending, invalidated } = makeCache();
+    const sub = cache.get("Sub");
+    pending[0]?.resolve({ value: "svg", dependsOn: ["Mid", "Base"] });
     await sub;
 
     cache.invalidate("Base");
