@@ -19,29 +19,15 @@ import {
   DOCUMENTATION_VIEW_TYPE,
   ICON_VIEW_TYPE,
 } from "../diagram/view-type.js";
-import { DocumentationEditorProvider } from "../documentation/documentation-editor-provider.js";
 import { errorDetail } from "../error-detail.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import type { DiagramCommandId } from "../webview/protocol.js";
 
 import type { CommandContext, LibraryNode } from "./context.js";
+import { focusedClass } from "./focused-class.js";
 
 /** The built-in text editor id — the `openWith` override for the text view. */
 const TEXT_VIEW = "default";
-
-/**
- * Resolve the Modelica class the active editor is showing: the focused
- * diagram/icon custom editor if there is one, else the active
- * `modelica-source:` text editor.
- */
-function activeClass(): string | undefined {
-  const fromCustom =
-    DiagramEditorProvider.activeClassName() ??
-    DocumentationEditorProvider.activeClassName();
-  if (fromCustom) return fromCustom;
-  const uri = vscode.window.activeTextEditor?.document.uri;
-  return uri ? qualifiedNameFromUri(uri) : undefined;
-}
 
 function tabUri(tab: vscode.Tab): vscode.Uri | undefined {
   const input = tab.input;
@@ -60,7 +46,7 @@ function tabUri(tab: vscode.Tab): vscode.Uri | undefined {
  * name the freshly-switched editor.
  */
 export async function switchView(target: string): Promise<void> {
-  const className = activeClass();
+  const className = focusedClass();
   if (!className) {
     await vscode.window.showWarningMessage(
       "Modelica: no Modelica class in the active editor.",
@@ -140,11 +126,10 @@ export function registerDiagramCommands(
     vscode.commands.registerCommand(
       "modelica.viewSource",
       async (node?: LibraryNode) => {
-        const typeName =
-          node?.qualifiedName ?? DiagramEditorProvider.activeClassName();
+        const typeName = node?.qualifiedName ?? focusedClass();
         if (!typeName) {
           await vscode.window.showWarningMessage(
-            "Modelica: no class selected. Right-click a class in the tree or focus an open diagram first.",
+            "Modelica: no class selected. Right-click a class in the tree or focus an open diagram, documentation, or source tab first.",
           );
           return;
         }

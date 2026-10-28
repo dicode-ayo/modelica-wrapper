@@ -4,12 +4,11 @@
  * Resolution order for the target class:
  *   0. An explicit `className` command argument, when passed (the diagram
  *      custom editor names its class directly).
- *   1. The active diagram editor, if any (`DiagramEditorProvider.activeClassName()`).
- *   2. The active text editor when its document uses the `modelica-source:`
- *      scheme (mapped back to a qualified name via `qualifiedNameFromUri`).
- *   3. None — show a warning and bail.
+ *   1. The focused editor's class (`focusedClass()`: diagram, documentation, or
+ *      `modelica-source:` text).
+ *   2. None — show a warning and bail.
  *
- * Behavior (decided in the planning discussion, see PR description):
+ * Behavior:
  *   - Drains OMC's error buffer before kicking off the check.
  *   - Streams progress to a Notification toast that the user can cancel.
  *   - Logs each phase (>>>, result, summary) to the shared "Modelica" output
@@ -25,17 +24,12 @@ import * as vscode from "vscode";
 import type { OmcClient } from "@dicode/omc-client";
 
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
-import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { log } from "../logger.js";
-import {
-  MODELICA_SOURCE_SCHEME,
-  qualifiedNameFromUri,
-  sourceUriFor,
-  sourceUriFromOmcFilename,
-} from "../source-provider.js";
+import { sourceUriFor, sourceUriFromOmcFilename } from "../source-provider.js";
 
 import { liveCheckLock } from "./check-lock.js";
 import type { CommandContext } from "./context.js";
+import { focusedClass } from "./focused-class.js";
 import { createReplLog } from "./repl.js";
 
 export function registerCheckModelCommand(
@@ -44,14 +38,13 @@ export function registerCheckModelCommand(
   return vscode.commands.registerCommand(
     "modelica.checkModel",
     async (arg?: unknown) => {
-      // A caller can name the class directly (the diagram custom editor, which
-      // isn't a text editor and so wouldn't be found by the fallback); the
-      // arg-less panel / source-view callers keep the active-target resolution.
+      // The diagram custom editor names its class directly; arg-less callers
+      // resolve the focused class.
       const className =
-        typeof arg === "string" && arg.length > 0 ? arg : resolveTargetClass();
+        typeof arg === "string" && arg.length > 0 ? arg : focusedClass();
       if (!className) {
         await vscode.window.showWarningMessage(
-          "Modelica: no active class to check (focus a diagram or a Modelica source view first).",
+          "Modelica: no active class to check (focus a diagram, documentation, or source tab first).",
         );
         return;
       }
@@ -70,16 +63,6 @@ export function registerCheckModelCommand(
       }
     },
   );
-}
-
-function resolveTargetClass(): string | undefined {
-  const fromDiagram = DiagramEditorProvider.activeClassName();
-  if (fromDiagram) return fromDiagram;
-  const editor = vscode.window.activeTextEditor;
-  if (editor && editor.document.uri.scheme === MODELICA_SOURCE_SCHEME) {
-    return qualifiedNameFromUri(editor.document.uri);
-  }
-  return undefined;
 }
 
 async function runCheckModel(
