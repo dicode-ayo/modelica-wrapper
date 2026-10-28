@@ -32,6 +32,7 @@ import { DOCUMENTATION_VIEW_TYPE } from "../diagram/view-type.js";
 import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
+import { DerivedCache, type Computed } from "./derived-cache.js";
 import { renderWebviewPage } from "../webview/webview-page.js";
 import type { LibraryClassInfo } from "../webview/library-messages.js";
 import type {
@@ -64,42 +65,30 @@ export class LibraryWebviewProvider
   private cached: { client: OmcClient; source: LibrarySource } | undefined;
   /** Rendered icon SVG per class, or `undefined` for "this class has no icon".
    *  Rendering one instantiates the class in OMC, so a miss is expensive and a
-   *  negative result is worth remembering. */
-  private iconCache = new Map<string, string | undefined>();
+   *  negative result is worth remembering. A subtype's icon inherits its base's
+   *  graphics, so it declares the base as a dependency and refreshes with it. */
+  private readonly icons = new DerivedCache<string, string | undefined>({
+    topic: "libraryIcon",
+    compute: (className, { fresh }) => this.renderIcon(className, fresh),
+    // A mutation just landed, and OMC's cheap annotation read would still
+    // report the prior elaboration: tell the webview to re-request the class,
+    // and drop the preview resolved from the same definition.
+    onInvalidate: (className) => {
+      this.previews.invalidate(className);
+      void this.post({ type: "libraryIconChanged", className });
+    },
+  });
   /** Successfully resolved preview definitions per class, so re-dragging one
    *  doesn't re-fetch its full model instance. A class that fails to resolve is
    *  not cached — the crosshair covers the interim and the next drag retries,
    *  so a transient failure isn't remembered as a permanent no-preview. */
-  private previewCache = new Map<string, ClassDef>();
-  /** Renders not yet settled, so a burst of rows sharing a class renders once.
-   *  Map membership is ownership: `refresh` (wholesale) and `iconChanged`
-   *  (per class) disown a render by removing its entry, so it can neither be
-   *  joined nor write its pre-mutation bytes into the cache. */
-  private readonly iconInFlight = new Map<
-    string,
-    Promise<string | undefined>
-  >();
-  /** Classes whose next render must force a full re-elaboration. `iconChanged`
-   *  marks the edited class here because OMC's cheap annotation read lags a
-   *  commit behind; the mark is consumed by the render it triggers. */
-  private readonly freshOnce = new Set<string>();
-  /** Base class → the rendered classes whose icon inherits its graphics, built
-   *  from each render's `extends` chain. `iconChanged` cascades an edit down
-   *  this index so a subtype's inherited icon refreshes with its base. Edges
-   *  are not pruned on cache eviction, only on re-render: a stale or emptied
-   *  edge can only over-invalidate (a redundant re-request), never render wrong
-   *  bytes, and it self-heals on the subtype's next render. */
-  private readonly iconDependents = new Map<string, Set<string>>();
-  /** Class → the base classes recorded for its last render, so a re-render can
-   *  prune its stale reverse edges out of {@link iconDependents} before adding
-   *  the fresh ones. */
-  private readonly iconDependsOn = new Map<string, readonly string[]>();
-  /** Monotonic tick bumped by every {@link invalidateIcon}. A render snapshots
-   *  it at the start and compares against {@link lastInvalidated} on completion
-   *  to catch a base edited mid-render, before its edge existed to cascade. */
-  private invalidationTick = 0;
-  /** Class → the {@link invalidationTick} at which it was last invalidated. */
-  private readonly lastInvalidated = new Map<string, number>();
+  private readonly previews = new DerivedCache<string, ClassDef | undefined>({
+    topic: "placementPreview",
+    compute: async (className) => ({
+      value: await this.resolvePreview(className),
+    }),
+    shouldCache: (def) => def !== undefined,
+  });
   /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
   private readonly searches = new Map<string, AbortController>();
 
@@ -128,7 +117,7 @@ export class LibraryWebviewProvider
    *  rendered icon and the restriction its row badges. */
   private classChanged(className: string): void {
     this.cached?.source.invalidateRestriction(className);
-    this.iconChanged(className);
+    this.icons.invalidate(className);
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -148,7 +137,7 @@ export class LibraryWebviewProvider
 
   /** Tell the webview to drop everything and re-fetch. The manual Refresh
    *  command's wholesale escape hatch; mutations with a known scope use
-   *  `childrenChanged` / `iconChanged` instead. No-op when the view isn't
+   *  `childrenChanged` / the invalidation registry instead. No-op when the view isn't
    *  resolved. */
   refresh(): void {
     // A mutation may have changed what a class's icon looks like, or removed it.
@@ -163,68 +152,6 @@ export class LibraryWebviewProvider
     void this.post({ type: "libraryChildrenChanged", parent });
   }
 
-  /** `className`'s rendered icon may have changed: invalidate it and every
-   *  class whose icon inherits its graphics. A subtype's icon includes its
-   *  base's shapes, so an edit to the base must refresh the subtype too — the
-   *  base is not part of the subtype's own last elaboration, so its cheap
-   *  annotation read would still paint the pre-edit inherited icon. */
-  private iconChanged(className: string): void {
-    this.invalidateIcon(className);
-    for (const dependent of this.iconDependents.get(className) ?? []) {
-      this.invalidateIcon(dependent);
-    }
-  }
-
-  /** Evict one class from the host caches and tell the webview to re-request
-   *  it. A render already in flight carries pre-mutation bytes — disowning its
-   *  `iconInFlight` entry keeps it from writing into the cache or being joined.
-   *  The re-request must re-elaborate the class (`freshOnce`): a mutation just
-   *  landed, and OMC's cheap annotation read would still report the prior
-   *  elaboration. */
-  private invalidateIcon(className: string): void {
-    this.iconCache.delete(className);
-    this.previewCache.delete(className);
-    this.iconInFlight.delete(className);
-    this.freshOnce.add(className);
-    this.lastInvalidated.set(className, ++this.invalidationTick);
-    void this.post({ type: "libraryIconChanged", className });
-  }
-
-  /** Record the base classes a render found in `className`'s `extends` chain,
-   *  replacing any edges from its previous render, so `iconChanged` on a base
-   *  reaches this subtype. Edges are recorded at render completion; an edit to a
-   *  base during the render lands before its edge exists, and the caller's
-   *  {@link baseInvalidatedSince} check covers that window. */
-  private recordIconDependencies(
-    className: string,
-    dependsOn: readonly string[],
-  ): void {
-    for (const base of this.iconDependsOn.get(className) ?? []) {
-      this.iconDependents.get(base)?.delete(className);
-    }
-    this.iconDependsOn.set(className, dependsOn);
-    for (const base of dependsOn) {
-      let dependents = this.iconDependents.get(base);
-      if (dependents === undefined) {
-        dependents = new Set();
-        this.iconDependents.set(base, dependents);
-      }
-      dependents.add(className);
-    }
-  }
-
-  /** Whether any of `bases` was invalidated after `sinceTick` — i.e. edited
-   *  while a render that started at `sinceTick` was still in flight, so that
-   *  render's bytes predate the edit. */
-  private baseInvalidatedSince(
-    bases: readonly string[],
-    sinceTick: number,
-  ): boolean {
-    return bases.some(
-      (base) => (this.lastInvalidated.get(base) ?? 0) > sinceTick,
-    );
-  }
-
   /** Abandon a search the webview no longer wants. Its queued OMC lookups stop
    *  at the next `signal.aborted` check instead of running to completion. */
   private cancelSearch(requestId: string): void {
@@ -236,14 +163,8 @@ export class LibraryWebviewProvider
   }
 
   private dropIconCache(): void {
-    const dropped = this.iconCache.size;
-    this.iconCache.clear();
-    this.previewCache.clear();
-    this.iconInFlight.clear();
-    // `freshOnce` is left intact: it marks only classes edited since their last
-    // render, so a reload racing a just-landed edit must still re-elaborate them
-    // rather than repaint the stale annotation read. Clearing it re-stales the
-    // very class `iconChanged` just marked.
+    const dropped = this.icons.clear();
+    this.previews.clear();
     log.debug("libraryIcon", `dropped ${dropped} cached icons`);
   }
 
@@ -252,24 +173,28 @@ export class LibraryWebviewProvider
    *  on a miss — the crosshair simply stays. */
   private async relayPreview(className: string): Promise<void> {
     try {
-      let def = this.previewCache.get(className);
-      if (def === undefined) {
-        const started = Date.now();
-        const client = await this.ensureClient();
-        const resolved = await fetchComponentClass(client, className);
-        if (resolved === undefined) return;
-        def = resolved;
-        this.previewCache.set(className, def);
-        log.debug(
-          "placementPreview",
-          `resolved ${className} in ${Date.now() - started}ms (${Object.keys(def.connectors).length} ports)`,
-        );
-      }
+      const def = await this.previews.get(className);
+      if (def === undefined) return;
       DiagramEditorProvider.relayPlacementPreview(className, def);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       log.warn("placementPreview", `resolve failed for ${className}: ${error}`);
     }
+  }
+
+  private async resolvePreview(
+    className: string,
+  ): Promise<ClassDef | undefined> {
+    const started = Date.now();
+    const client = await this.ensureClient();
+    const def = await fetchComponentClass(client, className);
+    if (def !== undefined) {
+      log.debug(
+        "placementPreview",
+        `resolved ${className} in ${Date.now() - started}ms (${Object.keys(def.connectors).length} ports)`,
+      );
+    }
+    return def;
   }
 
   private handleMessage(
@@ -374,7 +299,7 @@ export class LibraryWebviewProvider
     className: string,
   ): Promise<void> {
     try {
-      const svg = await this.iconSvg(className);
+      const svg = await this.icons.get(className);
       await this.post(
         svg === undefined
           ? { type: "libraryIconResult", requestId }
@@ -388,70 +313,19 @@ export class LibraryWebviewProvider
     }
   }
 
-  /**
-   * Rendered icon for `className`, memoized. Concurrent requests for the same
-   * class share one render: rows scroll into view in bursts, and OMC serializes
-   * every call, so a duplicate render is a round-trip the whole channel waits
-   * behind.
-   */
-  private iconSvg(className: string): Promise<string | undefined> {
-    if (this.iconCache.has(className)) {
-      log.debug("libraryIcon", `cache hit ${className}`);
-      return Promise.resolve(this.iconCache.get(className));
-    }
-    const inFlight = this.iconInFlight.get(className);
-    if (inFlight) {
-      log.debug("libraryIcon", `joining in-flight render ${className}`);
-      return inFlight;
-    }
+  private async renderIcon(
+    className: string,
+    fresh: boolean,
+  ): Promise<Computed<string, string | undefined>> {
     const started = Date.now();
-    // Consumed here, not on join/cache-hit: a cache-hit serves evicted-then-
-    // stale bytes and a join rides an already-started render, so neither would
-    // re-elaborate. `iconChanged` re-arms the mark when it disowns a running
-    // render, so the replacement this starts still forces a full instance.
-    const fresh = this.freshOnce.delete(className);
-    // Snapshot before the fetch: a base invalidated past this tick may predate
-    // the bytes this render produces, and its edge doesn't exist yet to
-    // cascade, so the completion re-invalidates on it. Conservative — the
-    // snapshot precedes the OMC read, so at worst it costs one needless
-    // re-render, never a stale icon.
-    const startTick = this.invalidationTick;
-    // `self` aliases `promise` for the ownership checks — the const can't be
-    // referenced inside its own initializer's immediately-invoked body.
-    let self: Promise<string | undefined> | undefined = undefined;
-    const promise = (async () => {
-      const client = await this.ensureClient();
-      const { svg, dependsOn } = await libraryIconSvg(client, className, fresh);
-      // Cache only while still owned: `refresh` and `iconChanged` disown the
-      // in-flight entry, and a disowned render carries pre-mutation bytes.
-      if (self !== undefined && this.iconInFlight.get(className) === self) {
-        this.iconCache.set(className, svg);
-        // A failed render reports `dependsOn` as `undefined` (chain unknown);
-        // keep the last good edges rather than pruning them off a transient miss.
-        if (dependsOn !== undefined) {
-          this.recordIconDependencies(className, dependsOn);
-          // A base edited mid-render missed the cascade (no edge yet); now that
-          // its edge exists, drop the possibly-stale bytes and re-render.
-          if (this.baseInvalidatedSince(dependsOn, startTick)) {
-            this.invalidateIcon(className);
-          }
-        }
-      }
-      const shape = svg === undefined ? "no icon" : `${svg.length} bytes`;
-      log.debug(
-        "libraryIcon",
-        `rendered ${className} in ${Date.now() - started}ms (${shape})`,
-      );
-      return svg;
-    })().finally(() => {
-      // A newer render may have replaced this entry; only clear our own.
-      if (self !== undefined && this.iconInFlight.get(className) === self) {
-        this.iconInFlight.delete(className);
-      }
-    });
-    self = promise;
-    this.iconInFlight.set(className, promise);
-    return promise;
+    const client = await this.ensureClient();
+    const { svg, dependsOn } = await libraryIconSvg(client, className, fresh);
+    const shape = svg === undefined ? "no icon" : `${svg.length} bytes`;
+    log.debug(
+      "libraryIcon",
+      `rendered ${className} in ${Date.now() - started}ms (${shape})`,
+    );
+    return { value: svg, dependsOn };
   }
 
   private post(

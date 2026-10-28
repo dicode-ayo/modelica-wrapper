@@ -206,6 +206,12 @@ restriction per child via `getClassRestriction`.
 [`LibrarySource`](../packages/extension/src/diagram/library-source.ts)
 adds `searchClassNames` (capped at 80) and session-cached restrictions; icons are
 lazy per row via the cheap `getModelInstanceAnnotation` path.
+The host memoizes those icons, and the placement preview definitions, in a
+[`DerivedCache`](../packages/extension/src/library/derived-cache.ts): concurrent
+requests share one render, an edit to a class evicts it and every subtype whose
+icon inherits its graphics, and a render in flight at the edit cannot write its
+pre-edit result. The two caches differ only in options (the preview cache does
+not remember a class that failed to resolve).
 The tree's expand affordance (`isExpandable`,
 [`library-tree-model.ts`](../packages/diagram-ui/src/library-tree/library-tree-model.ts))
 mirrors OMEdit's containment-based chevron rather than gating on restriction: any
