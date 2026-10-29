@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.0.8](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.7...modelica-wrapper-v0.0.8) (2026-10-29)
+
+
+### Features
+
+* **diagram-ui:** render Dialog(groupImage) in the parameter form ([#754](https://github.com/dicode-ayo/modelica-wrapper/issues/754)) ([0a9f276](https://github.com/dicode-ayo/modelica-wrapper/commit/0a9f2764058407c4fbda165d68f3de18e119e91e))
+* **diagram:** host+protocol for semantic in-place nesting on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#745](https://github.com/dicode-ayo/modelica-wrapper/issues/745)) ([b7fd25b](https://github.com/dicode-ayo/modelica-wrapper/commit/b7fd25b6902d824095cd88ef3fab44244f7b7eb7))
+* **diagram:** log failed nested-diagram fetches at debug level ([#785](https://github.com/dicode-ayo/modelica-wrapper/issues/785)) ([e065a0a](https://github.com/dicode-ayo/modelica-wrapper/commit/e065a0a1882a03791dcf5a55b0a7fa38525a86ae))
+* **diagram:** open a component's diagram from the canvas context menu ([#799](https://github.com/dicode-ayo/modelica-wrapper/issues/799)) ([985255c](https://github.com/dicode-ayo/modelica-wrapper/commit/985255ca42936a4667de69cb508dfda7dc866faa))
+* **diagram:** render a nested class diagram in place on zoom ([#629](https://github.com/dicode-ayo/modelica-wrapper/issues/629)) ([#761](https://github.com/dicode-ayo/modelica-wrapper/issues/761)) ([056ca56](https://github.com/dicode-ayo/modelica-wrapper/commit/056ca56f953b467543ccf43ec39419d9883b804f))
+* **extension:** log through a LogOutputChannel and drop the MODELICA_DEBUG gate ([#812](https://github.com/dicode-ayo/modelica-wrapper/issues/812)) ([aa74eac](https://github.com/dicode-ayo/modelica-wrapper/commit/aa74eac45e75b8ab47adb970881518f20e7e6d8e))
+
+
+### Bug Fixes
+
+* **deps:** update dependency @modelcontextprotocol/sdk to ^1.32.0 ([#749](https://github.com/dicode-ayo/modelica-wrapper/issues/749)) ([0d6b257](https://github.com/dicode-ayo/modelica-wrapper/commit/0d6b2571cfd27219495008d01c1514f4ece71742))
+* **deps:** update dependency web-tree-sitter to ^0.27.1 ([#802](https://github.com/dicode-ayo/modelica-wrapper/issues/802)) ([444938b](https://github.com/dicode-ayo/modelica-wrapper/commit/444938b2632892c3a7f9e33376241514484a37e8))
+* **diagram:** carry a standalone connector array's dimensions through copy/paste ([#810](https://github.com/dicode-ayo/modelica-wrapper/issues/810)) ([6ed236c](https://github.com/dicode-ayo/modelica-wrapper/commit/6ed236cc5cd13d95cb99ff31394d0395d19aba08))
+* **diagram:** explain a restored tab whose class no longer exists ([#780](https://github.com/dicode-ayo/modelica-wrapper/issues/780)) ([58f0b0f](https://github.com/dicode-ayo/modelica-wrapper/commit/58f0b0fc64358bb6d9ebbeb72019262b6b64665e))
+* **documentation:** explain a restored tab whose class no longer exists ([#793](https://github.com/dicode-ayo/modelica-wrapper/issues/793)) ([8c272f3](https://github.com/dicode-ayo/modelica-wrapper/commit/8c272f3a748ca2e917d93cf08ca6d51f91f2cf80))
+* **extension:** dedupe concurrent ResultCache lookups for the same file ([#726](https://github.com/dicode-ayo/modelica-wrapper/issues/726)) ([1b5bee3](https://github.com/dicode-ayo/modelica-wrapper/commit/1b5bee392353922b340b07d5900560aab1a776a4))
+* **extension:** probe existClass before fetchSimulationOptions ([#747](https://github.com/dicode-ayo/modelica-wrapper/issues/747)) ([a76aeea](https://github.com/dicode-ayo/modelica-wrapper/commit/a76aeeabbfd3d4653405a542eae170126a2c4a07))
+* **extension:** read Change class's connected ports by catalog key ([#801](https://github.com/dicode-ayo/modelica-wrapper/issues/801)) ([023ca19](https://github.com/dicode-ayo/modelica-wrapper/commit/023ca198deb85dff83c1bad3a0984d59264be832))
+* **extension:** resolve the focused class one way for Check Model, View Source and the view switcher ([#816](https://github.com/dicode-ayo/modelica-wrapper/issues/816)) ([6ad536b](https://github.com/dicode-ayo/modelica-wrapper/commit/6ad536b8f461fcd86f98b97875093127748b431c))
+* **extension:** serialize .mo watcher events across nested packages ([#811](https://github.com/dicode-ayo/modelica-wrapper/issues/811)) ([0438e93](https://github.com/dicode-ayo/modelica-wrapper/commit/0438e93d6f29dfba0c6e5f66820a5c3506c00587))
+* **extension:** take a turn for the save path's screens before loadString ([#755](https://github.com/dicode-ayo/modelica-wrapper/issues/755)) ([5d6b2cf](https://github.com/dicode-ayo/modelica-wrapper/commit/5d6b2cf5e3b9e9f4bc0b70adf7a9a677f7d79c1c))
+* **omc-bootstrap:** build the managed prefix in its final slot instead of moving it ([#764](https://github.com/dicode-ayo/modelica-wrapper/issues/764)) ([9d41de6](https://github.com/dicode-ayo/modelica-wrapper/commit/9d41de654380f626d1615591809a1d28c2f8e77f))
+* **omc-client:** refuse addComponent writes that would corrupt the model ([#738](https://github.com/dicode-ayo/modelica-wrapper/issues/738)) ([84b7a42](https://github.com/dicode-ayo/modelica-wrapper/commit/84b7a42b292d5807c9f9ad199c57baa7341de984))
+* **omc-client:** throw a typed not-found error for an unknown class ([#779](https://github.com/dicode-ayo/modelica-wrapper/issues/779)) ([16e219d](https://github.com/dicode-ayo/modelica-wrapper/commit/16e219d5f0d0ff113a16a9dc9b7fb74e79b872b8))
+
+
+### Performance Improvements
+
+* **extension:** read MODELICAPATH once per client, not per class verdict ([#753](https://github.com/dicode-ayo/modelica-wrapper/issues/753)) ([a8191f9](https://github.com/dicode-ayo/modelica-wrapper/commit/a8191f9482d0026cb1505c64bd8ce1a529ac45b3))
+
+
+### Code Refactoring
+
+* **extension:** extract createClass's title-bar destination resolution ([#813](https://github.com/dicode-ayo/modelica-wrapper/issues/813)) ([032beb5](https://github.com/dicode-ayo/modelica-wrapper/commit/032beb57f519460d6a50796431f15f41b058e56e))
+* **extension:** extract the library icon cache into DerivedCache ([#817](https://github.com/dicode-ayo/modelica-wrapper/issues/817)) ([c5033cc](https://github.com/dicode-ayo/modelica-wrapper/commit/c5033cc1cfb8d73f81864f4e3ef941feec1d0303))
+* **extension:** make an unrouted documentation message a compile error ([#809](https://github.com/dicode-ayo/modelica-wrapper/issues/809)) ([533b567](https://github.com/dicode-ayo/modelica-wrapper/commit/533b5674a2d5e0dd9e1b8b6c742a66c4d23ab5c5))
+* **extension:** read caught error text through errorDetail ([#814](https://github.com/dicode-ayo/modelica-wrapper/issues/814)) ([8215ac6](https://github.com/dicode-ayo/modelica-wrapper/commit/8215ac6476d770db76b2fabeb9dfe562222bcf98))
+* **omc-client:** declare the graphical-annotation enum vocabularies once ([#808](https://github.com/dicode-ayo/modelica-wrapper/issues/808)) ([3d4ff92](https://github.com/dicode-ayo/modelica-wrapper/commit/3d4ff92886d870d810776d219d2d5f9605cbfe42))
+
+
+### Tests
+
+* **extension:** fix ResultCache-dedup mismatch in the generation-drop test ([#742](https://github.com/dicode-ayo/modelica-wrapper/issues/742)) ([246f4d4](https://github.com/dicode-ayo/modelica-wrapper/commit/246f4d4add02ea214dc945110581c58168aa5916))
+
 ## [0.0.7](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.6...modelica-wrapper-v0.0.7) (2026-09-20)
 
 
