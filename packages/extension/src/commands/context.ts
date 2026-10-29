@@ -42,7 +42,7 @@ export interface CommandContext {
    */
   readonly resetClient?: () => Promise<OmcClient>;
   /** Activity-bar library sidebar (webview view); mutating commands signal it
-   *  with `childrenChanged` / `iconChanged`, the manual Refresh command with
+   *  with `childrenChanged`, the manual Refresh command with
    *  the wholesale `refresh()`. */
   readonly libraryTree: LibraryWebviewProvider;
   /** Virtual `modelica-source:` file-system provider; commands fire `notifySourceChanged(typeName)`

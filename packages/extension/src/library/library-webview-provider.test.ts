@@ -862,6 +862,35 @@ describe("LibraryWebviewProvider", () => {
     expect(client.getModelInstance).toHaveBeenCalledTimes(2);
   });
 
+  it("does not cache a preview that was resolved across an edit to its class", async () => {
+    vi.spyOn(DiagramEditorProvider, "relayPlacement").mockReturnValue(true);
+    vi.spyOn(DiagramEditorProvider, "relayPlacementPreview").mockReturnValue(
+      true,
+    );
+    const { provider, client, invalidation } = makeProvider();
+    const real = client.getModelInstance.getMockImplementation();
+    if (real === undefined)
+      throw new Error("fake client has no implementation");
+    let release: (() => void) | undefined;
+    client.getModelInstance.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((r) => (release = r));
+      return real(...args);
+    });
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "placementStart", className: "Modelica.Blocks.Math.Gain" });
+    await flush();
+    invalidation.classChanged("Modelica.Blocks.Math.Gain");
+    release?.();
+    await flush();
+    send({ type: "placementStart", className: "Modelica.Blocks.Math.Gain" });
+    await flush();
+
+    // The first resolve carried pre-edit bytes; the second drag re-resolves.
+    expect(client.getModelInstance).toHaveBeenCalledTimes(2);
+  });
+
   it("runs a row's context-menu command with a populated LibraryNode", () => {
     const { provider } = makeProvider();
     const { view, send } = fakeView();
