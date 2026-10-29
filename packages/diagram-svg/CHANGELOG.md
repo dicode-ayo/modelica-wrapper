@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-svg-v0.0.5...@dicode/diagram-svg-v0.0.6) (2026-10-29)
+
+
+### Code Refactoring
+
+* **omc-client:** declare the graphical-annotation enum vocabularies once ([#808](https://github.com/dicode-ayo/modelica-wrapper/issues/808)) ([3d4ff92](https://github.com/dicode-ayo/modelica-wrapper/commit/3d4ff92886d870d810776d219d2d5f9605cbfe42))
+
 ## [0.0.5](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/diagram-svg-v0.0.4...@dicode/diagram-svg-v0.0.5) (2026-09-12)
 
 
