@@ -41,6 +41,7 @@ import {
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 
 import { CommitSlot } from "./commit-slot.js";
+import { LayoutPushReceiver } from "./layout-push.js";
 import { NestedDiagramRequests } from "./nested-diagram-requests.js";
 import { panelReadonly } from "./panel-readonly.js";
 import { isExtensionMessage } from "./protocol.js";
@@ -118,6 +119,15 @@ class OmWebviewRoot extends LitElement {
   /** `layoutVersion` of the last host push applied, echoed as each commit's
    *  `basedOn` so the host can tell which layouts this report has seen. */
   private layoutVersion = 0;
+
+  private readonly layoutPushes = new LayoutPushReceiver<
+    Extract<ExtensionToWebview, { type: "layout" }>
+  >({
+    canApply: () =>
+      this.commits.canApplyPush(this.diagram?.gestureActive === true),
+    adopt: (push) => this.adoptPush(push),
+    clearShapeSelection: () => this.diagram?.clearShapeSelection(),
+  });
 
   private readonly commits = new CommitSlot((layout, basedOn) =>
     this.vscode?.postMessage({ type: "change", layout, basedOn }),
@@ -267,11 +277,9 @@ class OmWebviewRoot extends LitElement {
       case "layout":
         // A refused push leaves `layoutVersion` on the last applied push, so
         // the next commit's `basedOn` tells the host this one was missed and
-        // its forced settle re-sends it.
-        if (!this.commits.canApplyPush(this.diagram?.gestureActive === true)) {
-          return;
-        }
-        this.adoptPush(message);
+        // its forced settle re-sends it — without `rejected`, which the host
+        // spent on the refused push, so the clear it asked for is kept here.
+        this.layoutPushes.receive(message);
         return;
       case "renderError":
         this.renderError = message;

@@ -43,7 +43,13 @@ import {
   type ComponentParameterRef,
 } from "./parameter-edits.js";
 import { clearComponentModifiers } from "./clear-modifiers.js";
-import { diffLayouts, TRUSTED_ON_STALE_BASE } from "./diff-layout.js";
+import {
+  diffLayouts,
+  driftedGraphicsLayers,
+  isGraphicsEdit,
+  TRUSTED_ON_STALE_BASE,
+  type GraphicsLayer,
+} from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
 import { LibrarySource, SearchAbortedError } from "./library-source.js";
@@ -393,6 +399,15 @@ export async function fetchDiagramLayout(
  * `false` is dropped in that case — see its doc for why each one can't be
  * trusted from such a report.
  *
+ * `base`: the layout the report was computed against (the last one the host
+ * published); `prevLayout` is OMC's current state. Any graphics edit on a layer
+ * whose own shapes differ between the two is refused, not applied: the diff
+ * against `prevLayout` would fold the external change into the user's gesture,
+ * so an index names a different shape than the one acted on and an add can
+ * resurrect a shape the class has since lost. Refused edits come back in
+ * `failed` while the rest of the batch still applies, so a refusal never
+ * rolls back an unrelated edit.
+ *
  * Re-reading the layout is the caller's job, so a burst of edits can share one
  * re-fetch instead of paying for one each.
  */
@@ -401,14 +416,39 @@ export async function applyDiagramEdits(
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
-  options?: { staleBase?: boolean },
+  options?: { staleBase?: boolean; base?: DiagramLayout },
 ): Promise<ApplyEditsResult | null> {
   const diffed = diffLayouts(prevLayout, next);
-  const edits = options?.staleBase
+  const trusted = options?.staleBase
     ? diffed.filter((edit) => TRUSTED_ON_STALE_BASE[edit.kind])
     : diffed;
-  if (edits.length === 0) return null;
-  return applyEdits(client, className, edits, undefined, { snapshot: true });
+  // The drift probe normalizes every shape on both layouts, so it only runs
+  // for a report that carries a graphics edit.
+  const drifted =
+    options?.base !== undefined && trusted.some(isGraphicsEdit)
+      ? driftedGraphicsLayers(options.base, prevLayout)
+      : new Set<GraphicsLayer>();
+  const refused: ApplyEditsResult["failed"] = [];
+  const edits = trusted.filter((edit) => {
+    if (!isGraphicsEdit(edit) || !drifted.has(edit.layer)) return true;
+    refused.push({
+      edit,
+      error: `the ${edit.layer} graphics changed outside this editor; edit refused`,
+    });
+    return false;
+  });
+  if (edits.length === 0 && refused.length === 0) return null;
+  const applied =
+    edits.length > 0
+      ? await applyEdits(client, className, edits, undefined, {
+          snapshot: true,
+        })
+      : undefined;
+  return {
+    applied: applied?.applied ?? 0,
+    failed: [...refused, ...(applied?.failed ?? [])],
+    rolledBack: applied?.rolledBack ?? false,
+  };
 }
 
 /**
