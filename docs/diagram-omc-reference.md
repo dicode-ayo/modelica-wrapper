@@ -30,7 +30,7 @@ design proposal.
 | Renderer-agnostic contract | `DiagramLayout` | [_shared/diagramLayout.ts](../packages/omc-client/src/_shared/diagramLayout.ts) |
 | Shape decode | `decodeShape()` | [api/diagram/shapes.ts](../packages/omc-client/src/api/diagram/shapes.ts) |
 | Placement transform | §18 extent→rotation→origin | [api/diagram/placement.ts](../packages/omc-client/src/api/diagram/placement.ts) · [diagram-ui base/placement-math.ts](../packages/diagram-ui/src/base/placement-math.ts) |
-| Babylon renderer | `<om-scene>` / `<om-graphical-layout>` | [diagram-ui/src/scene](../packages/diagram-ui/src/scene/scene.component.ts) · [graphical-layout](../packages/diagram-ui/src/graphical-layout/graphical-layout.component.ts) |
+| PixiJS renderer | `<om-scene>` / `<om-graphical-layout>` | [diagram-ui/src/scene](../packages/diagram-ui/src/scene/scene.component.ts) · [graphical-layout](../packages/diagram-ui/src/graphical-layout/graphical-layout.component.ts) |
 | SVG renderer (icons) | `renderIconLayersToSvg()` | [packages/diagram-svg/src](../packages/diagram-svg/src) |
 | Layout diff / write-back | `diffLayouts()`, `applyEdits()` | [diff-layout.ts](../packages/extension/src/diagram/diff-layout.ts) · [apply-edits.ts](../packages/extension/src/diagram/apply-edits.ts) |
 | Undo | shadow buffer + `captureSnapshot()` (batch rollback) | [shadow-buffer.ts](../packages/extension/src/diagram/shadow-buffer.ts) · [omc-snapshot.ts](../packages/extension/src/diagram/omc-snapshot.ts) |
@@ -83,7 +83,7 @@ This section is spec-normative and is where "behaves weirdly" bugs usually hide.
 - **Y-axis.** Modelica is **y-up**. Screen/Qt is **y-down** — OMEdit inverts the
   scene with `scale(1.0, -1.0)` (Qt has no native inverted-Y). Our renderers do
   the same flip at the scene root (`<g transform="scale(1,-1)">` in SVG, implicit
-  in Babylon) — see [placement-math.ts](../packages/diagram-ui/src/base/placement-math.ts).
+  in the Pixi `worldRoot` transform) — see [placement-math.ts](../packages/diagram-ui/src/base/placement-math.ts).
 - **Component `Placement`.** Carries `transformation` (diagram layer) **and**
   `iconTransformation` (icon layer). **If no `iconTransformation` is given,
   `transformation` is reused for the icon layer** — a real rule worth verifying
