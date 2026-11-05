@@ -43,8 +43,8 @@ function classFromDocHtmlUri(uri: vscode.Uri): string | undefined {
  * file so it can be edited in a native VSCode HTML editor. Reads render the
  * current annotation from OMC; a save writes it back through
  * `setFullDocumentationAnnotation`, which preserves `revisions` and
- * `infoHeader` on its own, and notifies the class's `.mo` so the
- * diagram/documentation views reload. It also watches `.mo` changes and
+ * `infoHeader` on its own. The write is an OMC mutation, so the class's `.mo`
+ * and every open view learn of it through the invalidation registry. It also watches `.mo` changes and
  * refreshes any open HTML editor, so a WYSIWYG edit doesn't leave a stale
  * HTML buffer that a later save would clobber. A class whose source is
  * read-only refuses writes.
@@ -59,7 +59,6 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
 
   constructor(
     private readonly ensureClient: () => Promise<DocHtmlClient>,
-    private readonly notifyClassChanged: (className: string) => void,
     private readonly verdicts: WriteVerdicts,
   ) {}
 
@@ -161,8 +160,6 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
 
     this.versions.set(uri.toString(), Date.now());
     this._onDidChangeFile.fire([{ type: vscode.FileChangeType.Changed, uri }]);
-    // Reflect into the class's `.mo` so the diagram/documentation views reload.
-    this.notifyClassChanged(className);
   }
 
   delete(uri: vscode.Uri): void {

@@ -63,7 +63,6 @@ describe("DocumentationHtmlProvider", () => {
     const { client } = makeClient({ info: "<html><p>hi</p></html>" });
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
-      () => {},
       new WriteVerdicts(),
     );
     const bytes = await provider.readFile(URI);
@@ -74,18 +73,15 @@ describe("DocumentationHtmlProvider", () => {
     const { client } = makeClient({ fail: true });
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
-      () => {},
       new WriteVerdicts(),
     );
     await expect(provider.readFile(URI)).rejects.toThrow();
   });
 
-  it("writes the new info, then notifies the class", async () => {
-    const notified: string[] = [];
+  it("writes the new info", async () => {
     const { client, calls } = makeClient({ info: "<html><p>old</p></html>" });
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
-      (name) => notified.push(name),
       new WriteVerdicts(),
     );
 
@@ -94,7 +90,6 @@ describe("DocumentationHtmlProvider", () => {
     expect(calls.setArgs).toEqual([
       { typeName: CLASS, info: "<html><p>new</p></html>" },
     ]);
-    expect(notified).toEqual([CLASS]);
   });
 
   it("refuses to write a read-only source", async () => {
@@ -104,7 +99,6 @@ describe("DocumentationHtmlProvider", () => {
     );
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
-      () => {},
       new WriteVerdicts(),
     );
     await expect(
@@ -120,7 +114,6 @@ describe("DocumentationHtmlProvider", () => {
     );
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
-      () => {},
       new WriteVerdicts(),
     );
     await expect(
@@ -133,7 +126,6 @@ describe("DocumentationHtmlProvider", () => {
     const { client } = makeClient({ info: "<html></html>" });
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
-      () => {},
       new WriteVerdicts(),
     );
     const fired: vscode.Uri[] = [];

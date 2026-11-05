@@ -215,6 +215,10 @@ export function resolveDocumentationEditor(
     },
     classSetEvents,
   );
+  // Not filtered by scope: only this exact class's own annotation is on screen.
+  const changeSub = classSetEvents?.register((changed) => {
+    if (changed === className) controller?.onClassChanged();
+  });
   const sub = webview.onDidReceiveMessage((msg: DocWebviewToExtension) =>
     dispatchWebviewMessage(msg, {
       ready: () => gate.markReady(),
@@ -237,10 +241,10 @@ export function resolveDocumentationEditor(
   webviewPanel.onDidDispose(() => {
     disposed = true;
     watch.dispose();
+    changeSub?.dispose();
     sub.dispose();
     viewStateSub.dispose();
     DocumentationEditorProvider.clearActive(token);
-    if (controller) unregisterController(className, controller);
     controller?.dispose();
   });
   if (webviewPanel.active) {
@@ -256,14 +260,12 @@ export function resolveDocumentationEditor(
         (onForeignChange) => createShadowBuffer(document, onForeignChange),
       );
       controller = loading;
-      registerController(className, loading);
       const found = await loading.start();
       if (disposed) return;
       if (found) {
         watch.settled();
         return;
       }
-      unregisterController(className, loading);
       loading.dispose();
       controller = undefined;
       watch.notFound();
@@ -278,30 +280,6 @@ export function resolveDocumentationEditor(
 
   boot();
   watch.fetch();
-}
-
-// Focused-class → controller, so a write from the native HTML editor can re-sync
-// the open webview through its serialized queue instead of relying on VSCode's
-// (dirty-gated) buffer revert.
-const controllers = new Map<string, DocumentationEditController>();
-
-function registerController(
-  className: string,
-  controller: DocumentationEditController,
-): void {
-  controllers.set(className, controller);
-}
-
-function unregisterController(
-  className: string,
-  controller: DocumentationEditController,
-): void {
-  if (controllers.get(className) === controller) controllers.delete(className);
-}
-
-/** Re-sync the open documentation webview after an external write to `className`. */
-export function notifyDocumentationChanged(className: string): void {
-  void controllers.get(className)?.refreshFromExternalWrite();
 }
 
 interface EditControllerDeps {
@@ -381,6 +359,10 @@ export class DocumentationEditController {
   // before that is refused rather than targeting a not-yet-confirmed class.
   private seeded = false;
   private disposed = false;
+  // OMC announces this controller's own mutations back through the registry;
+  // re-sending the annotation it just wrote would overwrite what the user is
+  // still typing.
+  private writing = false;
 
   // Safe default until `refetchAndSend` resolves the class and judges it.
   private verdict: WriteVerdict = {
@@ -468,6 +450,12 @@ export class DocumentationEditController {
     });
   }
 
+  /** The registry announced a change to this class; ignores the echo of our own write. */
+  onClassChanged(): void {
+    if (this.writing) return;
+    void this.refreshFromExternalWrite();
+  }
+
   /** Reject an edit against a class the write verdict refuses. */
   private rejectIfReadOnly(): boolean {
     if (this.verdict.ok) return false;
@@ -476,6 +464,15 @@ export class DocumentationEditController {
   }
 
   private async onEdit(info: string): Promise<void> {
+    this.writing = true;
+    try {
+      await this.writeEdit(info);
+    } finally {
+      this.writing = false;
+    }
+  }
+
+  private async writeEdit(info: string): Promise<void> {
     if (this.rejectIfReadOnly()) return;
     if (!this.seeded) {
       this.reportError("Documentation hasn't loaded yet; edit discarded.");
@@ -517,6 +514,15 @@ export class DocumentationEditController {
    * the source of this change, and writing it would fight VSCode's undo.
    */
   private async reverseSync(): Promise<void> {
+    this.writing = true;
+    try {
+      await this.syncBufferToOmc();
+    } finally {
+      this.writing = false;
+    }
+  }
+
+  private async syncBufferToOmc(): Promise<void> {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
