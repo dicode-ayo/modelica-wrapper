@@ -500,9 +500,9 @@ export class DocumentationEditController {
       document,
       className,
     );
-    // A matching buffer is the source of this change (a save of the source
-    // editor itself); rewriting it would dirty a saved file. A built-in with no
-    // listable source returns empty, and writing that would wipe the buffer.
+    // A matching buffer needs no write, so a save of the source editor itself
+    // costs no redundant call. A built-in with no listable source returns
+    // empty, and writing that would wipe the buffer.
     if (!matches && source.length > 0) await this.shadow.write(source);
   }
 
