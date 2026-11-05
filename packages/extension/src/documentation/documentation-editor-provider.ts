@@ -412,7 +412,7 @@ export class DocumentationEditController {
   }
 
   handle({ info }: DocEditMessage): Promise<void> {
-    return this.enqueue(() => this.onEdit(info));
+    return this.enqueue(() => this.writeEdit(info));
   }
 
   dispose(): void {
@@ -435,13 +435,13 @@ export class DocumentationEditController {
   }
 
   /**
-   * Re-sync after the class's documentation was written elsewhere (the native
-   * HTML editor): reflect the canonical source into the buffer — even a dirty
-   * one, through the self-write guard — and re-send the fresh annotation so the
-   * webview can't hold a stale `info` and clobber the write on its next edit.
-   * A read-only class skips the reflect (nothing should have written it in the
-   * first place) but still re-sends, so the webview can't be left holding a
-   * stale `info`/`readOnly` state.
+   * Re-sync after the class changed outside this controller: reflect the
+   * canonical source into the buffer — even a dirty one, through the
+   * self-write guard — unless the buffer already matches it, and re-send the
+   * fresh annotation so the webview can't hold a stale `info` and clobber the
+   * write on its next edit. A read-only class skips the reflect (nothing should
+   * have written it in the first place) but still re-sends, so the webview
+   * can't be left holding a stale `info`/`readOnly` state.
    */
   refreshFromExternalWrite(): Promise<void> {
     return this.enqueue(async () => {
@@ -463,10 +463,13 @@ export class DocumentationEditController {
     return true;
   }
 
-  private async onEdit(info: string): Promise<void> {
+  // The registry echoes a mutation synchronously from inside the call, so the
+  // guard spans only the call: a change announced while this controller is
+  // merely awaiting is foreign and must still refresh.
+  private async ownMutation<T>(mutate: () => Promise<T>): Promise<T> {
     this.writing = true;
     try {
-      await this.writeEdit(info);
+      return await mutate();
     } finally {
       this.writing = false;
     }
@@ -479,10 +482,9 @@ export class DocumentationEditController {
       return;
     }
     const { client, className } = this.deps;
-    const { success } = await client.setFullDocumentationAnnotation({
-      typeName: className,
-      info,
-    });
+    const { success } = await this.ownMutation(() =>
+      client.setFullDocumentationAnnotation({ typeName: className, info }),
+    );
     if (!success) {
       this.reportError("setFullDocumentationAnnotation returned false");
       return;
@@ -492,19 +494,23 @@ export class DocumentationEditController {
 
   /** Reflect the class's canonical OMC source into the shadow buffer. */
   private async reflect(): Promise<void> {
-    const { contents } = await this.deps.client.listFile({
-      typeName: this.deps.className,
-    });
-    // A built-in with no listable source returns empty; writing that would wipe
-    // the buffer.
-    if (contents.length > 0) await this.shadow.write(contents);
+    const { client, className, document } = this.deps;
+    const { source, matches } = await compareBufferToClass(
+      client,
+      document,
+      className,
+    );
+    // A matching buffer is the source of this change (a save of the source
+    // editor itself); rewriting it would dirty a saved file. A built-in with no
+    // listable source returns empty, and writing that would wipe the buffer.
+    if (!matches && source.length > 0) await this.shadow.write(source);
   }
 
   private onForeignChange(): void {
     this.reverseTimer?.cancel();
     this.reverseTimer = this.scheduler.schedule(() => {
       this.reverseTimer = undefined;
-      void this.enqueue(() => this.reverseSync());
+      void this.enqueue(() => this.syncBufferToOmc());
     }, REVERSE_SYNC_DEBOUNCE_MS);
   }
 
@@ -513,15 +519,6 @@ export class DocumentationEditController {
    * re-fetched annotation. No reflect back to the buffer: the buffer is already
    * the source of this change, and writing it would fight VSCode's undo.
    */
-  private async reverseSync(): Promise<void> {
-    this.writing = true;
-    try {
-      await this.syncBufferToOmc();
-    } finally {
-      this.writing = false;
-    }
-  }
-
   private async syncBufferToOmc(): Promise<void> {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
@@ -532,7 +529,9 @@ export class DocumentationEditController {
         className,
       );
       if (matches) return;
-      const reload = await reloadBufferIntoOmc(client, document, className);
+      const reload = await this.ownMutation(() =>
+        reloadBufferIntoOmc(client, document, className),
+      );
       if (!reload.ok) {
         this.reportError(reload.message);
         return;

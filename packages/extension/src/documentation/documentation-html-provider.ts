@@ -44,10 +44,10 @@ function classFromDocHtmlUri(uri: vscode.Uri): string | undefined {
  * current annotation from OMC; a save writes it back through
  * `setFullDocumentationAnnotation`, which preserves `revisions` and
  * `infoHeader` on its own. The write is an OMC mutation, so the class's `.mo`
- * and every open view learn of it through the invalidation registry. It also watches `.mo` changes and
- * refreshes any open HTML editor, so a WYSIWYG edit doesn't leave a stale
- * HTML buffer that a later save would clobber. A class whose source is
- * read-only refuses writes.
+ * and every open view learn of it through the invalidation registry. It also
+ * watches `.mo` changes and refreshes any open HTML editor, so a WYSIWYG edit
+ * doesn't leave a stale HTML buffer that a later save would clobber. A class
+ * whose source is read-only refuses writes.
  */
 export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
   private readonly _onDidChangeFile = new vscode.EventEmitter<
