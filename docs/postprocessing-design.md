@@ -277,7 +277,7 @@ correlated by `requestId` exactly like the diagram's library browser
 
 The webview lives in its own package, **`@dicode/result-ui`** — Lit +
 ECharts custom elements with the `om-` prefix, kept **independent of `diagram-ui`**
-(no Babylon) so it can be bundled and distributed on its own. The bridge that touches
+(no PixiJS) so it can be bundled and distributed on its own. The bridge that touches
 `vscode.postMessage` lives in the *extension* package, like `<om-webview-root>`; the
 components themselves stay host-agnostic.
 
@@ -297,7 +297,7 @@ as a decision in [risks](#open-questions--risks).
 Design tokens / theming: shared via **`@dicode/ui-common`** — the `--om-*`
 token sheet (`omTokens`) and the Web Awesome → VSCode bridge (`webawesome-setup` +
 `wa-bridge.css`) were extracted there from `diagram-ui` so `result-ui` reuses them
-**without** depending on `diagram-ui` (no Babylon). `result-ui` will import `omTokens`
+**without** depending on `diagram-ui` (no PixiJS). `result-ui` will import `omTokens`
 from `@dicode/ui-common` when its components land (#84).
 
 ## Charting layer — ECharts
@@ -358,7 +358,7 @@ packages/omc-client/src/
     resultView.test.ts         # schema tests
                                # (DONE in #82)
 
-packages/result-ui/                # NEW standalone package — no Babylon, no diagram-ui dep
+packages/result-ui/                # NEW standalone package — no PixiJS, no diagram-ui dep
   package.json · tsconfig.json · vitest.config.ts   # (DONE in #82)
   src/
     index.ts                   # barrel (DONE in #82)
@@ -421,7 +421,7 @@ reference-counted into the existing watch markers.
    context — no new dependency, consistent with the diagram.
 9. **`result-ui` independence — tokens & render types.** Both **resolved**. Tokens: the
    `--om-*` sheet + WA bridge live in `@dicode/ui-common`, depended on by both
-   UIs (no Babylon). Render types: `result-ui` owns its view model in `types.ts`
+   UIs (no PixiJS). Render types: `result-ui` owns its view model in `types.ts`
    (structurally identical to the `omc-client` contract), so the extension bridge passes
    the parsed doc straight onto the component properties with no explicit map — and
    `result-ui` depends on neither `omc-client` nor `diagram-ui`, only `lit` + `echarts` +
@@ -434,7 +434,7 @@ Sized for independent review; each ships on its own.
 | # | Title | Scope | Tests |
 | --- | --- | --- | --- |
 | **1** ✅ | `resultView` contract + pure helpers + `result-ui` package | omc-client `resultView.ts` (types + schemas); extension `result-doc.ts` (`parse`/`serialize`/`tracesNeedingData`); **new `result-ui` package** with `var-tree.ts` (`buildVariableTree`). Pure; no UI, no host wiring. | Schema accept/reject; round-trip parse/serialize; `buildVariableTree`; `tracesNeedingData` planner. **(43 tests, done)** |
-| **2** ✅ | extension: provider skeleton | `ResultViewEditorProvider` + `modelica.resultView` customEditor for `*.omresults`, CSP HTML, `postprocessing-protocol.ts`, **third esbuild target** (`postprocessing.js`/`.css`, no Babylon), `<om-result-view-root>` bridge rendering a placeholder. `ready`→`doc` round-trip + re-sync on edit. Also: host `tsconfig` now type-checks `src/results/`. | typecheck + 3-bundle build; manual: open a `.omresults`, see the shell. |
+| **2** ✅ | extension: provider skeleton | `ResultViewEditorProvider` + `modelica.resultView` customEditor for `*.omresults`, CSP HTML, `postprocessing-protocol.ts`, **third esbuild target** (`postprocessing.js`/`.css`, no PixiJS), `<om-result-view-root>` bridge rendering a placeholder. `ready`→`doc` round-trip + re-sync on edit. Also: host `tsconfig` now type-checks `src/results/`. | typecheck + 3-bundle build; manual: open a `.omresults`, see the shell. |
 | **3** ✅ | result-ui: the cards UI | All five `<om-*>` elements + `echart-theme.ts` + pure `chart-option.ts` + `picker.ts`, driven by a hand-built `ResultViewDoc` + mock `TracePayload`s in Storybook. ECharts wired; `lit`/`echarts` deps added; `omTokens` from `ui-common` (no omc-client/diagram-ui dep). result-ui owns its render types in `types.ts`. | Storybook (3 stories) + unit tests: `picker`, `chart-option`, `var-tree`, mount/`om-request-variables`. **(24 tests)** |
 | **4** ✅ | extension: data path | `result-cache.ts` (path+mtime cache over `readSimulationResultVars`/`readSimulationResult`, close-on-invalidate); provider reads trajectories via the shared `OmcClient` and pushes `doc` + `traceData` (keyed by card id), lazy `requestVariables`; the webview entry now mounts `<om-result-view-app>` and bridges events↔postMessage; doc-edit handlers (add/delete plot, add/remove trace) via `WorkspaceEdit`. add-result is #86. | `result-cache` unit tests (fake reader; mtime invalidation, caching). Live `.mat` read verified manually (no OMC in CI). |
 | **5** | extension: the three add paths | `add-result.ts` — file pick, `.modelica` quick-pick, `modelica.addResultToView` command + `runSimulate` auto-add hook + active-view registry. | Integration: simulate → result appears; pick → appears; cache pick → appears. |
@@ -482,14 +482,14 @@ Decisions taken at the design-phase Q&A (2026-05-22), kept so the "why" survives
   `wa-bridge.css`) were extracted from `diagram-ui/src/base/` into a new
   `@dicode/ui-common` package, depended on by both UIs. This is what lets
   `result-ui` reuse the house tokens/theme **without** depending on `diagram-ui` (and
-  its Babylon). `diagram-ui` was migrated to import them from `ui-common`; its
+  its PixiJS). `diagram-ui` was migrated to import them from `ui-common`; its
   `./webawesome-setup` subpath export moved there too.
 - **Dedicated `result-ui` package** (decided while building #82). The webview lives in
   its own package `@dicode/result-ui` rather than under
   `diagram-ui/src/postprocessing/`, so it can be bundled and distributed independently.
   This reverses the design's initial "no new package" lean (borrowed from the
   multibody note): the deciding factor is that the postprocessing UI shares **nothing**
-  with the Babylon diagram, so folding it into `diagram-ui` would have shipped Babylon
+  with the PixiJS diagram, so folding it into `diagram-ui` would have shipped PixiJS
   to a charts-only view. Keeping it separate also forces the clean dependency boundary
   (no `diagram-ui`, ideally no `omc-client`) that independence requires — see
   [risks #9](#open-questions--risks).

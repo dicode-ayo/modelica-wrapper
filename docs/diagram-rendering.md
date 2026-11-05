@@ -4,7 +4,7 @@
 [omc-client.md](omc-client.md)
 
 How a Modelica class becomes pixels: `getModelInstance` → `DiagramLayout` →
-Babylon scene (interactive) or SVG string (thumbnails).
+PixiJS scene (interactive) or SVG string (thumbnails).
 
 ## The pipeline
 
@@ -12,17 +12,17 @@ Babylon scene (interactive) or SVG string (thumbnails).
 flowchart LR
     O["omc"] -->|getModelInstance| MI["ModelInstance<br/>(validated AST)"]
     MI -->|produceDiagramLayout| DL["DiagramLayout<br/>(renderer-agnostic)"]
-    DL -->|"webview"| BJS["Babylon.js scene<br/>(diagram-ui)"]
+    DL -->|"webview"| BJS["PixiJS scene<br/>(diagram-ui)"]
     DL -->|"host / icon textures"| SVG["SVG string<br/>(diagram-svg)"]
-    SVG -->|rasterize| TEX["Babylon texture"]
+    SVG -->|rasterize| TEX["Pixi texture"]
     TEX --> BJS
 ```
 
 There are two renderers consuming the same `DiagramLayout`:
 
-- **`diagram-ui`** (Babylon.js) — the interactive editor in the webview.
+- **`diagram-ui`** (PixiJS v8) — the interactive editor in the webview.
 - **`diagram-svg`** (pure SVG) — library thumbnails (host-side) and the icon
-  textures that `diagram-ui` paints onto component planes.
+  textures that `diagram-ui` paints onto component sprites.
 
 ## Step 1 — `getModelInstance` → `ModelInstance`
 
@@ -60,23 +60,23 @@ The resulting `DiagramLayout` is described in
 (extent → rotation → origin compose order, per Modelica spec §18) lives in
 [placement.ts](../packages/omc-client/src/api/diagram/placement.ts).
 
-## Step 3a — Babylon rendering (`diagram-ui`)
+## Step 3a — PixiJS rendering (`diagram-ui`)
 
-The webview renders the layout into a Babylon.js scene built from `<om-*>` Lit
+The webview renders the layout into a PixiJS v8 scene graph built from `<om-*>` Lit
 elements.
 
 ### The element tree
 
 | Element | Role |
 | --- | --- |
-| `<om-scene>` | **Root.** Owns the Babylon `Engine`/`Scene`, an orthographic camera for 2D (perspective for the MultiBody 3D mode), pan/zoom, and on-demand rendering. Provides scene + parent-node Lit contexts to descendants. |
+| `<om-scene>` | **Root.** Owns the Pixi WebGL `Renderer` and the `stage` → `worldRoot` → `diagramRoot` `Container` tree, pan/zoom (the view transform lives on `worldRoot`), and on-demand rendering (one render per animation frame, only after a mutation). Provides scene + parent-node Lit contexts to descendants. |
 | `<om-graphical-layout>` | **Orchestrator.** Takes the `DiagramLayout`, lays out components/connectors/connections, wires interaction and the parameter panel. |
-| `<om-component>` | One sub-component, drawn as a textured plane; provides `%name`/`%class`/`%<param>` substitution context to its icon. |
+| `<om-component>` | One sub-component, drawn as a `Container` holding its icon layers; provides `%name`/`%class`/`%<param>` substitution context to its icon. |
 | `<om-connector>` | A connector port with its visual indicator. |
 | `<om-connection>` / `<om-edge>` | Connection wires (orthogonally routed). |
 | `<om-label>` | Text labels (component names, value readouts). |
 | `<om-rectangle>` `<om-polygon>` `<om-line>` `<om-ellipse>` `<om-text>` `<om-bitmap>` | The six shape primitives. |
-| `<om-icon-provider>` | SVG → Babylon texture cache for component icons. |
+| `<om-icon-provider>` | SVG → Pixi texture cache for component icons. |
 | `<om-grid-axis>` | Grid + coordinate-system extent rectangle. |
 | `<om-parameter-panel>` / `<om-parameter-form>` | The floating parameter card (see [parameter-panel.md](parameter-panel.md)). |
 | `<om-library-tree>` | Virtualized class tree; drag source for place-on-canvas. |
@@ -84,9 +84,9 @@ elements.
 ### Drawing a component's icon
 
 `<om-component>` renders its `IconLayer[]` in source order (ancestor-first,
-host-last). Each shape becomes a primitive element which builds Babylon meshes:
-filled quads/strokes for rectangles, polylines for lines, etc. Component icons
-that come in as SVG are rasterized to a texture and painted on a plane — the
+host-last). Each shape becomes a primitive element which builds Pixi `Graphics`:
+filled and stroked paths for rectangles, polylines for lines, etc. Component icons
+that come in as SVG are rasterized to a texture and painted on a `Sprite` — the
 texture is cached by SVG hash and shared across all instances of the same class.
 
 ### Hidden placements
@@ -107,18 +107,18 @@ still route to its position, as in OMEdit.
 
 ### Picking and selection
 
-Interaction is mouse-driven via raycasting:
+Interaction is pointer-driven via hit-testing the container tree:
 
 ```mermaid
 flowchart LR
     PE["pointer event"] --> IM["InteractionManager"]
-    IM --> PICK["scene.pick(x,y)<br/>(Babylon raycast)"]
-    PICK --> KEY["entityKeyForNode<br/>(walk TransformNode names)"]
+    IM --> PICK["scene.pick(x,y)<br/>(Pixi hit-test)"]
+    PICK --> KEY["entityKeyForNode<br/>(read the entity tag up the Container parents)"]
     KEY --> EV["typed event:<br/>hover / select / doubleClick / contextMenu"]
     EV --> STORE["InteractionStateStore<br/>(selection set, drag state)"]
 ```
 
-Each shape owns a transparent **hit plane** (alpha 0) used both for picking and
+Each shape owns a transparent hit area used both for picking and
 for the selection-outline highlight. The entity key encodes whether a node is a
 component or a connector and its instance/port id — that key is what flows back to
 the host in `change` / `selectionChange` / `editComponent` messages.

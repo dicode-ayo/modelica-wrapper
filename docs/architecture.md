@@ -19,7 +19,7 @@ only by `postMessage`.
 flowchart TB
     subgraph WV["Webview (browser sandbox, CSP-locked)"]
         direction TB
-        DUI["diagram-ui — Lit + Babylon.js<br/>&lt;om-graphical-layout&gt;, &lt;om-scene&gt;,<br/>&lt;om-parameter-panel&gt;, &lt;om-library-tree&gt;"]
+        DUI["diagram-ui — Lit + PixiJS v8<br/>&lt;om-graphical-layout&gt;, &lt;om-scene&gt;,<br/>&lt;om-parameter-panel&gt;, &lt;om-library-tree&gt;"]
         ROOT["&lt;om-webview-root&gt; (webview-entry.ts)<br/>bridge: DOM events ⇄ postMessage"]
         DSVG1["diagram-svg (icon → SVG → texture)"]
         DUI --- ROOT
@@ -88,7 +88,7 @@ and it is where all the orchestration lives:
 
 ### 3. `diagram-ui` — the editor (in the webview)
 
-Lit custom elements (`<om-*>`) rendering into a Babylon.js scene. It is
+Lit custom elements (`<om-*>`) rendering into a PixiJS v8 scene graph (WebGL). It is
 **purposely host-agnostic**: it knows nothing about VSCode or OMC. It receives a
 `DiagramLayout` as a property and emits DOM `CustomEvent`s for every user
 gesture (move, connect, double-click, parameter submit, …). The
@@ -102,7 +102,7 @@ Full detail: [diagram-rendering.md](diagram-rendering.md).
 
 A pure `IconLayer[] → <svg>` function. Used two ways: the host renders library
 thumbnails with it (returned to the webview as SVG strings), and the webview
-rasterizes its output into Babylon textures for component icons.
+rasterizes its output into PixiJS textures for component icons.
 
 ## Why this shape
 
@@ -143,7 +143,7 @@ sequenceDiagram
     O-->>C: scaleFactor, offset
     C-->>H: display-unit labels applied
     H->>W: postMessage(init / layout)
-    W->>W: render Babylon scene
+    W->>W: render Pixi scene
 ```
 
 The `DiagramLayout` is the single contract between host and webview. The webview
