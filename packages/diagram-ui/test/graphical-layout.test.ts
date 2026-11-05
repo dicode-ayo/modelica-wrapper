@@ -331,6 +331,13 @@ describe("<om-graphical-layout>", () => {
     expect(el.selection).toEqual([]);
   });
 
+  it("clearShapeSelection drops positional shape keys and keeps component keys", async () => {
+    const el = await mountLayout({ layout: tinyLayout() });
+    el.setSelection(["c:b1", "shape:rectangle:2"]);
+    el.clearShapeSelection();
+    expect(el.selection).toEqual(["c:b1"]);
+  });
+
   it("ignores invalid selection keys", async () => {
     const el = await mountLayout({ layout: tinyLayout() });
     el.setSelection(["bogus", "c:b1"]);

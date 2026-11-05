@@ -623,6 +623,18 @@ function singleMove(
   return null;
 }
 
+const GRAPHICS_LAYERS: ReadonlyArray<
+  [GraphicsLayer, "iconLayers" | "diagramLayers"]
+> = [
+  ["icon", "iconLayers"],
+  ["diagram", "diagramLayers"],
+];
+
+/** One layer's own shapes as comparable keys, defaults materialized. */
+function shapeKeys(shapes: readonly Shape[]): string[] {
+  return shapes.map((s) => stableJson(normalizeShape(s)));
+}
+
 /**
  * Diff the host's OWN icon/diagram shapes (never inherited ancestor layers —
  * the write targets only `className`'s annotation).
@@ -654,18 +666,13 @@ function diffGraphics(
   next: DiagramLayout,
   edits: LayoutEdit[],
 ): void {
-  const layers: ReadonlyArray<[GraphicsLayer, "iconLayers" | "diagramLayers"]> =
-    [
-      ["icon", "iconLayers"],
-      ["diagram", "diagramLayers"],
-    ];
-  for (const [layer, field] of layers) {
+  for (const [layer, field] of GRAPHICS_LAYERS) {
     const before = ownShapes(prev[field], prev.className);
     const after = ownShapes(next[field], next.className);
     // Serialize once per layer: the reorder probe, the positional scans and
     // the shrink path's LCS below all reuse these same normalized keys.
-    const beforeKeys = before.map((s) => stableJson(normalizeShape(s)));
-    const afterKeys = after.map((s) => stableJson(normalizeShape(s)));
+    const beforeKeys = shapeKeys(before);
+    const afterKeys = shapeKeys(after);
 
     if (before.length === after.length) {
       // A reorder permutes the array, which the positional scan below would
@@ -719,6 +726,36 @@ function diffGraphics(
       }
     }
   }
+}
+
+/** Whether an edit rewrites a layer's shape array. */
+export function isGraphicsEdit(
+  edit: LayoutEdit,
+): edit is Extract<LayoutEdit, { layer: GraphicsLayer }> {
+  return "layer" in edit;
+}
+
+/**
+ * The layers whose own shapes differ between `base` and `current`, under the
+ * same normalization `diffGraphics` uses so a shape OMC re-materialized with
+ * defaults doesn't read as drift. A positional edit computed against
+ * `current` for a user gesture made on `base` mixes the external change into
+ * the gesture: an index names another shape, and an add can resurrect one the
+ * class lost.
+ */
+export function driftedGraphicsLayers(
+  base: DiagramLayout,
+  current: DiagramLayout,
+): Set<GraphicsLayer> {
+  const drifted = new Set<GraphicsLayer>();
+  for (const [layer, field] of GRAPHICS_LAYERS) {
+    const baseKeys = shapeKeys(ownShapes(base[field], base.className));
+    const currentKeys = shapeKeys(ownShapes(current[field], current.className));
+    if (!deepEqual(baseKeys, currentKeys)) {
+      drifted.add(layer);
+    }
+  }
+  return drifted;
 }
 
 /** A connection endpoint reference reduced to its diffable parts. */

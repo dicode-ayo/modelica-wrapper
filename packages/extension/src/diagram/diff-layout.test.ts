@@ -14,6 +14,7 @@ import {
 
 import {
   diffLayouts,
+  driftedGraphicsLayers,
   lineAnnotation,
   placementAnnotation,
   type LayoutEdit,
@@ -1593,5 +1594,39 @@ describe("diffLayouts — graphics", () => {
     expect(diffLayouts(prev, next)).toEqual([
       { kind: "graphicsAdded", layer: "diagram", shape: rect(20) },
     ]);
+  });
+});
+
+describe("driftedGraphicsLayers (issue #388)", () => {
+  function rect(x: number): RectangleShape {
+    return {
+      kind: "rectangle",
+      extent: [
+        [x, x],
+        [x + 10, x + 10],
+      ],
+    };
+  }
+  function layered(icon: Shape[], diagram: Shape[]): DiagramLayout {
+    return {
+      ...baseLayout(),
+      iconLayers: [{ from: "T", shapes: icon }],
+      diagramLayers: [{ from: "T", shapes: diagram }],
+    };
+  }
+
+  it("reports a layer whose shapes were permuted, and only that layer", () => {
+    const base = layered([rect(0), rect(10)], [rect(0)]);
+    const current = layered([rect(10), rect(0)], [rect(0)]);
+    expect([...driftedGraphicsLayers(base, current)]).toEqual(["icon"]);
+  });
+
+  it("does not report a shape OMC re-materialized with its spec defaults", () => {
+    const base = layered([rect(0)], []);
+    const current = layered(
+      [{ ...rect(0), visible: true, rotation: 0, origin: [0, 0] }],
+      [],
+    );
+    expect(driftedGraphicsLayers(base, current).size).toBe(0);
   });
 });

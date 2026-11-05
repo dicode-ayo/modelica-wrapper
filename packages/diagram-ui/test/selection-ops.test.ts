@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DiagramLayout, Shape } from "@dicode/omc-client";
 
 import {
+  dropShapeKeys,
   retainExistingSelection,
   selectAllKeys,
   selectByDiagramRect,
@@ -331,5 +332,13 @@ describe("hidden placements (Placement visible=false)", () => {
       new Set(["c:R1", "c:C1", "k:p"]),
     );
     expect([...kept]).toEqual(["c:R1"]);
+  });
+});
+
+describe("dropShapeKeys", () => {
+  it("drops positional shape keys and keeps component and connector keys", () => {
+    expect(
+      dropShapeKeys(["shape:rectangle:2", "c:R1", "k:p", "shape:line:0"]),
+    ).toEqual(["c:R1", "k:p"]);
   });
 });
