@@ -33,10 +33,7 @@ import {
   DOCUMENTATION_VIEW_TYPE,
   ICON_VIEW_TYPE,
 } from "./diagram/view-type.js";
-import {
-  DocumentationEditorProvider,
-  notifyDocumentationChanged,
-} from "./documentation/documentation-editor-provider.js";
+import { DocumentationEditorProvider } from "./documentation/documentation-editor-provider.js";
 import {
   DocumentationHtmlProvider,
   MODELICA_DOC_SCHEME,
@@ -211,12 +208,6 @@ export async function activate(
   );
   const docHtmlProvider = new DocumentationHtmlProvider(
     ensureClient,
-    (name) => {
-      // The webview's controller re-syncs even a dirty buffer through its queue;
-      // notifySourceChanged also reloads a plain `.mo` text editor if one is open.
-      notifyDocumentationChanged(name);
-      sourceProvider.notifySourceChanged(name);
-    },
     writeVerdicts,
   );
 
@@ -246,9 +237,7 @@ export async function activate(
 
   // The source provider's change broadcast is the broad producer feeding the
   // registry: every write that lands in OMC — a text-editor save, a mutation
-  // command, the `.mo` watcher reloading a foreign edit — ends there. An
-  // unsaved graphical commit reaches OMC but not that broadcast, so the
-  // diagram/icon editors announce their own class (their callback below).
+  // command, the `.mo` watcher reloading a foreign edit — ends there.
   context.subscriptions.push(
     publishSourceChanges(sourceProvider, invalidation),
   );
@@ -280,7 +269,6 @@ export async function activate(
       writeVerdicts,
       DIAGRAM_VIEW_TYPE,
       "diagram",
-      (className) => invalidation.classChanged(className),
       invalidation,
     ),
     DiagramEditorProvider.register(
@@ -289,7 +277,6 @@ export async function activate(
       writeVerdicts,
       ICON_VIEW_TYPE,
       "icon",
-      (className) => invalidation.classChanged(className),
       invalidation,
     ),
     DocumentationEditorProvider.register(
