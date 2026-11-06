@@ -54,6 +54,7 @@
     "test:watch": "vitest",
     "test:unit": "OMC_INTEGRATION=0 vitest run",
     "capture-modelinstance-fixtures": "node scripts/capture-modelinstance-fixtures.mjs",
+    "export-diagrams": "tsx scripts/export-diagrams.ts",
     "check-modelinstance-schema-drift": "node scripts/check-modelinstance-schema-drift.mjs",
     "coverage:recount": "node scripts/check-coverage-counts.mjs",
     "test:coverage": "OMC_INTEGRATION=0 vitest run --coverage",
@@ -67,6 +68,7 @@
     "@apidevtools/json-schema-ref-parser": "^16.0.3",
     "@types/node": "^24.19.1",
     "@vitest/coverage-istanbul": "^4.1.11",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   }

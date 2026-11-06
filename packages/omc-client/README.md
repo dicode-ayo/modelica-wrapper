@@ -137,6 +137,23 @@ const layout = diagram.produceDiagramLayout(instance, "diagram");
 // layout.iconLayers / .components / .connectors / .connections / …
 ```
 
+## Exporting example diagrams as a dataset
+
+`scripts/export-diagrams.ts` writes the diagrams of every class extending
+`Modelica.Icons.Example` under the given packages, so layout work can be rerun
+offline without OMC:
+
+```sh
+pnpm --filter @dicode/omc-client export-diagrams -- --out <dir> Modelica
+```
+
+Per class it writes `<Class>.modelInstance.json` (OMC's `getModelInstance`
+tree) and `<Class>.diagram.json` (`produceDiagramLayout(instance, "diagram")`),
+plus one `summary.json` with component counts, `getConnectionCount` next to the
+connections the layout kept, and every failure and connection-count mismatch.
+A failing class is recorded and the run continues. The output directory is
+always the one you pass; it is a dataset, not a test fixture.
+
 ## Parsing OMC responses directly
 
 OMC answers in Modelica syntax, not JSON. The recursive-descent parser is exported
