@@ -362,7 +362,7 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(vitest@4.1.11)
       tsx:
-        specifier: ^4.23.15
+        specifier: 4.23.15
         version: 4.23.15
       typescript:
         specifier: ^5.9.3

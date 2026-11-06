@@ -7,8 +7,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ModelInstance } from "../_shared/modelInstance.js";
 import { exportDiagrams, type ExportClient } from "./diagram-dataset.js";
 
-const instance = (name: string): ModelInstance =>
-  ({ name, elements: [], $kind: "class" }) as unknown as ModelInstance;
+const instance = (
+  name: string,
+  extra: Partial<ModelInstance> = {},
+): ModelInstance => ({ name, restriction: "model", elements: [], ...extra });
 
 function client(overrides: Partial<ExportClient> = {}): ExportClient {
   return {
@@ -60,8 +62,16 @@ describe("exportDiagrams", () => {
   });
 
   it("lists every connection-count mismatch", async () => {
+    const dropped = {
+      lhs: { $kind: "cref", parts: [] },
+    } as unknown as NonNullable<ModelInstance["connections"]>[number];
     const summary = await exportDiagrams(
-      client({ getConnectionCount: async () => ({ count: 3 }) }),
+      client({
+        getConnectionCount: async () => ({ count: 3 }),
+        getModelInstance: async ({ typeName }) => ({
+          instance: instance(typeName, { connections: [dropped] }),
+        }),
+      }),
       { packages: ["P"], outDir: dir },
     );
     expect(summary.connectionMismatches.map((c) => c.className)).toEqual([
@@ -69,7 +79,7 @@ describe("exportDiagrams", () => {
       "P.B",
     ]);
     expect(summary.connectionMismatches[0]).toMatchObject({
-      omcConnectionCount: 3,
+      instanceConnectionCount: 1,
       layoutConnectionCount: 0,
     });
   });
@@ -103,5 +113,79 @@ describe("exportDiagrams", () => {
     );
     expect(summary.failures[0]?.className).toBe("P");
     expect(summary.classes.map((c) => c.className)).toEqual(["Q.X"]);
+  });
+
+  it("qualifies names relative to the package and drops the base class", async () => {
+    const summary = await exportDiagrams(
+      client({
+        getAllSubtypeOf: async () => ({
+          classNames: ["Icons.Example", "Electrical.A", "Modelica.Blocks.B"],
+        }),
+      }),
+      { packages: ["Modelica"], outDir: dir },
+    );
+    expect(summary.classes.map((c) => c.className)).toEqual([
+      "Modelica.Blocks.B",
+      "Modelica.Electrical.A",
+    ]);
+  });
+
+  it("exports a class once when packages overlap, in sorted order", async () => {
+    const summary = await exportDiagrams(
+      client({
+        getAllSubtypeOf: async () => ({ classNames: ["P.B", "P.A"] }),
+      }),
+      { packages: ["P", "P"], outDir: dir },
+    );
+    expect(summary.classes.map((c) => c.className)).toEqual(["P.A", "P.B"]);
+  });
+
+  it("keeps a hostile class name inside the output directory", async () => {
+    const summary = await exportDiagrams(
+      client({
+        getAllSubtypeOf: async () => ({ classNames: ["P.'../../evil'"] }),
+      }),
+      { packages: ["P"], outDir: dir },
+    );
+    expect(summary.failures).toEqual([]);
+    const files = await readdir(dir);
+    expect(files.every((f) => !f.includes("/"))).toBe(true);
+    expect(files).toContain("P._.._.._evil_.diagram.json");
+  });
+
+  it("records a file-name collision instead of overwriting", async () => {
+    const summary = await exportDiagrams(
+      client({
+        getAllSubtypeOf: async () => ({ classNames: ["P.'a b'", "P.'a/b'"] }),
+      }),
+      { packages: ["P"], outDir: dir },
+    );
+    expect(summary.classes).toHaveLength(1);
+    expect(summary.failures).toHaveLength(1);
+    expect(summary.failures[0]?.message).toContain("collides");
+  });
+
+  it("compares the layout against connections inherited through extends, not OMC's own-class count", async () => {
+    const conn = { lhs: { $kind: "cref", parts: [] } };
+    const base = instance("Base", {
+      connections: [conn, conn] as unknown as ModelInstance["connections"],
+    });
+    const summary = await exportDiagrams(
+      client({
+        getModelInstance: async ({ typeName }) => ({
+          instance: instance(typeName, {
+            elements: [
+              { $kind: "extends", baseClass: base },
+            ] as unknown as ModelInstance["elements"],
+          }),
+        }),
+      }),
+      { packages: ["P"], outDir: dir },
+    );
+    expect(summary.classes[0]).toMatchObject({
+      omcConnectionCount: 0,
+      instanceConnectionCount: 2,
+    });
+    expect(summary.connectionMismatches).toHaveLength(2);
   });
 });
