@@ -4,17 +4,15 @@
  *   - Load on first touch.
  *   - {@link OmcSync.invalidate} clears the loaded flag (wire to both
  *     `onDidSaveTextDocument` and `onDidCloseTextDocument`).
- *   - A file with a dirty buffer open is never loaded: the load would revert
- *     OMC to the on-disk text under the edit.
- *   - Between saves, resolution reflects the last saved text — not the dirty
- *     buffer. See `docs/language-features-design.md` → "Buffer ↔ OMC sync".
+ *   - A file with a dirty buffer open is not loaded on first touch: the load
+ *     would revert OMC to the on-disk text under the edit.
+ *   - Once loaded, and between saves, resolution reflects the last saved text
+ *     — not the dirty buffer. See `docs/language-features-design.md` → "Buffer ↔ OMC sync".
  */
 
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
-import {
-  multipleTopLevelClasses,
-  type FileParseClient,
-} from "../single-entity-file.js";
+import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
 
 export interface SyncClient extends FileParseClient {
   loadFile(input: { fileName: string }): Promise<{ success: boolean }>;
@@ -33,11 +31,13 @@ export interface OmcSyncOptions {
    */
   onMultiEntity?: (filePath: string, classNames: string[]) => void;
   /**
-   * True when a dirty editor holds unsaved text for a class in `filePath`.
-   * `loadFile` would replace OMC's AST with the on-disk text and discard that
-   * edit, so a busy file is left unloaded and retried on the next touch.
+   * True when a dirty editor holds unsaved text for one of `classNames`, the
+   * top-level classes `filePath` declares. `loadFile` would replace OMC's AST
+   * with the on-disk text and discard that edit, so a busy file is left
+   * unloaded and retried on the next touch. Synchronous so it can run
+   * immediately before `loadFile`, after the parse's await.
    */
-  isBusy?: (filePath: string) => Promise<boolean>;
+  isBusy?: (filePath: string, classNames: string[]) => boolean;
 }
 
 /** Case-folds on case-insensitive hosts (win32/darwin); identity elsewhere. */
@@ -62,7 +62,7 @@ export class OmcSync {
    */
   private readonly multiEntity = new Set<string>();
   private readonly normalizeKey: (filePath: string) => string;
-  private readonly isBusy: (filePath: string) => Promise<boolean>;
+  private readonly isBusy: (filePath: string, classNames: string[]) => boolean;
   private readonly onMultiEntity: (
     filePath: string,
     classNames: string[],
@@ -74,7 +74,7 @@ export class OmcSync {
   ) {
     this.normalizeKey = options.normalizeKey ?? defaultNormalizeKey;
     this.onMultiEntity = options.onMultiEntity ?? (() => {});
-    this.isBusy = options.isBusy ?? (() => Promise.resolve(false));
+    this.isBusy = options.isBusy ?? (() => false);
   }
 
   /**
@@ -140,21 +140,32 @@ export class OmcSync {
     for (const key of keys) this.invalidateKey(key);
   }
 
+  /** A file OMC cannot parse yields no names: the `loadFile` that follows reports why. */
+  private async parseClassNames(filePath: string): Promise<string[]> {
+    try {
+      return (await this.client.parseFile({ fileName: filePath })).classNames;
+    } catch (err) {
+      log.warn("language", `parseFile ${filePath} failed: ${errorDetail(err)}`);
+      return [];
+    }
+  }
+
   private async load(filePath: string, key: string): Promise<boolean> {
     const snapshot = this.generation.get(key) ?? 0;
     try {
-      if (await this.isBusy(filePath)) return false;
-      const classNames = await multipleTopLevelClasses(this.client, filePath);
+      const classNames = await this.parseClassNames(filePath);
       // Invalidated mid-parse — the parse read stale text, discard. Recording
       // the refusal would outlive the text it was based on.
       if (snapshot !== (this.generation.get(key) ?? 0)) {
         return false;
       }
-      if (classNames) {
+      const several = moreThanOne(classNames);
+      if (several) {
         this.multiEntity.add(key);
-        this.onMultiEntity(filePath, classNames);
+        this.onMultiEntity(filePath, several);
         return false;
       }
+      if (this.isBusy(filePath, classNames)) return false;
       const { success } = await this.client.loadFile({ fileName: filePath });
       // Invalidated mid-flight — load read stale text, discard.
       if (snapshot !== (this.generation.get(key) ?? 0)) {

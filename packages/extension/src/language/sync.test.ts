@@ -51,7 +51,7 @@ describe("OmcSync — dirty buffer gate", () => {
   it("does not load a file whose class is open and dirty, and retries once it is clean", async () => {
     const client = clientOk();
     let busy = true;
-    const sync = new OmcSync(client, { isBusy: () => Promise.resolve(busy) });
+    const sync = new OmcSync(client, { isBusy: () => busy });
 
     expect(await sync.ensureLoaded("/a/Foo.mo")).toBe(false);
     expect(client.loadFile).not.toHaveBeenCalled();
@@ -62,13 +62,28 @@ describe("OmcSync — dirty buffer gate", () => {
     expect(client.calls).toEqual(["/a/Foo.mo"]);
   });
 
-  it("does not parse a busy file either", async () => {
+  it("asks with the classes the file declares, parsing it once", async () => {
     const client = clientOk();
-    const sync = new OmcSync(client, { isBusy: () => Promise.resolve(true) });
+    const isBusy = vi.fn(() => false);
+    const sync = new OmcSync(client, { isBusy });
 
     await sync.ensureLoaded("/a/Foo.mo");
 
-    expect(client.parseFile).not.toHaveBeenCalled();
+    expect(isBusy).toHaveBeenCalledWith("/a/Foo.mo", ["Foo"]);
+    expect(client.parseFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks after the parse resolves, so a buffer dirtied during it still blocks the load", async () => {
+    const client = clientOk();
+    let busy = false;
+    client.parseFile = vi.fn(() => {
+      busy = true;
+      return Promise.resolve({ classNames: ["Foo"] });
+    });
+    const sync = new OmcSync(client, { isBusy: () => busy });
+
+    expect(await sync.ensureLoaded("/a/Foo.mo")).toBe(false);
+    expect(client.loadFile).not.toHaveBeenCalled();
   });
 });
 
