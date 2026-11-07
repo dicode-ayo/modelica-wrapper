@@ -47,6 +47,31 @@ describe("OmcSync — load on first touch", () => {
   });
 });
 
+describe("OmcSync — dirty buffer gate", () => {
+  it("does not load a file whose class is open and dirty, and retries once it is clean", async () => {
+    const client = clientOk();
+    let busy = true;
+    const sync = new OmcSync(client, { isBusy: () => Promise.resolve(busy) });
+
+    expect(await sync.ensureLoaded("/a/Foo.mo")).toBe(false);
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+
+    busy = false;
+    expect(await sync.ensureLoaded("/a/Foo.mo")).toBe(true);
+    expect(client.calls).toEqual(["/a/Foo.mo"]);
+  });
+
+  it("does not parse a busy file either", async () => {
+    const client = clientOk();
+    const sync = new OmcSync(client, { isBusy: () => Promise.resolve(true) });
+
+    await sync.ensureLoaded("/a/Foo.mo");
+
+    expect(client.parseFile).not.toHaveBeenCalled();
+  });
+});
+
 describe("OmcSync — invalidate (re-load on save / forget on close)", () => {
   it("clears the loaded flag and re-loads on the next touch", async () => {
     const client = clientOk();

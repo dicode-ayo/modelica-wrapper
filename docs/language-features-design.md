@@ -125,6 +125,11 @@ keystroke. Policy for v1:
   when first touched, re-load on save. Resolution then reflects the last saved
   state. Acceptable for go-to-def/hover; documented as a known limitation for
   completion of just-typed names.
+- **A dirty buffer wins over the load.** When a class in the file is open and
+  dirty (a `modelica-source:` custom editor, or the file itself in a text
+  editor), the first-touch `loadFile` is skipped and retried on the next touch,
+  so a hover cannot revert OMC to the on-disk text under an unsaved edit. The
+  same gate (`isDeclaredClassBusy`) guards the `.mo` watcher's reloads.
 - **Owning class name** for a document is derived from its path within the
   package structure (`package.mo` walk), confirmed via
   [`parseFile`](../packages/omc-client/src/api/lifecycle/parseFile.ts) which

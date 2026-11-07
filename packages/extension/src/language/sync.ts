@@ -4,6 +4,8 @@
  *   - Load on first touch.
  *   - {@link OmcSync.invalidate} clears the loaded flag (wire to both
  *     `onDidSaveTextDocument` and `onDidCloseTextDocument`).
+ *   - A file with a dirty buffer open is never loaded: the load would revert
+ *     OMC to the on-disk text under the edit.
  *   - Between saves, resolution reflects the last saved text — not the dirty
  *     buffer. See `docs/language-features-design.md` → "Buffer ↔ OMC sync".
  */
@@ -30,6 +32,12 @@ export interface OmcSyncOptions {
    * Keeps the notification out of this module, which stays host-free.
    */
   onMultiEntity?: (filePath: string, classNames: string[]) => void;
+  /**
+   * True when a dirty editor holds unsaved text for a class in `filePath`.
+   * `loadFile` would replace OMC's AST with the on-disk text and discard that
+   * edit, so a busy file is left unloaded and retried on the next touch.
+   */
+  isBusy?: (filePath: string) => Promise<boolean>;
 }
 
 /** Case-folds on case-insensitive hosts (win32/darwin); identity elsewhere. */
@@ -54,6 +62,7 @@ export class OmcSync {
    */
   private readonly multiEntity = new Set<string>();
   private readonly normalizeKey: (filePath: string) => string;
+  private readonly isBusy: (filePath: string) => Promise<boolean>;
   private readonly onMultiEntity: (
     filePath: string,
     classNames: string[],
@@ -65,6 +74,7 @@ export class OmcSync {
   ) {
     this.normalizeKey = options.normalizeKey ?? defaultNormalizeKey;
     this.onMultiEntity = options.onMultiEntity ?? (() => {});
+    this.isBusy = options.isBusy ?? (() => Promise.resolve(false));
   }
 
   /**
@@ -133,6 +143,7 @@ export class OmcSync {
   private async load(filePath: string, key: string): Promise<boolean> {
     const snapshot = this.generation.get(key) ?? 0;
     try {
+      if (await this.isBusy(filePath)) return false;
       const classNames = await multipleTopLevelClasses(this.client, filePath);
       // Invalidated mid-parse — the parse read stale text, discard. Recording
       // the refusal would outlive the text it was based on.
