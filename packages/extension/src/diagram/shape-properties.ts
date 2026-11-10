@@ -220,10 +220,10 @@ function enumCodec(
  * Both members are property-typed rather than methods. This is half of what
  * keeps a field out of the wrong kind's list — see {@link FilledShapeKind} for
  * the other half, which does not work without this one: method syntax is
- * checked bivariantly, so a `ShapeField<PolygonShape>` would stay assignable to
- * `ShapeField<LineShape>` however the groups are declared.
+ * checked bivariantly, so a `ShapeField<LineShape>` would stay assignable to
+ * the shared `ShapeField<Shape>` group however the groups are declared.
  */
-interface ShapeField<S> {
+export interface ShapeField<S> {
   readonly name: string;
   readonly toParameterField: (shape: S) => ParameterField;
   /**
@@ -326,7 +326,8 @@ function fieldOf<S extends object>() {
  * onto a Modelica `Line`.
  *
  * This is the other half of the pair described on {@link ShapeField}. Undoing
- * either half reopens the hole with every gate still green.
+ * either half reopens the hole without failing a test;
+ * `shape-properties.type-test.ts` is what fails the typecheck instead.
  */
 type FilledShapeKind = PolygonShape | RectangleShape | EllipseShape;
 
@@ -393,6 +394,8 @@ const FILLED_SHAPE_FIELDS: ShapeField<FilledShapeKind>[] = [
     fallback: FILLED_SHAPE_DEFAULTS.lineThickness,
   }),
 ];
+
+export type FilledShapeField = (typeof FILLED_SHAPE_FIELDS)[number];
 
 const LINE_FIELDS: ShapeField<LineShape>[] = [
   ...GRAPHIC_ITEM_FIELDS,
