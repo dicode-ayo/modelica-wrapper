@@ -205,13 +205,9 @@ A result file's row count is solver-dependent — roughly `numberOfIntervals +
 resolves an omitted or `0` `size` through `readSimulationResultSize` itself;
 see the module docstring there for the OMC behavior it works around.
 
-That resolution is two OMC round trips, so a rewrite of the file from outside
-the client (a second OMC session, a `simulate` from a terminal) can move the
-row count between them, and OMC answers a mismatched `size` with `fail()`. A
-resolved read that fails re-reads the row count once: if it changed, the read
-is retried once at the new count; if it did not, the original failure is
-raised. An explicit non-zero `size` is the caller's contract and is never
-retried.
+Those are two OMC round trips, so a rewrite from outside the client can move
+the row count between them; a resolved read that fails re-reads the count and
+retries once if it moved. An explicit non-zero `size` is never retried.
 
 ### Result precision over MCP
 

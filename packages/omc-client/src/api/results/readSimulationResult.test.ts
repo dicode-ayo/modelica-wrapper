@@ -9,12 +9,12 @@ import { readSimulationResult } from "./readSimulationResult.js";
  * A `CallContext` answering from `responses`, with `errorString` standing in
  * for OMC's buffer. `reads` counts the buffer reads a wrapper spent, which is
  * what separates a wrapper that asks for a reason from one that does not.
- * An array answers the same command differently on each call, in order, the
- * way a file rewritten between two reads does.
+ * An array answers the same command (or buffer read) differently on each
+ * call, in order, the way a file rewritten between two reads does.
  */
 export function stubCtx(
   responses: Record<string, string | string[]>,
-  errorString = "",
+  errorString: string | string[] = "",
 ): { ctx: CallContext; sent: string[]; reads: () => number } {
   const sent: string[] = [];
   let reads = 0;
@@ -30,7 +30,11 @@ export function stubCtx(
     },
     async getErrorString() {
       reads += 1;
-      return { errorString };
+      return {
+        errorString: Array.isArray(errorString)
+          ? (errorString.shift() ?? "")
+          : errorString,
+      };
     },
   };
   return { ctx, sent, reads: () => reads };
@@ -148,7 +152,11 @@ describe("readSimulationResult: a file rewritten between the size read and the r
     });
 
     expect(out.result).toEqual([[], []]);
-    expect(sent).not.toContain('readSimulationResult("run.mat", {time, x}, 0)');
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time, x}, 2)',
+      'readSimulationResultSize("run.mat")',
+    ]);
   });
 
   it("raises the original failure, without a second read, when the row count held", async () => {
@@ -157,7 +165,7 @@ describe("readSimulationResult: a file rewritten between the size read and the r
         'readSimulationResultSize("run.mat")': ["2", "2"],
         'readSimulationResult("run.mat", {nope}, 2)': "fail()",
       },
-      'Error: variable "nope" not found',
+      ['Error: variable "nope" not found', "Error: a later reason"],
     );
 
     await expect(
@@ -179,7 +187,29 @@ describe("readSimulationResult: a file rewritten between the size read and the r
         'readSimulationResult("run.mat", {time}, 2)': "fail()",
         'readSimulationResult("run.mat", {time}, 3)': "fail()",
       },
-      "Error: size mismatch",
+      ["Error: size mismatch at 2", "Error: size mismatch at 3"],
+    );
+
+    await expect(
+      readSimulationResult(ctx, { filename: "run.mat", variables: ["time"] }),
+    ).rejects.toThrow(
+      new OmcDiagnosticError("readSimulationResult: Error: size mismatch at 3"),
+    );
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time}, 2)',
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time}, 3)',
+    ]);
+  });
+
+  it("keeps the read's own failure when the file can no longer be sized", async () => {
+    const { ctx, sent } = stubCtx(
+      {
+        'readSimulationResultSize("run.mat")': ["2", "-1"],
+        'readSimulationResult("run.mat", {time}, 2)': "fail()",
+      },
+      ["Error: size mismatch", "Error: Failed to open run.mat"],
     );
 
     await expect(
@@ -187,7 +217,11 @@ describe("readSimulationResult: a file rewritten between the size read and the r
     ).rejects.toThrow(
       new OmcDiagnosticError("readSimulationResult: Error: size mismatch"),
     );
-    expect(sent).toHaveLength(4);
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time}, 2)',
+      'readSimulationResultSize("run.mat")',
+    ]);
   });
 
   it("never retries a caller-supplied size", async () => {

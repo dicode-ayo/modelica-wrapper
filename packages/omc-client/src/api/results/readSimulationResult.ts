@@ -88,9 +88,9 @@ async function readRows(
   input: ReadSimulationResultInput,
   size: number,
 ): Promise<number[][] | undefined> {
-  // A size of 0 is the one value that would reach OMC's own `size = 0`
-  // path, which this function exists to avoid. There are no rows to read,
-  // but the output still owes one (empty) row per variable.
+  // Passing 0 through would reach OMC's own `size = 0` path, which answers
+  // an empty matrix on some formats. There are no rows to read, but the
+  // output still owes one (empty) row per variable.
   if (size === 0) return input.variables.map(() => []);
   const variableList = `{${input.variables.join(", ")}}`;
   const raw = await ctx.call(
@@ -103,6 +103,18 @@ async function readRows(
   );
 }
 
+async function readRowsOrThrow(
+  ctx: CallContext,
+  input: ReadSimulationResultInput,
+  size: number,
+): Promise<number[][]> {
+  const rows = await readRows(ctx, input, size);
+  if (rows === undefined) {
+    throw await readFailure(ctx, "readSimulationResult");
+  }
+  return rows;
+}
+
 async function readResolved(
   ctx: CallContext,
   input: ReadSimulationResultInput,
@@ -110,29 +122,22 @@ async function readResolved(
   const resolved = await readSize(ctx, input.filename);
   const rows = await readRows(ctx, input, resolved);
   if (rows !== undefined) return rows;
+  // Drained before the second size read, so the retry's reason, if any, is
+  // its own; and a file that cannot be sized now keeps this read's reason.
   const failure = await readFailure(ctx, "readSimulationResult");
-  const current = await readSize(ctx, input.filename);
-  if (current === resolved) throw failure;
-  const retried = await readRows(ctx, input, current);
-  if (retried === undefined) {
-    throw await readFailure(ctx, "readSimulationResult");
-  }
-  return retried;
+  const current = await readSize(ctx, input.filename).catch(() => undefined);
+  if (current === undefined || current === resolved) throw failure;
+  return readRowsOrThrow(ctx, input, current);
 }
 
 export async function readSimulationResult(
   ctx: CallContext,
   input: ReadSimulationResultInput,
 ): Promise<ReadSimulationResultOutput> {
-  let result: number[][];
-  if (input.size !== undefined && input.size !== 0) {
-    const rows = await readRows(ctx, input, input.size);
-    if (rows === undefined)
-      throw await readFailure(ctx, "readSimulationResult");
-    result = rows;
-  } else {
-    result = await readResolved(ctx, input);
-  }
+  const result =
+    input.size !== undefined && input.size !== 0
+      ? await readRowsOrThrow(ctx, input, input.size)
+      : await readResolved(ctx, input);
   return parseOutput(
     ReadSimulationResultOutputSchema,
     { result },
