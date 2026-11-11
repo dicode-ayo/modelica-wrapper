@@ -18,13 +18,22 @@ export function stubCtx(
 ): { ctx: CallContext; sent: string[]; reads: () => number } {
   const sent: string[] = [];
   let reads = 0;
+  const answered = new Map<string, number>();
   const ctx: CallContext = {
     async call(cmd) {
       sent.push(cmd);
       const entry = responses[cmd];
-      const response = Array.isArray(entry) ? entry.shift() : entry;
-      if (response === undefined) {
+      if (entry === undefined) {
         throw new Error(`stubCtx: no response configured for "${cmd}"`);
+      }
+      if (!Array.isArray(entry)) return entry;
+      const n = answered.get(cmd) ?? 0;
+      answered.set(cmd, n + 1);
+      const response = entry[n];
+      if (response === undefined) {
+        throw new Error(
+          `stubCtx: "${cmd}" sent more than ${entry.length} times`,
+        );
       }
       return response;
     },
@@ -32,7 +41,7 @@ export function stubCtx(
       reads += 1;
       return {
         errorString: Array.isArray(errorString)
-          ? (errorString.shift() ?? "")
+          ? (errorString[reads - 1] ?? "")
           : errorString,
       };
     },
@@ -159,7 +168,7 @@ describe("readSimulationResult: a file rewritten between the size read and the r
     ]);
   });
 
-  it("raises the original failure, without a second read, when the row count held", async () => {
+  it("raises the original failure, without retrying the read, when the row count held", async () => {
     const { ctx, sent } = stubCtx(
       {
         'readSimulationResultSize("run.mat")': ["2", "2"],
@@ -175,9 +184,11 @@ describe("readSimulationResult: a file rewritten between the size read and the r
         'readSimulationResult: Error: variable "nope" not found',
       ),
     );
-    expect(
-      sent.filter((c) => c.startsWith("readSimulationResult(")),
-    ).toHaveLength(1);
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {nope}, 2)',
+      'readSimulationResultSize("run.mat")',
+    ]);
   });
 
   it("retries at most once", async () => {
@@ -222,6 +233,31 @@ describe("readSimulationResult: a file rewritten between the size read and the r
       'readSimulationResult("run.mat", {time}, 2)',
       'readSimulationResultSize("run.mat")',
     ]);
+  });
+
+  it("lets a transport failure on the size re-read through", async () => {
+    const lost = new Error("OMC session closed");
+    const { ctx: base } = stubCtx(
+      {
+        'readSimulationResultSize("run.mat")': "2",
+        'readSimulationResult("run.mat", {time}, 2)': "fail()",
+      },
+      "Error: size mismatch",
+    );
+    let sizeReads = 0;
+    const ctx: CallContext = {
+      ...base,
+      async call(cmd) {
+        if (cmd.startsWith("readSimulationResultSize(") && ++sizeReads === 2) {
+          throw lost;
+        }
+        return base.call(cmd);
+      },
+    };
+
+    await expect(
+      readSimulationResult(ctx, { filename: "run.mat", variables: ["time"] }),
+    ).rejects.toBe(lost);
   });
 
   it("never retries a caller-supplied size", async () => {

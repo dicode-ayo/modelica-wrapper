@@ -36,6 +36,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { resultVariable } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput, readFailure } from "../../_shared/parseOutput.js";
+import { OmcDiagnosticError } from "../../error-buffer.js";
 import { asFloat, expectList, parse } from "../../parse.js";
 import { readSimulationResultSize } from "./readSimulationResultSize.js";
 
@@ -123,9 +124,14 @@ async function readResolved(
   const rows = await readRows(ctx, input, resolved);
   if (rows !== undefined) return rows;
   // Drained before the second size read, so the retry's reason, if any, is
-  // its own; and a file that cannot be sized now keeps this read's reason.
+  // its own; and a file OMC can no longer size keeps this read's reason.
   const failure = await readFailure(ctx, "readSimulationResult");
-  const current = await readSize(ctx, input.filename).catch(() => undefined);
+  const current = await readSize(ctx, input.filename).catch(
+    (error: unknown) => {
+      if (error instanceof OmcDiagnosticError) return undefined;
+      throw error;
+    },
+  );
   if (current === undefined || current === resolved) throw failure;
   return readRowsOrThrow(ctx, input, current);
 }
