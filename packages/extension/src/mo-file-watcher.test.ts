@@ -20,11 +20,11 @@ import {
   handleMoDelete,
   handleOrderChange,
   handleOrderDelete,
-  isDeclaredClassBusy,
   registerMoFileWatcher,
   seedPathClassIndex,
   type MoWatcherDeps,
 } from "./mo-file-watcher.js";
+import { isDeclaredClassBusy } from "./dirty-buffer.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
 import { createPathClassIndex } from "./path-class-index.js";
 import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
@@ -1022,6 +1022,25 @@ describe("isDeclaredClassBusy", () => {
       },
     ]);
     expect(isDeclaredClassBusy([FILE], ["My.Pkg.Bar"])).toBe(true);
+  });
+
+  it("is true for a dirty custom editor over a class nested in a declared one", () => {
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [
+          {
+            input: new TabInputCustom(
+              sourceUriFor("My.Pkg.Bar.Inner"),
+              "modelica.diagram",
+            ),
+            isDirty: true,
+          },
+        ],
+      },
+    ]);
+    expect(isDeclaredClassBusy([FILE], ["My.Pkg.Bar"])).toBe(true);
+    expect(isDeclaredClassBusy([FILE], ["My.Pkg.Ba"])).toBe(false);
   });
 
   it("is true for a dirty text editor over the file on disk", () => {

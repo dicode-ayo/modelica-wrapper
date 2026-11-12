@@ -11,6 +11,7 @@ import type { OmcClient } from "@dicode/omc-client";
 
 import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
+import { isDeclaredClassBusy } from "../dirty-buffer.js";
 import { multiEntityMessage, multiEntityToast } from "../single-entity-file.js";
 import { sourceUriFor } from "../source-provider.js";
 
@@ -177,6 +178,9 @@ export function registerLanguageFeatures(
     parseFile: async (input) => (await ensureClient()).parseFile(input),
   };
   const sync = new OmcSync(syncClient, {
+    // Text editors are skipped: loading a file does not touch a VSCode text
+    // buffer, only a custom editor whose state lives in OMC.
+    isBusy: (_filePath, classNames) => isDeclaredClassBusy([], classNames),
     onMultiEntity: (filePath, classNames) => {
       log.warn("language", multiEntityMessage(filePath, classNames));
       void vscode.window.showWarningMessage(

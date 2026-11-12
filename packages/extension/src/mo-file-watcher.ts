@@ -52,11 +52,8 @@ import { log } from "./logger.js";
 import { SessionQueue } from "./session-queue.js";
 import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
-import {
-  MODELICA_SOURCE_SCHEME,
-  sourceUriFor,
-  type ModelicaSourceProvider,
-} from "./source-provider.js";
+import { isDeclaredClassBusy } from "./dirty-buffer.js";
+import type { ModelicaSourceProvider } from "./source-provider.js";
 import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 
 interface WatcherOmcClient {
@@ -530,41 +527,6 @@ export async function handleMoDelete(
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
 
   retryUnblockedReorders(deps);
-}
-
-/**
- * True when any class in `classNames` is open and dirty — as a custom editor
- * over its `modelica-source:` URI — or when any file in `fsPaths` is open and
- * dirty as a plain text editor over the file on disk. Reloading OMC under
- * such a buffer would discard the unsaved edit. Callers pass the full set a
- * cascade can touch, not just the file the triggering event named.
- */
-export function isDeclaredClassBusy(
-  fsPaths: string[],
-  classNames: string[],
-): boolean {
-  const sourceUris = new Set(classNames.map((n) => sourceUriFor(n).toString()));
-  const diskUris = new Set(fsPaths.map((p) => vscode.Uri.file(p).toString()));
-  for (const group of vscode.window.tabGroups.all) {
-    for (const tab of group.tabs) {
-      if (!tab.isDirty) continue;
-      const input = tab.input;
-      if (
-        input instanceof vscode.TabInputCustom &&
-        input.uri.scheme === MODELICA_SOURCE_SCHEME &&
-        sourceUris.has(input.uri.toString())
-      ) {
-        return true;
-      }
-      if (
-        input instanceof vscode.TabInputText &&
-        diskUris.has(input.uri.toString())
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 /**
