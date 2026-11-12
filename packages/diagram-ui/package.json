@@ -62,7 +62,7 @@
     "@vitest/coverage-istanbul": "^4.1.12",
     "happy-dom": "^21.0.4",
     "storybook": "^10.6.7",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^4.1.12"
   }
