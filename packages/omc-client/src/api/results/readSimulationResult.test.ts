@@ -9,25 +9,41 @@ import { readSimulationResult } from "./readSimulationResult.js";
  * A `CallContext` answering from `responses`, with `errorString` standing in
  * for OMC's buffer. `reads` counts the buffer reads a wrapper spent, which is
  * what separates a wrapper that asks for a reason from one that does not.
+ * An array answers the same command (or buffer read) differently on each
+ * call, in order, the way a file rewritten between two reads does.
  */
 export function stubCtx(
-  responses: Record<string, string>,
-  errorString = "",
+  responses: Record<string, string | string[]>,
+  errorString: string | string[] = "",
 ): { ctx: CallContext; sent: string[]; reads: () => number } {
   const sent: string[] = [];
   let reads = 0;
+  const answered = new Map<string, number>();
   const ctx: CallContext = {
     async call(cmd) {
       sent.push(cmd);
-      const response = responses[cmd];
-      if (response === undefined) {
+      const entry = responses[cmd];
+      if (entry === undefined) {
         throw new Error(`stubCtx: no response configured for "${cmd}"`);
+      }
+      if (!Array.isArray(entry)) return entry;
+      const n = answered.get(cmd) ?? 0;
+      answered.set(cmd, n + 1);
+      const response = entry[n];
+      if (response === undefined) {
+        throw new Error(
+          `stubCtx: "${cmd}" sent more than ${entry.length} times`,
+        );
       }
       return response;
     },
     async getErrorString() {
       reads += 1;
-      return { errorString };
+      return {
+        errorString: Array.isArray(errorString)
+          ? (errorString[reads - 1] ?? "")
+          : errorString,
+      };
     },
   };
   return { ctx, sent, reads: () => reads };
@@ -102,5 +118,161 @@ describe("readSimulationResult: OMC error replies", () => {
     await expect(readSimulationResult(ctx, input)).rejects.toThrow(
       new OmcDiagnosticError("Error: no such file: missing.mat"),
     );
+  });
+});
+
+describe("readSimulationResult: a file rewritten between the size read and the read", () => {
+  it("retries once at the new row count when the file grew", async () => {
+    const { ctx, sent } = stubCtx(
+      {
+        'readSimulationResultSize("run.mat")': ["2", "3"],
+        'readSimulationResult("run.mat", {time}, 2)': "fail()",
+        'readSimulationResult("run.mat", {time}, 3)': "{{0.0, 0.5, 1.0}}",
+      },
+      "Error: size mismatch",
+    );
+
+    const out = await readSimulationResult(ctx, {
+      filename: "run.mat",
+      variables: ["time"],
+    });
+
+    expect(out.result).toEqual([[0.0, 0.5, 1.0]]);
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time}, 2)',
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time}, 3)',
+    ]);
+  });
+
+  it("answers one empty row per variable when the file was rewritten empty", async () => {
+    const { ctx, sent } = stubCtx(
+      {
+        'readSimulationResultSize("run.mat")': ["2", "0"],
+        'readSimulationResult("run.mat", {time, x}, 2)': "fail()",
+      },
+      "Error: size mismatch",
+    );
+
+    const out = await readSimulationResult(ctx, {
+      filename: "run.mat",
+      variables: ["time", "x"],
+    });
+
+    expect(out.result).toEqual([[], []]);
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time, x}, 2)',
+      'readSimulationResultSize("run.mat")',
+    ]);
+  });
+
+  it("raises the original failure, without retrying the read, when the row count held", async () => {
+    const { ctx, sent } = stubCtx(
+      {
+        'readSimulationResultSize("run.mat")': ["2", "2"],
+        'readSimulationResult("run.mat", {nope}, 2)': "fail()",
+      },
+      ['Error: variable "nope" not found', "Error: a later reason"],
+    );
+
+    await expect(
+      readSimulationResult(ctx, { filename: "run.mat", variables: ["nope"] }),
+    ).rejects.toThrow(
+      new OmcDiagnosticError(
+        'readSimulationResult: Error: variable "nope" not found',
+      ),
+    );
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {nope}, 2)',
+      'readSimulationResultSize("run.mat")',
+    ]);
+  });
+
+  it("retries at most once", async () => {
+    const { ctx, sent } = stubCtx(
+      {
+        'readSimulationResultSize("run.mat")': ["2", "3", "4"],
+        'readSimulationResult("run.mat", {time}, 2)': "fail()",
+        'readSimulationResult("run.mat", {time}, 3)': "fail()",
+      },
+      ["Error: size mismatch at 2", "Error: size mismatch at 3"],
+    );
+
+    await expect(
+      readSimulationResult(ctx, { filename: "run.mat", variables: ["time"] }),
+    ).rejects.toThrow(
+      new OmcDiagnosticError("readSimulationResult: Error: size mismatch at 3"),
+    );
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time}, 2)',
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time}, 3)',
+    ]);
+  });
+
+  it("keeps the read's own failure when the file can no longer be sized", async () => {
+    const { ctx, sent } = stubCtx(
+      {
+        'readSimulationResultSize("run.mat")': ["2", "-1"],
+        'readSimulationResult("run.mat", {time}, 2)': "fail()",
+      },
+      ["Error: size mismatch", "Error: Failed to open run.mat"],
+    );
+
+    await expect(
+      readSimulationResult(ctx, { filename: "run.mat", variables: ["time"] }),
+    ).rejects.toThrow(
+      new OmcDiagnosticError("readSimulationResult: Error: size mismatch"),
+    );
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time}, 2)',
+      'readSimulationResultSize("run.mat")',
+    ]);
+  });
+
+  it("lets a transport failure on the size re-read through", async () => {
+    const lost = new Error("OMC session closed");
+    const { ctx: base } = stubCtx(
+      {
+        'readSimulationResultSize("run.mat")': "2",
+        'readSimulationResult("run.mat", {time}, 2)': "fail()",
+      },
+      "Error: size mismatch",
+    );
+    let sizeReads = 0;
+    const ctx: CallContext = {
+      ...base,
+      async call(cmd) {
+        if (cmd.startsWith("readSimulationResultSize(") && ++sizeReads === 2) {
+          throw lost;
+        }
+        return base.call(cmd);
+      },
+    };
+
+    await expect(
+      readSimulationResult(ctx, { filename: "run.mat", variables: ["time"] }),
+    ).rejects.toBe(lost);
+  });
+
+  it("never retries a caller-supplied size", async () => {
+    const { ctx, sent } = stubCtx(
+      { 'readSimulationResult("run.mat", {time}, 2)': "fail()" },
+      "Error: size mismatch",
+    );
+
+    await expect(
+      readSimulationResult(ctx, {
+        filename: "run.mat",
+        variables: ["time"],
+        size: 2,
+      }),
+    ).rejects.toThrow(OmcDiagnosticError);
+    expect(sent).toEqual(['readSimulationResult("run.mat", {time}, 2)']);
   });
 });

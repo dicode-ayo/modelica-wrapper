@@ -205,6 +205,10 @@ A result file's row count is solver-dependent — roughly `numberOfIntervals +
 resolves an omitted or `0` `size` through `readSimulationResultSize` itself;
 see the module docstring there for the OMC behavior it works around.
 
+Those are two OMC round trips, so a rewrite from outside the client can move
+the row count between them; a resolved read that fails re-reads the count and
+retries once if it moved. An explicit non-zero `size` is never retried.
+
 ### Result precision over MCP
 
 `@dicode/omc-client` returns a result's numbers exactly as OMC printed them,
