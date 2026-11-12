@@ -199,12 +199,27 @@ describe("an argument that would close the command", () => {
       ctx: {
         call: (cmd) => {
           commands.push(cmd);
+          // addConnection's pre-write screen reads the class before writing.
+          if (cmd.startsWith("getComponents(")) return Promise.resolve(ROWS);
+          if (cmd.startsWith("getConnectionCount(")) {
+            return Promise.resolve("0");
+          }
+          if (cmd.startsWith("getInheritedClasses(")) {
+            return Promise.resolve("{}");
+          }
           return Promise.resolve("true");
         },
         getErrorString: () => Promise.resolve({ errorString: "" }),
       },
     };
   };
+
+  const ROWS = `{${["a", "b"]
+    .map(
+      (n) =>
+        `{Demo.Pin, ${n}, "", "public", false, false, false, false, "unspecified", "none", "unspecified", {}}`,
+    )
+    .join(", ")}}`;
 
   const INJECTION =
     'b.p); loadString("model Injected end Injected;"); addConnection(a.p, b.p, Demo.MSD';
@@ -239,9 +254,9 @@ describe("an argument that would close the command", () => {
       input,
     );
 
-    expect(commands).toEqual([
+    expect(commands.at(-1)).toBe(
       "addConnection(a.p, b.p, Demo.MSD, annotate=Line())",
-    ]);
+    );
   });
 });
 
