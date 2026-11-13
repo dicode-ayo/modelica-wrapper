@@ -135,6 +135,14 @@ const PROBES: Record<string, Record<string, unknown>> = {
   renameComponentInClass: { typeName: CLASS, oldName: "a", newName: "b" },
 };
 
+/** `getComponents` rows for the endpoints the connection probes name. */
+const COMPONENTS = `{${["a", "b"]
+  .map(
+    (n) =>
+      `{Probe.Other, ${n}, "", "public", false, false, false, false, "unspecified", "none", "unspecified", {}}`,
+  )
+  .join(", ")}}`;
+
 /** Captures the command a wrapper builds; its reply is never the point. */
 async function commandFor(
   fn: OmcFnName,
@@ -146,8 +154,12 @@ async function commandFor(
       sent.push(cmd);
       // getComponents needs a parseable list reply, not every other probe's
       // generic "true"; qualifyPath needs a parseable TypeName (a bare
-      // string), not a bool.
-      if (cmd.startsWith("getComponents(")) return Promise.resolve("{}");
+      // string), not a bool. addConnection's screen wants its endpoints'
+      // components declared (none of them collide with addComponent's `r`),
+      // and a connection count and a list of bases.
+      if (cmd.startsWith("getComponents(")) return Promise.resolve(COMPONENTS);
+      if (cmd.startsWith("getConnectionCount(")) return Promise.resolve("0");
+      if (cmd.startsWith("getInheritedClasses(")) return Promise.resolve("{}");
       if (cmd.startsWith("qualifyPath(")) return Promise.resolve("Probe.Other");
       return Promise.resolve("true");
     },
