@@ -417,7 +417,6 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
       "diagram",
-      undefined,
       invalidation,
     );
 
@@ -459,7 +458,6 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/ResistorDemo.NewModel.mo")),
       "diagram",
-      undefined,
       invalidation,
     );
     await flush();
@@ -4073,7 +4071,6 @@ describe("resolveDiagramEditor: a changed class staling nested diagrams", () => 
       new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo")),
       "diagram",
-      undefined,
       invalidation,
     );
     return { posted, fireReady, fireDispose };

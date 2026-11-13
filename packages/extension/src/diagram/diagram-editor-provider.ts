@@ -148,7 +148,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     private readonly ensureClient: () => Promise<OmcClient>,
     private readonly writeVerdicts: WriteVerdicts,
     private readonly mode: DiagramMode,
-    private readonly onClassContentChanged?: (className: string) => void,
     private readonly invalidation?: NestedInvalidation,
   ) {}
 
@@ -158,7 +157,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     writeVerdicts: WriteVerdicts,
     viewType: string,
     mode: DiagramMode,
-    onClassContentChanged?: (className: string) => void,
     invalidation?: NestedInvalidation,
   ): vscode.Disposable {
     const provider = new DiagramEditorProvider(
@@ -166,7 +164,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       ensureClient,
       writeVerdicts,
       mode,
-      onClassContentChanged,
       invalidation,
     );
     return vscode.window.registerCustomEditorProvider(viewType, provider, {
@@ -187,7 +184,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       this.writeVerdicts,
       document,
       this.mode,
-      this.onClassContentChanged,
       this.invalidation,
     );
   }
@@ -292,7 +288,6 @@ export function resolveDiagramEditor(
   writeVerdicts: WriteVerdicts,
   document: vscode.TextDocument,
   mode: DiagramMode,
-  onClassContentChanged?: (className: string) => void,
   invalidation?: NestedInvalidation,
 ): void {
   const { webview } = webviewPanel;
@@ -409,7 +404,6 @@ export function resolveDiagramEditor(
             document,
             className,
             gate,
-            onClassContentChanged,
             clipboard: diagramClipboard,
             onClipboardChanged: () =>
               DiagramEditorProvider.broadcastClipboard(),
@@ -497,13 +491,6 @@ interface EditControllerDeps {
   document: vscode.TextDocument;
   className: string;
   gate: ReadyGate;
-  /** Fired after every re-render from a committed change (forward reflect or
-   *  reverse sync) — the class's rendered icon may differ now, and the library
-   *  sidebar wants to know without polling. Deliberately unfiltered: it also
-   *  fires for edits that cannot affect the icon (a diagram-layer move) —
-   *  the icon-safe subset is narrow (parameter values, connectors, and
-   *  change-class all can alter it) and the eviction+re-render is cheap. */
-  onClassContentChanged?: ((className: string) => void) | undefined;
   /** The window-wide clipboard this editor copies into and pastes from. */
   clipboard: DiagramClipboard;
   /** Fired when a copy fills the clipboard, so every open editor enables paste. */
@@ -750,7 +737,6 @@ export class DiagramEditController {
       // necessarily the source it now lists.
       this.renderedSource = undefined;
       this.publishSyncedLayout(await this.refetch(client, className));
-      this.deps.onClassContentChanged?.(className);
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
       this.publishSyncedLayout(this.prevLayout);
@@ -1629,9 +1615,6 @@ export class DiagramEditController {
     // A built-in with no listable source returns empty; writing that would wipe
     // the buffer.
     if (contents.length > 0) await this.shadow.write(contents);
-    // Tied to the write rather than to the push: the rendered icon is stale
-    // from the moment the class changes, whether or not a settle goes out.
-    this.deps.onClassContentChanged?.(this.deps.className);
   }
 
   private reportError(message: string): void {
