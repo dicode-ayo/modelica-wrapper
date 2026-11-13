@@ -65,6 +65,14 @@ install as a subprocess.
 | `modelica.getOmcVersion` | Show OMC Version |
 | `modelica.showLogs` | Show Logs |
 
+**Load Library…** loads a library from MODELICAPATH. When it is not installed
+but OMC's package index has it (refreshing the index first if it has no entry),
+the command offers to install the index's preferred version, e.g. _Install
+Modelica 4.1.0?_. Choosing **Install** runs `installPackage` with a progress
+notification and then loads the library; choosing **Cancel** keeps the original
+load error. A library the index lacks shows the plain load error, and a failed
+index refresh or install shows OMC's own error message.
+
 The extension activates when a workspace contains any `*.mo` file.
 
 ## Settings
