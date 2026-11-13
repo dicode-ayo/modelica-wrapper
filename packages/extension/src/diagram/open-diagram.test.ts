@@ -475,6 +475,142 @@ describe("applyDiagramEdits: staleBase graphics (issue #408)", () => {
   });
 });
 
+describe("applyDiagramEdits: drifted graphics base (issue #388)", () => {
+  function rect(x: number): RectangleShape {
+    return {
+      kind: "rectangle",
+      extent: [
+        [x, x],
+        [x + 10, x + 10],
+      ],
+    };
+  }
+
+  function withDiagramShapes(shapes: RectangleShape[]): DiagramLayout {
+    const layout = connectedLayout();
+    layout.diagramLayers = [{ from: "Pkg.M", shapes }];
+    return layout;
+  }
+
+  it("refuses a reorder the user made against shapes the class no longer holds in that order", async () => {
+    const { client, invoked } = stubEditClient();
+    const base = withDiagramShapes([rect(0), rect(10), rect(20)]);
+    const current = withDiagramShapes([rect(0), rect(20), rect(10)]);
+    const next = withDiagramShapes([rect(10), rect(0), rect(20)]);
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      base,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+    expect(result?.applied).toBe(0);
+    expect(result?.failed.map((f) => f.edit.kind)).toEqual([
+      "graphicsReordered",
+    ]);
+  });
+
+  it("refuses a delete whose index now names a different shape", async () => {
+    const { client, invoked } = stubEditClient();
+    const base = withDiagramShapes([rect(0), rect(10), rect(20)]);
+    const current = withDiagramShapes([rect(90), rect(0), rect(10), rect(20)]);
+    const next = withDiagramShapes([rect(0), rect(10), rect(20)]);
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      base,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+    expect(result?.failed.map((f) => f.edit.kind)).toEqual(["graphicsDeleted"]);
+  });
+
+  it("refuses an add rather than resurrecting a shape the class has since lost", async () => {
+    const { client, invoked } = stubEditClient();
+    const a = rect(0);
+    const b = rect(10);
+    const base = withDiagramShapes([a, b]);
+    const current = withDiagramShapes([a]);
+    const next = withDiagramShapes([a, b]);
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      base,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+    expect(result?.applied).toBe(0);
+    expect(result?.failed.map((f) => f.edit.kind)).toEqual(["graphicsAdded"]);
+  });
+
+  it("does not hold a non-graphics edit back for a drifted layer it never touches", async () => {
+    const { client, invoked } = stubEditClient();
+    const base = withDiagramShapes([rect(0)]);
+    const current = withDiagramShapes([rect(5)]);
+    const next = withDiagramShapes([rect(5)]);
+    const gain = next.components["gain1"];
+    if (gain === undefined) throw new Error("fixture has no gain1");
+    next.components["gain1"] = {
+      ...gain,
+      placement: {
+        extent: [
+          [60, 60],
+          [80, 80],
+        ],
+      },
+    };
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      base,
+    });
+
+    expect(invoked).toContain("setElementAnnotation");
+    expect(result?.failed).toEqual([]);
+  });
+
+  it("applies the positional edits when the base still matches the class", async () => {
+    const { client, invoked } = stubEditClient();
+    const shapes = [rect(0), rect(10), rect(20)];
+    const base = withDiagramShapes(shapes);
+    const current = withDiagramShapes(shapes);
+    const next = withDiagramShapes([rect(10), rect(0), rect(20)]);
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      base,
+    });
+
+    expect(invoked).toContain("writeClassGraphics");
+    expect(result?.failed).toEqual([]);
+  });
+
+  it("still applies non-graphics edits in a batch whose graphics edits were refused", async () => {
+    const { client, invoked } = stubEditClient();
+    const base = withDiagramShapes([rect(0), rect(10)]);
+    const current = withDiagramShapes([rect(5), rect(10)]);
+    const next = withDiagramShapes([rect(10), rect(0)]);
+    const gain = next.components["gain1"];
+    if (gain === undefined) throw new Error("fixture has no gain1");
+    next.components["gain1"] = {
+      ...gain,
+      placement: {
+        extent: [
+          [60, 60],
+          [80, 80],
+        ],
+      },
+    };
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      base,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+    expect(invoked).toContain("setElementAnnotation");
+    expect(result?.applied).toBe(1);
+    expect(result?.failed.map((f) => f.edit.kind)).toEqual([
+      "graphicsModified",
+      "graphicsModified",
+    ]);
+  });
+});
+
 describe("applyDiagramEdits: staleBase connectionRenamed (issue #408)", () => {
   function withConnections(
     connections: DiagramLayout["connections"],
