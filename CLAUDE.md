@@ -122,6 +122,22 @@ Tests use plain mocks and an in-memory `FileProbe`/`OmcClient` — no live OMC.
 When you fix a race or close a contract gap, add a test that would have failed
 before the fix. Empty `describe` titles like "happy path" are a smell.
 
+### Type-level guarantees
+
+When correctness rests on something failing to compile, pin it with a
+negative type probe in a `*.type-test.ts` beside the module
+(`diagram/shape-properties.type-test.ts` is the model). A line that must not
+compile carries `// @ts-expect-error <reason>`; once it compiles, TS2578
+("Unused '@ts-expect-error' directive") fails `pnpm -r typecheck`. Probes are
+type aliases, exported so `noUnusedLocals` doesn't satisfy the directive on
+its own. No runtime, and vitest never loads them.
+
+- The file must sit inside the package tsconfig's `include` set and must not
+  match an exclude like `**/*.test.ts` — several packages keep test files out
+  of `tsc`, and an unchecked probe never goes red.
+- Prove each probe once locally: undo the guarantee, watch the typecheck fail
+  with TS2578 on that probe, restore.
+
 ## Review cycles
 
 The user runs these as iterative rounds on a PR before merge. Each round is
