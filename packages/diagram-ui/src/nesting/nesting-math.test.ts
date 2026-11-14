@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Box } from "../base/placement-math.js";
-import { letterbox, nestingProgress } from "./nesting-math.js";
+import {
+  NESTING_LATE_FADE_MS,
+  NESTING_THRESHOLDS,
+  lateFadeProgress,
+  letterbox,
+  nestingPrefetches,
+  nestingProgress,
+} from "./nesting-math.js";
 
 const SQUARE: Box = { width: 200, height: 200, cx: 0, cy: 0 };
 
@@ -29,6 +36,40 @@ describe("nestingProgress", () => {
   it("treats a non-finite size as closed", () => {
     expect(nestingProgress(Number.NaN)).toBe(0);
     expect(nestingProgress(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe("nestingPrefetches", () => {
+  it("starts below the fade band, so a growing box has its diagram before it opens", () => {
+    const { prefetchPx, exitPx } = NESTING_THRESHOLDS;
+    expect(prefetchPx).toBeLessThan(exitPx);
+    expect(nestingPrefetches(prefetchPx)).toBe(false);
+    expect(nestingPrefetches((prefetchPx + exitPx) / 2)).toBe(true);
+    expect(nestingProgress((prefetchPx + exitPx) / 2)).toBe(0);
+  });
+
+  it("holds wherever the box is open", () => {
+    expect(nestingPrefetches(NESTING_THRESHOLDS.exitPx + 1)).toBe(true);
+    expect(nestingPrefetches(5000)).toBe(true);
+  });
+
+  it("treats a non-finite size as too small", () => {
+    expect(nestingPrefetches(Number.NaN)).toBe(false);
+    expect(nestingPrefetches(Number.POSITIVE_INFINITY)).toBe(false);
+  });
+});
+
+describe("lateFadeProgress", () => {
+  it("ramps from 0 to 1 over the late fade, then holds", () => {
+    expect(lateFadeProgress(0)).toBe(0);
+    expect(lateFadeProgress(NESTING_LATE_FADE_MS / 2)).toBeCloseTo(0.5);
+    expect(lateFadeProgress(NESTING_LATE_FADE_MS)).toBe(1);
+    expect(lateFadeProgress(NESTING_LATE_FADE_MS * 3)).toBe(1);
+  });
+
+  it("stays at 0 for a clock that has not moved forward", () => {
+    expect(lateFadeProgress(-5)).toBe(0);
+    expect(lateFadeProgress(Number.NaN)).toBe(0);
   });
 });
 

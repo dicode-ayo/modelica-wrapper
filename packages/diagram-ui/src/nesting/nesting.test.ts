@@ -1,10 +1,11 @@
 /**
  * Headless, the scene measures 800 × 600, so a 20-unit box is
- * `20 * 600 / (2 * zoom)` px on screen: 60 px at zoom 100 (closed), 170 px
- * at 6000/170 (mid-band), 300 px at 20 (open).
+ * `20 * 600 / (2 * zoom)` px on screen: 60 px at zoom 100 (closed), 120 px
+ * at 50 (closed, but prefetching), 170 px at 6000/170 (mid-band), 300 px at
+ * 20 (open).
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Graphics, type Container } from "pixi.js";
 import type {
   ClassDef,
@@ -24,11 +25,17 @@ import { mountLayout } from "../../test/harness/interaction-fixtures.js";
 import { emptyLayout } from "../../test/harness/layout-fixtures.js";
 import type { OmNestedDiagram } from "./nested-diagram.component.js";
 import type { NestedDiagramSource } from "./nested-diagram-source.js";
-import { NESTING_CHROME } from "./nesting-math.js";
+import type { NestingChangeDetail } from "./nested-ports.js";
+import { NESTING_CHROME, NESTING_LATE_FADE_MS } from "./nesting-math.js";
 
 const CLOSED = 100;
+const PREFETCH = 50;
 const MID = 6000 / 170;
 const OPEN = 20;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function blockClass(name: string, overrides: Partial<ClassDef> = {}): ClassDef {
   return {
@@ -137,6 +144,10 @@ async function mountWithSource(
   // Let the first-layout auto-fit land before any test zoom overrides it.
   await new Promise((r) => requestAnimationFrame(r));
   await new Promise((r) => setTimeout(r, 0));
+  // Animation frames advance only on `runFrames`, so a late fade can be caught mid-way.
+  vi.useFakeTimers({
+    toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+  });
   el.nestedDiagramSource = source;
   await el.updateComplete;
   return el;
@@ -154,6 +165,17 @@ async function zoomTo(el: OmGraphicalLayout, zoom: number): Promise<void> {
   view.panY = 0;
   view.zoom = zoom;
   await view.updateComplete;
+  await settle(el);
+}
+
+/** Zooms in through the prefetch size, so the diagram is at hand before the box opens. */
+async function growTo(el: OmGraphicalLayout, zoom: number): Promise<void> {
+  await zoomTo(el, PREFETCH);
+  await zoomTo(el, zoom);
+}
+
+async function runFrames(el: OmGraphicalLayout, ms: number): Promise<void> {
+  vi.advanceTimersByTime(ms);
   await settle(el);
 }
 
@@ -232,7 +254,7 @@ function pidSource(): ReturnType<typeof vi.fn<NestedDiagramSource>> {
 }
 
 describe("semantic in-place nesting", () => {
-  it("asks for nothing while the box is below the fade band", async () => {
+  it("asks for nothing while the box is below the prefetch size", async () => {
     const source = pidSource();
     const el = await mountWithSource(source);
     await zoomTo(el, CLOSED);
@@ -243,7 +265,7 @@ describe("semantic in-place nesting", () => {
   it("fetches the component's class, and fades its diagram in over the icon", async () => {
     const source = pidSource();
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     expect(source).toHaveBeenCalledWith("P.LimPID");
 
     const view = nested(el);
@@ -254,7 +276,7 @@ describe("semantic in-place nesting", () => {
 
   it("cross-fades icon and diagram as exact complements mid-band", async () => {
     const el = await mountWithSource(pidSource());
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     await zoomTo(el, MID);
     expect(nested(el)?.container?.alpha).toBeCloseTo(0.5);
     expect(iconGroup(el).container?.alpha).toBeCloseTo(0.5);
@@ -262,7 +284,7 @@ describe("semantic in-place nesting", () => {
 
   it("retraces the fade when the zoom reverses, back to the bare icon", async () => {
     const el = await mountWithSource(pidSource());
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     await zoomTo(el, MID);
     expect(nested(el)?.container?.alpha).toBeCloseTo(0.5);
     await zoomTo(el, CLOSED);
@@ -292,7 +314,7 @@ describe("semantic in-place nesting", () => {
       },
     });
     const el = await mountWithSource(pidSource(), hostLayout(wide));
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     const { x, y } = onScreenContentScale(el);
     expect(x).toBeCloseTo(y);
     // The 20-unit box holds the 200-unit diagram: 0.1 diagram units per unit.
@@ -310,7 +332,7 @@ describe("semantic in-place nesting", () => {
       ],
     };
     const el = await mountWithSource(pidSource(), layout);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     const { x, y } = onScreenContentScale(el);
     expect(x).toBeCloseTo(y);
     expect(y).toBeCloseTo(0.1);
@@ -327,7 +349,7 @@ describe("semantic in-place nesting", () => {
       ],
     };
     const el = await mountWithSource(pidSource(), layout);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     const { x, y } = onScreenContentScale(el);
     expect(x).toBeGreaterThan(0);
     expect(y).toBeGreaterThan(0);
@@ -344,7 +366,7 @@ describe("semantic in-place nesting", () => {
       ],
     };
     const el = await mountWithSource(pidSource(), layout);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     const placed = nested(el)?.container?.parent;
     if (!placed) throw new Error("expected an opened box");
     const { space } = frame(el);
@@ -358,7 +380,7 @@ describe("semantic in-place nesting", () => {
 
   it("keeps the frame's on-screen stroke constant as zoom continues past fully open", async () => {
     const el = await mountWithSource(pidSource());
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     expect(onScreenStrokePx(el)).toBeCloseTo(NESTING_CHROME.strokeWidthPx);
     await zoomTo(el, OPEN / 10);
     expect(onScreenStrokePx(el)).toBeCloseTo(NESTING_CHROME.strokeWidthPx);
@@ -366,7 +388,7 @@ describe("semantic in-place nesting", () => {
 
   it("draws the frame stroke translucent, yet more visible than its fill", async () => {
     const el = await mountWithSource(pidSource());
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     const alpha = strokeStyle(frame(el).g).alpha ?? Number.NaN;
     expect(alpha).toBe(NESTING_CHROME.strokeAlpha);
     expect(alpha).toBeLessThan(1);
@@ -375,13 +397,13 @@ describe("semantic in-place nesting", () => {
 
   it("names the opened box by its class, not by the instance", async () => {
     const el = await mountWithSource(pidSource());
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     expect(nested(el)?.label).toBe("P.LimPID");
   });
 
   it("renders the nested entities but keeps every one of them unpickable", async () => {
     const el = await mountWithSource(pidSource());
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     const view = nested(el);
     const inner = Array.from(
       view?.shadowRoot?.querySelectorAll("om-component") ?? [],
@@ -403,7 +425,7 @@ describe("semantic in-place nesting", () => {
 
   it("keeps the host's hover off a nested connection sharing its index", async () => {
     const el = await mountWithSource(pidSource());
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     // Set directly: the host fixture has no edge 0 to hover.
     const store: unknown = Reflect.get(el, "interactionStore");
     const next: unknown = store && Reflect.get(store, "next");
@@ -415,23 +437,24 @@ describe("semantic in-place nesting", () => {
     expect(conn?.isHovered).toBe(false);
   });
 
-  it("stays an icon when the fetch fails, and asks again only on the next approach", async () => {
+  it("stays an icon when the fetch fails, and asks again only once the box drops below the prefetch size", async () => {
     const source = vi
       .fn<NestedDiagramSource>()
       .mockRejectedValueOnce(new Error("OMC busy"))
       .mockResolvedValue(limPidDiagram());
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     expect(nested(el)).toBeNull();
     expect(iconGroup(el).container?.alpha).toBe(1);
 
-    // Panning and zooming inside the band does not retry.
+    // Zooming anywhere above the prefetch size, closed or open, does not retry.
     await zoomTo(el, MID);
+    await zoomTo(el, PREFETCH);
     await zoomTo(el, OPEN);
     expect(source).toHaveBeenCalledTimes(1);
 
     await zoomTo(el, CLOSED);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     expect(source).toHaveBeenCalledTimes(2);
     expect(nested(el)?.container?.alpha).toBe(1);
   });
@@ -458,7 +481,7 @@ describe("semantic in-place nesting", () => {
       Promise.resolve({ ...limPidDiagram(), className }),
     );
     const el = await mountWithSource(source, layout);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     expect(source).toHaveBeenCalledWith("P.Gain");
     expect(source).not.toHaveBeenCalledWith("P.Gain#2");
     expect(nested(el)?.label).toBe("P.Gain");
@@ -498,7 +521,7 @@ describe("semantic in-place nesting: a changed class", () => {
   it("re-fetches an open box drawing the class, keeping the old diagram up meanwhile", async () => {
     const { source, release } = heldAfterFirst();
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
 
     el.invalidateNestedDiagrams("P.Add");
     await settle(el);
@@ -509,12 +532,30 @@ describe("semantic in-place nesting: a changed class", () => {
     release(revisedDiagram());
     await settle(el);
     expect(innerIds(el)).toEqual(["addP"]);
+    expect(iconGroup(el).container?.alpha).toBe(0);
+  });
+
+  it("re-fetches a closed box still above the prefetch size, so it reopens on the fresh diagram", async () => {
+    const { source, release } = heldAfterFirst();
+    const el = await mountWithSource(source);
+    await growTo(el, OPEN);
+    await zoomTo(el, PREFETCH);
+
+    el.invalidateNestedDiagrams("P.LimPID");
+    await settle(el);
+    expect(source).toHaveBeenCalledTimes(2);
+
+    release(revisedDiagram());
+    await settle(el);
+    await zoomTo(el, MID);
+    expect(innerIds(el)).toEqual(["addP"]);
+    expect(nested(el)?.container?.alpha).toBeCloseTo(0.5);
   });
 
   it("re-fetches every open box for a change no class name describes", async () => {
     const { source, release } = heldAfterFirst();
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
 
     el.invalidateNestedDiagrams(null);
     release(revisedDiagram());
@@ -527,7 +568,7 @@ describe("semantic in-place nesting: a changed class", () => {
   it("leaves an open box alone when a class it does not draw changes", async () => {
     const source = pidSource();
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
 
     el.invalidateNestedDiagrams("P.Elsewhere");
     await settle(el);
@@ -538,7 +579,7 @@ describe("semantic in-place nesting: a changed class", () => {
   it("drops a closed box's diagram, so it reopens as the icon until the fresh one lands", async () => {
     const { source, release } = heldAfterFirst();
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     await zoomTo(el, CLOSED);
 
     el.invalidateNestedDiagrams("P.LimPID");
@@ -552,6 +593,7 @@ describe("semantic in-place nesting: a changed class", () => {
 
     release(revisedDiagram());
     await settle(el);
+    await runFrames(el, NESTING_LATE_FADE_MS);
     expect(innerIds(el)).toEqual(["addP"]);
   });
 
@@ -566,12 +608,13 @@ describe("semantic in-place nesting: a changed class", () => {
       )
       .mockResolvedValue(revisedDiagram());
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
 
     el.invalidateNestedDiagrams("P.Add");
     resolveStale(limPidDiagram());
     await settle(el);
     await settle(el);
+    await runFrames(el, NESTING_LATE_FADE_MS);
 
     expect(source).toHaveBeenCalledTimes(2);
     expect(innerIds(el)).toEqual(["addP"]);
@@ -585,11 +628,12 @@ describe("semantic in-place nesting: a changed class", () => {
       }),
     );
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
 
     el.invalidateNestedDiagrams("P.Host");
     resolve(limPidDiagram());
     await settle(el);
+    await runFrames(el, NESTING_LATE_FADE_MS);
 
     expect(source).toHaveBeenCalledTimes(1);
     expect(innerIds(el)).toEqual(["addP", "addI"]);
@@ -600,13 +644,132 @@ describe("semantic in-place nesting: a changed class", () => {
       Promise.resolve({ ...limPidDiagram(), className }),
     );
     const el = await mountWithSource(source);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
 
     component(el, "pid").nestedClass = "P.Gain";
     await settle(el);
+    await runFrames(el, NESTING_LATE_FADE_MS);
 
     expect(source).toHaveBeenLastCalledWith("P.Gain");
     expect(nested(el)?.label).toBe("P.Gain");
+  });
+});
+
+describe("semantic in-place nesting: prefetch and late fade", () => {
+  /** A source whose answer waits for `release`. */
+  function held(): {
+    source: ReturnType<typeof vi.fn<NestedDiagramSource>>;
+    release: () => void;
+  } {
+    let release: () => void = () => {};
+    const pending = new Promise<DiagramLayout>((resolve) => {
+      release = () => resolve(limPidDiagram());
+    });
+    const source = vi.fn<NestedDiagramSource>(() => pending);
+    return { source, release: () => release() };
+  }
+
+  function announced(el: OmGraphicalLayout): (number | null)[] {
+    const progress: (number | null)[] = [];
+    component(el, "pid").addEventListener("om-nesting-change", (e) => {
+      if (e instanceof CustomEvent) {
+        const { view } = e.detail as NestingChangeDetail;
+        progress.push(view?.progress ?? null);
+      }
+    });
+    return progress;
+  }
+
+  it("fetches the diagram while the box is still an icon, growing toward the band", async () => {
+    const source = pidSource();
+    const el = await mountWithSource(source);
+    const progress = announced(el);
+    await zoomTo(el, PREFETCH);
+    expect(source).toHaveBeenCalledWith("P.LimPID");
+    expect(nested(el)).toBeNull();
+    expect(iconGroup(el).container?.alpha).toBe(1);
+    expect(progress.every((p) => p === null)).toBe(true);
+  });
+
+  it("opens a prefetched diagram at the size-driven fraction straight away", async () => {
+    const el = await mountWithSource(pidSource());
+    await zoomTo(el, PREFETCH);
+    await zoomTo(el, MID);
+    expect(nested(el)?.container?.alpha).toBeCloseTo(0.5);
+    expect(iconGroup(el).container?.alpha).toBeCloseTo(0.5);
+  });
+
+  it("keeps a diagram that lands after the box zoomed away, and shows it on return without asking again", async () => {
+    const { source, release } = held();
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+    await zoomTo(el, CLOSED);
+    release();
+    await settle(el);
+    expect(nested(el)).toBeNull();
+
+    await zoomTo(el, OPEN);
+    expect(source).toHaveBeenCalledTimes(1);
+    expect(nested(el)?.container?.alpha).toBe(1);
+    expect(iconGroup(el).container?.alpha).toBe(0);
+  });
+
+  it("fades in a diagram that lands after the box has opened, rather than popping it in", async () => {
+    const { source, release } = held();
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+    const progress = announced(el);
+    release();
+    await settle(el);
+    expect(nested(el)?.container?.alpha ?? 0).toBe(0);
+    expect(iconGroup(el).container?.alpha).toBe(1);
+
+    await runFrames(el, NESTING_LATE_FADE_MS / 2);
+    const mid = nested(el)?.container?.alpha ?? Number.NaN;
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1);
+    expect(iconGroup(el).container?.alpha).toBeCloseTo(1 - mid);
+    expect(progress.at(-1)).toBeCloseTo(mid);
+
+    await runFrames(el, NESTING_LATE_FADE_MS);
+    expect(nested(el)?.container?.alpha).toBe(1);
+    expect(iconGroup(el).container?.alpha).toBe(0);
+    expect(progress.at(-1)).toBe(1);
+    const shown = progress.filter((p): p is number => p !== null);
+    expect(shown).toEqual([...shown].sort((a, b) => a - b));
+  });
+
+  it("fades a late diagram up to the size-driven fraction, not past it", async () => {
+    const { source, release } = held();
+    const el = await mountWithSource(source);
+    await zoomTo(el, MID);
+    release();
+    await settle(el);
+
+    await runFrames(el, NESTING_LATE_FADE_MS / 2);
+    expect(nested(el)?.container?.alpha).toBeLessThan(0.4);
+
+    await runFrames(el, NESTING_LATE_FADE_MS);
+    expect(nested(el)?.container?.alpha).toBeCloseTo(0.5);
+    expect(iconGroup(el).container?.alpha).toBeCloseTo(0.5);
+  });
+
+  it("stops a late fade once the component leaves the scene", async () => {
+    const { source, release } = held();
+    const el = await mountWithSource(source);
+    await zoomTo(el, OPEN);
+    release();
+    await settle(el);
+    await runFrames(el, NESTING_LATE_FADE_MS / 4);
+
+    const comp = component(el, "pid");
+    const progress = announced(el);
+    comp.remove();
+    vi.advanceTimersByTime(NESTING_LATE_FADE_MS / 4);
+    await new Promise((r) => setTimeout(r, 0));
+    await comp.updateComplete;
+    const fading = progress.filter((p) => p !== null && p > 0 && p < 1);
+    expect(fading).toEqual([]);
   });
 });
 
@@ -690,7 +853,7 @@ describe("semantic in-place nesting: parent wires", () => {
     const layout = wiredHost(AUTHORED);
     const before = JSON.stringify(layout.connections);
     const el = await mountWithSource(drawingUAt(40), layout);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     await el.updateComplete;
     const end = wire(el).path.at(-1);
     expect(end?.[0]).toBeCloseTo(-10);
@@ -717,14 +880,14 @@ describe("semantic in-place nesting: parent wires", () => {
       },
     };
     const el = await mountWithSource(drawingUAt(40), layout);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     await el.updateComplete;
     expect(wire(el).path.at(-1)?.[1]).toBeCloseTo(4);
   });
 
   it("moves the end as far as the box has faded in", async () => {
     const el = await mountWithSource(drawingUAt(40), wiredHost(AUTHORED));
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     await zoomTo(el, MID);
     await el.updateComplete;
     expect(wire(el).path.at(-1)?.[1]).toBeCloseTo(2);
@@ -733,7 +896,7 @@ describe("semantic in-place nesting: parent wires", () => {
   it("forgets a box removed while open, so its re-added component starts closed", async () => {
     const layout = wiredHost(AUTHORED);
     const el = await mountWithSource(drawingUAt(40), layout);
-    await zoomTo(el, OPEN);
+    await growTo(el, OPEN);
     const { pid: _removed, ...rest } = layout.components;
     el.layout = { ...layout, components: rest, connections: [] };
     await el.updateComplete;

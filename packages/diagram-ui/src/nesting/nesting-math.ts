@@ -3,11 +3,19 @@ import type { CoordinateSystem, Point } from "@dicode/omc-client";
 
 import { coordSystemSize, type Box } from "../base/placement-math.js";
 
-/** On-screen box sizes in CSS px: open at `enterPx`, icon at `exitPx`. */
+/**
+ * On-screen box sizes in CSS px: open at `enterPx`, icon at `exitPx`. Above
+ * `prefetchPx` the box's diagram is fetched while it still shows the icon, so
+ * a box growing into the band finds it ready.
+ */
 export const NESTING_THRESHOLDS = {
   enterPx: 200,
   exitPx: 140,
+  prefetchPx: 100,
 } as const;
+
+/** Fade-in for a diagram that lands after its box has already started to open. */
+export const NESTING_LATE_FADE_MS = 200;
 
 /** Frame around an opened box; widths in CSS px. */
 export const NESTING_CHROME = {
@@ -25,6 +33,17 @@ export function nestingProgress(sizePx: number): number {
   if (sizePx <= exitPx) return 0;
   if (sizePx >= enterPx) return 1;
   return (sizePx - exitPx) / (enterPx - exitPx);
+}
+
+/** Whether a box this size wants its diagram at hand, open or about to be. */
+export function nestingPrefetches(sizePx: number): boolean {
+  return Number.isFinite(sizePx) && sizePx > NESTING_THRESHOLDS.prefetchPx;
+}
+
+/** The fraction of `NESTING_LATE_FADE_MS` elapsed, clamped to `[0, 1]`. */
+export function lateFadeProgress(elapsedMs: number): number {
+  if (!(elapsedMs > 0)) return 0;
+  return Math.min(1, elapsedMs / NESTING_LATE_FADE_MS);
 }
 
 export interface LetterboxFit {
