@@ -200,7 +200,7 @@ describe("onModelicaPathChanged", () => {
 
   it("applies an edit made mid-spawn once the spawn settles, overriding what the spawn read", async () => {
     const client = makeClient();
-    let setting = [ws("/ws", "old")];
+    const setting = [ws("/ws", "new")];
     let resolveSpawn: (c: typeof client) => void = () => {};
     const spawn = new Promise<typeof client>((resolve) => {
       resolveSpawn = resolve;
@@ -209,7 +209,6 @@ describe("onModelicaPathChanged", () => {
       return c;
     });
 
-    setting = [ws("/ws", "new")];
     const change = onModelicaPathChanged(
       touches("modelica.modelicaPath"),
       spawn,

@@ -168,13 +168,21 @@ export async function activate(
   let modelicaPathChanges = Promise.resolve();
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      modelicaPathChanges = modelicaPathChanges.then(() =>
-        onModelicaPathChanged(
-          event,
-          omcClientCache.whenLive(),
-          modelicaPathScopes,
-        ),
-      );
+      modelicaPathChanges = modelicaPathChanges
+        .then(() =>
+          onModelicaPathChanged(
+            event,
+            omcClientCache.whenLive(),
+            modelicaPathScopes,
+          ),
+        )
+        // A rejected link would wedge every later edit behind it.
+        .catch((err: unknown) => {
+          log.warn(
+            "modelicaPath",
+            `re-applying modelica.modelicaPath failed: ${errorDetail(err)}`,
+          );
+        });
     }),
   );
   const ensureClient = (): Promise<OmcClient> => omcClientCache.ensure();
