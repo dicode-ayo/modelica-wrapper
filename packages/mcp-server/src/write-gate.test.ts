@@ -758,6 +758,28 @@ describe("a call naming a destination path", () => {
     expect(source.asked).toEqual([]);
   });
 
+  it("judges against the host's system-library roots, not every MODELICAPATH entry", async () => {
+    // The host widened MODELICAPATH with a project library the user may write
+    // to; only the installed default it reports stays off limits.
+    const projectLib = "/workspace/lib";
+    const source = {
+      ...verdicts(),
+      systemLibraryRoots: async () => [LIBRARY_ROOT],
+    };
+    const omc = withModelicaPath(
+      [projectLib, LIBRARY_ROOT].join(path.delimiter),
+    );
+    const filter = (outFile: string) =>
+      refusalFor(source, omc, "filterSimulationResults", {
+        inFile: "/workspace/res.mat",
+        outFile,
+        vars: ["x"],
+      });
+
+    expect(await filter(`${projectLib}/filtered.mat`)).toBeUndefined();
+    expect(await filter(`${LIBRARY_ROOT}/filtered.mat`)).toBeDefined();
+  });
+
   it("refuses outFile that is exactly a MODELICAPATH root, not only nested under one", async () => {
     const source = verdicts();
 

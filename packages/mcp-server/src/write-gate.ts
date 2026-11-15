@@ -88,7 +88,8 @@ export interface WriteTargetClient {
 
 /**
  * The OMC surface a caller-named destination path is judged against:
- * `MODELICAPATH`'s roots, and OMC's own actual working directory — which is
+ * `MODELICAPATH`'s roots (unless the host's verdict source names its own), and
+ * OMC's own actual working directory — which is
  * what a relative destination resolves against, not the host process's
  * `cwd()`. `cd()` with an empty `newWorkingDirectory` is OMC's own getter for
  * that (`packages/omc-client/src/api/lifecycle/cd.ts`); `McpToolClient`
@@ -145,7 +146,7 @@ export interface DestinationClient {
  * judged the way a `"binding"` path's classes are. The path need not be an
  * existing file, or an existing Modelica class, at all, so it is checked by
  * origin only: it must not resolve, against OMC's own working directory,
- * under a `MODELICAPATH` root. It never goes through a class lookup or a
+ * under a system-library root. It never goes through a class lookup or a
  * file-permission check.
  *
  * `null` means the input says nothing the gate judges: a library named rather
@@ -734,7 +735,7 @@ async function refusalForArgument(
       // judge" would skip the very destination the real call still resolves.
       // Only a wrong-typed value has truly nothing to judge.
       if (raw !== undefined && typeof raw !== "string") return undefined;
-      return refusalForDestination(client, raw ?? "");
+      return refusalForDestination(verdicts, client, raw ?? "");
     }
     case "simflags":
     case "cflags": {
@@ -743,7 +744,11 @@ async function refusalForArgument(
         return "Cannot tell where this would write — cflags carries a response file (@file), whose contents the write gate cannot see.";
       }
       for (const destination of flagDestinations(raw, argument.as)) {
-        const refusal = await refusalForDestination(client, destination);
+        const refusal = await refusalForDestination(
+          verdicts,
+          client,
+          destination,
+        );
         if (refusal !== undefined) return refusal;
       }
       return undefined;
@@ -964,7 +969,9 @@ async function refusalForDeclaredClasses(
 
 /**
  * Whether `destinationPath` resolves, against OMC's own actual working
- * directory, under one of `MODELICAPATH`'s roots — the same algorithm
+ * directory, under one of the system-library roots — the ones
+ * {@link WriteVerdictSource.systemLibraryRoots} reports, or `MODELICAPATH`'s
+ * when the host supplies none. That is the same algorithm
  * `packages/extension/src/system-library.ts`'s `systemLibraryVerdict` derives
  * for a class's own source file, but starting from a path already in hand
  * rather than one reached through `getSourceFile`. `mcp-server` cannot depend
@@ -978,7 +985,7 @@ async function refusalForDeclaredClasses(
  * relative `MODELICAPATH` root is resolved against the same working
  * directory, for the same reason — OMC resolves both against its own cwd.
  *
- * Fails open — `false` — on any error from `getModelicaPath()` or `cd()`,
+ * Fails open — `false` — on any error reading the roots or from `cd()`,
  * matching the "deriving a verdict fails open" philosophy documented on
  * `WriteVerdictSource`/`write-verdict.ts` and the `catch` in
  * `WriteVerdicts.forClass`: refusing a destination the gate could not
@@ -999,24 +1006,21 @@ async function refusalForDeclaredClasses(
  * function outside that turn reopens the window.
  */
 async function isUnderSystemLibraryRoot(
+  verdicts: WriteVerdictSource,
   client: DestinationClient,
   destinationPath: string,
 ): Promise<boolean> {
   try {
-    const { modelicaPath } = await client.getModelicaPath();
+    const libraryRoots = await systemLibraryRoots(verdicts, client);
     const { workingDirectory: rawWorkingDirectory } = await client.cd({
       newWorkingDirectory: "",
     });
     const workingDirectory =
       await realpathExistingAncestor(rawWorkingDirectory);
     const roots = await Promise.all(
-      modelicaPath
-        .split(path.delimiter)
-        .map((root) => root.trim())
-        .filter((root) => root.length > 0)
-        .map((root) =>
-          realpathExistingAncestor(path.resolve(workingDirectory, root)),
-        ),
+      libraryRoots.map((root) =>
+        realpathExistingAncestor(path.resolve(workingDirectory, root)),
+      ),
     );
     const file = await realpathExistingAncestor(
       path.resolve(workingDirectory, destinationPath),
@@ -1025,6 +1029,24 @@ async function isUnderSystemLibraryRoot(
   } catch {
     return false;
   }
+}
+
+/**
+ * The host's system-library roots when it supplies them, else every entry of
+ * the live `MODELICAPATH`.
+ */
+async function systemLibraryRoots(
+  verdicts: WriteVerdictSource,
+  client: DestinationClient,
+): Promise<string[]> {
+  if (verdicts.systemLibraryRoots !== undefined) {
+    return verdicts.systemLibraryRoots(client);
+  }
+  const { modelicaPath } = await client.getModelicaPath();
+  return modelicaPath
+    .split(path.delimiter)
+    .map((root) => root.trim())
+    .filter((root) => root.length > 0);
 }
 
 /**
@@ -1065,10 +1087,12 @@ function isUnder(file: string, root: string): boolean {
  * construct their own ad hoc messages without going through `verdicts`.
  */
 async function refusalForDestination(
+  verdicts: WriteVerdictSource,
   client: DestinationClient,
   destinationPath: string,
 ): Promise<string | undefined> {
   const underSystemLibrary = await isUnderSystemLibraryRoot(
+    verdicts,
     client,
     destinationPath,
   );
