@@ -79,6 +79,7 @@ export {
   type RootPackageClient,
 } from "./declare-class.js";
 export { pathExists } from "./fs-util.js";
+export { splitModelicaPath } from "./api/browsing/getModelicaPath.js";
 export {
   OmcDiagnosticError,
   errorBufferTransaction,

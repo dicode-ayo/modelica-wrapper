@@ -56,7 +56,7 @@ import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
-import { isLikelyDiskPath } from "@dicode/omc-client";
+import { isLikelyDiskPath, splitModelicaPath } from "@dicode/omc-client";
 import type {
   MutatingFnName,
   OmcFnName,
@@ -88,12 +88,12 @@ export interface WriteTargetClient {
 
 /**
  * The OMC surface a caller-named destination path is judged against:
- * `MODELICAPATH`'s roots (unless the host's verdict source names its own), and
- * OMC's own actual working directory — which is
- * what a relative destination resolves against, not the host process's
- * `cwd()`. `cd()` with an empty `newWorkingDirectory` is OMC's own getter for
- * that (`packages/omc-client/src/api/lifecycle/cd.ts`); `McpToolClient`
- * satisfies it.
+ * `MODELICAPATH`'s roots (unless the host's verdict source names its own),
+ * and OMC's own actual working directory — which is what a relative
+ * destination resolves against, not the host process's `cwd()`. `cd()` with
+ * an empty `newWorkingDirectory` is OMC's own getter for that
+ * (`packages/omc-client/src/api/lifecycle/cd.ts`); `McpToolClient` satisfies
+ * it.
  */
 export interface DestinationClient {
   getModelicaPath(): Promise<{ modelicaPath: string }>;
@@ -177,12 +177,16 @@ type Argument<Field extends string> =
  * A call no input makes safe, refused whatever it carries.
  *
  * `setModelicaPath`, and `setEnvironmentVar` through `OPENMODELICALIBRARY`,
- * move the roots every system-library verdict is judged against, so a caller
- * that empties them makes the Modelica Standard Library read as editable.
- * `setEnvironmentVar` also reaches every compiler and simulation subprocess OMC
- * spawns (`PATH`, `LD_PRELOAD`), and `setInstallationDirectoryPath` /
- * `setTempDirectoryPath` move where OMC reads its runtime from and writes its
- * scratch files to. None of them names anything the gate could judge instead.
+ * move where OMC looks for libraries. In any host, a caller could then leave
+ * the Modelica Standard Library unloadable, or redirect which library a name
+ * resolves to; in a host that supplies no `systemLibraryRoots`, where
+ * verdicts read the live `MODELICAPATH`, emptying it also makes the Modelica
+ * Standard Library read as editable. `setEnvironmentVar` also injects environment into every
+ * compiler and simulation subprocess OMC spawns (`PATH`, `LD_PRELOAD`), and
+ * `setInstallationDirectoryPath` / `setTempDirectoryPath` move where OMC
+ * reads its runtime from and writes its scratch files to. `getEnvironmentVar`
+ * reads the host process's environment, credentials included. None of them
+ * names anything the gate could judge instead.
  */
 interface Refusal {
   readonly refuse: string;
@@ -305,10 +309,6 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   renameComponentInClass: edits("typeName"),
   setClassComment: edits("typeName"),
   setCommandLineOptions: null,
-  setEnvironmentVar: refuses("OMC's environment"),
-  setInstallationDirectoryPath: refuses("OMC's installation directory"),
-  setLanguageStandard: null,
-  setModelicaPath: refuses("the MODELICAPATH"),
   setComponentComment: edits("typeName"),
   setComponentDimensions: edits("typeName"),
   setComponentModifierValue: edits("typeName"),
@@ -317,9 +317,13 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   setElementAnnotation: editsElement("typeName"),
   setElementModifierValue: edits("typeName"),
   setElementType: edits("typeName"),
+  setEnvironmentVar: refuses("OMC's environment"),
   setExtendsModifier: edits("typeName"),
   setExtendsModifierValue: edits("typeName"),
   setFullDocumentationAnnotation: edits("typeName"),
+  setInstallationDirectoryPath: refuses("OMC's installation directory"),
+  setLanguageStandard: null,
+  setModelicaPath: refuses("the MODELICAPATH"),
   setParameterValue: edits("typeName"),
   setSourceFile: [edits("typeName"), binds("fileName")],
   updateComponent: edits("intoTypeName"),
@@ -382,6 +386,10 @@ const DESTINATION_ARGUMENTS = {
  * classifies `"refused"`, tied to it the way `DESTINATION_ARGUMENTS` is.
  */
 const REFUSED_ARGUMENTS = {
+  getEnvironmentVar: {
+    refuse:
+      "Cannot read OMC's environment — it carries the host process's variables, credentials among them.",
+  } satisfies GateArgument<"getEnvironmentVar">,
   setTempDirectoryPath: refuses(
     "OMC's temporary directory",
   ) satisfies GateArgument<"setTempDirectoryPath">,
@@ -402,8 +410,9 @@ const REFUSED_ARGUMENTS = {
  * - `"destination"`: takes a caller-named destination path unrelated to any
  *   Modelica class — `DESTINATION_ARGUMENTS`' rows — gated by origin alone
  *   through `refusalForDestination` rather than a class lookup.
- * - `"refused"`: changes session configuration no MCP caller may touch —
- *   `REFUSED_ARGUMENTS`' rows; see {@link Refusal}.
+ * - `"refused"`: changes session configuration, or reads the environment,
+ *   which no MCP caller may touch — `REFUSED_ARGUMENTS`' rows; see
+ *   {@link Refusal}.
  *
  * `buildModelFMU` and `translateModelXML` are `"none"` despite each
  * generating an output file: `buildModelFMU`'s `fileNamePrefix` goes through
@@ -429,7 +438,7 @@ export const READ_ONLY_GATE = {
   getTempDirectoryPath: "none",
   setTempDirectoryPath: "refused",
   getLanguageStandard: "none",
-  getEnvironmentVar: "none",
+  getEnvironmentVar: "refused",
   getClassNames: "none",
   searchClassNames: "none",
   getClassInformation: "none",
@@ -1043,10 +1052,7 @@ async function systemLibraryRoots(
     return verdicts.systemLibraryRoots(client);
   }
   const { modelicaPath } = await client.getModelicaPath();
-  return modelicaPath
-    .split(path.delimiter)
-    .map((root) => root.trim())
-    .filter((root) => root.length > 0);
+  return splitModelicaPath(modelicaPath);
 }
 
 /**

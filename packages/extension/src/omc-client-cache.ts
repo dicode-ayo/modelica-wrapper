@@ -13,6 +13,8 @@
 export interface OmcClientCache<T> {
   /** The shared client, spawning it (once) on first call. */
   ensure(): Promise<T>;
+  /** The client already spawned, if any — never spawns one. */
+  current(): T | undefined;
   /** Close the current client and spawn a fresh one. */
   reset(): Promise<T>;
   /** Close the current client, if any. */
@@ -95,5 +97,5 @@ export function createOmcClientCache<T>(
     await close();
   }
 
-  return { ensure, reset, close, shutdown };
+  return { ensure, current: () => client, reset, close, shutdown };
 }

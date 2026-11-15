@@ -676,12 +676,11 @@ describe("the escape hatch", () => {
     expect(calls).toEqual([]);
   });
 
-  it("still reads session configuration, and sets the language standard", async () => {
+  it("still reads the library path, and sets the language standard", async () => {
     const mcp = await connect();
 
     for (const args of [
       { fn: "getModelicaPath", input: {} },
-      { fn: "getEnvironmentVar", input: { var: "OPENMODELICALIBRARY" } },
       { fn: "setLanguageStandard", input: { inVersion: "3.5" } },
     ]) {
       const result = (await mcp.callTool({
@@ -692,9 +691,21 @@ describe("the escape hatch", () => {
     }
     expect(calls.map((c) => c.fn)).toEqual([
       "getModelicaPath",
-      "getEnvironmentVar",
       "setLanguageStandard",
     ]);
+  });
+
+  it("refuses getEnvironmentVar, which would hand the caller the host's environment", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "getEnvironmentVar", input: { var: "HOME" } },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("Cannot read OMC's environment");
+    expect(calls).toEqual([]);
   });
 
   it("refuses save, which writes a file without mutating OMC's memory", async () => {

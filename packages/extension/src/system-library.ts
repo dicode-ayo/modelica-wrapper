@@ -1,11 +1,12 @@
 /**
  * Detects classes that belong to an installed **system library** — the ones
- * loaded from the installed `MODELICAPATH` (`Modelica`, `Complex`, `ModelicaServices`,
- * `ModelicaReference`, …). These must not be edited even when their files are
- * writable on disk: a package-manager install under `~/.openmodelica/libraries/`
- * is owned by the user, so a file-permission check (`fileReadOnly`) treats it as
- * editable. Read-only is a property of a class's *origin*, not its file mode —
- * the same distinction OMEdit draws with `isSystemLibrary`.
+ * loaded from the installed `MODELICAPATH` (`Modelica`, `Complex`,
+ * `ModelicaServices`, `ModelicaReference`, …). These must not be edited even
+ * when their files are writable on disk: a package-manager install under
+ * `~/.openmodelica/libraries/` is owned by the user, so a file-permission
+ * check (`fileReadOnly`) treats it as editable. Read-only is a property of a
+ * class's *origin*, not its file mode — the same distinction OMEdit draws
+ * with `isSystemLibrary`.
  *
  * This is one half of a write verdict; `write-verdict.ts` combines it with the
  * file permission and owns the per-class memo callers see. The `MODELICAPATH`
@@ -18,7 +19,7 @@
 
 import * as path from "node:path";
 
-import { isLikelyDiskPath } from "@dicode/omc-client";
+import { isLikelyDiskPath, splitModelicaPath } from "@dicode/omc-client";
 
 export interface ModelicaPathReader {
   getModelicaPath(): Promise<{ modelicaPath: string }>;
@@ -26,14 +27,6 @@ export interface ModelicaPathReader {
 
 export interface SystemLibraryClient extends ModelicaPathReader {
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
-}
-
-/** `modelicaPath`'s entries, split on the only separator OMC honors. */
-export function splitModelicaPath(modelicaPath: string): string[] {
-  return modelicaPath
-    .split(path.delimiter)
-    .map((r) => r.trim())
-    .filter((r) => r.length > 0);
 }
 
 /**

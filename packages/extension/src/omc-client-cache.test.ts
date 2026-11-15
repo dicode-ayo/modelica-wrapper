@@ -257,4 +257,23 @@ describe("createOmcClientCache", () => {
     expect(await resetP).toBe(b);
     expect(await third).toBe(b);
   });
+
+  it("current() reports only a spawned client and never spawns one", async () => {
+    const { spawn, pending } = deferredSpawns();
+    const cache = createOmcClientCache(spawn, noopClose);
+
+    expect(cache.current()).toBeUndefined();
+    expect(spawn).not.toHaveBeenCalled();
+
+    const first = cache.ensure();
+    expect(cache.current()).toBeUndefined();
+    const client = {};
+    nth(pending, 0).resolve(client);
+    await first;
+    expect(cache.current()).toBe(client);
+
+    await cache.close();
+    expect(cache.current()).toBeUndefined();
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
 });

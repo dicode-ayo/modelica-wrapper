@@ -1,9 +1,11 @@
+import * as os from "node:os";
 import * as path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
 import {
   applyModelicaPath,
+  onModelicaPathChanged,
   resolveModelicaPathEntries,
   type ModelicaPathScope,
 } from "./modelica-path.js";
@@ -52,6 +54,25 @@ describe("resolveModelicaPathEntries", () => {
         ws("/ws/b", "z"),
       ]),
     ).toEqual(["/ws/a/x", "/opt/y", "/ws/b/z"]);
+  });
+
+  it("reads a leading ~ as the home directory, not a folder-relative name", () => {
+    expect(
+      resolveModelicaPathEntries([
+        ws("/ws", "~/libs", "~"),
+        { folder: undefined, entries: ["~/other"] },
+      ]),
+    ).toEqual([
+      path.join(os.homedir(), "libs"),
+      os.homedir(),
+      path.join(os.homedir(), "other"),
+    ]);
+  });
+
+  it("keeps a ~ that does not start the entry as part of a relative name", () => {
+    expect(resolveModelicaPathEntries([ws("/ws", "~user/libs")])).toEqual([
+      "/ws/~user/libs",
+    ]);
   });
 
   it("drops a relative entry when no folder is open, and blank entries always", () => {
@@ -129,5 +150,60 @@ describe("applyModelicaPath", () => {
       fileName: "/usr/lib/omlibrary/Modelica 4.0.0/package.mo",
     });
     expect(await systemLibraryVerdict(client, "Modelica")).toBe(true);
+  });
+});
+
+describe("onModelicaPathChanged", () => {
+  const touches = (section: string) => ({
+    affectsConfiguration: (s: string) => s === section,
+  });
+
+  it("re-points a live session at the new entries, the installed default still last", async () => {
+    const client = makeClient();
+    await applyModelicaPath(client, [ws("/ws", "old")]);
+
+    await onModelicaPathChanged(
+      touches("modelica.modelicaPath"),
+      client,
+      () => [ws("/ws", "new")],
+    );
+
+    expect(client.setModelicaPath).toHaveBeenLastCalledWith({
+      modelicaPath: ["/ws/new", ...INSTALLED].join(path.delimiter),
+    });
+  });
+
+  it("restores the installed default when the setting is emptied", async () => {
+    const client = makeClient();
+    await applyModelicaPath(client, [ws("/ws", "old")]);
+
+    await onModelicaPathChanged(
+      touches("modelica.modelicaPath"),
+      client,
+      () => [ws("/ws")],
+    );
+
+    expect(client.setModelicaPath).toHaveBeenLastCalledWith({
+      modelicaPath: INSTALLED.join(path.delimiter),
+    });
+  });
+
+  it("reads nothing when no session is running, so it never spawns one", async () => {
+    const scopes = vi.fn(() => [ws("/ws", "lib")]);
+    await onModelicaPathChanged(
+      touches("modelica.modelicaPath"),
+      undefined,
+      scopes,
+    );
+    expect(scopes).not.toHaveBeenCalled();
+  });
+
+  it("ignores a change to another setting", async () => {
+    const client = makeClient();
+    await onModelicaPathChanged(touches("modelica.omcPath"), client, () => [
+      ws("/ws", "lib"),
+    ]);
+    expect(client.getModelicaPath).not.toHaveBeenCalled();
+    expect(client.setModelicaPath).not.toHaveBeenCalled();
   });
 });

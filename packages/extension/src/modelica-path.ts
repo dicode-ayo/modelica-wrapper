@@ -13,6 +13,7 @@
  * a user entry stays editable.
  */
 
+import * as os from "node:os";
 import * as path from "node:path";
 
 import { errorDetail } from "./error-detail.js";
@@ -41,7 +42,8 @@ export interface ModelicaPathScope {
 /**
  * Every scope's entries as absolute directories, in folder order, each named
  * once. A user-level relative entry is seen by every folder, so it contributes
- * one directory per folder.
+ * one directory per folder. A leading `~` is the home directory, as a shell
+ * would read it; OMC itself never expands one.
  */
 export function resolveModelicaPathEntries(
   scopes: readonly ModelicaPathScope[],
@@ -49,7 +51,7 @@ export function resolveModelicaPathEntries(
   const resolved: string[] = [];
   for (const { folder, entries } of scopes) {
     for (const raw of entries) {
-      const entry = raw.trim();
+      const entry = expandHome(raw.trim());
       if (entry === "") continue;
       if (path.isAbsolute(entry)) {
         resolved.push(path.normalize(entry));
@@ -66,6 +68,14 @@ export function resolveModelicaPathEntries(
   return [...new Set(resolved)];
 }
 
+function expandHome(entry: string): string {
+  if (entry === "~") return os.homedir();
+  if (entry.startsWith("~/") || entry.startsWith(`~${path.sep}`)) {
+    return path.join(os.homedir(), entry.slice(2));
+  }
+  return entry;
+}
+
 /**
  * Point `client`'s library path at the user's entries followed by the
  * installed default. Never throws: a session left on its inherited path still
@@ -75,14 +85,38 @@ export function resolveModelicaPathEntries(
  * `setModelicaPath` typed into the REPL cannot redefine what counts as a
  * system library either.
  */
-export async function applyModelicaPath(
+export function applyModelicaPath(
   client: ModelicaPathClient,
   scopes: readonly ModelicaPathScope[],
+): Promise<void> {
+  return writeModelicaPath(client, scopes, { whenEmpty: "keep" });
+}
+
+/**
+ * Re-point the running session at the setting's current entries when
+ * `event` touches `modelica.modelicaPath`. A session not yet spawned is left
+ * alone — it reads the setting when it starts. Unlike {@link applyModelicaPath},
+ * an empty setting still writes the path, back to the installed default.
+ */
+export async function onModelicaPathChanged(
+  event: { affectsConfiguration(section: string): boolean },
+  liveClient: ModelicaPathClient | undefined,
+  scopes: () => readonly ModelicaPathScope[],
+): Promise<void> {
+  if (!event.affectsConfiguration("modelica.modelicaPath")) return;
+  if (liveClient === undefined) return;
+  await writeModelicaPath(liveClient, scopes(), { whenEmpty: "reset" });
+}
+
+async function writeModelicaPath(
+  client: ModelicaPathClient,
+  scopes: readonly ModelicaPathScope[],
+  { whenEmpty }: { whenEmpty: "keep" | "reset" },
 ): Promise<void> {
   try {
     const installed = await systemLibraryRoots(client);
     const user = resolveModelicaPathEntries(scopes);
-    if (user.length === 0) return;
+    if (user.length === 0 && whenEmpty === "keep") return;
     const modelicaPath = [...user, ...installed].join(path.delimiter);
     const { success } = await client.setModelicaPath({ modelicaPath });
     if (!success) {

@@ -72,7 +72,11 @@ import {
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 import { createMoFileScanner } from "./workspace-mo-scan.js";
-import { applyModelicaPath, type ModelicaPathScope } from "./modelica-path.js";
+import {
+  applyModelicaPath,
+  onModelicaPathChanged,
+  type ModelicaPathScope,
+} from "./modelica-path.js";
 import { hasModelicaContent } from "./modelica-window.js";
 
 // Only `deactivate()` outlives `activate()`'s scope.
@@ -160,6 +164,15 @@ export async function activate(
     },
   );
   closeOmcClientCache = () => omcClientCache.shutdown();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      void onModelicaPathChanged(
+        event,
+        omcClientCache.current(),
+        modelicaPathScopes,
+      );
+    }),
+  );
   const ensureClient = (): Promise<OmcClient> => omcClientCache.ensure();
   // Used by the REPL's `:reset` meta-command — anything that survives in
   // OMC's in-memory state (loaded classes, last simulation result,

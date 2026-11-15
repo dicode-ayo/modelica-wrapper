@@ -73,7 +73,7 @@ The extension activates when a workspace contains any `*.mo` file.
 | Setting | Default | Description |
 | --- | --- | --- |
 | `modelica.omcPath` | `""` | Path to the `omc` binary. Empty uses `omc` from `PATH`. |
-| `modelica.modelicaPath` | `[]` | Extra directories OMC searches for libraries, in addition to the installed ones. Relative entries resolve against each workspace folder. The installed libraries are searched after these, so an entry adds libraries but cannot replace the Modelica Standard Library; classes loaded from these directories stay editable. Applied whenever OMC starts, including after `:reset`. |
+| `modelica.modelicaPath` | `[]` | Extra directories OMC searches for libraries, in addition to the installed ones. Relative entries resolve against each workspace folder. The installed libraries are searched after these, so an entry adds libraries but cannot replace the Modelica Standard Library; classes loaded from these directories stay editable. A leading `~` is your home directory. Applied when OMC starts (including after `:reset`) and again whenever the setting changes. |
 | `modelica.checkOnEdit` | `true` | Run a debounced semantic check on each edit and surface diagnostics. |
 | `modelica.checkDebounceMs` | `750` | Debounce window (ms) before the auto-check runs (min 250). |
 

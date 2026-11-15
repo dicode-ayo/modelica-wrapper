@@ -12,6 +12,8 @@
  * ```
  */
 
+import * as path from "node:path";
+
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
@@ -39,4 +41,12 @@ export async function getModelicaPath(
     { modelicaPath: expectString(parse(raw)) },
     "getModelicaPath",
   );
+}
+
+/** `modelicaPath`'s entries, split on the only separator OMC honors. */
+export function splitModelicaPath(modelicaPath: string): string[] {
+  return modelicaPath
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }

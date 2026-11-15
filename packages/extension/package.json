@@ -498,7 +498,7 @@
           },
           "default": [],
           "scope": "resource",
-          "description": "Extra directories OMC searches for libraries, in addition to the installed ones. Relative entries resolve against each workspace folder."
+          "description": "Extra directories OMC searches for libraries, in addition to the installed ones. Relative entries resolve against each workspace folder; a leading ~ is the home directory. Takes effect immediately."
         },
         "modelica.checkOnEdit": {
           "type": "boolean",

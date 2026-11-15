@@ -1361,8 +1361,11 @@ describe("READ_ONLY_GATE", () => {
     }
   });
 
-  it("pins setTempDirectoryPath as the only readOnly function refused outright", () => {
-    expect(flagged("refused")).toEqual(["setTempDirectoryPath"]);
+  it("pins setTempDirectoryPath and getEnvironmentVar as the only readOnly functions refused outright", () => {
+    expect(flagged("refused")).toEqual([
+      "setTempDirectoryPath",
+      "getEnvironmentVar",
+    ]);
   });
 
   it("pins save as the only readOnly function that rewrites its own file", () => {
