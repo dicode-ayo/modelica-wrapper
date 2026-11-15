@@ -103,6 +103,16 @@ describe("mutationFor", () => {
     });
   });
 
+  it("goes coarse when a session setting can change which library a name resolves to", () => {
+    expect(mutationFor('setModelicaPath("/ws/lib")')).toEqual({
+      fn: "setModelicaPath",
+      scope: { kind: "coarse" },
+    });
+    expect(
+      mutationFor('setEnvironmentVar("OPENMODELICALIBRARY", "/ws/lib")'),
+    ).toEqual({ fn: "setEnvironmentVar", scope: { kind: "coarse" } });
+  });
+
   it("goes coarse rather than silent when the parse fails", () => {
     expect(mutationFor("x := simulate(Demo.Circuit)")).toEqual({
       fn: undefined,

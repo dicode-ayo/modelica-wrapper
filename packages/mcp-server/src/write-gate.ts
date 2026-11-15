@@ -173,14 +173,34 @@ type Argument<Field extends string> =
     };
 
 /**
- * A row: the one argument the gate judges, the several it judges in order, or
- * `null`. Each argument carries its own field name as a literal, and only a
- * name `K`'s input actually has is assignable here — so a renamed argument
- * fails the build.
+ * A call no input makes safe, refused whatever it carries.
+ *
+ * `setModelicaPath`, and `setEnvironmentVar` through `OPENMODELICALIBRARY`,
+ * move the roots every system-library verdict is judged against, so a caller
+ * that empties them makes the Modelica Standard Library read as editable.
+ * `setEnvironmentVar` also reaches every compiler and simulation subprocess OMC
+ * spawns (`PATH`, `LD_PRELOAD`), and `setInstallationDirectoryPath` /
+ * `setTempDirectoryPath` move where OMC reads its runtime from and writes its
+ * scratch files to. None of them names anything the gate could judge instead.
+ */
+interface Refusal {
+  readonly refuse: string;
+}
+
+const refuses = (setting: string): Refusal => ({
+  refuse: `Cannot change ${setting} — it is session configuration only the user can set.`,
+});
+
+/**
+ * A row: the one argument the gate judges, the several it judges in order, a
+ * {@link Refusal}, or `null`. Each argument carries its own field name as a
+ * literal, and only a name `K`'s input actually has is assignable here — so a
+ * renamed argument fails the build.
  */
 type GateArgument<K extends OmcFnName> =
   | Argument<Extract<keyof OmcInput<K>, string>>
   | readonly Argument<Extract<keyof OmcInput<K>, string>>[]
+  | Refusal
   | null;
 
 const edits = <F extends string>(field: F): Argument<F> => ({
@@ -284,6 +304,10 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   renameComponentInClass: edits("typeName"),
   setClassComment: edits("typeName"),
   setCommandLineOptions: null,
+  setEnvironmentVar: refuses("OMC's environment"),
+  setInstallationDirectoryPath: refuses("OMC's installation directory"),
+  setLanguageStandard: null,
+  setModelicaPath: refuses("the MODELICAPATH"),
   setComponentComment: edits("typeName"),
   setComponentDimensions: edits("typeName"),
   setComponentModifierValue: edits("typeName"),
@@ -353,6 +377,16 @@ const DESTINATION_ARGUMENTS = {
 };
 
 /**
+ * The {@link Refusal} rows for the `"readOnly"` functions `READ_ONLY_GATE`
+ * classifies `"refused"`, tied to it the way `DESTINATION_ARGUMENTS` is.
+ */
+const REFUSED_ARGUMENTS = {
+  setTempDirectoryPath: refuses(
+    "OMC's temporary directory",
+  ) satisfies GateArgument<"setTempDirectoryPath">,
+};
+
+/**
  * What kind of write a `"readOnly"` OMC function performs, beyond the
  * `MUTATIONS` classification that only means "does not change the model OMC
  * holds in memory". Exhaustive over every readOnly function, so a new one
@@ -367,6 +401,8 @@ const DESTINATION_ARGUMENTS = {
  * - `"destination"`: takes a caller-named destination path unrelated to any
  *   Modelica class — `DESTINATION_ARGUMENTS`' rows — gated by origin alone
  *   through `refusalForDestination` rather than a class lookup.
+ * - `"refused"`: changes session configuration no MCP caller may touch —
+ *   `REFUSED_ARGUMENTS`' rows; see {@link Refusal}.
  *
  * `buildModelFMU` and `translateModelXML` are `"none"` despite each
  * generating an output file: `buildModelFMU`'s `fileNamePrefix` goes through
@@ -388,6 +424,11 @@ export const READ_ONLY_GATE = {
   getMessagesStringInternal: "none",
   getVersion: "none",
   getModelicaPath: "none",
+  getInstallationDirectoryPath: "none",
+  getTempDirectoryPath: "none",
+  setTempDirectoryPath: "refused",
+  getLanguageStandard: "none",
+  getEnvironmentVar: "none",
   getClassNames: "none",
   searchClassNames: "none",
   getClassInformation: "none",
@@ -537,26 +578,29 @@ export const READ_ONLY_GATE = {
   deltaSimulationResults: "none",
   diffSimulationResults: "destination",
 } as const satisfies {
-  readonly [K in ReadOnlyFnName]: "none" | "ownFile" | "destination";
+  readonly [K in ReadOnlyFnName]:
+    "none" | "ownFile" | "destination" | "refused";
 };
 
 /**
- * `CLASS_ARGUMENTS`, `SAVE_ARGUMENT` and `DESTINATION_ARGUMENTS` with their
- * per-function field-name literals erased, which is all a lookup by a runtime
- * name can preserve.
+ * `CLASS_ARGUMENTS`, `SAVE_ARGUMENT`, `DESTINATION_ARGUMENTS` and
+ * `REFUSED_ARGUMENTS` with their per-function field-name literals erased,
+ * which is all a lookup by a runtime name can preserve.
  */
 type ResolvedArgument = Argument<string>;
 
-const BY_NAME: Readonly<
-  Record<
-    string,
-    ResolvedArgument | readonly ResolvedArgument[] | null | undefined
-  >
-> = {
+type ResolvedRow = ResolvedArgument | readonly ResolvedArgument[] | Refusal;
+
+const BY_NAME: Readonly<Record<string, ResolvedRow | null | undefined>> = {
   save: SAVE_ARGUMENT,
   ...DESTINATION_ARGUMENTS,
+  ...REFUSED_ARGUMENTS,
   ...CLASS_ARGUMENTS,
 };
+
+function isRefusal(row: ResolvedRow): row is Refusal {
+  return "refuse" in row;
+}
 
 /**
  * `fn`'s row in {@link BY_NAME}, or `undefined` when it names nothing the gate
@@ -564,9 +608,7 @@ const BY_NAME: Readonly<
  * (`copyClass`'s `within`, `newModel`'s `withinPath`) leaves for `refusalFor`
  * to let straight through.
  */
-function rowFor(
-  fn: string,
-): ResolvedArgument | readonly ResolvedArgument[] | undefined {
+function rowFor(fn: string): ResolvedRow | undefined {
   const row = BY_NAME[fn];
   return row === null ? undefined : row;
 }
@@ -594,6 +636,7 @@ export async function refusalFor(
 ): Promise<string | undefined> {
   const row = rowFor(fn);
   if (row === undefined) return undefined;
+  if (isRefusal(row)) return row.refuse;
   if (typeof input !== "object" || input === null) return undefined;
 
   // One set across the whole row, so a target two arguments share — text

@@ -4,12 +4,25 @@
  * Functions: getVersion, getClassNames, searchClassNames, getClassInformation,
  * isPackage, getInheritanceCount, getInheritedClasses, getUses, existClass.
  *
+ * Plus the session-configuration getters and setters (getModelicaPath,
+ * setModelicaPath, the installation/temp directory paths, the language
+ * standard, environment variables), which name no class.
+ *
  * Plus getErrorString — declared here because OMC documents it under Scripting
  * and OmcClient uses it from this module for failed-mutation diagnostics.
  */
 
 export * from "./getVersion.js";
 export * from "./getModelicaPath.js";
+export * from "./setModelicaPath.js";
+export * from "./getInstallationDirectoryPath.js";
+export * from "./setInstallationDirectoryPath.js";
+export * from "./getTempDirectoryPath.js";
+export * from "./setTempDirectoryPath.js";
+export * from "./getLanguageStandard.js";
+export * from "./setLanguageStandard.js";
+export * from "./getEnvironmentVar.js";
+export * from "./setEnvironmentVar.js";
 export * from "./getClassNames.js";
 export * from "./searchClassNames.js";
 export * from "./getClassInformation.js";

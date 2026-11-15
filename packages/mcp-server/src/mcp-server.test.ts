@@ -649,6 +649,54 @@ describe("the escape hatch", () => {
     ]);
   });
 
+  it("refuses every session setting that moves the system-library roots or what OMC spawns", async () => {
+    const mcp = await connect();
+
+    const attempts = [
+      { fn: "setModelicaPath", input: { modelicaPath: "" } },
+      {
+        fn: "setEnvironmentVar",
+        input: { var: "OPENMODELICALIBRARY", value: "/tmp/empty" },
+      },
+      { fn: "setEnvironmentVar", input: { var: "LD_PRELOAD", value: "/x.so" } },
+      {
+        fn: "setInstallationDirectoryPath",
+        input: { installationDirectoryPath: "/tmp/om" },
+      },
+      { fn: "setTempDirectoryPath", input: { tempDirectoryPath: "/tmp/x" } },
+    ];
+    for (const args of attempts) {
+      const result = (await mcp.callTool({
+        name: "omc_invoke",
+        arguments: args,
+      })) as CallToolResult;
+      expect(result.isError, args.fn).toBe(true);
+      expect(text(result), args.fn).toContain("only the user can set");
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("still reads session configuration, and sets the language standard", async () => {
+    const mcp = await connect();
+
+    for (const args of [
+      { fn: "getModelicaPath", input: {} },
+      { fn: "getEnvironmentVar", input: { var: "OPENMODELICALIBRARY" } },
+      { fn: "setLanguageStandard", input: { inVersion: "3.5" } },
+    ]) {
+      const result = (await mcp.callTool({
+        name: "omc_invoke",
+        arguments: args,
+      })) as CallToolResult;
+      expect(result.isError, args.fn).toBeFalsy();
+    }
+    expect(calls.map((c) => c.fn)).toEqual([
+      "getModelicaPath",
+      "getEnvironmentVar",
+      "setLanguageStandard",
+    ]);
+  });
+
   it("refuses save, which writes a file without mutating OMC's memory", async () => {
     const mcp = await connect();
 
