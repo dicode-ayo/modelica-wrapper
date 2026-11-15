@@ -4,8 +4,8 @@
  * Two independent facts block a write, and both are combined here so no caller
  * has to combine them again:
  *
- *  - **Origin** — a class loaded from `MODELICAPATH` is read-only however its
- *    files are chmod'ed. A package-manager install under
+ *  - **Origin** — a class loaded from the installed `MODELICAPATH` is
+ *    read-only however its files are chmod'ed. A package-manager install under
  *    `~/.openmodelica/libraries/` is owned by the user, so a permission check
  *    on its own reads it as editable.
  *  - **Permission** — OMC's `fileReadOnly` for the class's source file, plus,
@@ -25,7 +25,9 @@ import * as vscode from "vscode";
 import { errorDetail } from "./error-detail.js";
 import { log } from "./logger.js";
 import {
+  systemLibraryRoots,
   systemLibraryVerdict,
+  type ModelicaPathReader,
   type SystemLibraryClient,
 } from "./system-library.js";
 
@@ -77,7 +79,7 @@ export class WriteVerdicts {
   /**
    * Class origin, memoized only when conclusive. Reflecting an editor buffer
    * back into OMC repoints the class's `fileName` at the buffer URI, after
-   * which its `MODELICAPATH` origin is no longer visible — so the first
+   * which its library origin is no longer visible — so the first
    * conclusive lookup is the durable one. A class OMC can't resolve yet has no
    * origin to record; caching that as writable would strand a restored
    * system-library editor in edit mode once the class loads.
@@ -142,6 +144,15 @@ export class WriteVerdicts {
       );
       return WRITABLE;
     }
+  }
+
+  /**
+   * The roots {@link forClass} judges a class's origin against, for a caller
+   * that holds a path rather than a class — the MCP write gate's destination
+   * check.
+   */
+  systemLibraryRoots(client: ModelicaPathReader): Promise<string[]> {
+    return systemLibraryRoots(client);
   }
 
   /**

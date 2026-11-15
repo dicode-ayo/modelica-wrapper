@@ -1,6 +1,8 @@
+import * as path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
-import { systemLibraryVerdict } from "./system-library.js";
+import { systemLibraryRoots, systemLibraryVerdict } from "./system-library.js";
 
 function makeClient(
   fileName: string,
@@ -74,6 +76,23 @@ describe("systemLibraryVerdict", () => {
     );
     expect(await systemLibraryVerdict(client, "MyLib.A")).toBe(false);
     expect(client.getModelicaPath).toHaveBeenCalledTimes(2);
+  });
+
+  it("judges against the first read even after the path is widened", async () => {
+    // Widening the path is how `modelica.modelicaPath` adds a vendored
+    // project library; reading the live path again would make that library
+    // read-only.
+    let modelicaPath = "/usr/lib/omlibrary";
+    const client = {
+      getSourceFile: vi.fn(async () => ({
+        fileName: "/ws/lib/MyLib/package.mo",
+      })),
+      getModelicaPath: vi.fn(async () => ({ modelicaPath })),
+    };
+    expect(await systemLibraryRoots(client)).toEqual(["/usr/lib/omlibrary"]);
+    modelicaPath = ["/ws/lib", "/usr/lib/omlibrary"].join(path.delimiter);
+
+    expect(await systemLibraryVerdict(client, "MyLib")).toBe(false);
   });
 
   it("does not ask for MODELICAPATH when the class has no disk source", async () => {

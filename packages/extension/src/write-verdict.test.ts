@@ -286,3 +286,18 @@ describe("WriteVerdicts.forDocument", () => {
     }
   });
 });
+
+describe("WriteVerdicts.systemLibraryRoots", () => {
+  it("reports the roots forClass judged against, not a path widened since", async () => {
+    const verdicts = new WriteVerdicts();
+    const client = makeClient({ sourceFile: SYSTEM_FILE });
+    expect(await verdicts.forClass(client, "Modelica.Blocks", "edit")).toEqual(
+      expect.objectContaining({ ok: false }),
+    );
+    vi.mocked(client.getModelicaPath).mockResolvedValue({
+      modelicaPath: `/ws/lib:${MODELICA_PATH}`,
+    });
+
+    expect(await verdicts.systemLibraryRoots(client)).toEqual([MODELICA_PATH]);
+  });
+});

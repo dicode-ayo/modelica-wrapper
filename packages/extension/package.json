@@ -491,6 +491,15 @@
           "scope": "machine-overridable",
           "description": "Path to the omc binary. Leave empty to use a managed installation, or 'omc' from PATH."
         },
+        "modelica.modelicaPath": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "description": "Extra directories OMC searches for libraries, in addition to the installed ones. Relative entries resolve against each workspace folder."
+        },
         "modelica.checkOnEdit": {
           "type": "boolean",
           "default": true,

@@ -15,7 +15,7 @@ export function registerLibraryCommands(
   return [
     vscode.commands.registerCommand("modelica.loadLibrary", async () => {
       const name = await vscode.window.showInputBox({
-        prompt: "Library to load (resolved against MODELICAPATH)",
+        prompt: "Library to load (installed, or in modelica.modelicaPath)",
         placeHolder: "Modelica",
         value: "Modelica",
       });
