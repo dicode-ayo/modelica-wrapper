@@ -181,12 +181,13 @@ type Argument<Field extends string> =
  * the Modelica Standard Library unloadable, or redirect which library a name
  * resolves to; in a host that supplies no `systemLibraryRoots`, where
  * verdicts read the live `MODELICAPATH`, emptying it also makes the Modelica
- * Standard Library read as editable. `setEnvironmentVar` also injects environment into every
- * compiler and simulation subprocess OMC spawns (`PATH`, `LD_PRELOAD`), and
- * `setInstallationDirectoryPath` / `setTempDirectoryPath` move where OMC
- * reads its runtime from and writes its scratch files to. `getEnvironmentVar`
- * reads the host process's environment, credentials included. None of them
- * names anything the gate could judge instead.
+ * Standard Library read as editable. `setEnvironmentVar` also injects
+ * environment into every compiler and simulation subprocess OMC spawns
+ * (`PATH`, `LD_PRELOAD`), and `setInstallationDirectoryPath` /
+ * `setTempDirectoryPath` move where OMC reads its runtime from and writes its
+ * scratch files to. `getEnvironmentVar` reads the host process's environment,
+ * credentials included. None of them names anything the gate could judge
+ * instead.
  */
 interface Refusal {
   readonly refuse: string;

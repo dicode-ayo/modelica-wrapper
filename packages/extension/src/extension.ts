@@ -164,12 +164,16 @@ export async function activate(
     },
   );
   closeOmcClientCache = () => omcClientCache.shutdown();
+  // Chained so back-to-back edits reach OMC in the order they were made.
+  let modelicaPathChanges = Promise.resolve();
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      void onModelicaPathChanged(
-        event,
-        omcClientCache.current(),
-        modelicaPathScopes,
+      modelicaPathChanges = modelicaPathChanges.then(() =>
+        onModelicaPathChanged(
+          event,
+          omcClientCache.whenLive(),
+          modelicaPathScopes,
+        ),
       );
     }),
   );

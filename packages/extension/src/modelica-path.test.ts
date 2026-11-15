@@ -164,7 +164,7 @@ describe("onModelicaPathChanged", () => {
 
     await onModelicaPathChanged(
       touches("modelica.modelicaPath"),
-      client,
+      Promise.resolve(client),
       () => [ws("/ws", "new")],
     );
 
@@ -179,7 +179,7 @@ describe("onModelicaPathChanged", () => {
 
     await onModelicaPathChanged(
       touches("modelica.modelicaPath"),
-      client,
+      Promise.resolve(client),
       () => [ws("/ws")],
     );
 
@@ -198,11 +198,70 @@ describe("onModelicaPathChanged", () => {
     expect(scopes).not.toHaveBeenCalled();
   });
 
+  it("applies an edit made mid-spawn once the spawn settles, overriding what the spawn read", async () => {
+    const client = makeClient();
+    let setting = [ws("/ws", "old")];
+    let resolveSpawn: (c: typeof client) => void = () => {};
+    const spawn = new Promise<typeof client>((resolve) => {
+      resolveSpawn = resolve;
+    }).then(async (c) => {
+      await applyModelicaPath(c, [ws("/ws", "old")]);
+      return c;
+    });
+
+    setting = [ws("/ws", "new")];
+    const change = onModelicaPathChanged(
+      touches("modelica.modelicaPath"),
+      spawn,
+      () => setting,
+    );
+    resolveSpawn(client);
+    await change;
+
+    expect(client.setModelicaPath).toHaveBeenLastCalledWith({
+      modelicaPath: ["/ws/new", ...INSTALLED].join(path.delimiter),
+    });
+  });
+
+  it("reads the setting only after the spawn settles", async () => {
+    const client = makeClient();
+    let resolveSpawn: (c: typeof client) => void = () => {};
+    const spawn = new Promise<typeof client>((resolve) => {
+      resolveSpawn = resolve;
+    });
+    const scopes = vi.fn(() => [ws("/ws", "lib")]);
+
+    const change = onModelicaPathChanged(
+      touches("modelica.modelicaPath"),
+      spawn,
+      scopes,
+    );
+    await Promise.resolve();
+    expect(scopes).not.toHaveBeenCalled();
+    resolveSpawn(client);
+    await change;
+    expect(scopes).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles quietly when the spawn it waited on fails", async () => {
+    const scopes = vi.fn(() => [ws("/ws", "lib")]);
+    await expect(
+      onModelicaPathChanged(
+        touches("modelica.modelicaPath"),
+        Promise.reject(new Error("omc not found")),
+        scopes,
+      ),
+    ).resolves.toBeUndefined();
+    expect(scopes).not.toHaveBeenCalled();
+  });
+
   it("ignores a change to another setting", async () => {
     const client = makeClient();
-    await onModelicaPathChanged(touches("modelica.omcPath"), client, () => [
-      ws("/ws", "lib"),
-    ]);
+    await onModelicaPathChanged(
+      touches("modelica.omcPath"),
+      Promise.resolve(client),
+      () => [ws("/ws", "lib")],
+    );
     expect(client.getModelicaPath).not.toHaveBeenCalled();
     expect(client.setModelicaPath).not.toHaveBeenCalled();
   });
