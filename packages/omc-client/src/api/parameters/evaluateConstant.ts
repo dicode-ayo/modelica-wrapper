@@ -11,9 +11,10 @@
  * it could not reduce, so it is a failure here too.
  *
  * The lookup can make OMC load a library from MODELICAPATH when the name's
- * top-level class is not loaded yet. A caller that must not change the
- * session checks the head against the loaded classes first, as
- * `resolveEnableConstants` does.
+ * top-level class is not loaded yet, so `resolveEnableConstants` sends only
+ * names whose top-level class is already loaded. Even then the constant's
+ * binding may load a library that one depends on (as MSL's use of
+ * ModelicaServices does); that is unconfirmed against live OMC.
  */
 
 import { z } from "zod";

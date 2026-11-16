@@ -154,15 +154,16 @@ model (`k > Modelica.Constants.eps`, `Constants.eps`, `SI.x`) and resolves them
 (`resolveEnableConstants`):
 
 1. Each name is qualified in the scope of the class that declares its field
-   (`inheritedFrom`, else the model's class) through `qualifyPath`, so a
+   (`declaredIn`, else the model's class) through `qualifyPath`, so a
    relative name or an import alias means what it means in Modelica rather
    than whatever top-level class shares its head. A name that qualifies into
-   that class itself (a local or replaceable package an instance may
-   redeclare), whose qualification fails, or that two declaring classes
-   qualify differently is dropped.
+   the model's class or any class on its extends chain (`ancestors`; a local
+   or replaceable package an instance may redeclare), whose qualification
+   fails, or that two declaring classes qualify differently is dropped.
 2. A qualified name is evaluated only when its top-level class is already
-   loaded (`getClassNames()`), so the lookup never makes OMC load a library
-   from `MODELICAPATH`.
+   loaded (`getClassNames()`, listed before any lookup). A constant's binding,
+   or OMC's own name lookup, may still load a library that one depends on (as
+   MSL's use of ModelicaServices does), which is unconfirmed against live OMC.
 3. The survivors are evaluated through OMC one at a time, sending the bare
    qualified name the way OMEdit's `OMCProxy::evaluateConstant` does. Only
    plain dotted names are sent — never a subscripted or quoted cref — and only

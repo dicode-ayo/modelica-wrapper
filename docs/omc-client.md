@@ -147,10 +147,14 @@ library constant (`k > Modelica.Constants.eps`) is answered from
 `ParameterModel.constants`, which the host fills before the form opens:
 `resolveEnableConstants` (in `api/parameters-form/`) qualifies each such name
 in the scope of the class declaring its field (`qualifyPath`), skips one that
-lands inside that class or whose top-level class is not already loaded
-(`getClassNames()`, so OMC never auto-loads a library from `MODELICAPATH`),
-and evaluates the rest through `evaluateConstant`, a wrapper that sends the
-bare dotted reference as the whole command and reads back a scalar literal.
+lands inside the model's class or a class on its extends chain, or whose
+top-level class is not already loaded (`getClassNames()`, listed before any
+lookup), and evaluates the rest through `evaluateConstant`, a wrapper that
+sends the bare dotted reference as the whole command and reads back a scalar
+literal. Only names whose qualified top-level library is already loaded are
+evaluated; a constant's binding, or OMC's own name lookup, may still load a
+library that one depends on (as MSL's use of ModelicaServices does), which is
+unconfirmed against live OMC.
 
 ## Typed API
 

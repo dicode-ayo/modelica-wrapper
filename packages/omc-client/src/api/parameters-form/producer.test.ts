@@ -503,6 +503,65 @@ describe("produceParameterModel — extends chain + inheritedFrom", () => {
     expect(f.inheritedFrom).toBe("Test.B");
   });
 
+  it("tags a grandparent's field with the grandparent as declaredIn and lists the whole chain", () => {
+    const mi = instance(
+      [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.B",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "extends",
+                baseClass: {
+                  name: "Test.A",
+                  restriction: "model",
+                  elements: [
+                    {
+                      $kind: "component",
+                      name: "k",
+                      type: "Real",
+                      value: { binding: 7 },
+                      prefixes: { variability: "parameter" },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        {
+          $kind: "component",
+          name: "j",
+          type: "Real",
+          value: { binding: 1 },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+      "Test.C",
+    );
+    const model = produceParameterModel(mi);
+    const k = fieldByName(model, "k");
+    expect(k.declaredIn).toBe("Test.A");
+    expect(k.inheritedFrom).toBe("Test.B");
+    expect("declaredIn" in fieldByName(model, "j")).toBe(false);
+    // B contributes no field, yet is on the chain.
+    expect(model.ancestors).toEqual(["Test.A", "Test.B"]);
+  });
+
+  it("leaves ancestors absent for a class with no extends", () => {
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "k",
+        type: "Real",
+        prefixes: { variability: "parameter" },
+      },
+    ]);
+    expect("ancestors" in produceParameterModel(mi)).toBe(false);
+  });
+
   it("leaves inheritedFrom absent for a host-declared (own) parameter", () => {
     const mi = instance([
       {

@@ -17,7 +17,9 @@
  *  5. Tags `inheritedFrom` for class params reached through `extends` — the
  *     host's DIRECT extends base, so the host-side write routes through
  *     `setExtendsModifierValue(host, directBase, …)` (not the deep declaring
- *     ancestor, which would be a no-op).
+ *     ancestor, which would be a no-op). `declaredIn` names that deep
+ *     declaring ancestor, and `ParameterModel.ancestors` every class the walk
+ *     reached through `extends`.
  *  6. When a `UnitTable` is injected, fills each unit-bearing field's
  *     `unitOptions` from it (deduplicated by base unit upstream).
  *
@@ -104,11 +106,15 @@ export function produceParameterModel(
 
   const fields: ParameterField[] = [];
   const indexByName = new Map<string, number>();
+  const ancestors: string[] = [];
 
   for (const { klass, directBase } of walkExtendsChain(instance)) {
     // `instance` is the host (last in the post-order walk). Anything earlier
     // is an ancestor reached via `extends`, so its params are inherited.
-    const inheritedFrom = klass === instance ? undefined : directBase;
+    const isHost = klass === instance;
+    const inheritedFrom = isHost ? undefined : directBase;
+    const declaredIn = isHost ? undefined : klass.name;
+    if (declaredIn !== undefined) ancestors.push(declaredIn);
     for (const el of klass.elements ?? []) {
       const existing =
         el.$kind === "extends" ? undefined : indexByName.get(el.name);
@@ -132,6 +138,7 @@ export function produceParameterModel(
         );
       }
       if (field === undefined) continue;
+      if (declaredIn !== undefined) field.declaredIn = declaredIn;
       if (existing !== undefined) {
         // More-derived re-declaration overrides the inherited entry, in place
         // (preserves first-seen order, last-write-wins on content) — matches
@@ -149,6 +156,7 @@ export function produceParameterModel(
     fields,
   };
   if (opts.component !== undefined) model.component = opts.component;
+  if (ancestors.length > 0) model.ancestors = ancestors;
   return model;
 }
 

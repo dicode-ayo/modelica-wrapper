@@ -42,7 +42,7 @@ export function collectEnableConstantNames(
   if (model.component !== undefined) local.add(model.component);
   const refs = new Map<string, EnableConstantRef>();
   for (const f of model.fields) {
-    const declaringClass = f.inheritedFrom ?? model.className;
+    const declaringClass = f.declaredIn ?? model.className;
     const visit = (expr: unknown): void => {
       if (typeof expr !== "object" || expr === null) return;
       if (Array.isArray(expr)) {
@@ -96,12 +96,11 @@ export interface EnableConstantClient {
  * `model` with `constants` filled from OMC for every name
  * {@link collectEnableConstantNames} finds, keyed by the name as written.
  *
- * A name is left out when it qualifies into its declaring class (a local or
- * replaceable class an instance may redeclare), when qualifying it fails,
- * when two declaring classes give it different meanings, when its qualified
- * top-level class is not already loaded (a lookup there could make OMC load a
- * library from MODELICAPATH), or when OMC fails to evaluate it. Returns
- * `model` itself when nothing resolves.
+ * A name is left out when it qualifies into the model's class or a class on
+ * its extends chain (a local or replaceable class an instance may redeclare),
+ * when qualifying it fails, when two declaring classes give it different
+ * meanings, when its qualified top-level class is not already loaded, or when
+ * OMC fails to evaluate it. Returns `model` itself when nothing resolves.
  */
 export async function resolveEnableConstants(
   client: EnableConstantClient,
@@ -110,11 +109,26 @@ export async function resolveEnableConstants(
   const refs = collectEnableConstantNames(model);
   if (refs.length === 0) return model;
 
+  // Listed before any lookup, so the loaded check reflects the session as it
+  // was rather than whatever a `qualifyPath` lookup pulled in.
+  let loaded: ReadonlySet<string>;
+  try {
+    loaded = new Set((await client.getClassNames()).classNames);
+  } catch {
+    return model;
+  }
+
+  const redeclarable = [model.className, ...(model.ancestors ?? [])];
   // `null` marks a written name with no single usable global meaning.
   const qualifiedByName = new Map<string, string | null>();
   for (const { declaringClass, name } of refs) {
     if (qualifiedByName.get(name) === null) continue;
-    const qualified = await qualifyConstant(client, declaringClass, name);
+    const qualified = await qualifyConstant(
+      client,
+      declaringClass,
+      name,
+      redeclarable,
+    );
     const prior = qualifiedByName.get(name);
     qualifiedByName.set(
       name,
@@ -123,21 +137,11 @@ export async function resolveEnableConstants(
         : qualified,
     );
   }
-  const candidates = [...qualifiedByName].filter(
-    (entry): entry is [string, string] => entry[1] !== null,
-  );
-  if (candidates.length === 0) return model;
-
-  let loaded: ReadonlySet<string>;
-  try {
-    loaded = new Set((await client.getClassNames()).classNames);
-  } catch {
-    return model;
-  }
 
   const constants: Record<string, EnableConstantValue> = {};
   const evaluated = new Map<string, EnableConstantValue | undefined>();
-  for (const [name, qualified] of candidates) {
+  for (const [name, qualified] of qualifiedByName) {
+    if (qualified === null) continue;
     const [top] = qualified.split(".", 1);
     if (top === undefined || !loaded.has(top)) continue;
     if (!evaluated.has(qualified)) {
@@ -152,12 +156,18 @@ export async function resolveEnableConstants(
 
 /**
  * `name` qualified in `declaringClass`'s scope, or `undefined` when it cannot
- * be, or when it lands inside `declaringClass` itself.
+ * be, or when it lands inside one of `redeclarable`.
+ *
+ * Only a name whose qualified top-level library is already loaded is ever
+ * evaluated. OMC's lookup here, or a constant's binding later, may still load
+ * a library that one depends on (as MSL's use of ModelicaServices does); that
+ * is unconfirmed against live OMC.
  */
 async function qualifyConstant(
   client: EnableConstantClient,
   declaringClass: string,
   name: string,
+  redeclarable: readonly string[],
 ): Promise<string | undefined> {
   const scope = enclosingScope(name);
   const leaf = name.slice(scope.length + 1);
@@ -171,8 +181,9 @@ async function qualifyConstant(
     return undefined;
   }
   if (
-    qualifiedPath === declaringClass ||
-    qualifiedPath.startsWith(`${declaringClass}.`)
+    redeclarable.some(
+      (c) => qualifiedPath === c || qualifiedPath.startsWith(`${c}.`),
+    )
   ) {
     return undefined;
   }

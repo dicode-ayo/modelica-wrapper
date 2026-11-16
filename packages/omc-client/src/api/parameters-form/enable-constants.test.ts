@@ -31,12 +31,20 @@ function field(name: string, enable?: Expression): ParameterField {
   };
 }
 
-function inherited(f: ParameterField, from: string): ParameterField {
-  return { ...f, inheritedFrom: from };
+function inherited(
+  f: ParameterField,
+  declaredIn: string,
+  inheritedFrom = declaredIn,
+): ParameterField {
+  return { ...f, declaredIn, inheritedFrom };
 }
 
-function model(fields: ParameterField[], component?: string): ParameterModel {
-  return { className: "Test.C", component, fields };
+function model(
+  fields: ParameterField[],
+  component?: string,
+  ancestors?: string[],
+): ParameterModel {
+  return { className: "Test.C", component, fields, ancestors };
 }
 
 const LOADED = ["Modelica", "Lib", "Test"];
@@ -81,13 +89,13 @@ describe("collectEnableConstantNames", () => {
     ]);
   });
 
-  it("takes an inherited field's declaring class from inheritedFrom", () => {
+  it("takes an inherited field's declaring class from declaredIn, not its direct base", () => {
     const m = model([
-      inherited(field("y", cref("Constants", "eps")), "Test.Base"),
+      inherited(field("y", cref("Constants", "eps")), "Test.A", "Test.B"),
       field("z", cref("Constants", "eps")),
     ]);
     expect(collectEnableConstantNames(m)).toEqual([
-      { declaringClass: "Test.Base", name: "Constants.eps" },
+      { declaringClass: "Test.A", name: "Constants.eps" },
       { declaringClass: "Test.C", name: "Constants.eps" },
     ]);
   });
@@ -190,6 +198,61 @@ describe("resolveEnableConstants", () => {
     expect(out.constants).toEqual({ "SI.x": 2 });
   });
 
+  it("qualifies a grandparent's field in the grandparent's scope, not the direct base's", async () => {
+    // C extends B extends A, A declaring the field: `Constants` means
+    // `Lib.Constants` in A, while B's scope would bind another package.
+    const client = fakeClient({
+      values: { "Lib.Constants.eps": 0.5, "Other.Constants.eps": 99 },
+      scopes: {
+        "Test.A|Constants": "Lib.Constants",
+        "Test.B|Constants": "Other.Constants",
+      },
+      loaded: ["Lib", "Other"],
+    });
+    const m = model(
+      [inherited(field("y", cref("Constants", "eps")), "Test.A", "Test.B")],
+      undefined,
+      ["Test.A", "Test.B"],
+    );
+    const out = await resolveEnableConstants(client, m);
+    expect(client.qualifyPath).toHaveBeenCalledWith({
+      typeName: "Test.A",
+      path: "Constants",
+    });
+    expect(client.qualifyPath).not.toHaveBeenCalledWith({
+      typeName: "Test.B",
+      path: "Constants",
+    });
+    expect(out.constants).toEqual({ "Constants.eps": 0.5 });
+  });
+
+  it("skips a name that qualifies into a base contributing no field, which an instance may redeclare", async () => {
+    // A declares `replaceable package Medium` but no parameter, so no field
+    // names A; only `ancestors` shows the path lands inside the chain.
+    const client = fakeClient({
+      values: { "Test.A.Medium.nXi": 0 },
+      scopes: { "Test.C|Medium": "Test.A.Medium" },
+    });
+    const m = model([field("a", cref("Medium", "nXi"))], undefined, [
+      "Test.A",
+      "Test.B",
+    ]);
+    expect(await resolveEnableConstants(client, m)).toBe(m);
+    expect(client.evaluateConstant).not.toHaveBeenCalled();
+  });
+
+  it("lists the loaded classes before any qualifyPath lookup", async () => {
+    const client = fakeClient({ values: { "Lib.flag": true } });
+    const m = model([field("a", cref("Lib", "flag"))]);
+    await resolveEnableConstants(client, m);
+    const [listed] = client.getClassNames.mock.invocationCallOrder;
+    const [qualified] = client.qualifyPath.mock.invocationCallOrder;
+    if (listed === undefined || qualified === undefined) {
+      throw new Error("expected both calls");
+    }
+    expect(listed).toBeLessThan(qualified);
+  });
+
   it("skips a name that qualifies into the declaring class, which an instance may redeclare", async () => {
     const client = fakeClient({
       values: { "Test.C.Medium.nXi": 0, "Test.C.k0": 1 },
@@ -245,11 +308,12 @@ describe("resolveEnableConstants", () => {
     });
   });
 
-  it("evaluates nothing when the loaded classes cannot be listed", async () => {
+  it("looks nothing up when the loaded classes cannot be listed", async () => {
     const client = fakeClient({ values: { "Lib.flag": true } });
     client.getClassNames.mockRejectedValueOnce(new Error("boom"));
     const m = model([field("a", cref("Lib", "flag"))]);
     expect(await resolveEnableConstants(client, m)).toBe(m);
+    expect(client.qualifyPath).not.toHaveBeenCalled();
     expect(client.evaluateConstant).not.toHaveBeenCalled();
   });
 
@@ -270,6 +334,7 @@ describe("resolveEnableConstants", () => {
     expect(await resolveEnableConstants(client, none)).toBe(none);
     expect(client.qualifyPath).not.toHaveBeenCalled();
     expect(client.getClassNames).not.toHaveBeenCalled();
+    expect(client.evaluateConstant).not.toHaveBeenCalled();
 
     const failing = model([field("a", cref("Lib", "missing"))]);
     expect(await resolveEnableConstants(client, failing)).toBe(failing);
