@@ -31,17 +31,65 @@ function field(name: string, enable?: Expression): ParameterField {
   };
 }
 
+function inherited(f: ParameterField, from: string): ParameterField {
+  return { ...f, inheritedFrom: from };
+}
+
 function model(fields: ParameterField[], component?: string): ParameterModel {
   return { className: "Test.C", component, fields };
 }
 
+const LOADED = ["Modelica", "Lib", "Test"];
+
+/**
+ * A client that qualifies `path` in `typeName` through `scopes` (keyed
+ * `typeName|path`), else hands `path` back unchanged as OMC does, and
+ * evaluates names from `values`.
+ */
+function fakeClient(opts: {
+  values: Record<string, number | boolean | string>;
+  scopes?: Record<string, string>;
+  loaded?: string[];
+}): EnableConstantClient & {
+  qualifyPath: ReturnType<typeof vi.fn>;
+  getClassNames: ReturnType<typeof vi.fn>;
+  evaluateConstant: ReturnType<typeof vi.fn>;
+} {
+  return {
+    qualifyPath: vi.fn(
+      async ({ typeName, path }: { typeName: string; path: string }) => ({
+        qualifiedPath: opts.scopes?.[`${typeName}|${path}`] ?? path,
+      }),
+    ),
+    getClassNames: vi.fn(async () => ({ classNames: opts.loaded ?? LOADED })),
+    evaluateConstant: vi.fn(async ({ name }: { name: string }) => {
+      const value = opts.values[name];
+      if (value === undefined) throw new Error(`not found: ${name}`);
+      return { value };
+    }),
+  };
+}
+
 describe("collectEnableConstantNames", () => {
-  it("collects a library constant compared against a peer", () => {
+  it("collects a library constant compared against a peer, with its declaring class", () => {
     const m = model([
       field("k"),
       field("y", gt(cref("k"), cref("Modelica", "Constants", "eps"))),
     ]);
-    expect(collectEnableConstantNames(m)).toEqual(["Modelica.Constants.eps"]);
+    expect(collectEnableConstantNames(m)).toEqual([
+      { declaringClass: "Test.C", name: "Modelica.Constants.eps" },
+    ]);
+  });
+
+  it("takes an inherited field's declaring class from inheritedFrom", () => {
+    const m = model([
+      inherited(field("y", cref("Constants", "eps")), "Test.Base"),
+      field("z", cref("Constants", "eps")),
+    ]);
+    expect(collectEnableConstantNames(m)).toEqual([
+      { declaringClass: "Test.Base", name: "Constants.eps" },
+      { declaringClass: "Test.C", name: "Constants.eps" },
+    ]);
   });
 
   it("skips what the form resolves locally: peers, peer members, the component prefix", () => {
@@ -71,7 +119,7 @@ describe("collectEnableConstantNames", () => {
     expect(collectEnableConstantNames(m)).toEqual([]);
   });
 
-  it("walks nested operators, calls and if-branches, deduplicating", () => {
+  it("walks nested operators, calls and if-branches, deduplicating per declaring class", () => {
     const eps = cref("Modelica", "Constants", "eps");
     const m = model([
       field("k"),
@@ -83,18 +131,17 @@ describe("collectEnableConstantNames", () => {
       }),
       field("b", gt(cref("k"), eps)),
     ]);
-    expect(collectEnableConstantNames(m).sort()).toEqual([
-      "Lib.flag",
-      "Modelica.Constants.eps",
-    ]);
+    expect(
+      collectEnableConstantNames(m)
+        .map((r) => r.name)
+        .sort(),
+    ).toEqual(["Lib.flag", "Modelica.Constants.eps"]);
   });
 });
 
 describe("resolveEnableConstants", () => {
-  it("carries each value OMC reduces, keyed by the dotted name", async () => {
-    const client: EnableConstantClient = {
-      evaluateConstant: vi.fn(async () => ({ value: 1e-15 })),
-    };
+  it("carries each value OMC reduces, keyed by the dotted name, evaluating it once", async () => {
+    const client = fakeClient({ values: { "Modelica.Constants.eps": 1e-15 } });
     const m = model([
       field("k"),
       field("y", gt(cref("k"), cref("Modelica", "Constants", "eps"))),
@@ -103,23 +150,113 @@ describe("resolveEnableConstants", () => {
     const out = await resolveEnableConstants(client, m);
     expect(out.constants).toEqual({ "Modelica.Constants.eps": 1e-15 });
     expect(client.evaluateConstant).toHaveBeenCalledTimes(1);
+    expect(client.getClassNames).toHaveBeenCalledTimes(1);
   });
 
-  it("leaves out a name that fails or comes back non-literal", async () => {
-    const client: EnableConstantClient = {
-      evaluateConstant: async ({ name }) => {
-        if (name === "Lib.missing") throw new Error("not found");
-        if (name === "Lib.rec") {
-          return { value: { re: 1 } } as unknown as { value: number };
-        }
-        if (name === "Lib.inf") return { value: Number.POSITIVE_INFINITY };
-        return { value: true };
-      },
+  it("qualifies a relative name in the declaring class's scope and keys it as written", async () => {
+    // `Constants.eps` at global scope would miss, or hit an unrelated
+    // top-level `Constants`; in `Lib.Blocks.C` it means `Lib.Constants.eps`.
+    const client = fakeClient({
+      values: { "Lib.Constants.eps": 0.5, "Constants.eps": 99 },
+      scopes: { "Lib.Blocks.C|Constants": "Lib.Constants" },
+      loaded: ["Lib", "Constants"],
+    });
+    const m: ParameterModel = {
+      className: "Lib.Blocks.C",
+      fields: [field("k"), field("y", gt(cref("k"), cref("Constants", "eps")))],
     };
+    const out = await resolveEnableConstants(client, m);
+    expect(client.qualifyPath).toHaveBeenCalledWith({
+      typeName: "Lib.Blocks.C",
+      path: "Constants",
+    });
+    expect(client.evaluateConstant).toHaveBeenCalledWith({
+      name: "Lib.Constants.eps",
+    });
+    expect(out.constants).toEqual({ "Constants.eps": 0.5 });
+  });
+
+  it("qualifies an inherited field's name in its base's scope", async () => {
+    const client = fakeClient({
+      values: { "Modelica.Units.SI.x": 2 },
+      scopes: { "Test.Base|SI": "Modelica.Units.SI" },
+    });
+    const m = model([inherited(field("y", cref("SI", "x")), "Test.Base")]);
+    const out = await resolveEnableConstants(client, m);
+    expect(client.qualifyPath).toHaveBeenCalledWith({
+      typeName: "Test.Base",
+      path: "SI",
+    });
+    expect(out.constants).toEqual({ "SI.x": 2 });
+  });
+
+  it("skips a name that qualifies into the declaring class, which an instance may redeclare", async () => {
+    const client = fakeClient({
+      values: { "Test.C.Medium.nXi": 0, "Test.C.k0": 1 },
+      scopes: { "Test.C|Medium": "Test.C.Medium", "Test.C|C": "Test.C" },
+    });
+    const m = model([
+      field("a", cref("Medium", "nXi")),
+      field("b", cref("C", "k0")),
+    ]);
+    expect(await resolveEnableConstants(client, m)).toBe(m);
+    expect(client.evaluateConstant).not.toHaveBeenCalled();
+  });
+
+  it("skips a name whose qualification fails", async () => {
+    const client = fakeClient({ values: { "Lib.flag": true } });
+    client.qualifyPath.mockRejectedValueOnce(new Error("qualifyPath: boom"));
+    const m = model([field("a", cref("Lib", "flag"))]);
+    expect(await resolveEnableConstants(client, m)).toBe(m);
+    expect(client.evaluateConstant).not.toHaveBeenCalled();
+  });
+
+  it("drops a written name two declaring classes qualify differently", async () => {
+    const client = fakeClient({
+      values: { "Lib.A.Constants.eps": 1, "Lib.B.Constants.eps": 2 },
+      scopes: {
+        "Test.Base|Constants": "Lib.A.Constants",
+        "Test.C|Constants": "Lib.B.Constants",
+      },
+    });
+    const m = model([
+      inherited(field("y", cref("Constants", "eps")), "Test.Base"),
+      field("z", cref("Constants", "eps")),
+    ]);
+    expect(await resolveEnableConstants(client, m)).toBe(m);
+    expect(client.evaluateConstant).not.toHaveBeenCalled();
+  });
+
+  it("never evaluates a name whose top-level class is not loaded, which OMC could auto-load", async () => {
+    const client = fakeClient({
+      values: { "Modelica.Constants.eps": 1e-15, "Unloaded.k": 1 },
+      loaded: ["Modelica"],
+    });
+    const m = model([
+      field("a", cref("Modelica", "Constants", "eps")),
+      field("b", cref("Unloaded", "k")),
+    ]);
+    expect((await resolveEnableConstants(client, m)).constants).toEqual({
+      "Modelica.Constants.eps": 1e-15,
+    });
+    expect(client.evaluateConstant).toHaveBeenCalledTimes(1);
+    expect(client.evaluateConstant).not.toHaveBeenCalledWith({
+      name: "Unloaded.k",
+    });
+  });
+
+  it("evaluates nothing when the loaded classes cannot be listed", async () => {
+    const client = fakeClient({ values: { "Lib.flag": true } });
+    client.getClassNames.mockRejectedValueOnce(new Error("boom"));
+    const m = model([field("a", cref("Lib", "flag"))]);
+    expect(await resolveEnableConstants(client, m)).toBe(m);
+    expect(client.evaluateConstant).not.toHaveBeenCalled();
+  });
+
+  it("leaves out a name that fails to evaluate and keeps the rest", async () => {
+    const client = fakeClient({ values: { "Lib.flag": true } });
     const m = model([
       field("a", cref("Lib", "missing")),
-      field("b", cref("Lib", "rec")),
-      field("c", cref("Lib", "inf")),
       field("d", cref("Lib", "flag")),
     ]);
     expect((await resolveEnableConstants(client, m)).constants).toEqual({
@@ -128,16 +265,13 @@ describe("resolveEnableConstants", () => {
   });
 
   it("returns the model untouched when nothing needs or yields a value", async () => {
-    const evaluateConstant = vi.fn(async () => {
-      throw new Error("not found");
-    });
+    const client = fakeClient({ values: {} });
     const none = model([field("a", cref("use_x")), field("use_x")]);
-    expect(await resolveEnableConstants({ evaluateConstant }, none)).toBe(none);
-    expect(evaluateConstant).not.toHaveBeenCalled();
+    expect(await resolveEnableConstants(client, none)).toBe(none);
+    expect(client.qualifyPath).not.toHaveBeenCalled();
+    expect(client.getClassNames).not.toHaveBeenCalled();
 
     const failing = model([field("a", cref("Lib", "missing"))]);
-    expect(await resolveEnableConstants({ evaluateConstant }, failing)).toBe(
-      failing,
-    );
+    expect(await resolveEnableConstants(client, failing)).toBe(failing);
   });
 });

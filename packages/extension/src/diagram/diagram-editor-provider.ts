@@ -12,14 +12,13 @@ import {
   looksLikeError,
   ModelInstanceNotFoundError,
   produceSimulationModel,
-  resolveEnableConstants,
   withErrorBuffer,
 } from "@dicode/omc-client";
 
 import { assertUnreachable } from "@dicode/modelica-lang-core";
 
 import { showInRepl } from "../commands/repl.js";
-import { resolveGroupImages } from "../documentation/documentation-resources.js";
+import { prepareParameterModel } from "./prepare-parameter-model.js";
 import { pathExists } from "../fs-util.js";
 import { omcRangeToVscodeRange } from "../language/position.js";
 import { errorDetail } from "../error-detail.js";
@@ -1183,10 +1182,7 @@ export class DiagramEditController {
         );
         return;
       }
-      const model = await resolveEnableConstants(
-        client,
-        await resolveGroupImages(client, form.model),
-      );
+      const model = await prepareParameterModel(client, form.model);
       this.classParamRefs = form.refs;
       this.classParamInitialValues = form.values;
       gate.send({
@@ -1222,10 +1218,7 @@ export class DiagramEditController {
         );
         return;
       }
-      const model = await resolveEnableConstants(
-        client,
-        await resolveGroupImages(client, form.model),
-      );
+      const model = await prepareParameterModel(client, form.model);
       this.componentParamRefs = form.refs;
       this.componentParamInitialValues = form.values;
       this.componentParamComponentName = form.componentName;
@@ -1588,10 +1581,7 @@ export class DiagramEditController {
         gate.send({ type: "parametersClose" });
         return;
       }
-      const model = await resolveEnableConstants(
-        client,
-        await resolveGroupImages(client, form.model),
-      );
+      const model = await prepareParameterModel(client, form.model);
       this.componentParamRefs = form.refs;
       this.componentParamInitialValues = form.values;
       this.componentParamComponentName = form.componentName;

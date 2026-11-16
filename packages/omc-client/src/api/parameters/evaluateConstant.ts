@@ -9,6 +9,11 @@
  * Only a scalar literal reply counts as a value. An enumeration constant comes
  * back as a bare dotted name, indistinguishable from OMC echoing a reference
  * it could not reduce, so it is a failure here too.
+ *
+ * The lookup can make OMC load a library from MODELICAPATH when the name's
+ * top-level class is not loaded yet. A caller that must not change the
+ * session checks the head against the loaded classes first, as
+ * `resolveEnableConstants` does.
  */
 
 import { z } from "zod";
@@ -17,6 +22,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { constantName } from "../../_shared/fields.js";
 import { parseOutput, readFailure } from "../../_shared/parseOutput.js";
 import { constantReference } from "../../commands.js";
+import { OmcDiagnosticError } from "../../error-buffer.js";
 import { parse, type Value } from "../../parse.js";
 
 export const EvaluateConstantInputSchema = z.strictObject({
@@ -62,7 +68,9 @@ function scalarLiteral(raw: string): number | boolean | string | undefined {
   let v: Value;
   try {
     v = parse(raw);
-  } catch {
+  } catch (err) {
+    // OMC reported the failure inline, so the error buffer holds nothing.
+    if (err instanceof OmcDiagnosticError) throw err;
     return undefined;
   }
   switch (v.kind) {

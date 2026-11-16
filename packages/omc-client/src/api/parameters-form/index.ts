@@ -33,6 +33,7 @@ export {
   collectEnableConstantNames,
   resolveEnableConstants,
   type EnableConstantClient,
+  type EnableConstantRef,
 } from "./enable-constants.js";
 export type {
   EnableConstantValue,

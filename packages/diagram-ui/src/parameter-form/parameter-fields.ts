@@ -15,6 +15,7 @@
  */
 
 import type {
+  EnableConstantValue,
   Expression,
   ParameterField as ModelField,
   ParameterModel,
@@ -33,10 +34,22 @@ import {
 } from "@dicode/omc-client/eval";
 
 /**
- * Host-resolved library constants a `Dialog.enable` may reference, keyed by
- * dotted name — the model's `constants`.
+ * What a `Dialog.enable` resolves against beyond the form's own values.
+ *
+ * `crefPrefix`, when set, is stripped off an initial cref segment so a
+ * sub-component expression (`PI.controllerType == …`) resolves against the
+ * form's bare `controllerType` value.
+ *
+ * `constants` answers a dotted reference neither of those resolves
+ * (`Modelica.Constants.eps`), keyed by the name as written — the model's
+ * `constants`. The webview has no OMC to ask, so the host evaluates them
+ * before the form opens. A name absent from it stays unresolved, which keeps
+ * the dependent field enabled.
  */
-export type EnableConstants = ParameterModel["constants"];
+export interface EnableContext {
+  crefPrefix?: string | undefined;
+  constants?: Readonly<Record<string, EnableConstantValue>> | undefined;
+}
 
 export type FieldKind =
   | "string"
@@ -220,18 +233,16 @@ function unitOptionFromModel(o: ModelUnitOption): UnitOption {
  * (issue #76, item 17): OMEdit greys such a field out and never submits it,
  * so a disabled required-but-empty field must not block the OK button. The
  * enabled check needs the full field list + the live committed values (and
- * an optional `crefPrefix` for sub-component forms) so it can reuse
- * `isFieldEnabled`'s evaluator.
+ * the {@link EnableContext}) so it can reuse `isFieldEnabled`'s evaluator.
  */
 export function isComplete(
   fields: ReadonlyArray<ParameterField>,
   values: Record<string, unknown>,
-  crefPrefix?: string,
-  constants?: EnableConstants,
+  context: EnableContext = {},
 ): boolean {
   for (const f of fields) {
     if (!f.required) continue;
-    if (!isFieldEnabled(f, fields, values, crefPrefix, constants)) continue;
+    if (!isFieldEnabled(f, fields, values, context)) continue;
     const v = values[f.name];
     if (v === undefined || v === null || v === "") return false;
   }
@@ -251,12 +262,11 @@ export function isComplete(
 export function enabledValues(
   fields: ReadonlyArray<ParameterField>,
   values: Record<string, unknown>,
-  crefPrefix?: string,
-  constants?: EnableConstants,
+  context: EnableContext = {},
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of fields) {
-    if (!isFieldEnabled(f, fields, values, crefPrefix, constants)) continue;
+    if (!isFieldEnabled(f, fields, values, context)) continue;
     out[f.name] = values[f.name];
   }
   return out;
@@ -310,20 +320,13 @@ export function initialValuesFromFields(
  * so equality against a fully-qualified enum literal in the expression
  * works without the form having to qualify on every keystroke.
  *
- * `crefPrefix`, when set, is stripped off an initial cref segment so a
- * sub-component expression (`PI.controllerType == …`) resolves against
- * the form's bare `controllerType` value.
- *
- * `constants` answers a dotted reference neither of those resolves
- * (`Modelica.Constants.eps`): the webview has no OMC to ask, so the host
- * evaluates them before the form opens. A name absent from it stays
- * unresolved, which keeps the dependent field enabled.
+ * A reference neither step resolves falls through to `context` (see
+ * {@link EnableContext}).
  */
 export function buildEnableScope(
   fields: ReadonlyArray<ParameterField>,
   committed: Record<string, unknown>,
-  crefPrefix?: string,
-  constants?: EnableConstants,
+  { crefPrefix, constants }: EnableContext = {},
 ): EvalScope {
   const values: Record<string, EvalValue> = {};
   for (const f of fields) {
@@ -353,7 +356,9 @@ export function buildEnableScope(
     : chainScopes(local, constantScope(constants));
 }
 
-function constantScope(constants: NonNullable<EnableConstants>): EvalScope {
+function constantScope(
+  constants: Readonly<Record<string, EnableConstantValue>>,
+): EvalScope {
   return {
     lookup(parts) {
       if (parts.length < 2) return undefined;
@@ -376,15 +381,14 @@ export function isFieldEnabled(
   field: ParameterField,
   fields: ReadonlyArray<ParameterField>,
   committed: Record<string, unknown>,
-  crefPrefix?: string,
-  constants?: EnableConstants,
+  context: EnableContext = {},
 ): boolean {
   if (field.enable === undefined) return true;
   if (field.enable === true) return true;
   if (field.enable === false) return false;
   const result = evaluateExpression(
     field.enable,
-    buildEnableScope(fields, committed, crefPrefix, constants),
+    buildEnableScope(fields, committed, context),
     { fallback: true },
   );
   return result !== false;

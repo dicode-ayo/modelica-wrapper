@@ -461,8 +461,12 @@ describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", (
       rhs: 0,
     };
     const b = { ...fieldB(fields), enable: prefixedEnable };
-    expect(isFieldEnabled(b, fields, { a: 5 }, "PI")).toBe(true);
-    expect(isFieldEnabled(b, fields, { a: -1 }, "PI")).toBe(false);
+    expect(isFieldEnabled(b, fields, { a: 5 }, { crefPrefix: "PI" })).toBe(
+      true,
+    );
+    expect(isFieldEnabled(b, fields, { a: -1 }, { crefPrefix: "PI" })).toBe(
+      false,
+    );
   });
 
   it("buildEnableScope resolves a cref to the value, then the default", () => {
@@ -509,10 +513,20 @@ describe("Dialog.enable against host-resolved library constants", () => {
     const m = epsModel(EPS);
     const fields = parameterFieldsFromModel(m);
     expect(
-      isFieldEnabled(fieldY(fields), fields, { k: 0 }, undefined, m.constants),
+      isFieldEnabled(
+        fieldY(fields),
+        fields,
+        { k: 0 },
+        { constants: m.constants },
+      ),
     ).toBe(false);
     expect(
-      isFieldEnabled(fieldY(fields), fields, { k: 2 }, undefined, m.constants),
+      isFieldEnabled(
+        fieldY(fields),
+        fields,
+        { k: 2 },
+        { constants: m.constants },
+      ),
     ).toBe(true);
   });
 
@@ -520,7 +534,12 @@ describe("Dialog.enable against host-resolved library constants", () => {
     const m = epsModel();
     const fields = parameterFieldsFromModel(m);
     expect(
-      isFieldEnabled(fieldY(fields), fields, { k: 0 }, undefined, m.constants),
+      isFieldEnabled(
+        fieldY(fields),
+        fields,
+        { k: 0 },
+        { constants: m.constants },
+      ),
     ).toBe(true);
   });
 
@@ -528,20 +547,27 @@ describe("Dialog.enable against host-resolved library constants", () => {
     const m = epsModel(EPS);
     const fields = parameterFieldsFromModel(m);
     expect(
-      enabledValues(fields, { k: 0, y: 3 }, undefined, m.constants),
+      enabledValues(fields, { k: 0, y: 3 }, { constants: m.constants }),
     ).toEqual({
       k: 0,
     });
-    expect(isComplete(fields, { k: 0, y: "" }, undefined, m.constants)).toBe(
-      true,
-    );
+    expect(
+      isComplete(fields, { k: 0, y: "" }, { constants: m.constants }),
+    ).toBe(true);
     expect(isComplete(fields, { k: 0, y: "" })).toBe(false);
   });
 
   it("resolves the constant under a component prefix, after peers and the prefix", () => {
     const m = epsModel(EPS);
     const fields = parameterFieldsFromModel(m);
-    const scope = buildEnableScope(fields, { k: 4 }, "PI", m.constants);
+    const scope = buildEnableScope(
+      fields,
+      { k: 4 },
+      {
+        crefPrefix: "PI",
+        constants: m.constants,
+      },
+    );
     expect(scope.lookup(["PI", "k"])).toBe(4);
     expect(scope.lookup(["k"])).toBe(4);
     expect(scope.lookup(["Modelica", "Constants", "eps"])).toBe(1e-15);
@@ -549,7 +575,7 @@ describe("Dialog.enable against host-resolved library constants", () => {
   });
 
   it("does not answer a single-segment name from the constants", () => {
-    const scope = buildEnableScope([], {}, undefined, { eps: 1 });
+    const scope = buildEnableScope([], {}, { constants: { eps: 1 } });
     expect(scope.lookup(["eps"])).toBeUndefined();
   });
 });

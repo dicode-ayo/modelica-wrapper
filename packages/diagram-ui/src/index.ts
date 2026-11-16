@@ -241,6 +241,7 @@ export {
   parameterFieldsFromModel,
   initialValuesFromFields,
   isComplete,
+  type EnableContext,
   type ParameterField,
   type FieldKind,
 } from "./parameter-form/parameter-fields.js";

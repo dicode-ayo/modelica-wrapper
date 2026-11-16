@@ -790,7 +790,11 @@ function makeEditClient(opts?: {
    * ("boom", never matching `looksLikeError`) resumes.
    */
   addComponentErrorBuffer?: string;
-  /** Library constants `evaluateConstant` answers; any other name fails. */
+  /**
+   * Library constants `evaluateConstant` answers; any other name fails. Their
+   * top-level classes are the loaded ones, and `qualifyPath` hands every
+   * path back as already qualified.
+   */
   constants?: Record<string, number>;
 }): {
   client: OmcClient;
@@ -938,6 +942,16 @@ function makeEditClient(opts?: {
         interval: 0.002,
       });
     }),
+    qualifyPath: vi.fn((input: { typeName: string; path: string }) =>
+      Promise.resolve({ qualifiedPath: input.path }),
+    ),
+    getClassNames: vi.fn(() =>
+      Promise.resolve({
+        classNames: Object.keys(opts?.constants ?? {}).map(
+          (name) => name.split(".", 1)[0] ?? name,
+        ),
+      }),
+    ),
     evaluateConstant: vi.fn((input: { name: string }) => {
       const value = opts?.constants?.[input.name];
       return value === undefined
@@ -1839,7 +1853,52 @@ function componentInstance(): ModelInstance {
   } as unknown as ModelInstance;
 }
 
-/** `PI.y` is gated on `k > Modelica.Constants.eps`, a constant outside the model. */
+/** `k` and a `y` gated on `k > Modelica.Constants.eps`, a constant outside the model. */
+function epsGatedParams(): unknown[] {
+  return [
+    {
+      $kind: "component",
+      name: "k",
+      type: "Real",
+      value: { binding: 0 },
+      prefixes: { variability: "parameter" },
+    },
+    {
+      $kind: "component",
+      name: "y",
+      type: "Real",
+      value: { binding: 1 },
+      prefixes: { variability: "parameter" },
+      annotation: {
+        Dialog: {
+          enable: {
+            $kind: "binary_op",
+            op: ">",
+            lhs: { $kind: "cref", parts: [{ name: "k" }] },
+            rhs: {
+              $kind: "cref",
+              parts: [
+                { name: "Modelica" },
+                { name: "Constants" },
+                { name: "eps" },
+              ],
+            },
+          },
+        },
+      },
+    },
+  ];
+}
+
+function epsGatedClassInstance(): ModelInstance {
+  return {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: epsGatedParams(),
+  } as unknown as ModelInstance;
+}
+
+/** `PI`'s type carries {@link epsGatedParams}. */
 function epsGatedComponentInstance(): ModelInstance {
   return {
     name: "Pkg.M",
@@ -1851,39 +1910,7 @@ function epsGatedComponentInstance(): ModelInstance {
         type: {
           name: "MyLib.Block",
           restriction: "block",
-          elements: [
-            {
-              $kind: "component",
-              name: "k",
-              type: "Real",
-              value: { binding: 0 },
-              prefixes: { variability: "parameter" },
-            },
-            {
-              $kind: "component",
-              name: "y",
-              type: "Real",
-              value: { binding: 1 },
-              prefixes: { variability: "parameter" },
-              annotation: {
-                Dialog: {
-                  enable: {
-                    $kind: "binary_op",
-                    op: ">",
-                    lhs: { $kind: "cref", parts: [{ name: "k" }] },
-                    rhs: {
-                      $kind: "cref",
-                      parts: [
-                        { name: "Modelica" },
-                        { name: "Constants" },
-                        { name: "eps" },
-                      ],
-                    },
-                  },
-                },
-              },
-            },
-          ],
+          elements: epsGatedParams(),
         },
       } as unknown as ComponentElement,
     ],
@@ -2489,7 +2516,32 @@ describe("DiagramEditController: parameter editing", () => {
     expect(setModifierCalls).toEqual([]);
   });
 
-  it("attaches the library constants a Dialog.enable references to the opened model", async () => {
+  it("attaches the library constants a class parameter's Dialog.enable references", async () => {
+    const { client } = makeEditClient({
+      instance: epsGatedClassInstance(),
+      constants: { "Modelica.Constants.eps": 1e-15 },
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "actionParameters" });
+
+    expect(client.qualifyPath).toHaveBeenCalledWith({
+      typeName: "Pkg.M",
+      path: "Modelica.Constants",
+    });
+    expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
+      kind: "classParams",
+      model: { constants: { "Modelica.Constants.eps": 1e-15 } },
+    });
+  });
+
+  it("attaches the library constants a component parameter's Dialog.enable references", async () => {
     const { client } = makeEditClient({
       instance: epsGatedComponentInstance(),
       constants: { "Modelica.Constants.eps": 1e-15 },

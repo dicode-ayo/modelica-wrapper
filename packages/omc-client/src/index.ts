@@ -259,6 +259,7 @@ export {
   collectEnableConstantNames,
   resolveEnableConstants,
   type EnableConstantClient,
+  type EnableConstantRef,
   type EnableConstantValue,
   type ParameterModel,
   type ParameterField,

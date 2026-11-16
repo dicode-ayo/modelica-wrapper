@@ -145,9 +145,12 @@ what consumes the `crefPrefix` from the parameter panel.
 The evaluator itself never contacts OMC. A `Dialog.enable` that references a
 library constant (`k > Modelica.Constants.eps`) is answered from
 `ParameterModel.constants`, which the host fills before the form opens:
-`resolveEnableConstants` (in `api/parameters-form/`) evaluates each such name
-through `evaluateConstant`, a wrapper that sends the bare dotted reference as
-the whole command and reads back a scalar literal.
+`resolveEnableConstants` (in `api/parameters-form/`) qualifies each such name
+in the scope of the class declaring its field (`qualifyPath`), skips one that
+lands inside that class or whose top-level class is not already loaded
+(`getClassNames()`, so OMC never auto-loads a library from `MODELICAPATH`),
+and evaluates the rest through `evaluateConstant`, a wrapper that sends the
+bare dotted reference as the whole command and reads back a scalar literal.
 
 ## Typed API
 

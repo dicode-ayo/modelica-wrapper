@@ -258,8 +258,10 @@ export type OmcFunction =
  *   "loadFile(\"/path/file.mo\", \"\", uses=true, ...)"   ✓
  *   "bogusName()"                                        ✗ (not in OmcFunction)
  *   "Modelica.Constants.eps"                             ✓ (a ConstantReference)
+ *   "evaluateConstant(Modelica.Constants.eps)"           ✗ (names a wrapper)
  */
-export type OmcCommand = `${OmcFunction}(${string})` | ConstantReference;
+export type OmcCommand =
+  `${Exclude<OmcFunction, "evaluateConstant">}(${string})` | ConstantReference;
 
 /**
  * Fully qualified, unsubscripted dotted name — at least two plain identifier

@@ -81,7 +81,7 @@ interface ParameterModel {
   className: string;
   component?: string;           // crefPrefix for component params; unset for class params
   fields: ParameterField[];
-  constants?: Record<string, number | boolean | string>;  // host-resolved library constants Dialog.enable references, by dotted name
+  constants?: Record<string, number | boolean | string>;  // host-resolved library constants Dialog.enable references, by name as written
 }
 ```
 
@@ -153,14 +153,18 @@ The webview renders the typed `ParameterModel` **directly** for *all* panels
   `Dialog.enable`-disabled fields — unchanged behaviour.
 - `Dialog.enable` is evaluated in the webview, which has no OMC. A reference to
   a constant declared outside the model (`k > Modelica.Constants.eps`) is
-  resolved host-side first: `collectEnableConstantNames(model)` gathers the
-  dotted crefs that are neither a field nor the component prefix (plain
-  identifiers only, never subscripted or quoted), and
-  `resolveEnableConstants(client, model)` evaluates each once per form open
-  through the `evaluateConstant` wrapper, carrying the scalar literals on
-  `model.constants`. A name OMC can't reduce to a literal is left out, so its
-  field stays enabled. The simulate and shape-properties forms carry no
-  `constants`.
+  resolved host-side first: `collectEnableConstantNames(model)` gathers, per
+  declaring class (`inheritedFrom`, else `className`), the dotted crefs that
+  are neither a field nor the component prefix (plain identifiers only, never
+  subscripted or quoted). `resolveEnableConstants(client, model)` qualifies
+  each in its declaring class's scope (`qualifyPath`), drops a name that lands
+  inside that class or that two classes qualify differently, keeps only names
+  whose top-level class is already loaded (`getClassNames()`, so OMC never
+  auto-loads a library), and evaluates the rest once per form open through the
+  `evaluateConstant` wrapper, carrying the scalar literals on `model.constants`
+  keyed by the name as written. A name dropped at any step, or that OMC can't
+  reduce to a literal, is left out, so its field stays enabled. The simulate
+  and shape-properties forms carry no `constants`.
 
 JSON Schema is no longer a form contract anywhere. (The `JsonSchema` *type* and
 `describeFunctionAsJsonSchema` remain — they serve the OMC-function registry/MCP

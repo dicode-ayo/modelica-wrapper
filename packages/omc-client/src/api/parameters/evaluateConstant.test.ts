@@ -58,6 +58,36 @@ describe("evaluateConstant", () => {
     expect(getErrorString).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces a diagnostic OMC put inline, not the empty buffer", async () => {
+    const { ctx, getErrorString } = fakeCtx(
+      "Error: Class Foo not found in scope <interactive>.",
+    );
+    const err = evaluateConstant(ctx, { name: "Foo.bar" });
+    await expect(err).rejects.toBeInstanceOf(OmcDiagnosticError);
+    await expect(err).rejects.toThrow(/Class Foo not found/);
+    expect(getErrorString).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-finite reply at the output schema", async () => {
+    const { ctx } = fakeCtx("1e400");
+    await expect(evaluateConstant(ctx, { name: "Lib.inf" })).rejects.toThrow(
+      /evaluateConstant/,
+    );
+    expect(
+      REGISTRY.evaluateConstant.outputSchema.safeParse({
+        value: Number.POSITIVE_INFINITY,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("refuses a name outside the guard when called directly, before it reaches OMC", async () => {
+    const { ctx, call } = fakeCtx("1");
+    await expect(evaluateConstant(ctx, { name: "bad name" })).rejects.toThrow(
+      /not a constant reference/,
+    );
+    expect(call).not.toHaveBeenCalled();
+  });
+
   it.each([
     "eps",
     "Modelica.Constants.eps[1]",

@@ -146,18 +146,32 @@ annotation). The form evaluates it against the *committed* working values
 (updated on focus-out / `change`, not on every keystroke) using the client's
 expression evaluator
 ([expression-evaluator.ts](../packages/omc-client/src/eval/expression-evaluator.ts)).
-A reference resolves, in order, against a peer field's committed value (else its
-class default), the same with the `crefPrefix` stripped (`PI.controllerType`),
-and finally `model.constants`: before the modal opens, the host collects the
-dotted references to constants declared outside the model
-(`k > Modelica.Constants.eps`) and evaluates each through OMC
-(`resolveEnableConstants`, sending the bare name the way OMEdit's
-`OMCProxy::evaluateConstant` does). Only fully qualified plain dotted names are
-sent — never a subscripted or quoted cref — and only a scalar literal reply
-(Real, Integer, Boolean, String) is kept. Unresolvable references fall back to
-**enabled** (`true`). Disabled fields render
-dimmed and are **dropped from the submit payload** so a disabled value is never
-written.
+A reference resolves, in order, against a peer field's committed value (else
+its class default), the same with the `crefPrefix` stripped
+(`PI.controllerType`), and finally `model.constants`. Before the modal opens,
+the host collects the dotted references to constants declared outside the
+model (`k > Modelica.Constants.eps`, `Constants.eps`, `SI.x`) and resolves them
+(`resolveEnableConstants`):
+
+1. Each name is qualified in the scope of the class that declares its field
+   (`inheritedFrom`, else the model's class) through `qualifyPath`, so a
+   relative name or an import alias means what it means in Modelica rather
+   than whatever top-level class shares its head. A name that qualifies into
+   that class itself (a local or replaceable package an instance may
+   redeclare), whose qualification fails, or that two declaring classes
+   qualify differently is dropped.
+2. A qualified name is evaluated only when its top-level class is already
+   loaded (`getClassNames()`), so the lookup never makes OMC load a library
+   from `MODELICAPATH`.
+3. The survivors are evaluated through OMC one at a time, sending the bare
+   qualified name the way OMEdit's `OMCProxy::evaluateConstant` does. Only
+   plain dotted names are sent — never a subscripted or quoted cref — and only
+   a scalar literal reply (Real, Integer, Boolean, String) is kept, keyed by the
+   name as written in the expression.
+
+Unresolvable references fall back to **enabled** (`true`). Disabled fields
+render dimmed and are **dropped from the submit payload** so a disabled value
+is never written.
 
 ### A5. Editing and submitting
 
