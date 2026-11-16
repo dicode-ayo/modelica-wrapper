@@ -56,7 +56,7 @@ import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
-import { isLikelyDiskPath } from "@dicode/omc-client";
+import { isLikelyDiskPath, splitModelicaPath } from "@dicode/omc-client";
 import type {
   MutatingFnName,
   OmcFnName,
@@ -88,11 +88,12 @@ export interface WriteTargetClient {
 
 /**
  * The OMC surface a caller-named destination path is judged against:
- * `MODELICAPATH`'s roots, and OMC's own actual working directory — which is
- * what a relative destination resolves against, not the host process's
- * `cwd()`. `cd()` with an empty `newWorkingDirectory` is OMC's own getter for
- * that (`packages/omc-client/src/api/lifecycle/cd.ts`); `McpToolClient`
- * satisfies it.
+ * `MODELICAPATH`'s roots (unless the host's verdict source names its own),
+ * and OMC's own actual working directory — which is what a relative
+ * destination resolves against, not the host process's `cwd()`. `cd()` with
+ * an empty `newWorkingDirectory` is OMC's own getter for that
+ * (`packages/omc-client/src/api/lifecycle/cd.ts`); `McpToolClient` satisfies
+ * it.
  */
 export interface DestinationClient {
   getModelicaPath(): Promise<{ modelicaPath: string }>;
@@ -145,7 +146,7 @@ export interface DestinationClient {
  * judged the way a `"binding"` path's classes are. The path need not be an
  * existing file, or an existing Modelica class, at all, so it is checked by
  * origin only: it must not resolve, against OMC's own working directory,
- * under a `MODELICAPATH` root. It never goes through a class lookup or a
+ * under a system-library root. It never goes through a class lookup or a
  * file-permission check.
  *
  * `null` means the input says nothing the gate judges: a library named rather
@@ -173,14 +174,39 @@ type Argument<Field extends string> =
     };
 
 /**
- * A row: the one argument the gate judges, the several it judges in order, or
- * `null`. Each argument carries its own field name as a literal, and only a
- * name `K`'s input actually has is assignable here — so a renamed argument
- * fails the build.
+ * A call no input makes safe, refused whatever it carries.
+ *
+ * `setModelicaPath`, and `setEnvironmentVar` through `OPENMODELICALIBRARY`,
+ * move where OMC looks for libraries. In any host, a caller could then leave
+ * the Modelica Standard Library unloadable, or redirect which library a name
+ * resolves to; in a host that supplies no `systemLibraryRoots`, where
+ * verdicts read the live `MODELICAPATH`, emptying it also makes the Modelica
+ * Standard Library read as editable. `setEnvironmentVar` also injects
+ * environment into every compiler and simulation subprocess OMC spawns
+ * (`PATH`, `LD_PRELOAD`), and `setInstallationDirectoryPath` /
+ * `setTempDirectoryPath` move where OMC reads its runtime from and writes its
+ * scratch files to. `getEnvironmentVar` reads the host process's environment,
+ * credentials included. None of them names anything the gate could judge
+ * instead.
+ */
+interface Refusal {
+  readonly refuse: string;
+}
+
+const refuses = (setting: string): Refusal => ({
+  refuse: `Cannot change ${setting} — it is session configuration only the user can set.`,
+});
+
+/**
+ * A row: the one argument the gate judges, the several it judges in order, a
+ * {@link Refusal}, or `null`. Each argument carries its own field name as a
+ * literal, and only a name `K`'s input actually has is assignable here — so a
+ * renamed argument fails the build.
  */
 type GateArgument<K extends OmcFnName> =
   | Argument<Extract<keyof OmcInput<K>, string>>
   | readonly Argument<Extract<keyof OmcInput<K>, string>>[]
+  | Refusal
   | null;
 
 const edits = <F extends string>(field: F): Argument<F> => ({
@@ -292,9 +318,13 @@ const CLASS_ARGUMENTS: { readonly [K in MutatingFnName]: GateArgument<K> } = {
   setElementAnnotation: editsElement("typeName"),
   setElementModifierValue: edits("typeName"),
   setElementType: edits("typeName"),
+  setEnvironmentVar: refuses("OMC's environment"),
   setExtendsModifier: edits("typeName"),
   setExtendsModifierValue: edits("typeName"),
   setFullDocumentationAnnotation: edits("typeName"),
+  setInstallationDirectoryPath: refuses("OMC's installation directory"),
+  setLanguageStandard: null,
+  setModelicaPath: refuses("the MODELICAPATH"),
   setParameterValue: edits("typeName"),
   setSourceFile: [edits("typeName"), binds("fileName")],
   updateComponent: edits("intoTypeName"),
@@ -353,6 +383,20 @@ const DESTINATION_ARGUMENTS = {
 };
 
 /**
+ * The {@link Refusal} rows for the `"readOnly"` functions `READ_ONLY_GATE`
+ * classifies `"refused"`, tied to it the way `DESTINATION_ARGUMENTS` is.
+ */
+const REFUSED_ARGUMENTS = {
+  getEnvironmentVar: {
+    refuse:
+      "Cannot read OMC's environment — it carries the host process's variables, credentials among them.",
+  } satisfies GateArgument<"getEnvironmentVar">,
+  setTempDirectoryPath: refuses(
+    "OMC's temporary directory",
+  ) satisfies GateArgument<"setTempDirectoryPath">,
+};
+
+/**
  * What kind of write a `"readOnly"` OMC function performs, beyond the
  * `MUTATIONS` classification that only means "does not change the model OMC
  * holds in memory". Exhaustive over every readOnly function, so a new one
@@ -367,6 +411,9 @@ const DESTINATION_ARGUMENTS = {
  * - `"destination"`: takes a caller-named destination path unrelated to any
  *   Modelica class — `DESTINATION_ARGUMENTS`' rows — gated by origin alone
  *   through `refusalForDestination` rather than a class lookup.
+ * - `"refused"`: changes session configuration, or reads the environment,
+ *   which no MCP caller may touch — `REFUSED_ARGUMENTS`' rows; see
+ *   {@link Refusal}.
  *
  * `buildModelFMU` and `translateModelXML` are `"none"` despite each
  * generating an output file: `buildModelFMU`'s `fileNamePrefix` goes through
@@ -388,6 +435,11 @@ export const READ_ONLY_GATE = {
   getMessagesStringInternal: "none",
   getVersion: "none",
   getModelicaPath: "none",
+  getInstallationDirectoryPath: "none",
+  getTempDirectoryPath: "none",
+  setTempDirectoryPath: "refused",
+  getLanguageStandard: "none",
+  getEnvironmentVar: "refused",
   getClassNames: "none",
   searchClassNames: "none",
   getClassInformation: "none",
@@ -537,26 +589,29 @@ export const READ_ONLY_GATE = {
   deltaSimulationResults: "none",
   diffSimulationResults: "destination",
 } as const satisfies {
-  readonly [K in ReadOnlyFnName]: "none" | "ownFile" | "destination";
+  readonly [K in ReadOnlyFnName]:
+    "none" | "ownFile" | "destination" | "refused";
 };
 
 /**
- * `CLASS_ARGUMENTS`, `SAVE_ARGUMENT` and `DESTINATION_ARGUMENTS` with their
- * per-function field-name literals erased, which is all a lookup by a runtime
- * name can preserve.
+ * `CLASS_ARGUMENTS`, `SAVE_ARGUMENT`, `DESTINATION_ARGUMENTS` and
+ * `REFUSED_ARGUMENTS` with their per-function field-name literals erased,
+ * which is all a lookup by a runtime name can preserve.
  */
 type ResolvedArgument = Argument<string>;
 
-const BY_NAME: Readonly<
-  Record<
-    string,
-    ResolvedArgument | readonly ResolvedArgument[] | null | undefined
-  >
-> = {
+type ResolvedRow = ResolvedArgument | readonly ResolvedArgument[] | Refusal;
+
+const BY_NAME: Readonly<Record<string, ResolvedRow | null | undefined>> = {
   save: SAVE_ARGUMENT,
   ...DESTINATION_ARGUMENTS,
+  ...REFUSED_ARGUMENTS,
   ...CLASS_ARGUMENTS,
 };
+
+function isRefusal(row: ResolvedRow): row is Refusal {
+  return "refuse" in row;
+}
 
 /**
  * `fn`'s row in {@link BY_NAME}, or `undefined` when it names nothing the gate
@@ -564,9 +619,7 @@ const BY_NAME: Readonly<
  * (`copyClass`'s `within`, `newModel`'s `withinPath`) leaves for `refusalFor`
  * to let straight through.
  */
-function rowFor(
-  fn: string,
-): ResolvedArgument | readonly ResolvedArgument[] | undefined {
+function rowFor(fn: string): ResolvedRow | undefined {
   const row = BY_NAME[fn];
   return row === null ? undefined : row;
 }
@@ -594,6 +647,7 @@ export async function refusalFor(
 ): Promise<string | undefined> {
   const row = rowFor(fn);
   if (row === undefined) return undefined;
+  if (isRefusal(row)) return row.refuse;
   if (typeof input !== "object" || input === null) return undefined;
 
   // One set across the whole row, so a target two arguments share — text
@@ -691,7 +745,7 @@ async function refusalForArgument(
       // judge" would skip the very destination the real call still resolves.
       // Only a wrong-typed value has truly nothing to judge.
       if (raw !== undefined && typeof raw !== "string") return undefined;
-      return refusalForDestination(client, raw ?? "");
+      return refusalForDestination(verdicts, client, raw ?? "");
     }
     case "simflags":
     case "cflags": {
@@ -700,7 +754,11 @@ async function refusalForArgument(
         return "Cannot tell where this would write — cflags carries a response file (@file), whose contents the write gate cannot see.";
       }
       for (const destination of flagDestinations(raw, argument.as)) {
-        const refusal = await refusalForDestination(client, destination);
+        const refusal = await refusalForDestination(
+          verdicts,
+          client,
+          destination,
+        );
         if (refusal !== undefined) return refusal;
       }
       return undefined;
@@ -921,7 +979,9 @@ async function refusalForDeclaredClasses(
 
 /**
  * Whether `destinationPath` resolves, against OMC's own actual working
- * directory, under one of `MODELICAPATH`'s roots — the same algorithm
+ * directory, under one of the system-library roots — the ones
+ * {@link WriteVerdictSource.systemLibraryRoots} reports, or `MODELICAPATH`'s
+ * when the host supplies none. That is the same algorithm
  * `packages/extension/src/system-library.ts`'s `systemLibraryVerdict` derives
  * for a class's own source file, but starting from a path already in hand
  * rather than one reached through `getSourceFile`. `mcp-server` cannot depend
@@ -935,7 +995,7 @@ async function refusalForDeclaredClasses(
  * relative `MODELICAPATH` root is resolved against the same working
  * directory, for the same reason — OMC resolves both against its own cwd.
  *
- * Fails open — `false` — on any error from `getModelicaPath()` or `cd()`,
+ * Fails open — `false` — on any error reading the roots or from `cd()`,
  * matching the "deriving a verdict fails open" philosophy documented on
  * `WriteVerdictSource`/`write-verdict.ts` and the `catch` in
  * `WriteVerdicts.forClass`: refusing a destination the gate could not
@@ -956,24 +1016,21 @@ async function refusalForDeclaredClasses(
  * function outside that turn reopens the window.
  */
 async function isUnderSystemLibraryRoot(
+  verdicts: WriteVerdictSource,
   client: DestinationClient,
   destinationPath: string,
 ): Promise<boolean> {
   try {
-    const { modelicaPath } = await client.getModelicaPath();
+    const libraryRoots = await systemLibraryRoots(verdicts, client);
     const { workingDirectory: rawWorkingDirectory } = await client.cd({
       newWorkingDirectory: "",
     });
     const workingDirectory =
       await realpathExistingAncestor(rawWorkingDirectory);
     const roots = await Promise.all(
-      modelicaPath
-        .split(path.delimiter)
-        .map((root) => root.trim())
-        .filter((root) => root.length > 0)
-        .map((root) =>
-          realpathExistingAncestor(path.resolve(workingDirectory, root)),
-        ),
+      libraryRoots.map((root) =>
+        realpathExistingAncestor(path.resolve(workingDirectory, root)),
+      ),
     );
     const file = await realpathExistingAncestor(
       path.resolve(workingDirectory, destinationPath),
@@ -982,6 +1039,21 @@ async function isUnderSystemLibraryRoot(
   } catch {
     return false;
   }
+}
+
+/**
+ * The host's system-library roots when it supplies them, else every entry of
+ * the live `MODELICAPATH`.
+ */
+async function systemLibraryRoots(
+  verdicts: WriteVerdictSource,
+  client: DestinationClient,
+): Promise<string[]> {
+  if (verdicts.systemLibraryRoots !== undefined) {
+    return verdicts.systemLibraryRoots(client);
+  }
+  const { modelicaPath } = await client.getModelicaPath();
+  return splitModelicaPath(modelicaPath);
 }
 
 /**
@@ -1022,10 +1094,12 @@ function isUnder(file: string, root: string): boolean {
  * construct their own ad hoc messages without going through `verdicts`.
  */
 async function refusalForDestination(
+  verdicts: WriteVerdictSource,
   client: DestinationClient,
   destinationPath: string,
 ): Promise<string | undefined> {
   const underSystemLibrary = await isUnderSystemLibraryRoot(
+    verdicts,
     client,
     destinationPath,
   );

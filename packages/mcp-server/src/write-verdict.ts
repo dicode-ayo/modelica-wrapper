@@ -37,4 +37,14 @@ export interface WriteVerdictSource {
     className: string,
     action: WriteAction,
   ): Promise<WriteVerdict>;
+  /**
+   * The library roots a destination path must stay out of — the same ones
+   * {@link forClass} judges a class's origin against. A host that widens
+   * `MODELICAPATH` with directories the user may write to supplies this, so
+   * those directories are not refused as system libraries; absent, every
+   * entry of the live `getModelicaPath()` counts.
+   */
+  systemLibraryRoots?(client: {
+    getModelicaPath(): Promise<{ modelicaPath: string }>;
+  }): Promise<string[]>;
 }

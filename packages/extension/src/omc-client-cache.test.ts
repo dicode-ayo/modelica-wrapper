@@ -257,4 +257,71 @@ describe("createOmcClientCache", () => {
     expect(await resetP).toBe(b);
     expect(await third).toBe(b);
   });
+
+  it("whenLive() never spawns, and reaches the spawn in flight", async () => {
+    const { spawn, pending } = deferredSpawns();
+    const cache = createOmcClientCache(spawn, noopClose);
+
+    expect(cache.whenLive()).toBeUndefined();
+    expect(spawn).not.toHaveBeenCalled();
+
+    const first = cache.ensure();
+    const live = cache.whenLive();
+    expect(live).toBe(first);
+    const client = {};
+    nth(pending, 0).resolve(client);
+    expect(await live).toBe(client);
+    expect(await cache.whenLive()).toBe(client);
+
+    await cache.close();
+    expect(cache.whenLive()).toBeUndefined();
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("whenLive() reaches the replacement session throughout a reset()", async () => {
+    let finishClose: () => void = () => {};
+    const slowClose = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishClose = resolve;
+        }),
+    );
+    const { spawn, pending } = deferredSpawns();
+    const cache = createOmcClientCache(spawn, slowClose);
+    const first = cache.ensure();
+    nth(pending, 0).resolve({ id: "a" });
+    await first;
+
+    const resetP = cache.reset();
+    // The old client is still closing; no replacement spawn has started.
+    const duringClose = cache.whenLive();
+    expect(duringClose).toBeDefined();
+    expect(spawn).toHaveBeenCalledTimes(1);
+
+    finishClose();
+    await flush();
+    const duringSpawn = cache.whenLive();
+    expect(duringSpawn).toBeDefined();
+    expect(spawn).toHaveBeenCalledTimes(2);
+
+    const b = { id: "b" };
+    nth(pending, 1).resolve(b);
+    expect(await resetP).toBe(b);
+    expect(await duringClose).toBe(b);
+    expect(await duringSpawn).toBe(b);
+    expect(spawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("whenLive() hands back a failed spawn's rejection, then nothing", async () => {
+    const { spawn, pending } = deferredSpawns();
+    const cache = createOmcClientCache(spawn, noopClose);
+
+    const first = cache.ensure();
+    const live = cache.whenLive();
+    nth(pending, 0).reject(new Error("no omc"));
+    await expect(first).rejects.toThrow("no omc");
+    await expect(live).rejects.toThrow("no omc");
+    expect(cache.whenLive()).toBeUndefined();
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
 });

@@ -7,6 +7,8 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
+import * as path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
@@ -284,5 +286,20 @@ describe("WriteVerdicts.forDocument", () => {
     } finally {
       stat.mockRestore();
     }
+  });
+});
+
+describe("WriteVerdicts.systemLibraryRoots", () => {
+  it("reports the roots forClass judged against, not a path widened since", async () => {
+    const verdicts = new WriteVerdicts();
+    const client = makeClient({ sourceFile: SYSTEM_FILE });
+    expect(await verdicts.forClass(client, "Modelica.Blocks", "edit")).toEqual(
+      expect.objectContaining({ ok: false }),
+    );
+    vi.mocked(client.getModelicaPath).mockResolvedValue({
+      modelicaPath: ["/ws/lib", MODELICA_PATH].join(path.delimiter),
+    });
+
+    expect(await verdicts.systemLibraryRoots(client)).toEqual([MODELICA_PATH]);
   });
 });

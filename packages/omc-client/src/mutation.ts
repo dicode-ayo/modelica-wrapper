@@ -52,8 +52,11 @@ export interface OmcMutation {
  *   confidently wrong answer — worse than no answer. `newModel`,
  *   `deleteClass` and `moveClassToTop` do name a class, but what they move is
  *   its parent's membership, which appears nowhere in the call.
- *   `setCommandLineOptions` names no class at all, yet can change what
- *   instantiation reports. All are rare enough that one extra refresh is cheap.
+ *   `setCommandLineOptions` and `setLanguageStandard` name no class at all,
+ *   yet can change what instantiation reports; `setModelicaPath`,
+ *   `setEnvironmentVar` and `setInstallationDirectoryPath` can change which
+ *   library a `uses` annotation resolves to. All are rare enough that one
+ *   extra refresh is cheap.
  * - `{ pos, as }` — argument `pos` holds the affected class name, file path, or
  *   — for `"element"` — a dotted path to an element *inside* a class, whose
  *   enclosing scope is what changed. Announcing such a path as the class names
@@ -83,6 +86,15 @@ export const MUTATIONS = {
 
   // --- Browsing ---
   getModelicaPath: "readOnly",
+  setModelicaPath: "coarse",
+  getInstallationDirectoryPath: "readOnly",
+  setInstallationDirectoryPath: "coarse",
+  getTempDirectoryPath: "readOnly",
+  setTempDirectoryPath: "readOnly",
+  getLanguageStandard: "readOnly",
+  setLanguageStandard: "coarse",
+  getEnvironmentVar: "readOnly",
+  setEnvironmentVar: "coarse",
   getClassNames: "readOnly",
   searchClassNames: "readOnly",
   getClassInformation: "readOnly",

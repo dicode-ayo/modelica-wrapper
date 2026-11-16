@@ -758,6 +758,28 @@ describe("a call naming a destination path", () => {
     expect(source.asked).toEqual([]);
   });
 
+  it("judges against the host's system-library roots, not every MODELICAPATH entry", async () => {
+    // The host widened MODELICAPATH with a project library the user may write
+    // to; only the installed default it reports stays off limits.
+    const projectLib = "/workspace/lib";
+    const source = {
+      ...verdicts(),
+      systemLibraryRoots: async () => [LIBRARY_ROOT],
+    };
+    const omc = withModelicaPath(
+      [projectLib, LIBRARY_ROOT].join(path.delimiter),
+    );
+    const filter = (outFile: string) =>
+      refusalFor(source, omc, "filterSimulationResults", {
+        inFile: "/workspace/res.mat",
+        outFile,
+        vars: ["x"],
+      });
+
+    expect(await filter(`${projectLib}/filtered.mat`)).toBeUndefined();
+    expect(await filter(`${LIBRARY_ROOT}/filtered.mat`)).toBeDefined();
+  });
+
   it("refuses outFile that is exactly a MODELICAPATH root, not only nested under one", async () => {
     const source = verdicts();
 
@@ -1291,16 +1313,59 @@ describe("a destination path reached through a symlink", () => {
   });
 });
 
+describe("a call changing session configuration", () => {
+  it.each([
+    ["setModelicaPath", { modelicaPath: "" }],
+    ["setEnvironmentVar", { var: "OPENMODELICALIBRARY", value: "" }],
+    ["setInstallationDirectoryPath", { installationDirectoryPath: "/tmp" }],
+    ["setTempDirectoryPath", { tempDirectoryPath: "/tmp" }],
+  ] as const)(
+    "refuses %s without asking OMC or a verdict anything",
+    async (fn, input) => {
+      const source = verdicts();
+      // `client` carries no methods, so any OMC call the gate made would throw.
+      const refusal = await refusalFor(source, client, fn, input);
+      expect(refusal).toMatch(/^Cannot change .* only the user can set\.$/);
+      expect(source.asked).toEqual([]);
+    },
+  );
+
+  it("refuses a setter even when its input is malformed", async () => {
+    expect(
+      await refusalFor(verdicts(), client, "setModelicaPath", undefined),
+    ).toBeDefined();
+  });
+
+  it("lets setLanguageStandard through — it moves no root and reaches no subprocess", async () => {
+    expect(
+      await refusalFor(verdicts(), client, "setLanguageStandard", {
+        inVersion: "3.5",
+      }),
+    ).toBeUndefined();
+  });
+});
+
 describe("READ_ONLY_GATE", () => {
-  const flagged = (gate: "ownFile" | "destination") =>
+  const flagged = (gate: "ownFile" | "destination" | "refused") =>
     Object.entries(READ_ONLY_GATE)
       .filter(([, g]) => g === gate)
       .map(([fn]) => fn);
 
-  it("gates every readOnly function it classifies ownFile or destination", () => {
-    for (const fn of [...flagged("ownFile"), ...flagged("destination")]) {
+  it("gates every readOnly function it classifies ownFile, destination or refused", () => {
+    for (const fn of [
+      ...flagged("ownFile"),
+      ...flagged("destination"),
+      ...flagged("refused"),
+    ]) {
       expect(hasGateEntry(fn)).toBe(true);
     }
+  });
+
+  it("pins setTempDirectoryPath and getEnvironmentVar as the only readOnly functions refused outright", () => {
+    expect(flagged("refused")).toEqual([
+      "setTempDirectoryPath",
+      "getEnvironmentVar",
+    ]);
   });
 
   it("pins save as the only readOnly function that rewrites its own file", () => {

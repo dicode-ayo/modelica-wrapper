@@ -216,8 +216,9 @@ export class OmLibraryViewRoot extends LitElement {
         <span>No Modelica libraries are loaded yet.</span>
         <button @click=${this.onLoadLibrary}>Load Library…</button>
         <span class="hint"
-          >The default "Modelica" name resolves the Modelica Standard Library
-          from your MODELICAPATH.</span
+          >The default "Modelica" name loads the installed Modelica Standard
+          Library; add library directories with the modelica.modelicaPath
+          setting.</span
         >
       </div>`;
     }

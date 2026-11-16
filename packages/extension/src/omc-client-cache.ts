@@ -13,6 +13,11 @@
 export interface OmcClientCache<T> {
   /** The shared client, spawning it (once) on first call. */
   ensure(): Promise<T>;
+  /**
+   * The spawned client, or the spawn or `reset()` still in flight — never
+   * starts one. `undefined` when no session is running or coming up.
+   */
+  whenLive(): Promise<T> | undefined;
   /** Close the current client and spawn a fresh one. */
   reset(): Promise<T>;
   /** Close the current client, if any. */
@@ -40,6 +45,9 @@ export function createOmcClientCache<T>(
 ): OmcClientCache<T> {
   let client: T | undefined;
   let inFlight: Promise<T> | undefined;
+  // `reset()` clears `inFlight` before its replacement spawn starts; this
+  // covers that gap, so `whenLive()` still reaches the session coming up.
+  let resetting: Promise<T> | undefined;
   let shutDown = false;
 
   function ensure(): Promise<T> {
@@ -85,9 +93,22 @@ export function createOmcClientCache<T>(
     if (shutDown) {
       return Promise.reject(new Error("OMC client cache is shut down"));
     }
-    await close();
-    onReset?.();
-    return ensure();
+    const attempt = (async (): Promise<T> => {
+      await close();
+      onReset?.();
+      return ensure();
+    })();
+    resetting = attempt;
+    try {
+      return await attempt;
+    } finally {
+      if (resetting === attempt) resetting = undefined;
+    }
+  }
+
+  function whenLive(): Promise<T> | undefined {
+    if (client !== undefined) return Promise.resolve(client);
+    return inFlight ?? resetting;
   }
 
   async function shutdown(): Promise<void> {
@@ -95,5 +116,5 @@ export function createOmcClientCache<T>(
     await close();
   }
 
-  return { ensure, reset, close, shutdown };
+  return { ensure, whenLive, reset, close, shutdown };
 }

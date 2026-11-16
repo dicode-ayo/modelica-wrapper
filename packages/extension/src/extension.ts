@@ -72,6 +72,11 @@ import {
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 import { createMoFileScanner } from "./workspace-mo-scan.js";
+import {
+  applyModelicaPath,
+  onModelicaPathChanged,
+  type ModelicaPathScope,
+} from "./modelica-path.js";
 import { hasModelicaContent } from "./modelica-window.js";
 
 // Only `deactivate()` outlives `activate()`'s scope.
@@ -145,6 +150,7 @@ export async function activate(
       publishOmcMutations(c, sourceProvider, invalidation, pathClassIndex);
       liveNestedCache = nestedDiagramCache(c);
       await cdIntoWorkspaceCacheDir(c);
+      await applyModelicaPath(c, modelicaPathScopes());
       void omcSetup.reportVersion(c, omcPath);
       return c;
     },
@@ -158,6 +164,27 @@ export async function activate(
     },
   );
   closeOmcClientCache = () => omcClientCache.shutdown();
+  // Chained so back-to-back edits reach OMC in the order they were made.
+  let modelicaPathChanges = Promise.resolve();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      modelicaPathChanges = modelicaPathChanges
+        .then(() =>
+          onModelicaPathChanged(
+            event,
+            omcClientCache.whenLive(),
+            modelicaPathScopes,
+          ),
+        )
+        // A rejected link would wedge every later edit behind it.
+        .catch((err: unknown) => {
+          log.warn(
+            "modelicaPath",
+            `re-applying modelica.modelicaPath failed: ${errorDetail(err)}`,
+          );
+        });
+    }),
+  );
   const ensureClient = (): Promise<OmcClient> => omcClientCache.ensure();
   // Used by the REPL's `:reset` meta-command — anything that survives in
   // OMC's in-memory state (loaded classes, last simulation result,
@@ -385,6 +412,31 @@ async function reapStrandedOmc(): Promise<void> {
   } catch (err) {
     log.warn("activate", `reaping stranded OMC failed: ${String(err)}`);
   }
+}
+
+/**
+ * `modelica.modelicaPath` as each workspace folder sees it — the setting is
+ * resource-scoped, so a folder can carry its own entries. A window with no
+ * folder reads the window-level value.
+ */
+function modelicaPathScopes(): ModelicaPathScope[] {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length === 0) {
+    return [{ folder: undefined, entries: modelicaPathSetting(undefined) }];
+  }
+  return folders.map((f) => ({
+    folder: f.uri.fsPath,
+    entries: modelicaPathSetting(f.uri),
+  }));
+}
+
+function modelicaPathSetting(scope: vscode.Uri | undefined): string[] {
+  const value: unknown = vscode.workspace
+    .getConfiguration("modelica", scope)
+    .get("modelicaPath");
+  return Array.isArray(value)
+    ? value.filter((e): e is string => typeof e === "string")
+    : [];
 }
 
 /**

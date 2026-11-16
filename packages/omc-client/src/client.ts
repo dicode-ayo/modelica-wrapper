@@ -236,6 +236,54 @@ export class OmcClient implements CallContext {
     return this.invoke("getModelicaPath", {});
   }
 
+  setModelicaPath(
+    input: browsing.SetModelicaPathInput,
+  ): Promise<browsing.SetModelicaPathOutput> {
+    return this.invoke("setModelicaPath", input);
+  }
+
+  getInstallationDirectoryPath(): Promise<browsing.GetInstallationDirectoryPathOutput> {
+    return this.invoke("getInstallationDirectoryPath", {});
+  }
+
+  setInstallationDirectoryPath(
+    input: browsing.SetInstallationDirectoryPathInput,
+  ): Promise<browsing.SetInstallationDirectoryPathOutput> {
+    return this.invoke("setInstallationDirectoryPath", input);
+  }
+
+  getTempDirectoryPath(): Promise<browsing.GetTempDirectoryPathOutput> {
+    return this.invoke("getTempDirectoryPath", {});
+  }
+
+  setTempDirectoryPath(
+    input: browsing.SetTempDirectoryPathInput,
+  ): Promise<browsing.SetTempDirectoryPathOutput> {
+    return this.invoke("setTempDirectoryPath", input);
+  }
+
+  getLanguageStandard(): Promise<browsing.GetLanguageStandardOutput> {
+    return this.invoke("getLanguageStandard", {});
+  }
+
+  setLanguageStandard(
+    input: browsing.SetLanguageStandardInput,
+  ): Promise<browsing.SetLanguageStandardOutput> {
+    return this.invoke("setLanguageStandard", input);
+  }
+
+  getEnvironmentVar(
+    input: browsing.GetEnvironmentVarInput,
+  ): Promise<browsing.GetEnvironmentVarOutput> {
+    return this.invoke("getEnvironmentVar", input);
+  }
+
+  setEnvironmentVar(
+    input: browsing.SetEnvironmentVarInput,
+  ): Promise<browsing.SetEnvironmentVarOutput> {
+    return this.invoke("setEnvironmentVar", input);
+  }
+
   getClassNames(
     input: browsing.GetClassNamesInput = {},
   ): Promise<browsing.GetClassNamesOutput> {

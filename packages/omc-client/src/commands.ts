@@ -20,6 +20,15 @@ export type OmcFunction =
 
   // --- Browsing ---
   | "getModelicaPath"
+  | "setModelicaPath"
+  | "getInstallationDirectoryPath"
+  | "setInstallationDirectoryPath"
+  | "getTempDirectoryPath"
+  | "setTempDirectoryPath"
+  | "getLanguageStandard"
+  | "setLanguageStandard"
+  | "getEnvironmentVar"
+  | "setEnvironmentVar"
   | "getClassNames"
   | "searchClassNames"
   | "getClassInformation"

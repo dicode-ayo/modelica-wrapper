@@ -649,6 +649,65 @@ describe("the escape hatch", () => {
     ]);
   });
 
+  it("refuses every session setting that moves the system-library roots or what OMC spawns", async () => {
+    const mcp = await connect();
+
+    const attempts = [
+      { fn: "setModelicaPath", input: { modelicaPath: "" } },
+      {
+        fn: "setEnvironmentVar",
+        input: { var: "OPENMODELICALIBRARY", value: "/tmp/empty" },
+      },
+      { fn: "setEnvironmentVar", input: { var: "LD_PRELOAD", value: "/x.so" } },
+      {
+        fn: "setInstallationDirectoryPath",
+        input: { installationDirectoryPath: "/tmp/om" },
+      },
+      { fn: "setTempDirectoryPath", input: { tempDirectoryPath: "/tmp/x" } },
+    ];
+    for (const args of attempts) {
+      const result = (await mcp.callTool({
+        name: "omc_invoke",
+        arguments: args,
+      })) as CallToolResult;
+      expect(result.isError, args.fn).toBe(true);
+      expect(text(result), args.fn).toContain("only the user can set");
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("still reads the library path, and sets the language standard", async () => {
+    const mcp = await connect();
+
+    for (const args of [
+      { fn: "getModelicaPath", input: {} },
+      { fn: "setLanguageStandard", input: { inVersion: "3.5" } },
+    ]) {
+      const result = (await mcp.callTool({
+        name: "omc_invoke",
+        arguments: args,
+      })) as CallToolResult;
+      expect(result.isError, args.fn).toBeFalsy();
+    }
+    expect(calls.map((c) => c.fn)).toEqual([
+      "getModelicaPath",
+      "setLanguageStandard",
+    ]);
+  });
+
+  it("refuses getEnvironmentVar, which would hand the caller the host's environment", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "omc_invoke",
+      arguments: { fn: "getEnvironmentVar", input: { var: "HOME" } },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("Cannot read OMC's environment");
+    expect(calls).toEqual([]);
+  });
+
   it("refuses save, which writes a file without mutating OMC's memory", async () => {
     const mcp = await connect();
 
