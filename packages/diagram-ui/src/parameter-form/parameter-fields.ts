@@ -24,12 +24,19 @@ import type {
 // above is type-only (erased at build) so neither path drags the OMC
 // transport (zeromq / cmake-ts) into the webview bundle.
 import {
+  chainScopes,
   evaluateExpression,
   prefixStrippingScope,
   recordScope,
   type EvalScope,
   type EvalValue,
 } from "@dicode/omc-client/eval";
+
+/**
+ * Host-resolved library constants a `Dialog.enable` may reference, keyed by
+ * dotted name — the model's `constants`.
+ */
+export type EnableConstants = ParameterModel["constants"];
 
 export type FieldKind =
   | "string"
@@ -220,10 +227,11 @@ export function isComplete(
   fields: ReadonlyArray<ParameterField>,
   values: Record<string, unknown>,
   crefPrefix?: string,
+  constants?: EnableConstants,
 ): boolean {
   for (const f of fields) {
     if (!f.required) continue;
-    if (!isFieldEnabled(f, fields, values, crefPrefix)) continue;
+    if (!isFieldEnabled(f, fields, values, crefPrefix, constants)) continue;
     const v = values[f.name];
     if (v === undefined || v === null || v === "") return false;
   }
@@ -244,10 +252,11 @@ export function enabledValues(
   fields: ReadonlyArray<ParameterField>,
   values: Record<string, unknown>,
   crefPrefix?: string,
+  constants?: EnableConstants,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of fields) {
-    if (!isFieldEnabled(f, fields, values, crefPrefix)) continue;
+    if (!isFieldEnabled(f, fields, values, crefPrefix, constants)) continue;
     out[f.name] = values[f.name];
   }
   return out;
@@ -304,11 +313,17 @@ export function initialValuesFromFields(
  * `crefPrefix`, when set, is stripped off an initial cref segment so a
  * sub-component expression (`PI.controllerType == …`) resolves against
  * the form's bare `controllerType` value.
+ *
+ * `constants` answers a dotted reference neither of those resolves
+ * (`Modelica.Constants.eps`): the webview has no OMC to ask, so the host
+ * evaluates them before the form opens. A name absent from it stays
+ * unresolved, which keeps the dependent field enabled.
  */
 export function buildEnableScope(
   fields: ReadonlyArray<ParameterField>,
   committed: Record<string, unknown>,
   crefPrefix?: string,
+  constants?: EnableConstants,
 ): EvalScope {
   const values: Record<string, EvalValue> = {};
   for (const f of fields) {
@@ -332,7 +347,20 @@ export function buildEnableScope(
     }
   }
   const base = recordScope(values);
-  return crefPrefix ? prefixStrippingScope(crefPrefix, base) : base;
+  const local = crefPrefix ? prefixStrippingScope(crefPrefix, base) : base;
+  return constants === undefined
+    ? local
+    : chainScopes(local, constantScope(constants));
+}
+
+function constantScope(constants: NonNullable<EnableConstants>): EvalScope {
+  return {
+    lookup(parts) {
+      if (parts.length < 2) return undefined;
+      const name = parts.join(".");
+      return Object.hasOwn(constants, name) ? constants[name] : undefined;
+    },
+  };
 }
 
 /**
@@ -349,13 +377,14 @@ export function isFieldEnabled(
   fields: ReadonlyArray<ParameterField>,
   committed: Record<string, unknown>,
   crefPrefix?: string,
+  constants?: EnableConstants,
 ): boolean {
   if (field.enable === undefined) return true;
   if (field.enable === true) return true;
   if (field.enable === false) return false;
   const result = evaluateExpression(
     field.enable,
-    buildEnableScope(fields, committed, crefPrefix),
+    buildEnableScope(fields, committed, crefPrefix, constants),
     { fallback: true },
   );
   return result !== false;

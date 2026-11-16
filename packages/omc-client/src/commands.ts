@@ -147,6 +147,8 @@ export type OmcFunction =
 
   // --- Parameters & modifiers ---
   | "getParameterValue"
+  // Names a wrapper, not an OMC function: see ConstantReference.
+  | "evaluateConstant"
   | "getParameterNames"
   | "setParameterValue"
   | "getComponentModifierNames"
@@ -255,5 +257,34 @@ export type OmcFunction =
  *   "getClassInformation(Modelica.Blocks.Math.Sin)"      ✓
  *   "loadFile(\"/path/file.mo\", \"\", uses=true, ...)"   ✓
  *   "bogusName()"                                        ✗ (not in OmcFunction)
+ *   "Modelica.Constants.eps"                             ✓ (a ConstantReference)
  */
-export type OmcCommand = `${OmcFunction}(${string})`;
+export type OmcCommand = `${OmcFunction}(${string})` | ConstantReference;
+
+/**
+ * Fully qualified, unsubscripted dotted name — at least two plain identifier
+ * segments, no Q-IDENT. The same guard OMEdit's `OMCProxy::evaluateConstant`
+ * applies before handing a name to OMC's interactive evaluator.
+ */
+export const CONSTANT_REFERENCE =
+  /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/;
+
+declare const constantReferenceBrand: unique symbol;
+
+/**
+ * A bare constant reference (`Modelica.Constants.eps`) sent as the whole
+ * command, which OMC's interactive evaluator reduces to the constant's value.
+ * It is the one command that is not a call: the `evaluateConstant` entry in
+ * {@link OmcFunction} names the wrapper that sends it, not an OMC function.
+ * Branded so only {@link constantReference}'s guard can produce one.
+ */
+export type ConstantReference = string & {
+  readonly [constantReferenceBrand]: true;
+};
+
+/** `name` as a {@link ConstantReference}, or `undefined` when it fails the guard. */
+export function constantReference(name: string): ConstantReference | undefined {
+  return CONSTANT_REFERENCE.test(name)
+    ? (name as ConstantReference)
+    : undefined;
+}

@@ -90,7 +90,8 @@ export type ExtensionToWebview =
       /**
        * The typed parameter model the form renders directly. Its fields carry
        * their own current values, type defaults, units, unit options, Dialog
-       * tab/group/enable, and enum metadata.
+       * tab/group/enable, and enum metadata; `constants` carries the
+       * host-resolved library constants those enable expressions reference.
        */
       model: ParameterModel;
       title: string;

@@ -142,6 +142,13 @@ fallback (e.g. `true` for `enable`). Scope combinators (`chainScopes`,
 `prefixStrippingScope`, `recordScope`) compose lookups; `prefixStrippingScope` is
 what consumes the `crefPrefix` from the parameter panel.
 
+The evaluator itself never contacts OMC. A `Dialog.enable` that references a
+library constant (`k > Modelica.Constants.eps`) is answered from
+`ParameterModel.constants`, which the host fills before the form opens:
+`resolveEnableConstants` (in `api/parameters-form/`) evaluates each such name
+through `evaluateConstant`, a wrapper that sends the bare dotted reference as
+the whole command and reads back a scalar literal.
+
 ## Typed API
 
 ~200 wrappers under `src/api/<category>/`, in 11 categories:

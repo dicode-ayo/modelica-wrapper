@@ -790,6 +790,8 @@ function makeEditClient(opts?: {
    * ("boom", never matching `looksLikeError`) resumes.
    */
   addComponentErrorBuffer?: string;
+  /** Library constants `evaluateConstant` answers; any other name fails. */
+  constants?: Record<string, number>;
 }): {
   client: OmcClient;
   invoked: string[];
@@ -935,6 +937,12 @@ function makeEditClient(opts?: {
         numberOfIntervals: 500,
         interval: 0.002,
       });
+    }),
+    evaluateConstant: vi.fn((input: { name: string }) => {
+      const value = opts?.constants?.[input.name];
+      return value === undefined
+        ? Promise.reject(new Error(`evaluateConstant: ${input.name}`))
+        : Promise.resolve({ value });
     }),
     getErrorString: vi.fn(() => {
       const errorString = pendingErrorBuffer ?? "boom";
@@ -1831,6 +1839,57 @@ function componentInstance(): ModelInstance {
   } as unknown as ModelInstance;
 }
 
+/** `PI.y` is gated on `k > Modelica.Constants.eps`, a constant outside the model. */
+function epsGatedComponentInstance(): ModelInstance {
+  return {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: [
+      {
+        $kind: "component",
+        name: "PI",
+        type: {
+          name: "MyLib.Block",
+          restriction: "block",
+          elements: [
+            {
+              $kind: "component",
+              name: "k",
+              type: "Real",
+              value: { binding: 0 },
+              prefixes: { variability: "parameter" },
+            },
+            {
+              $kind: "component",
+              name: "y",
+              type: "Real",
+              value: { binding: 1 },
+              prefixes: { variability: "parameter" },
+              annotation: {
+                Dialog: {
+                  enable: {
+                    $kind: "binary_op",
+                    op: ">",
+                    lhs: { $kind: "cref", parts: [{ name: "k" }] },
+                    rhs: {
+                      $kind: "cref",
+                      parts: [
+                        { name: "Modelica" },
+                        { name: "Constants" },
+                        { name: "eps" },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      } as unknown as ComponentElement,
+    ],
+  } as unknown as ModelInstance;
+}
+
 /** A component whose type declares no editable (parameter-variability) member. */
 function componentInstanceNoParams(): ModelInstance {
   return {
@@ -2428,6 +2487,27 @@ describe("DiagramEditController: parameter editing", () => {
     });
 
     expect(setModifierCalls).toEqual([]);
+  });
+
+  it("attaches the library constants a Dialog.enable references to the opened model", async () => {
+    const { client } = makeEditClient({
+      instance: epsGatedComponentInstance(),
+      constants: { "Modelica.Constants.eps": 1e-15 },
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "editComponent", componentName: "PI" });
+
+    expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
+      kind: "componentParams",
+      model: { constants: { "Modelica.Constants.eps": 1e-15 } },
+    });
   });
 
   it("applies a changed component parameter as <comp>.<param> and reflects", async () => {

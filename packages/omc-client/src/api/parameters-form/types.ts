@@ -172,4 +172,16 @@ export interface ParameterModel {
   component?: string | undefined;
   /** Fields in walk order (ancestors first, host last; later-declared wins by name). */
   fields: ParameterField[];
+  /**
+   * Values of the library constants the fields' `Dialog.enable` expressions
+   * reference (`Modelica.Constants.eps`), keyed by the dotted name as written
+   * in the expression. The form evaluates `enable` synchronously and has no
+   * OMC of its own, so the host resolves these before the model ships (see
+   * `resolveEnableConstants`). A name missing here stays unresolved, which
+   * leaves the dependent field enabled. The producers never set it.
+   */
+  constants?: Record<string, EnableConstantValue> | undefined;
 }
+
+/** A library constant's value as `ParameterModel.constants` carries it. */
+export type EnableConstantValue = number | boolean | string;

@@ -29,7 +29,13 @@ export {
   type SolverMethod,
   type OutputFormat,
 } from "./solverMethods.js";
+export {
+  collectEnableConstantNames,
+  resolveEnableConstants,
+  type EnableConstantClient,
+} from "./enable-constants.js";
 export type {
+  EnableConstantValue,
   ParameterModel,
   ParameterField,
   ParameterFieldKind,

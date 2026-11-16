@@ -146,7 +146,16 @@ annotation). The form evaluates it against the *committed* working values
 (updated on focus-out / `change`, not on every keystroke) using the client's
 expression evaluator
 ([expression-evaluator.ts](../packages/omc-client/src/eval/expression-evaluator.ts)).
-Unresolvable references fall back to **enabled** (`true`). Disabled fields render
+A reference resolves, in order, against a peer field's committed value (else its
+class default), the same with the `crefPrefix` stripped (`PI.controllerType`),
+and finally `model.constants`: before the modal opens, the host collects the
+dotted references to constants declared outside the model
+(`k > Modelica.Constants.eps`) and evaluates each through OMC
+(`resolveEnableConstants`, sending the bare name the way OMEdit's
+`OMCProxy::evaluateConstant` does). Only fully qualified plain dotted names are
+sent — never a subscripted or quoted cref — and only a scalar literal reply
+(Real, Integer, Boolean, String) is kept. Unresolvable references fall back to
+**enabled** (`true`). Disabled fields render
 dimmed and are **dropped from the submit payload** so a disabled value is never
 written.
 

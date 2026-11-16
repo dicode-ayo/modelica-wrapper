@@ -124,6 +124,21 @@ describe("mutationFor", () => {
     });
   });
 
+  it("says nothing about a bare constant reference, which only reads", () => {
+    expect(mutationFor("Modelica.Constants.eps")).toBeUndefined();
+  });
+
+  it("goes coarse for a bare reference that is not a dotted constant", () => {
+    expect(mutationFor("x")).toEqual({
+      fn: undefined,
+      scope: { kind: "coarse" },
+    });
+    expect(mutationFor("Demo.'a.b'")).toEqual({
+      fn: undefined,
+      scope: { kind: "coarse" },
+    });
+  });
+
   it("goes coarse rather than silent on a name it does not know", () => {
     expect(mutationFor("renameComponnt(Demo.Circuit, a, b)")).toEqual({
       fn: undefined,

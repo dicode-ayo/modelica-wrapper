@@ -31,6 +31,7 @@ const API_DIR = join(dirname(fileURLToPath(import.meta.url)), "api");
 /** Atoms that carry a grammar. A field declared any other way carries none. */
 const CONSTRAINED = [
   "modelicaName",
+  "constantName",
   "modelicaExpr",
   "modelicaOrOmittedName",
   "resultVariable",

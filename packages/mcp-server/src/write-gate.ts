@@ -540,6 +540,7 @@ export const READ_ONLY_GATE = {
   save: "ownFile",
   cd: "none",
   getParameterValue: "none",
+  evaluateConstant: "none",
   getParameterNames: "none",
   getComponentModifierNames: "none",
   getComponentModifierValue: "none",

@@ -81,6 +81,7 @@ interface ParameterModel {
   className: string;
   component?: string;           // crefPrefix for component params; unset for class params
   fields: ParameterField[];
+  constants?: Record<string, number | boolean | string>;  // host-resolved library constants Dialog.enable references, by dotted name
 }
 ```
 
@@ -150,6 +151,16 @@ The webview renders the typed `ParameterModel` **directly** for *all* panels
   and tab/group layout.
 - On submit the form back-converts display units to base units and drops
   `Dialog.enable`-disabled fields — unchanged behaviour.
+- `Dialog.enable` is evaluated in the webview, which has no OMC. A reference to
+  a constant declared outside the model (`k > Modelica.Constants.eps`) is
+  resolved host-side first: `collectEnableConstantNames(model)` gathers the
+  dotted crefs that are neither a field nor the component prefix (plain
+  identifiers only, never subscripted or quoted), and
+  `resolveEnableConstants(client, model)` evaluates each once per form open
+  through the `evaluateConstant` wrapper, carrying the scalar literals on
+  `model.constants`. A name OMC can't reduce to a literal is left out, so its
+  field stays enabled. The simulate and shape-properties forms carry no
+  `constants`.
 
 JSON Schema is no longer a form contract anywhere. (The `JsonSchema` *type* and
 `describeFunctionAsJsonSchema` remain — they serve the OMC-function registry/MCP
