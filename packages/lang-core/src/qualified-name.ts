@@ -56,3 +56,11 @@ export function enclosingScope(qualified: string): string {
   const dot = lastUnquotedDotIndex(qualified);
   return dot === -1 ? "" : qualified.slice(0, dot);
 }
+
+/** Whether `name` is `scope` or a class nested inside it, by segment. */
+export function isWithinScope(name: string, scope: string): boolean {
+  for (let s = name; s !== ""; s = enclosingScope(s)) {
+    if (s === scope) return true;
+  }
+  return false;
+}

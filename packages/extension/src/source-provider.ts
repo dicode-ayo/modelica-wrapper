@@ -283,11 +283,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
    */
   notifySourceChanged(typeName?: string): void {
     if (typeName) {
-      const uri = sourceUriFor(typeName);
-      this.bump(uri);
-      this._onDidChangeFile.fire([
-        { type: vscode.FileChangeType.Changed, uri },
-      ]);
+      this.notifySourcesChanged([typeName]);
       return;
     }
     const events: vscode.FileChangeEvent[] = [];
@@ -296,6 +292,17 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
         this.bump(doc.uri);
         events.push({ type: vscode.FileChangeType.Changed, uri: doc.uri });
       }
+    }
+    if (events.length > 0) this._onDidChangeFile.fire(events);
+  }
+
+  /** {@link notifySourceChanged} for each of `typeNames`, as one event. */
+  notifySourcesChanged(typeNames: readonly string[]): void {
+    const events: vscode.FileChangeEvent[] = [];
+    for (const typeName of new Set(typeNames)) {
+      const uri = sourceUriFor(typeName);
+      this.bump(uri);
+      events.push({ type: vscode.FileChangeType.Changed, uri });
     }
     if (events.length > 0) this._onDidChangeFile.fire(events);
   }

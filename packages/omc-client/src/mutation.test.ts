@@ -233,12 +233,12 @@ describe("mutationForInput", () => {
     });
   });
 
-  it("announces the package a class was created or copied into", () => {
+  it("announces the package a class was created or copied into, and the class", () => {
     expect(
       mutationForInput("newModel", { typeName: "B", withinPath: "Demo.Sub" }),
     ).toEqual({
       fn: "newModel",
-      scope: { kind: "members", parent: "Demo.Sub" },
+      scope: { kind: "members", parent: "Demo.Sub", created: "Demo.Sub.B" },
     });
     expect(
       mutationForInput("copyClass", {
@@ -246,7 +246,24 @@ describe("mutationForInput", () => {
         destination: "B",
         within: "Demo",
       }),
-    ).toEqual({ fn: "copyClass", scope: { kind: "members", parent: "Demo" } });
+    ).toEqual({
+      fn: "copyClass",
+      scope: { kind: "members", parent: "Demo", created: "Demo.B" },
+    });
+  });
+
+  it("goes coarse when the created class's name is missing", () => {
+    expect(mutationForInput("newModel", { withinPath: "Demo.Sub" })).toEqual({
+      fn: "newModel",
+      scope: { kind: "coarse" },
+    });
+    expect(
+      mutationForInput("copyClass", {
+        source: "Demo.A",
+        destination: "",
+        within: "Demo",
+      }),
+    ).toEqual({ fn: "copyClass", scope: { kind: "coarse" } });
   });
 
   it("goes coarse when the copy lands at the top level", () => {

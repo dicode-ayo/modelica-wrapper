@@ -5,6 +5,7 @@ import { applyOmcMutation } from "./omc-mutation.js";
 function spies(open: readonly string[] = []) {
   return {
     notifySourceChanged: vi.fn(),
+    notifySourcesChanged: vi.fn(),
     openClassNames: () => open,
     allClassesChanged: vi.fn(),
     childrenChanged: vi.fn(),
@@ -51,9 +52,9 @@ describe("applyOmcMutation", () => {
       targets(seen, index),
     );
 
-    expect(seen.notifySourceChanged.mock.calls).toEqual([
-      ["Demo"],
-      ["Demo.Circuit"],
+    expect(seen.notifySourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      "Demo",
+      "Demo.Circuit",
     ]);
     expect(seen.allClassesChanged).not.toHaveBeenCalled();
   });
@@ -69,9 +70,9 @@ describe("applyOmcMutation", () => {
       targets(seen),
     );
 
-    expect(seen.notifySourceChanged).toHaveBeenCalledExactlyOnceWith(
+    expect(seen.notifySourcesChanged).toHaveBeenCalledExactlyOnceWith([
       "Demo.Circuit",
-    );
+    ]);
   });
 
   it("goes coarse for a modelica-source URI carrying no class name", () => {
@@ -133,48 +134,76 @@ describe("applyOmcMutation", () => {
 });
 
 describe("applyOmcMutation on a member-list change", () => {
+  const reordered = {
+    fn: "moveClassToTop",
+    scope: { kind: "members", parent: "Demo.Sub" },
+  } as const;
   const created = {
     fn: "newModel",
-    scope: { kind: "members", parent: "Demo.Sub" },
+    scope: { kind: "members", parent: "Demo.Sub", created: "Demo.Sub.B" },
   } as const;
   const deleted = {
     fn: "deleteClass",
     scope: { kind: "members", parent: "Demo.Sub", removed: "Demo.Sub.A" },
   } as const;
 
-  it("re-lists the parent in the library tree", () => {
+  it("re-lists the parent of a reorder in the library tree", () => {
     const seen = spies();
 
-    applyOmcMutation(created, targets(seen));
+    applyOmcMutation(reordered, targets(seen));
 
     expect(seen.childrenChanged).toHaveBeenCalledExactlyOnceWith("Demo.Sub");
   });
 
-  it("reloads the parent and every class enclosing it", () => {
+  it("reloads the parent and every class enclosing it, in one batch", () => {
     // `Demo` owning the file means its buffer holds `Demo.Sub`'s old member
     // list, and saving it would write the change back out.
     const seen = spies(["Demo", "Other"]);
 
-    applyOmcMutation(created, targets(seen));
+    applyOmcMutation(reordered, targets(seen));
 
-    expect(seen.notifySourceChanged.mock.calls).toEqual([
-      ["Demo.Sub"],
-      ["Demo"],
+    expect(seen.notifySourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      "Demo.Sub",
+      "Demo",
     ]);
+    expect(seen.notifySourceChanged).not.toHaveBeenCalled();
   });
 
-  it("leaves unrelated classes and caches alone when nothing was removed", () => {
+  it("leaves unrelated classes and caches alone on a reorder", () => {
     const seen = spies(["Other", "Demo.Sub.B"]);
 
-    applyOmcMutation(created, targets(seen));
+    applyOmcMutation(reordered, targets(seen));
 
-    expect(seen.notifySourceChanged).not.toHaveBeenCalledWith("Other");
-    expect(seen.notifySourceChanged).not.toHaveBeenCalledWith("Demo.Sub.B");
-    expect(seen.notifySourceChanged).not.toHaveBeenCalledWith();
+    expect(seen.notifySourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      "Demo.Sub",
+      "Demo",
+    ]);
+    expect(seen.notifySourceChanged).not.toHaveBeenCalled();
     expect(seen.allClassesChanged).not.toHaveBeenCalled();
   });
 
-  it("reloads every open buffer on the removed class or nested in it", () => {
+  it("reloads the created class's buffer with its parent chain", () => {
+    // A tab restored on the name before the class existed reads as empty.
+    const seen = spies();
+
+    applyOmcMutation(created, targets(seen));
+
+    expect(seen.notifySourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      "Demo.Sub",
+      "Demo",
+      "Demo.Sub.B",
+    ]);
+  });
+
+  it("drops every cache on a creation, since classes that failed to resolve it are keyed by their own names", () => {
+    const seen = spies();
+
+    applyOmcMutation(created, targets(seen));
+
+    expect(seen.allClassesChanged).toHaveBeenCalledOnce();
+  });
+
+  it("reloads every open buffer on the removed class or nested in it, in one batch", () => {
     const seen = spies([
       "Demo.Sub.A",
       "Demo.Sub.A.Inner",
@@ -185,12 +214,12 @@ describe("applyOmcMutation on a member-list change", () => {
 
     applyOmcMutation(deleted, targets(seen));
 
-    expect(seen.notifySourceChanged.mock.calls).toEqual([
-      ["Demo.Sub"],
-      ["Demo"],
-      ["Demo.Sub.A"],
-      ["Demo.Sub.A.Inner"],
-      ["Demo.Sub.A.Inner.Deep"],
+    expect(seen.notifySourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      "Demo.Sub",
+      "Demo",
+      "Demo.Sub.A",
+      "Demo.Sub.A.Inner",
+      "Demo.Sub.A.Inner.Deep",
     ]);
   });
 
@@ -200,8 +229,21 @@ describe("applyOmcMutation on a member-list change", () => {
     applyOmcMutation(deleted, targets(seen));
 
     expect(seen.allClassesChanged).toHaveBeenCalledOnce();
-    expect(seen.childrenChanged).toHaveBeenCalledExactlyOnceWith("Demo.Sub");
   });
+
+  it.each([
+    ["creation", created],
+    ["removal", deleted],
+  ] as const)(
+    "leaves the library tree to the coarse signal's full reload on a %s",
+    (_, mutation) => {
+      const seen = spies();
+
+      applyOmcMutation(mutation, targets(seen));
+
+      expect(seen.childrenChanged).not.toHaveBeenCalled();
+    },
+  );
 
   it("matches a removed quoted identifier containing a dot by segment", () => {
     const seen = spies(["Demo.'a.b'.C", "Demo.'a.b.c'"]);
@@ -214,9 +256,9 @@ describe("applyOmcMutation on a member-list change", () => {
       targets(seen),
     );
 
-    expect(seen.notifySourceChanged.mock.calls).toEqual([
-      ["Demo"],
-      ["Demo.'a.b'.C"],
+    expect(seen.notifySourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      "Demo",
+      "Demo.'a.b'.C",
     ]);
   });
 });

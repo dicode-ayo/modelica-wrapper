@@ -16,11 +16,10 @@ function scriptedClient(reply: Reply): {
   client: OmcClient;
   announced: OmcMutation[];
 } {
-  const transport = {
-    send: async (cmd: string) => reply(cmd),
-  };
-  // The constructor is private; `create()` spawns a real OMC.
-  const client: OmcClient = Reflect.construct(OmcClient, [{}, transport, 0]);
+  const client = OmcClient.forTransport({
+    send: async (cmd) => reply(cmd),
+    close: () => Promise.resolve(),
+  });
   const announced: OmcMutation[] = [];
   client.onMutation((mutation) => announced.push(mutation));
   return { client, announced };
@@ -30,23 +29,22 @@ function scriptedClient(reply: Reply): {
 const replyTrue: Reply = (cmd) =>
   cmd.startsWith("getErrorString") ? '""' : "true";
 
-const members = (parent: string, removed?: string) => ({
-  kind: "members",
-  parent,
-  ...(removed === undefined ? {} : { removed }),
-});
+const members = (
+  parent: string,
+  change: { created?: string; removed?: string } = {},
+) => ({ kind: "members", parent, ...change });
 
 describe("a typed call whose command string hides the class it touched", () => {
   it.each([
     [
       "newModel",
       () => ({ typeName: "B", withinPath: "Demo.Sub" }),
-      members("Demo.Sub"),
+      members("Demo.Sub", { created: "Demo.Sub.B" }),
     ],
     [
       "copyClass",
       () => ({ source: "Demo.A", destination: "B", within: "Demo" }),
-      members("Demo"),
+      members("Demo", { created: "Demo.B" }),
     ],
     [
       "moveClass",
@@ -62,7 +60,7 @@ describe("a typed call whose command string hides the class it touched", () => {
     [
       "deleteClass",
       () => ({ typeName: "Demo.Sub.A" }),
-      members("Demo.Sub", "Demo.Sub.A"),
+      members("Demo.Sub", { removed: "Demo.Sub.A" }),
     ],
   ] as const)("announces %s from its input, once", async (fn, input, scope) => {
     const { client, announced } = scriptedClient(replyTrue);
@@ -153,7 +151,10 @@ describe("a typed call whose command string hides the class it touched", () => {
     await resent;
 
     expect(announced).toEqual([
-      { fn: "deleteClass", scope: members("Demo.Sub", "Demo.Sub.A") },
+      {
+        fn: "deleteClass",
+        scope: members("Demo.Sub", { removed: "Demo.Sub.A" }),
+      },
       { fn: "deleteClass", scope: { kind: "coarse" } },
     ]);
   });
@@ -186,7 +187,10 @@ describe("a typed call whose command string hides the class it touched", () => {
     await Promise.all([typed, raw]);
 
     expect(announced).toEqual([
-      { fn: "deleteClass", scope: members("Demo.Sub", "Demo.Sub.A") },
+      {
+        fn: "deleteClass",
+        scope: members("Demo.Sub", { removed: "Demo.Sub.A" }),
+      },
       { fn: "deleteClass", scope: { kind: "coarse" } },
     ]);
   });
@@ -209,7 +213,10 @@ describe("a typed call whose command string hides the class it touched", () => {
 
     expect(announced).toEqual([
       { fn: "deleteClass", scope: { kind: "coarse" } },
-      { fn: "deleteClass", scope: members("Demo.Sub", "Demo.Sub.A") },
+      {
+        fn: "deleteClass",
+        scope: members("Demo.Sub", { removed: "Demo.Sub.A" }),
+      },
     ]);
   });
 });

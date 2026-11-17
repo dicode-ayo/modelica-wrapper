@@ -32,8 +32,9 @@ import type { OmcFnName, OmcInput } from "./registry.js";
  *
  * `"members"` is a change to `parent`'s list of member classes — one created,
  * copied, reordered or removed — which also rewrites the source text of
- * `parent` and every class enclosing it. `removed` is a class that left
- * `parent`, taking every class nested inside it along.
+ * `parent` and every class enclosing it. `created` is a class that joined
+ * `parent`. `removed` is a class that left `parent`, taking every class
+ * nested inside it along.
  */
 export type MutationScope =
   | { readonly kind: "class"; readonly className: string }
@@ -41,6 +42,7 @@ export type MutationScope =
   | {
       readonly kind: "members";
       readonly parent: string;
+      readonly created?: string;
       readonly removed?: string;
     }
   | { readonly kind: "coarse" };
@@ -78,29 +80,30 @@ export interface OmcMutation {
  *   parent and leaf and the others change a parent's membership that appears
  *   nowhere in the call. A typed call through `OmcClient.invoke` still holds
  *   its input, and input `field` names the class the change is about: for
- *   `"within"` the parent whose membership changed, for `"member"` a class
- *   whose place in its parent changed, for `"removed"` a class that left its
- *   parent. Each announces a `"members"` scope. A parent that is the top level
- *   is coarse here as well — no class name describes it. See
- *   {@link mutationForInput}.
+ *   `"within"` the parent whose membership changed, with input `leaf` the
+ *   name the new class takes inside it, for `"member"` a class whose place in
+ *   its parent changed, for `"removed"` a class that left its parent. Each
+ *   announces a `"members"` scope. A parent that is the top level is coarse
+ *   here as well — no class name describes it. See {@link mutationForInput}.
  */
 export type MutationEntry =
   | "readOnly"
   | "coarse"
   | { readonly pos: number; readonly as: "class" | "file" | "element" }
-  | { readonly field: string; readonly as: "within" | "member" | "removed" };
+  | FieldEntry<string>;
+
+type FieldEntry<Field extends string> =
+  | { readonly field: Field; readonly as: "within"; readonly leaf: Field }
+  | { readonly field: Field; readonly as: "member" | "removed" };
 
 /**
- * {@link MutationEntry} with `field` narrowed to an input of `F`'s wrapper,
- * so a misspelt field fails the build rather than reading `undefined` from
- * every input and going coarse.
+ * {@link MutationEntry} with `field` and `leaf` narrowed to inputs of `F`'s
+ * wrapper, so a misspelled field fails the build rather than reading
+ * `undefined` from every input and going coarse.
  */
 type MutationEntryFor<F extends OmcFunction> =
   | Exclude<MutationEntry, { readonly field: string }>
-  | {
-      readonly field: F extends OmcFnName ? keyof OmcInput<F> & string : never;
-      readonly as: Extract<MutationEntry, { readonly field: string }>["as"];
-    };
+  | FieldEntry<F extends OmcFnName ? keyof OmcInput<F> & string : never>;
 
 /**
  * Argument positions follow OMC's own signatures, which disagree with
@@ -232,10 +235,10 @@ export const MUTATIONS = {
   loadModel: "coarse",
   parseFile: "readOnly",
   parseString: "readOnly",
-  newModel: { field: "withinPath", as: "within" },
+  newModel: { field: "withinPath", as: "within", leaf: "typeName" },
   renameClass: "coarse",
   deleteClass: { field: "typeName", as: "removed" },
-  copyClass: { field: "within", as: "within" },
+  copyClass: { field: "within", as: "within", leaf: "destination" },
   moveClass: { field: "typeName", as: "member" },
   moveClassToTop: { field: "typeName", as: "member" },
   moveClassToBottom: { field: "typeName", as: "member" },
@@ -461,7 +464,7 @@ const TOP_LEVEL = "__OpenModelica_TopLevel";
  * command string is classified by {@link mutationFor} as usual.
  *
  * Every uncertainty resolves to coarse, as on the string path: a field that
- * is absent or not a string, a parent that is the top level.
+ * is absent, empty or not a string, a parent that is the top level.
  */
 export function mutationForInput(
   fn: OmcFnName,
@@ -471,16 +474,18 @@ export function mutationForInput(
   const entry: MutationEntry = MUTATIONS[fn];
   if (typeof entry !== "object" || !("field" in entry)) return undefined;
 
-  const value: unknown =
-    typeof input === "object" && input !== null
-      ? Reflect.get(input, entry.field)
-      : undefined;
+  if (typeof input !== "object" || input === null) return coarseMutation(fn);
+  const value: unknown = Reflect.get(input, entry.field);
   if (typeof value !== "string") return coarseMutation(fn);
 
   if (entry.as === "within") {
-    return value === "" || value === TOP_LEVEL
-      ? coarseMutation(fn)
-      : { fn, scope: { kind: "members", parent: value } };
+    const leaf: unknown = Reflect.get(input, entry.leaf);
+    if (value === "" || value === TOP_LEVEL) return coarseMutation(fn);
+    if (typeof leaf !== "string" || leaf === "") return coarseMutation(fn);
+    return {
+      fn,
+      scope: { kind: "members", parent: value, created: `${value}.${leaf}` },
+    };
   }
   const parent = enclosingScope(value);
   if (parent === "") return coarseMutation(fn);

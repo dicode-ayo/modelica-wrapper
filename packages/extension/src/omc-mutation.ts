@@ -24,13 +24,16 @@
  *
  * A member-list change rewrites the text of the parent and of every class
  * enclosing it, any of which may be the file owner whose buffer would write
- * the old listing back on save, so all of them reload, and the library tree
- * re-lists the parent. A removal also takes every class nested in the removed
- * one, and no cache can be asked for the keys under a prefix: open buffers
- * under it reload by name, and the caches fall back to the coarse signal.
+ * the old listing back on save, so all of them reload. A reorder only
+ * re-lists the parent in the library tree. A created class reloads its own
+ * buffer, and it can resolve a reference some other class failed on, which no
+ * cache is keyed by. A removal takes every class nested in the removed one,
+ * and no cache can be asked for the keys under a prefix: open buffers under
+ * it reload by name. Both then raise the coarse signal, whose listeners
+ * reload the whole library tree, so the parent is not re-listed on its own.
  */
 
-import { enclosingScope } from "@dicode/modelica-lang-core";
+import { enclosingScope, isWithinScope } from "@dicode/modelica-lang-core";
 import type { MutationScope, OmcMutation } from "@dicode/omc-client";
 
 import {
@@ -41,6 +44,7 @@ import {
 /** The source provider, narrowed to the reloads this triggers. */
 export interface MutationSourceProvider {
   notifySourceChanged(typeName?: string): void;
+  notifySourcesChanged(typeNames: readonly string[]): void;
   openClassNames(): readonly string[];
 }
 
@@ -105,7 +109,7 @@ export function applyOmcMutation(
     case "file": {
       const names = classesInFile(scope.fileName, targets.index);
       if (names !== undefined && names.length > 0) {
-        for (const name of names) source.notifySourceChanged(name);
+        source.notifySourcesChanged(names);
         return;
       }
       break;
@@ -123,24 +127,23 @@ function applyMembersChange(
   scope: Extract<MutationScope, { kind: "members" }>,
   { source, invalidation, libraryTree }: MutationTargets,
 ): void {
-  libraryTree.childrenChanged(scope.parent);
-  for (let name = scope.parent; name !== ""; name = enclosingScope(name)) {
-    source.notifySourceChanged(name);
+  const { parent, created, removed } = scope;
+  const names: string[] = [];
+  for (let name = parent; name !== ""; name = enclosingScope(name)) {
+    names.push(name);
   }
-  const { removed } = scope;
-  if (removed === undefined) return;
-  for (const name of source.openClassNames()) {
-    if (isWithin(name, removed)) source.notifySourceChanged(name);
+  if (created !== undefined) names.push(created);
+  if (removed !== undefined) {
+    for (const name of source.openClassNames()) {
+      if (isWithinScope(name, removed)) names.push(name);
+    }
+  }
+  source.notifySourcesChanged(names);
+  if (created === undefined && removed === undefined) {
+    libraryTree.childrenChanged(parent);
+    return;
   }
   invalidation.allClassesChanged();
-}
-
-/** Whether `name` is `root` or a class nested inside it. */
-function isWithin(name: string, root: string): boolean {
-  for (let scope = name; scope !== ""; scope = enclosingScope(scope)) {
-    if (scope === root) return true;
-  }
-  return false;
 }
 
 function classesInFile(

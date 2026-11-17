@@ -508,3 +508,37 @@ describe("ModelicaSourceProvider: save screens share the error-buffer queue", ()
     expect(t.write).toHaveBeenCalled();
   });
 });
+
+describe("ModelicaSourceProvider: batched change notification", () => {
+  it("fires one change event naming every class, each once", () => {
+    const provider = new ModelicaSourceProvider(
+      () => Promise.reject(new Error("unused")),
+      createSelfWriteGuard(),
+      new WriteVerdicts(),
+    );
+    const fired: vscode.FileChangeEvent[][] = [];
+    provider.onDidChangeFile((events) => fired.push(events));
+
+    provider.notifySourcesChanged(["Demo.Sub", "Demo", "Demo.Sub"]);
+
+    expect(fired).toHaveLength(1);
+    expect(fired[0]?.map((e) => e.uri.toString())).toEqual([
+      sourceUriFor("Demo.Sub").toString(),
+      sourceUriFor("Demo").toString(),
+    ]);
+  });
+
+  it("fires nothing for no classes", () => {
+    const provider = new ModelicaSourceProvider(
+      () => Promise.reject(new Error("unused")),
+      createSelfWriteGuard(),
+      new WriteVerdicts(),
+    );
+    const fired: vscode.FileChangeEvent[][] = [];
+    provider.onDidChangeFile((events) => fired.push(events));
+
+    provider.notifySourcesChanged([]);
+
+    expect(fired).toEqual([]);
+  });
+});

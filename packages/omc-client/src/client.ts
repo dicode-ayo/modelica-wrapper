@@ -53,12 +53,27 @@ export interface OmcClientOptions {
   callTimeoutMs?: number;
 }
 
+/** The transport, narrowed to what the client sends through it. */
+interface ClientTransport {
+  send(cmd: OmcCommand, timeoutMs: number): Promise<string>;
+  close(): Promise<void>;
+}
+
 export class OmcClient implements CallContext {
   private constructor(
     private readonly proc: OmcProcess,
-    private readonly transport: OmcTransport,
+    private readonly transport: ClientTransport,
     private callTimeoutMs: number,
   ) {}
+
+  /**
+   * @internal A client on `transport` with no OMC process behind it and no
+   * call timeout, for tests that script OMC's replies.
+   */
+  static forTransport(transport: ClientTransport): OmcClient {
+    const proc: OmcProcess = { endpoint: "", stop: () => Promise.resolve() };
+    return new OmcClient(proc, transport, 0);
+  }
 
   /** OMC's REQ/REP socket admits one round-trip at a time. */
   private readonly queue = new SerialQueue();
@@ -77,12 +92,10 @@ export class OmcClient implements CallContext {
   private readonly mutationListeners = new Set<MutationListener>();
   /**
    * What the command a typed call sends first announces in place of its text.
-   * `cmd` is claimed by that first `call()`, synchronously inside `invoke`'s
-   * exec, so a raw command already queued ahead of it keeps announcing from
-   * its own text. Typed calls are serialized by `runInTurn`; one that
-   * overlaps anyway — two invokes inside one held turn — replaces the field,
-   * and the earlier call's command then fails the `cmd` match and announces
-   * from its text, coarse rather than wrong.
+   * That first `call()` claims `cmd` synchronously inside `invoke`'s exec, so
+   * a raw command already queued ahead of it keeps announcing from its own
+   * text. A typed call overlapping another replaces the field, and the
+   * earlier call's command then announces from its text.
    */
   private namedAnnouncement:
     { cmd?: string; readonly mutation: OmcMutation } | undefined;
