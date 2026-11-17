@@ -2,11 +2,10 @@
  * Routes OMC's mutation announcements into an editor refresh.
  *
  * The client names what a command touched as far as the command string, or a
- * typed call's input, can tell: a class, a file, or nothing more specific. A
- * typed `deleteClass` names two classes, its parent and itself, and arrives
- * as two announcements. A file is resolved to
- * classes here rather than downstream, because a file is an extension concept
- * and the invalidation registry is keyed by class.
+ * typed call's input, can tell: a class, a file, a change to one class's
+ * member list, or nothing more specific. A file is resolved to classes here
+ * rather than downstream, because a file is an extension concept and the
+ * invalidation registry is keyed by class.
  *
  * Named classes go to the source provider rather than straight to the
  * registry. Reloading the `modelica-source:` buffer is the point — a document
@@ -22,18 +21,27 @@
  * neither — a library outside the workspace, a file created after the index
  * was seeded, one of the `<runtime:…>` pseudo-names a class carries between
  * its creation and its first save. Only the last is coarse.
+ *
+ * A member-list change rewrites the text of the parent and of every class
+ * enclosing it, any of which may be the file owner whose buffer would write
+ * the old listing back on save, so all of them reload, and the library tree
+ * re-lists the parent. A removal also takes every class nested in the removed
+ * one, and no cache can be asked for the keys under a prefix: open buffers
+ * under it reload by name, and the caches fall back to the coarse signal.
  */
 
-import type { OmcMutation } from "@dicode/omc-client";
+import { enclosingScope } from "@dicode/modelica-lang-core";
+import type { MutationScope, OmcMutation } from "@dicode/omc-client";
 
 import {
   qualifiedNameFromUri,
   sourceUriFromOmcFilename,
 } from "./source-provider.js";
 
-/** The source provider, narrowed to the reload this triggers. */
+/** The source provider, narrowed to the reloads this triggers. */
 export interface MutationSourceProvider {
   notifySourceChanged(typeName?: string): void;
+  openClassNames(): readonly string[];
 }
 
 /** The invalidation registry, narrowed to the signal no class name can carry. */
@@ -44,6 +52,19 @@ export interface MutationInvalidation {
 /** The path→class index, narrowed to the lookup a file-scoped mutation needs. */
 export interface FileClassLookup {
   get(fsPath: string): string[] | undefined;
+}
+
+/** The library sidebar, narrowed to re-listing one class's members. */
+export interface MutationLibraryTree {
+  childrenChanged(parent: string | null): void;
+}
+
+/** Everything an announcement can refresh. */
+export interface MutationTargets {
+  readonly source: MutationSourceProvider;
+  readonly invalidation: MutationInvalidation;
+  readonly index: FileClassLookup;
+  readonly libraryTree: MutationLibraryTree;
 }
 
 /** The client, narrowed to the subscription this attaches. */
@@ -60,35 +81,66 @@ export interface MutatingClient {
  */
 export function publishOmcMutations(
   client: MutatingClient,
-  source: MutationSourceProvider,
-  invalidation: MutationInvalidation,
-  index: FileClassLookup,
+  targets: MutationTargets,
 ): () => void {
   return client.onMutation((mutation) => {
-    applyOmcMutation(mutation, source, invalidation, index);
+    applyOmcMutation(mutation, targets);
   });
 }
 
 /** Announce `mutation` at the narrowest scope it can be pinned to. */
 export function applyOmcMutation(
   mutation: OmcMutation,
-  source: MutationSourceProvider,
-  invalidation: MutationInvalidation,
-  index: FileClassLookup,
+  targets: MutationTargets,
 ): void {
   const { scope } = mutation;
-  if (scope.kind === "class") {
-    source.notifySourceChanged(scope.className);
-    return;
+  const { source, invalidation } = targets;
+  switch (scope.kind) {
+    case "class":
+      source.notifySourceChanged(scope.className);
+      return;
+    case "members":
+      applyMembersChange(scope, targets);
+      return;
+    case "file": {
+      const names = classesInFile(scope.fileName, targets.index);
+      if (names !== undefined && names.length > 0) {
+        for (const name of names) source.notifySourceChanged(name);
+        return;
+      }
+      break;
+    }
+    case "coarse":
+      break;
+    default:
+      return scope satisfies never;
   }
-  const names =
-    scope.kind === "file" ? classesInFile(scope.fileName, index) : undefined;
-  if (names === undefined || names.length === 0) {
-    source.notifySourceChanged();
-    invalidation.allClassesChanged();
-    return;
+  source.notifySourceChanged();
+  invalidation.allClassesChanged();
+}
+
+function applyMembersChange(
+  scope: Extract<MutationScope, { kind: "members" }>,
+  { source, invalidation, libraryTree }: MutationTargets,
+): void {
+  libraryTree.childrenChanged(scope.parent);
+  for (let name = scope.parent; name !== ""; name = enclosingScope(name)) {
+    source.notifySourceChanged(name);
   }
-  for (const name of names) source.notifySourceChanged(name);
+  const { removed } = scope;
+  if (removed === undefined) return;
+  for (const name of source.openClassNames()) {
+    if (isWithin(name, removed)) source.notifySourceChanged(name);
+  }
+  invalidation.allClassesChanged();
+}
+
+/** Whether `name` is `root` or a class nested inside it. */
+function isWithin(name: string, root: string): boolean {
+  for (let scope = name; scope !== ""; scope = enclosingScope(scope)) {
+    if (scope === root) return true;
+  }
+  return false;
 }
 
 function classesInFile(

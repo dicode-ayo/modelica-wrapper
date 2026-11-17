@@ -11,16 +11,10 @@
  * `CallContext` they construct themselves.
  */
 
-import { AsyncLocalStorage } from "node:async_hooks";
-
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
 import { runInTurn } from "./error-buffer.js";
-import {
-  mutationFor,
-  mutationsForInput,
-  type OmcMutation,
-} from "./mutation.js";
+import { mutationFor, mutationForInput, type OmcMutation } from "./mutation.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
 import { SerialQueue } from "./queue.js";
@@ -52,18 +46,6 @@ const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 /** Reacts to a mutation OMC just accepted. Must not throw to be correct. */
 export type MutationListener = (mutation: OmcMutation) => void;
 
-/**
- * What one typed call's own command announces in place of its string. Set
- * only around that command's send, so the async chain of that one send is all
- * it covers: a raw `call()` from another caller, interleaving through the
- * queue, still announces from its own string.
- */
-const namedAnnouncement = new AsyncLocalStorage<{
-  readonly client: OmcClient;
-  readonly cmd: string;
-  readonly mutations: readonly OmcMutation[];
-}>();
-
 export interface OmcClientOptions {
   /** Path to omc binary. Empty/undefined uses "omc" from PATH. */
   omcPath?: string;
@@ -93,6 +75,17 @@ export class OmcClient implements CallContext {
     return this._lastCall;
   }
   private readonly mutationListeners = new Set<MutationListener>();
+  /**
+   * What the command a typed call sends first announces in place of its text.
+   * `cmd` is claimed by that first `call()`, synchronously inside `invoke`'s
+   * exec, so a raw command already queued ahead of it keeps announcing from
+   * its own text. Typed calls are serialized by `runInTurn`; one that
+   * overlaps anyway — two invokes inside one held turn — replaces the field,
+   * and the earlier call's command then fails the `cmd` match and announces
+   * from its text, coarse rather than wrong.
+   */
+  private namedAnnouncement:
+    { cmd?: string; readonly mutation: OmcMutation } | undefined;
 
   /** Spawn OMC, dial its ZMQ endpoint, and return a connected client. */
   static async create(opts: OmcClientOptions = {}): Promise<OmcClient> {
@@ -168,9 +161,19 @@ export class OmcClient implements CallContext {
     // construction; TS's indexed-access generic narrowing can't see that, so
     // we erase to a generic call shape and re-tag the result.
     type AnyFn = (ctx: CallContext, input: unknown) => Promise<unknown>;
-    const mutations = mutationsForInput(fn, validated);
-    const ctx = mutations === undefined ? this : this.announcing(mutations);
-    const exec = (): Promise<unknown> => (entry.fn as AnyFn)(ctx, validated);
+    const mutation = mutationForInput(fn, validated);
+    const exec = async (): Promise<unknown> => {
+      if (mutation === undefined) return (entry.fn as AnyFn)(this, validated);
+      const named = { mutation };
+      this.namedAnnouncement = named;
+      try {
+        return await (entry.fn as AnyFn)(this, validated);
+      } finally {
+        if (this.namedAnnouncement === named) {
+          this.namedAnnouncement = undefined;
+        }
+      }
+    };
     // A wrapper's command and its own read of the error buffer must not
     // straddle another caller's clear/run/read transaction, and a bare read
     // must not land inside one.
@@ -187,6 +190,9 @@ export class OmcClient implements CallContext {
     // Record the raw command before we enqueue / send, so it's already
     // readable via `lastCall` even if the transport hangs or throws.
     this._lastCall = cmd;
+    if (this.namedAnnouncement !== undefined) {
+      this.namedAnnouncement.cmd ??= cmd;
+    }
     const reply = await this.queue.run(() =>
       this.transport.send(cmd, this.callTimeoutMs),
     );
@@ -194,22 +200,6 @@ export class OmcClient implements CallContext {
     // otherwise wait for a slot the announcement is still holding.
     this.announce(cmd);
     return reply;
-  }
-
-  /**
-   * A context whose commands announce `mutations` rather than what
-   * {@link mutationFor} reads from their text. It sends through `call()`, so
-   * the queue, `lastCall` and the announce-after-send contract stay those of
-   * every other command.
-   */
-  private announcing(mutations: readonly OmcMutation[]): CallContext {
-    return {
-      call: (cmd) =>
-        namedAnnouncement.run({ client: this, cmd, mutations }, () =>
-          this.call(cmd),
-        ),
-      getErrorString: () => this.getErrorString(),
-    };
   }
 
   /**
@@ -234,30 +224,30 @@ export class OmcClient implements CallContext {
    * `addComponent` answers `false` with an error line and may still have
    * touched the AST.
    *
-   * A command a typed call sent announces what its input named instead; see
-   * {@link announcing}. Matching on the command text keeps that to the
-   * call's own command, not one a listener issues from inside the fan-out.
+   * The command a typed call sent first announces what its input named
+   * instead; see {@link namedAnnouncement}. It is consumed before the
+   * fan-out, so a listener that sends the same text again announces from
+   * that text.
    *
    * A throw is swallowed. A listener left un-run because a sibling failed is
    * the staleness this exists to prevent, and this package has no logging
    * channel to report it through.
    */
   private announce(cmd: string): void {
+    const named = this.namedAnnouncement;
+    let mutation: OmcMutation | undefined;
+    if (named?.cmd === cmd) {
+      this.namedAnnouncement = undefined;
+      mutation = named.mutation;
+    }
     if (this.mutationListeners.size === 0) return;
-    const named = namedAnnouncement.getStore();
-    const mutations =
-      named?.client === this && named.cmd === cmd
-        ? named.mutations
-        : [mutationFor(cmd)];
-    const listeners = [...this.mutationListeners];
-    for (const mutation of mutations) {
-      if (mutation === undefined) continue;
-      for (const listener of listeners) {
-        try {
-          listener(mutation);
-        } catch {
-          /* ignore */
-        }
+    mutation ??= mutationFor(cmd);
+    if (mutation === undefined) return;
+    for (const listener of [...this.mutationListeners]) {
+      try {
+        listener(mutation);
+      } catch {
+        /* ignore */
       }
     }
   }

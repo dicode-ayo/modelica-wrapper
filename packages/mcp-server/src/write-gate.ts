@@ -8,13 +8,15 @@
  * name, and what a tool call carries is a named-argument object — so the gate
  * is one table saying which argument of each mutating function holds it.
  *
- * `MUTATIONS` in `@dicode/omc-client` answers the same question for the *command
- * string*, by argument position. That table cannot be reused here: the gate runs
- * before the call, when only the input object exists, and the wrapper's field
- * order is not its command's argument order. The two also disagree on purpose —
- * raw command text for `copyClass`, `newModel` and `deleteClass` announces
- * coarsely because no single command argument names what they touched, while
- * their input objects do.
+ * `MUTATIONS` in `@dicode/omc-client` answers a neighbouring question: what a
+ * call *announces* once it was sent, mostly by command-string argument position,
+ * with input-field rows for `newModel`, `copyClass`, `deleteClass`, `moveClass`,
+ * `moveClassToTop` and `moveClassToBottom`, whose command text hides the class
+ * they touch. The gate keeps its own table because it asks something else: it
+ * judges a write before the call is made, so every mutating function needs a
+ * row naming the class (or file, or Modelica text) to judge, and each row says
+ * which judgement applies — editing a class, creating inside one, binding a
+ * file — which an announcement has no use for.
  *
  * The table is exhaustive over `MutatingFnName` and each field name is checked
  * against that function's own input type, so a new mutating wrapper — or a

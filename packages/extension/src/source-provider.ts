@@ -300,6 +300,16 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     if (events.length > 0) this._onDidChangeFile.fire(events);
   }
 
+  /** The classes open in a `modelica-source:` buffer. */
+  openClassNames(): string[] {
+    const names: string[] = [];
+    for (const doc of vscode.workspace.textDocuments) {
+      const name = qualifiedNameFromUri(doc.uri);
+      if (name !== undefined) names.push(name);
+    }
+    return names;
+  }
+
   private bump(uri: vscode.Uri): void {
     this.versions.set(uri.toString(), Date.now());
   }

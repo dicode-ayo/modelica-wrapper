@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcFunction } from "./commands.js";
 import { MUTATIONS, mutationFor } from "./mutation.js";
+import { asString, parseLeading } from "./parse.js";
 import { REGISTRY, type OmcFnName } from "./registry.js";
 
 const CLASS = "Probe.Cls";
@@ -192,5 +193,46 @@ describe("positional entries against the wrappers that build the commands", () =
           ? { kind: "file", fileName: FILE }
           : { kind: "class", className: CLASS },
     });
+  });
+});
+
+/**
+ * A `{ field, as }` row names an input field; the wrapper has to send that
+ * field's value as one of its command's arguments, or the announcement names
+ * a class the command never touched.
+ */
+const FIELD_PROBES: Record<string, Record<string, unknown>> = {
+  newModel: { typeName: "B", withinPath: CLASS },
+  copyClass: { source: "Probe.Other", destination: "B", within: CLASS },
+  deleteClass: { typeName: CLASS },
+  moveClass: { typeName: CLASS, offset: 1 },
+  moveClassToTop: { typeName: CLASS },
+  moveClassToBottom: { typeName: CLASS },
+};
+
+const named = Object.entries(MUTATIONS).filter(
+  ([, entry]) => typeof entry === "object" && "field" in entry,
+);
+
+describe("input-field entries against the wrappers that build the commands", () => {
+  it("probes every input-field entry", () => {
+    expect(Object.keys(FIELD_PROBES).sort()).toEqual(
+      named.map(([name]) => name).sort(),
+    );
+  });
+
+  it.each(named)("%s", async (name, entry) => {
+    if (typeof entry !== "object" || !("field" in entry)) {
+      throw new Error("filtered above");
+    }
+    const probe = FIELD_PROBES[name];
+    if (probe === undefined) throw new Error(`no probe for ${name}`);
+    expect(probe[entry.field]).toBe(CLASS);
+
+    const head = parseLeading(await commandFor(name as OmcFnName, probe)).value;
+
+    expect(head.kind === "call" ? head.args.map(asString) : []).toContain(
+      CLASS,
+    );
   });
 });

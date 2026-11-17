@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isReadOnlyFunction,
   mutationFor,
-  mutationsForInput,
+  mutationForInput,
 } from "./mutation.js";
 import { omcFunctionNames, type OmcFnName } from "./registry.js";
 
@@ -184,13 +184,17 @@ describe("the functions whose command string hides the class they touch", () => 
         'copyClass(Demo.A, "B", Demo)',
         "newModel(B, Demo)",
         "deleteClass(Demo.A)",
+        "moveClass(Demo.A, 1)",
         "moveClassToTop(Demo.A)",
+        "moveClassToBottom(Demo.A)",
       ].map(mutationFor),
     ).toEqual([
       { fn: "copyClass", scope: { kind: "coarse" } },
       { fn: "newModel", scope: { kind: "coarse" } },
       { fn: "deleteClass", scope: { kind: "coarse" } },
+      { fn: "moveClass", scope: { kind: "coarse" } },
       { fn: "moveClassToTop", scope: { kind: "coarse" } },
+      { fn: "moveClassToBottom", scope: { kind: "coarse" } },
     ]);
   });
 
@@ -199,40 +203,50 @@ describe("the functions whose command string hides the class they touch", () => 
       "copyClass",
       "newModel",
       "deleteClass",
+      "moveClass",
       "moveClassToTop",
+      "moveClassToBottom",
     ];
     expect(named.filter(isReadOnlyFunction)).toEqual([]);
   });
 });
 
-describe("mutationsForInput", () => {
+describe("mutationForInput", () => {
   it("says nothing for a function its command string already places", () => {
     expect(
-      mutationsForInput("addComponent", { classPath: "Demo.A" }),
+      mutationForInput("addComponent", { classPath: "Demo.A" }),
     ).toBeUndefined();
-    expect(mutationsForInput("renameClass", { typeName: "Demo.A" })).toBe(
-      undefined,
-    );
     expect(
-      mutationsForInput("writeClassGraphics", { typeName: "Demo.A" }),
+      mutationForInput("writeClassGraphics", { typeName: "Demo.A" }),
     ).toBeUndefined();
+  });
+
+  it("leaves renameClass to the string path, which is coarse", () => {
+    // A rename also rewrites every class referencing the renamed one, and the
+    // input names none of them.
+    expect(
+      mutationForInput("renameClass", { typeName: "Demo.A", newName: "B" }),
+    ).toBeUndefined();
+    expect(mutationFor("renameClass(Demo.A, B)")).toEqual({
+      fn: "renameClass",
+      scope: { kind: "coarse" },
+    });
   });
 
   it("announces the package a class was created or copied into", () => {
     expect(
-      mutationsForInput("newModel", { typeName: "B", withinPath: "Demo.Sub" }),
-    ).toEqual([
-      { fn: "newModel", scope: { kind: "class", className: "Demo.Sub" } },
-    ]);
+      mutationForInput("newModel", { typeName: "B", withinPath: "Demo.Sub" }),
+    ).toEqual({
+      fn: "newModel",
+      scope: { kind: "members", parent: "Demo.Sub" },
+    });
     expect(
-      mutationsForInput("copyClass", {
+      mutationForInput("copyClass", {
         source: "Demo.A",
         destination: "B",
         within: "Demo",
       }),
-    ).toEqual([
-      { fn: "copyClass", scope: { kind: "class", className: "Demo" } },
-    ]);
+    ).toEqual({ fn: "copyClass", scope: { kind: "members", parent: "Demo" } });
   });
 
   it("goes coarse when the copy lands at the top level", () => {
@@ -240,57 +254,58 @@ describe("mutationsForInput", () => {
     // refresh reaches a listener.
     for (const within of ["", "__OpenModelica_TopLevel"]) {
       expect(
-        mutationsForInput("copyClass", {
+        mutationForInput("copyClass", {
           source: "Demo.A",
           destination: "B",
           within,
         }),
-      ).toEqual([{ fn: "copyClass", scope: { kind: "coarse" } }]);
+      ).toEqual({ fn: "copyClass", scope: { kind: "coarse" } });
     }
   });
 
-  it("announces the parent of a reordered class, not the class itself", () => {
-    expect(
-      mutationsForInput("moveClassToTop", { typeName: "Demo.'a.b'.C" }),
-    ).toEqual([
-      {
-        fn: "moveClassToTop",
-        scope: { kind: "class", className: "Demo.'a.b'" },
-      },
-    ]);
-  });
+  it.each([
+    ["moveClass", { typeName: "Demo.'a.b'.C", offset: -1 }],
+    ["moveClassToTop", { typeName: "Demo.'a.b'.C" }],
+    ["moveClassToBottom", { typeName: "Demo.'a.b'.C" }],
+  ] as const)(
+    "announces %s as its parent's membership, without a removal",
+    (fn, input) => {
+      expect(mutationForInput(fn, input)).toEqual({
+        fn,
+        scope: { kind: "members", parent: "Demo.'a.b'" },
+      });
+    },
+  );
 
-  it("announces both the parent and the deleted class", () => {
-    // The parent's listing lost a member; anything keyed by the deleted class
-    // itself — an open editor on it, its rendered icon — is gone as well, and
-    // announcing the parent reaches neither.
-    expect(
-      mutationsForInput("deleteClass", { typeName: "Demo.Sub.A" }),
-    ).toEqual([
-      { fn: "deleteClass", scope: { kind: "class", className: "Demo.Sub" } },
+  it("names the deleted class as removed from its parent", () => {
+    expect(mutationForInput("deleteClass", { typeName: "Demo.Sub.A" })).toEqual(
       {
         fn: "deleteClass",
-        scope: { kind: "class", className: "Demo.Sub.A" },
+        scope: { kind: "members", parent: "Demo.Sub", removed: "Demo.Sub.A" },
       },
-    ]);
+    );
   });
 
   it("goes coarse for a top-level class, which has no parent to announce", () => {
-    expect(mutationsForInput("deleteClass", { typeName: "Demo" })).toEqual([
-      { fn: "deleteClass", scope: { kind: "coarse" } },
-    ]);
-    expect(mutationsForInput("moveClassToTop", { typeName: "Demo" })).toEqual([
-      { fn: "moveClassToTop", scope: { kind: "coarse" } },
-    ]);
+    expect(mutationForInput("deleteClass", { typeName: "Demo" })).toEqual({
+      fn: "deleteClass",
+      scope: { kind: "coarse" },
+    });
+    expect(mutationForInput("moveClassToTop", { typeName: "Demo" })).toEqual({
+      fn: "moveClassToTop",
+      scope: { kind: "coarse" },
+    });
   });
 
   it("goes coarse rather than silent when the field is missing", () => {
-    expect(mutationsForInput("deleteClass", {})).toEqual([
-      { fn: "deleteClass", scope: { kind: "coarse" } },
-    ]);
-    expect(mutationsForInput("deleteClass", undefined)).toEqual([
-      { fn: "deleteClass", scope: { kind: "coarse" } },
-    ]);
+    expect(mutationForInput("deleteClass", {})).toEqual({
+      fn: "deleteClass",
+      scope: { kind: "coarse" },
+    });
+    expect(mutationForInput("deleteClass", undefined)).toEqual({
+      fn: "deleteClass",
+      scope: { kind: "coarse" },
+    });
   });
 });
 
