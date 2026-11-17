@@ -288,8 +288,8 @@ function replaceableClassField(
   if (inheritedFrom !== undefined) field.inheritedFrom = inheritedFrom;
   // A Dialog carried over from the inherited declaration keeps the scope its
   // `enable` names were written in, not the redeclaring class's.
-  if (dialogSource === undefined && inherited !== undefined) {
-    field.declaredIn = inherited.declaredIn ?? enclosingClass;
+  if (dialogSource === undefined && inherited?.declaredIn !== undefined) {
+    field.declaredIn = inherited.declaredIn;
   }
   return field;
 }

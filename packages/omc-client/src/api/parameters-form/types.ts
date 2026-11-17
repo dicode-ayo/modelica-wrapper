@@ -151,11 +151,11 @@ export interface ParameterField {
   inheritedFrom?: string | undefined;
   /**
    * The ancestor class that declares the parameter, reached through
-   * `extends`; absent for the host class's own declarations. A redeclared
-   * replaceable class that keeps an ancestor's `Dialog` keeps that
-   * ancestor's `declaredIn` too. Unlike
+   * `extends`; absent for the host class's own declarations. Unlike
    * `inheritedFrom`, this is the deep declaring class (`A` for `C extends B
-   * extends A`), the scope its `Dialog.enable` names are written in.
+   * extends A`), the scope its `Dialog.enable` names are written in. A
+   * redeclared replaceable class that keeps an ancestor's `Dialog` keeps that
+   * ancestor's `declaredIn` too.
    */
   declaredIn?: string | undefined;
   /**
