@@ -14,7 +14,12 @@
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
 import { runInTurn } from "./error-buffer.js";
-import { mutationFor, mutationForInput, type OmcMutation } from "./mutation.js";
+import {
+  leadingCallName,
+  mutationFor,
+  mutationForInput,
+  type OmcMutation,
+} from "./mutation.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
 import { SerialQueue } from "./queue.js";
@@ -91,11 +96,12 @@ export class OmcClient implements CallContext {
   }
   private readonly mutationListeners = new Set<MutationListener>();
   /**
-   * What the command a typed call sends first announces in place of its text.
-   * That first `call()` claims `cmd` synchronously inside `invoke`'s exec, so
-   * a raw command already queued ahead of it keeps announcing from its own
-   * text. A typed call overlapping another replaces the field, and the
-   * earlier call's command then announces from its text.
+   * What a typed call's own command announces in place of its text. The first
+   * `call()` inside `invoke`'s exec whose leading function is the invoked one
+   * claims `cmd`, so a probe the wrapper sends before it, or a raw command
+   * already queued ahead of it, keeps announcing from its own text. A typed
+   * call overlapping another replaces the field, and the earlier call's
+   * command then announces from its text.
    */
   private namedAnnouncement:
     { cmd?: string; readonly mutation: OmcMutation } | undefined;
@@ -203,8 +209,13 @@ export class OmcClient implements CallContext {
     // Record the raw command before we enqueue / send, so it's already
     // readable via `lastCall` even if the transport hangs or throws.
     this._lastCall = cmd;
-    if (this.namedAnnouncement !== undefined) {
-      this.namedAnnouncement.cmd ??= cmd;
+    const named = this.namedAnnouncement;
+    if (
+      named !== undefined &&
+      named.cmd === undefined &&
+      leadingCallName(cmd) === named.mutation.fn
+    ) {
+      named.cmd = cmd;
     }
     const reply = await this.queue.run(() =>
       this.transport.send(cmd, this.callTimeoutMs),
@@ -237,7 +248,7 @@ export class OmcClient implements CallContext {
    * `addComponent` answers `false` with an error line and may still have
    * touched the AST.
    *
-   * The command a typed call sent first announces what its input named
+   * A typed call's own command announces what its input named
    * instead; see {@link namedAnnouncement}. It is consumed before the
    * fan-out, so a listener that sends the same text again announces from
    * that text.

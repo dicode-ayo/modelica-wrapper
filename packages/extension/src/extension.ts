@@ -151,7 +151,6 @@ export async function activate(
         source: sourceProvider,
         invalidation,
         index: pathClassIndex,
-        libraryTree,
       });
       liveNestedCache = nestedDiagramCache(c);
       await cdIntoWorkspaceCacheDir(c);

@@ -266,6 +266,35 @@ describe("mutationForInput", () => {
     ).toEqual({ fn: "copyClass", scope: { kind: "coarse" } });
   });
 
+  it.each(["X.Y", "B C", " B", "1B", "'a'.b", "'unterminated", "''"])(
+    "goes coarse when the created leaf %j is not one name segment",
+    (leaf) => {
+      expect(
+        mutationForInput("copyClass", {
+          source: "Demo.A",
+          destination: leaf,
+          within: "Demo",
+        }),
+      ).toEqual({ fn: "copyClass", scope: { kind: "coarse" } });
+      expect(
+        mutationForInput("newModel", { typeName: leaf, withinPath: "Demo" }),
+      ).toEqual({ fn: "newModel", scope: { kind: "coarse" } });
+    },
+  );
+
+  it("names a created quoted leaf whole, dots and spaces included", () => {
+    expect(
+      mutationForInput("copyClass", {
+        source: "Demo.A",
+        destination: "'b. c\\'d'",
+        within: "Demo",
+      }),
+    ).toEqual({
+      fn: "copyClass",
+      scope: { kind: "members", parent: "Demo", created: "Demo.'b. c\\'d'" },
+    });
+  });
+
   it("goes coarse when the copy lands at the top level", () => {
     // No class name describes the top level, so nothing narrower than a full
     // refresh reaches a listener.

@@ -227,6 +227,15 @@ const named = Object.entries(MUTATIONS).filter(
 );
 
 describe("input-field entries against the wrappers that build the commands", () => {
+  // Nothing type-checks this file, so the mapped type above only helps the
+  // editor; this catches a missing probe and one left behind by a row that
+  // stopped reading its input.
+  it("probes every input-field entry", () => {
+    expect(Object.keys(FIELD_PROBES).sort()).toEqual(
+      named.map(([name]) => name).sort(),
+    );
+  });
+
   it.each(named)("%s", async (name, entry) => {
     const probe: Record<string, unknown> = FIELD_PROBES[name];
     expect(probe[entry.field]).toBe(CLASS);

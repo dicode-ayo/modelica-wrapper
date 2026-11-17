@@ -57,10 +57,17 @@ export function enclosingScope(qualified: string): string {
   return dot === -1 ? "" : qualified.slice(0, dot);
 }
 
+/**
+ * `name` itself, then each class enclosing it, outward to its outermost
+ * segment: `A.B.C` gives `["A.B.C", "A.B", "A"]`, and `""` gives `[]`.
+ */
+export function scopeChain(name: string): string[] {
+  const chain: string[] = [];
+  for (let s = name; s !== ""; s = enclosingScope(s)) chain.push(s);
+  return chain;
+}
+
 /** Whether `name` is `scope` or a class nested inside it, by segment. */
 export function isWithinScope(name: string, scope: string): boolean {
-  for (let s = name; s !== ""; s = enclosingScope(s)) {
-    if (s === scope) return true;
-  }
-  return false;
+  return scopeChain(name).includes(scope);
 }

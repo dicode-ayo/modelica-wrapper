@@ -7,5 +7,10 @@
 export { assertUnreachable } from "./assert-unreachable.js";
 export * from "./cursor.js";
 export * from "./resolve.js";
-export { leafName, enclosingScope, isWithinScope } from "./qualified-name.js";
+export {
+  leafName,
+  enclosingScope,
+  isWithinScope,
+  scopeChain,
+} from "./qualified-name.js";
 export { noopLogger, type Logger } from "./logger.js";

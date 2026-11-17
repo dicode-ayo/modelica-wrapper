@@ -138,6 +138,35 @@ describe("a typed call whose command string hides the class it touched", () => {
     }
   });
 
+  it("leaves commands the wrapper sends before its own announcing from their text", async () => {
+    const { client, announced } = scriptedClient(replyTrue);
+    const wrapper = vi
+      .spyOn(REGISTRY.deleteClass, "fn")
+      .mockImplementation(async (ctx) => {
+        await ctx.call("existClass(Demo.Sub.A)");
+        await ctx.call('setClassComment(Demo.Sub.A, "x")');
+        await ctx.call("deleteClass(Demo.Sub.A)");
+        return { success: true };
+      });
+
+    try {
+      await client.invoke("deleteClass", { typeName: "Demo.Sub.A" });
+    } finally {
+      wrapper.mockRestore();
+    }
+
+    expect(announced).toEqual([
+      {
+        fn: "setClassComment",
+        scope: { kind: "class", className: "Demo.Sub.A" },
+      },
+      {
+        fn: "deleteClass",
+        scope: members("Demo.Sub", { removed: "Demo.Sub.A" }),
+      },
+    ]);
+  });
+
   it("lets a listener that re-sends the same text announce from that text", async () => {
     const { client, announced } = scriptedClient(replyTrue);
     let resent: Promise<string> | undefined;

@@ -5,6 +5,7 @@ import {
   isWithinScope,
   lastUnquotedDotIndex,
   leafName,
+  scopeChain,
 } from "./qualified-name.js";
 
 describe("leafName", () => {
@@ -75,5 +76,24 @@ describe("isWithinScope", () => {
     expect(isWithinScope("Demo.'a.b'.C", "Demo.'a.b'")).toBe(true);
     expect(isWithinScope("Demo.'a.b'.C", "Demo.'a")).toBe(false);
     expect(isWithinScope("Demo.'a.b'", "Demo.'a.b")).toBe(false);
+  });
+});
+
+describe("scopeChain", () => {
+  it("starts at the name itself and walks outward to its outermost segment", () => {
+    expect(scopeChain("A.B.C")).toEqual(["A.B.C", "A.B", "A"]);
+    expect(scopeChain("A")).toEqual(["A"]);
+  });
+
+  it("is empty for the empty name, which no class has", () => {
+    expect(scopeChain("")).toEqual([]);
+  });
+
+  it("never stops inside a quoted segment", () => {
+    expect(scopeChain("Demo.'a.b'.C")).toEqual([
+      "Demo.'a.b'.C",
+      "Demo.'a.b'",
+      "Demo",
+    ]);
   });
 });

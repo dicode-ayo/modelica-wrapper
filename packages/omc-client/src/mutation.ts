@@ -404,6 +404,11 @@ const coarseMutation = (fn: OmcFunction | undefined): OmcMutation => ({
  */
 const LEADING_CALL = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/;
 
+/** The name of `cmd`'s leading `name(`, or `undefined` when it has none. */
+export function leadingCallName(cmd: string): string | undefined {
+  return LEADING_CALL.exec(cmd)?.[1];
+}
+
 /**
  * The mutation `cmd` announces, or `undefined` when it announces nothing.
  *
@@ -417,7 +422,7 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
   // Evaluating a constant reference reads; it is not a call, so the parser
   // below would otherwise read it as coarse.
   if (constantReference(cmd) !== undefined) return undefined;
-  if (entryFor(LEADING_CALL.exec(cmd)?.[1] ?? "") === "readOnly") {
+  if (entryFor(leadingCallName(cmd) ?? "") === "readOnly") {
     return undefined;
   }
 
@@ -459,12 +464,21 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
 const TOP_LEVEL = "__OpenModelica_TopLevel";
 
 /**
+ * One name segment: an IDENT, or a Q-IDENT (Modelica spec §2.3.1). Anything
+ * else — a dotted path, a space outside quotes — names some class other than
+ * the one OMC creates.
+ */
+const NAME_SEGMENT =
+  /^(?:[A-Za-z_][A-Za-z0-9_]*|'(?:[^'\\]|\\['"?\\abfnrtv])+')$/;
+
+/**
  * The mutation a typed call of `fn` announces, read from its validated
  * `input`, or `undefined` when `fn`'s row reads nothing from input and its
  * command string is classified by {@link mutationFor} as usual.
  *
  * Every uncertainty resolves to coarse, as on the string path: a field that
- * is absent, empty or not a string, a parent that is the top level.
+ * is absent, empty or not a string, a parent that is the top level, a leaf
+ * that is not a single name segment.
  */
 export function mutationForInput(
   fn: OmcFnName,
@@ -481,7 +495,9 @@ export function mutationForInput(
   if (entry.as === "within") {
     const leaf: unknown = Reflect.get(input, entry.leaf);
     if (value === "" || value === TOP_LEVEL) return coarseMutation(fn);
-    if (typeof leaf !== "string" || leaf === "") return coarseMutation(fn);
+    if (typeof leaf !== "string" || !NAME_SEGMENT.test(leaf)) {
+      return coarseMutation(fn);
+    }
     return {
       fn,
       scope: { kind: "members", parent: value, created: `${value}.${leaf}` },

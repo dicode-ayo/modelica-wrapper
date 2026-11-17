@@ -24,16 +24,20 @@
  *
  * A member-list change rewrites the text of the parent and of every class
  * enclosing it, any of which may be the file owner whose buffer would write
- * the old listing back on save, so all of them reload. A reorder only
- * re-lists the parent in the library tree. A created class reloads its own
- * buffer, and it can resolve a reference some other class failed on, which no
- * cache is keyed by. A removal takes every class nested in the removed one,
- * and no cache can be asked for the keys under a prefix: open buffers under
- * it reload by name. Both then raise the coarse signal, whose listeners
- * reload the whole library tree, so the parent is not re-listed on its own.
+ * the old listing back on save, so the open buffers among them reload. A
+ * created class reloads its own buffer too, and it can resolve a reference
+ * some other class failed on, which no cache is keyed by. A removal takes
+ * every class nested in the removed one, and no cache can be asked for the
+ * keys under a prefix: open buffers under it reload by name. A reorder shifts
+ * the in-file spans of the moved class and of every sibling after it, which
+ * per-class caches hold under those siblings' names. Each of the three raises
+ * the coarse signal, whose listeners drop every cache and reload the whole
+ * library tree. It fires first, so the `classChanged` each reloaded buffer
+ * still sends finds those caches already empty, and only a buffer open in an
+ * editor is reloaded at all.
  */
 
-import { enclosingScope, isWithinScope } from "@dicode/modelica-lang-core";
+import { isWithinScope, scopeChain } from "@dicode/modelica-lang-core";
 import type { MutationScope, OmcMutation } from "@dicode/omc-client";
 
 import {
@@ -58,17 +62,11 @@ export interface FileClassLookup {
   get(fsPath: string): string[] | undefined;
 }
 
-/** The library sidebar, narrowed to re-listing one class's members. */
-export interface MutationLibraryTree {
-  childrenChanged(parent: string | null): void;
-}
-
 /** Everything an announcement can refresh. */
 export interface MutationTargets {
   readonly source: MutationSourceProvider;
   readonly invalidation: MutationInvalidation;
   readonly index: FileClassLookup;
-  readonly libraryTree: MutationLibraryTree;
 }
 
 /** The client, narrowed to the subscription this attaches. */
@@ -125,25 +123,20 @@ export function applyOmcMutation(
 
 function applyMembersChange(
   scope: Extract<MutationScope, { kind: "members" }>,
-  { source, invalidation, libraryTree }: MutationTargets,
+  { source, invalidation }: MutationTargets,
 ): void {
   const { parent, created, removed } = scope;
-  const names: string[] = [];
-  for (let name = parent; name !== ""; name = enclosingScope(name)) {
-    names.push(name);
-  }
-  if (created !== undefined) names.push(created);
-  if (removed !== undefined) {
-    for (const name of source.openClassNames()) {
-      if (isWithinScope(name, removed)) names.push(name);
-    }
-  }
-  source.notifySourcesChanged(names);
-  if (created === undefined && removed === undefined) {
-    libraryTree.childrenChanged(parent);
-    return;
-  }
+  const rewritten = new Set(scopeChain(parent));
+  if (created !== undefined) rewritten.add(created);
+  const reload = source
+    .openClassNames()
+    .filter(
+      (name) =>
+        rewritten.has(name) ||
+        (removed !== undefined && isWithinScope(name, removed)),
+    );
   invalidation.allClassesChanged();
+  if (reload.length > 0) source.notifySourcesChanged(reload);
 }
 
 function classesInFile(
