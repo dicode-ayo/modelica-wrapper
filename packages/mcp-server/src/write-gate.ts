@@ -12,8 +12,9 @@
  * string*, by argument position. That table cannot be reused here: the gate runs
  * before the call, when only the input object exists, and the wrapper's field
  * order is not its command's argument order. The two also disagree on purpose —
- * `copyClass`, `newModel` and `deleteClass` announce coarsely because no single
- * command argument names what they touched, while their input objects do.
+ * raw command text for `copyClass`, `newModel` and `deleteClass` announces
+ * coarsely because no single command argument names what they touched, while
+ * their input objects do.
  *
  * The table is exhaustive over `MutatingFnName` and each field name is checked
  * against that function's own input type, so a new mutating wrapper — or a
