@@ -138,7 +138,9 @@ export function produceParameterModel(
         );
       }
       if (field === undefined) continue;
-      if (declaredIn !== undefined) field.declaredIn = declaredIn;
+      if (declaredIn !== undefined && field.declaredIn === undefined) {
+        field.declaredIn = declaredIn;
+      }
       if (existing !== undefined) {
         // More-derived re-declaration overrides the inherited entry, in place
         // (preserves first-seen order, last-write-wins on content) — matches
@@ -284,6 +286,11 @@ function replaceableClassField(
     unitOptions: [],
   };
   if (inheritedFrom !== undefined) field.inheritedFrom = inheritedFrom;
+  // A Dialog carried over from the inherited declaration keeps the scope its
+  // `enable` names were written in, not the redeclaring class's.
+  if (dialogSource === undefined && inherited !== undefined) {
+    field.declaredIn = inherited.declaredIn ?? enclosingClass;
+  }
   return field;
 }
 

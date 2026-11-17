@@ -270,9 +270,44 @@ describe("produceParameterModel — class params", () => {
     expect(medium.dialog.tab).toBe("Fluid");
     expect(medium.label).toBe("Medium in the component");
     expect(medium.inheritedFrom).toBeUndefined();
+    // The carried-over Dialog was written in Base's scope.
+    expect(medium.declaredIn).toBe("Test.Base");
 
     const baseOnly = produceParameterModel(ModelInstanceSchema.parse(base));
     expect(fieldByName(baseOnly, "Medium").dialog.tab).toBe("Fluid");
+  });
+
+  it("leaves declaredIn off a host redeclaration that writes its own Dialog", () => {
+    const mi = instance([
+      {
+        $kind: "extends",
+        baseClass: {
+          name: "Test.Base",
+          restriction: "model",
+          elements: [
+            {
+              $kind: "class",
+              name: "Medium",
+              restriction: "package",
+              prefixes: { replaceable: true },
+              annotation: { Dialog: { tab: "Fluid" } },
+              baseClass: "Media.Air",
+            },
+          ],
+        },
+      },
+      {
+        $kind: "class",
+        name: "Medium",
+        restriction: "package",
+        prefixes: { redeclare: true },
+        annotation: { Dialog: { tab: "Host" } },
+        baseClass: "Media.Water",
+      },
+    ]);
+    const medium = fieldByName(produceParameterModel(mi), "Medium");
+    expect(medium.dialog.tab).toBe("Host");
+    expect("declaredIn" in medium).toBe(false);
   });
 
   it("carries the raw Dialog.enable AST when present, omits it otherwise", () => {

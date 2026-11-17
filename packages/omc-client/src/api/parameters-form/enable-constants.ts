@@ -157,11 +157,6 @@ export async function resolveEnableConstants(
 /**
  * `name` qualified in `declaringClass`'s scope, or `undefined` when it cannot
  * be, or when it lands inside one of `redeclarable`.
- *
- * Only a name whose qualified top-level library is already loaded is ever
- * evaluated. OMC's lookup here, or a constant's binding later, may still load
- * a library that one depends on (as MSL's use of ModelicaServices does); that
- * is unconfirmed against live OMC.
  */
 async function qualifyConstant(
   client: EnableConstantClient,
