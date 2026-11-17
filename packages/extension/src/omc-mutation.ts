@@ -1,8 +1,10 @@
 /**
  * Routes OMC's mutation announcements into an editor refresh.
  *
- * The client names what a command touched as far as the command string can
- * tell: a class, a file, or nothing more specific. A file is resolved to
+ * The client names what a command touched as far as the command string, or a
+ * typed call's input, can tell: a class, a file, or nothing more specific. A
+ * typed `deleteClass` names two classes, its parent and itself, and arrives
+ * as two announcements. A file is resolved to
  * classes here rather than downstream, because a file is an extension concept
  * and the invalidation registry is keyed by class.
  *

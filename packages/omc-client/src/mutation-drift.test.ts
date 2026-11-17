@@ -166,7 +166,7 @@ async function commandFor(
 }
 
 const positional = Object.entries(MUTATIONS).filter(
-  ([, entry]) => typeof entry === "object",
+  ([, entry]) => typeof entry === "object" && "pos" in entry,
 );
 
 describe("positional entries against the wrappers that build the commands", () => {

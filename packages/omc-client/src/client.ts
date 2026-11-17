@@ -11,10 +11,16 @@
  * `CallContext` they construct themselves.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
 import { runInTurn } from "./error-buffer.js";
-import { mutationFor, type OmcMutation } from "./mutation.js";
+import {
+  mutationFor,
+  mutationsForInput,
+  type OmcMutation,
+} from "./mutation.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
 import { SerialQueue } from "./queue.js";
@@ -45,6 +51,18 @@ const DEFAULT_CALL_TIMEOUT_MS = 60_000;
 
 /** Reacts to a mutation OMC just accepted. Must not throw to be correct. */
 export type MutationListener = (mutation: OmcMutation) => void;
+
+/**
+ * What one typed call's own command announces in place of its string. Set
+ * only around that command's send, so the async chain of that one send is all
+ * it covers: a raw `call()` from another caller, interleaving through the
+ * queue, still announces from its own string.
+ */
+const namedAnnouncement = new AsyncLocalStorage<{
+  readonly client: OmcClient;
+  readonly cmd: string;
+  readonly mutations: readonly OmcMutation[];
+}>();
 
 export interface OmcClientOptions {
   /** Path to omc binary. Empty/undefined uses "omc" from PATH. */
@@ -125,6 +143,12 @@ export class OmcClient implements CallContext {
    * the same call rather than a way around it. Call it directly when the
    * function name is itself data — a JSON-RPC dispatch, a REPL, a plugin.
    *
+   * It is also where a mutation the command string cannot place is placed:
+   * when `fn`'s input names the class its command hides (`newModel`'s
+   * `withinPath`, `deleteClass`'s `typeName`, …), that command announces
+   * from the input in place of the coarse announcement its string would
+   * make, never as well as it.
+   *
    * @example
    *   const { version } = await client.invoke("getVersion", {});
    *   const info = await client.invoke("getClassInformation", {
@@ -144,7 +168,9 @@ export class OmcClient implements CallContext {
     // construction; TS's indexed-access generic narrowing can't see that, so
     // we erase to a generic call shape and re-tag the result.
     type AnyFn = (ctx: CallContext, input: unknown) => Promise<unknown>;
-    const exec = (): Promise<unknown> => (entry.fn as AnyFn)(this, validated);
+    const mutations = mutationsForInput(fn, validated);
+    const ctx = mutations === undefined ? this : this.announcing(mutations);
+    const exec = (): Promise<unknown> => (entry.fn as AnyFn)(ctx, validated);
     // A wrapper's command and its own read of the error buffer must not
     // straddle another caller's clear/run/read transaction, and a bare read
     // must not land inside one.
@@ -171,6 +197,22 @@ export class OmcClient implements CallContext {
   }
 
   /**
+   * A context whose commands announce `mutations` rather than what
+   * {@link mutationFor} reads from their text. It sends through `call()`, so
+   * the queue, `lastCall` and the announce-after-send contract stay those of
+   * every other command.
+   */
+  private announcing(mutations: readonly OmcMutation[]): CallContext {
+    return {
+      call: (cmd) =>
+        namedAnnouncement.run({ client: this, cmd, mutations }, () =>
+          this.call(cmd),
+        ),
+      getErrorString: () => this.getErrorString(),
+    };
+  }
+
+  /**
    * Subscribe to mutations this client accepts. Returns an unsubscribe
    * function.
    *
@@ -192,19 +234,30 @@ export class OmcClient implements CallContext {
    * `addComponent` answers `false` with an error line and may still have
    * touched the AST.
    *
+   * A command a typed call sent announces what its input named instead; see
+   * {@link announcing}. Matching on the command text keeps that to the
+   * call's own command, not one a listener issues from inside the fan-out.
+   *
    * A throw is swallowed. A listener left un-run because a sibling failed is
    * the staleness this exists to prevent, and this package has no logging
    * channel to report it through.
    */
   private announce(cmd: string): void {
     if (this.mutationListeners.size === 0) return;
-    const mutation = mutationFor(cmd);
-    if (mutation === undefined) return;
-    for (const listener of [...this.mutationListeners]) {
-      try {
-        listener(mutation);
-      } catch {
-        /* ignore */
+    const named = namedAnnouncement.getStore();
+    const mutations =
+      named?.client === this && named.cmd === cmd
+        ? named.mutations
+        : [mutationFor(cmd)];
+    const listeners = [...this.mutationListeners];
+    for (const mutation of mutations) {
+      if (mutation === undefined) continue;
+      for (const listener of listeners) {
+        try {
+          listener(mutation);
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
