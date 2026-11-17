@@ -270,9 +270,44 @@ describe("produceParameterModel — class params", () => {
     expect(medium.dialog.tab).toBe("Fluid");
     expect(medium.label).toBe("Medium in the component");
     expect(medium.inheritedFrom).toBeUndefined();
+    // The carried-over Dialog was written in Base's scope.
+    expect(medium.declaredIn).toBe("Test.Base");
 
     const baseOnly = produceParameterModel(ModelInstanceSchema.parse(base));
     expect(fieldByName(baseOnly, "Medium").dialog.tab).toBe("Fluid");
+  });
+
+  it("leaves declaredIn off a host redeclaration that writes its own Dialog", () => {
+    const mi = instance([
+      {
+        $kind: "extends",
+        baseClass: {
+          name: "Test.Base",
+          restriction: "model",
+          elements: [
+            {
+              $kind: "class",
+              name: "Medium",
+              restriction: "package",
+              prefixes: { replaceable: true },
+              annotation: { Dialog: { tab: "Fluid" } },
+              baseClass: "Media.Air",
+            },
+          ],
+        },
+      },
+      {
+        $kind: "class",
+        name: "Medium",
+        restriction: "package",
+        prefixes: { redeclare: true },
+        annotation: { Dialog: { tab: "Host" } },
+        baseClass: "Media.Water",
+      },
+    ]);
+    const medium = fieldByName(produceParameterModel(mi), "Medium");
+    expect(medium.dialog.tab).toBe("Host");
+    expect("declaredIn" in medium).toBe(false);
   });
 
   it("carries the raw Dialog.enable AST when present, omits it otherwise", () => {
@@ -501,6 +536,65 @@ describe("produceParameterModel — extends chain + inheritedFrom", () => {
     expect(f.value).toBe(7);
     // The DIRECT clause on C is B — not the deep declaring A.
     expect(f.inheritedFrom).toBe("Test.B");
+  });
+
+  it("tags a grandparent's field with the grandparent as declaredIn and lists the whole chain", () => {
+    const mi = instance(
+      [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.B",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "extends",
+                baseClass: {
+                  name: "Test.A",
+                  restriction: "model",
+                  elements: [
+                    {
+                      $kind: "component",
+                      name: "k",
+                      type: "Real",
+                      value: { binding: 7 },
+                      prefixes: { variability: "parameter" },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        {
+          $kind: "component",
+          name: "j",
+          type: "Real",
+          value: { binding: 1 },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+      "Test.C",
+    );
+    const model = produceParameterModel(mi);
+    const k = fieldByName(model, "k");
+    expect(k.declaredIn).toBe("Test.A");
+    expect(k.inheritedFrom).toBe("Test.B");
+    expect("declaredIn" in fieldByName(model, "j")).toBe(false);
+    // B contributes no field, yet is on the chain.
+    expect(model.ancestors).toEqual(["Test.A", "Test.B"]);
+  });
+
+  it("leaves ancestors absent for a class with no extends", () => {
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "k",
+        type: "Real",
+        prefixes: { variability: "parameter" },
+      },
+    ]);
+    expect("ancestors" in produceParameterModel(mi)).toBe(false);
   });
 
   it("leaves inheritedFrom absent for a host-declared (own) parameter", () => {

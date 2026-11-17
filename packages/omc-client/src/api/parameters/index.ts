@@ -2,6 +2,7 @@
  * Barrel re-exports for the Parameters & Modifiers category.
  */
 export * from "./getParameterValue.js";
+export * from "./evaluateConstant.js";
 export * from "./getComponentModifierNames.js";
 export * from "./getComponentModifierValue.js";
 export * from "./getComponentModifierValues.js";

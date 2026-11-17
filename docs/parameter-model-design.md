@@ -74,6 +74,7 @@ interface ParameterField {
   unit?: string;                // base unit from the AST
   displayUnit?: string;         // displayUnit modifier from the AST, if any
   inheritedFrom?: string;       // direct extends base (write routing for class params)
+  declaredIn?: string;          // ancestor that declares the param (scope of its Dialog.enable names); absent for own params
   unitOptions: ReadonlyArray<UnitOption>;  // filled from an injected UnitTable; empty otherwise
 }
 
@@ -81,6 +82,8 @@ interface ParameterModel {
   className: string;
   component?: string;           // crefPrefix for component params; unset for class params
   fields: ParameterField[];
+  ancestors?: string[];         // every class on className's extends chain, ancestors first
+  constants?: Record<string, number | boolean | string>;  // host-resolved library constants Dialog.enable references, by name as written
 }
 ```
 
@@ -103,7 +106,8 @@ produceSimulationModel(opts: {
 - `produceParameterModel` walks the (component's) type extends chain, collects
   `variability == "parameter"` elements, reads `Dialog` annotations, resolves each
   value (instance modifier over type default), and tags `inheritedFrom` (the direct
-  extends base) for write routing. It **replaced** the extension's
+  extends base) for write routing and `declaredIn` (the declaring ancestor). It
+  lists the chain's classes on `ancestors`. It **replaced** the extension's
   `buildComponentParameterForm` / `buildClassParameterForm`.
 - `produceSimulationModel` emits the same `ParameterModel` contract (so the simulate
   panel uses the same renderer): time fields carry `unit: "s"`, `numberOfIntervals`
@@ -150,6 +154,23 @@ The webview renders the typed `ParameterModel` **directly** for *all* panels
   and tab/group layout.
 - On submit the form back-converts display units to base units and drops
   `Dialog.enable`-disabled fields — unchanged behaviour.
+- `Dialog.enable` is evaluated in the webview, which has no OMC. A reference to
+  a constant declared outside the model (`k > Modelica.Constants.eps`) is
+  resolved host-side first: `collectEnableConstantNames(model)` gathers, per
+  declaring class (`declaredIn`, else `className`), the dotted crefs that
+  are neither a field nor the component prefix (plain identifiers only, never
+  subscripted or quoted). `resolveEnableConstants(client, model)` qualifies
+  each in its declaring class's scope (`qualifyPath`), drops a name that lands
+  inside `className` or any of `ancestors` or that two classes qualify
+  differently, keeps only names whose top-level class is already loaded
+  (`getClassNames()`, listed before any lookup; a constant's binding or OMC's
+  own lookup may still load a library that one depends on, as MSL's use of
+  ModelicaServices does, unconfirmed against live OMC), and evaluates the rest
+  once per form open through the
+  `evaluateConstant` wrapper, carrying the scalar literals on `model.constants`
+  keyed by the name as written. A name dropped at any step, or that OMC can't
+  reduce to a literal, is left out, so its field stays enabled. The simulate
+  and shape-properties forms carry no `constants`.
 
 JSON Schema is no longer a form contract anywhere. (The `JsonSchema` *type* and
 `describeFunctionAsJsonSchema` remain — they serve the OMC-function registry/MCP

@@ -34,6 +34,8 @@
 
 import { z } from "zod";
 
+import { CONSTANT_REFERENCE } from "../commands.js";
+
 /**
  * Modelica name grammar, as OMC's scripting parser reads an argument emitted
  * without quotes: dot-separated segments, each an IDENT or a Q-IDENT, each
@@ -134,6 +136,18 @@ export const modelicaName = z
   .regex(
     MODELICA_NAME,
     'must be a Modelica name — dot-separated identifiers, each optionally subscripted (e.g. "Modelica.Blocks.Math.Gain", "pins[3].p"), or a single-quoted Q-IDENT',
+  );
+
+/**
+ * A fully qualified constant reference, which a wrapper sends to OMC as the
+ * whole command (see {@link CONSTANT_REFERENCE}). Narrower than
+ * {@link modelicaName}: no subscript, no Q-IDENT, at least two segments.
+ */
+export const constantName = z
+  .string()
+  .regex(
+    CONSTANT_REFERENCE,
+    'must be a fully qualified dotted name of plain identifiers (e.g. "Modelica.Constants.eps")',
   );
 
 /**

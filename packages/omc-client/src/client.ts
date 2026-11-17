@@ -948,6 +948,12 @@ export class OmcClient implements CallContext {
     return this.invoke("getParameterValue", input);
   }
 
+  evaluateConstant(
+    input: parameters.EvaluateConstantInput,
+  ): Promise<parameters.EvaluateConstantOutput> {
+    return this.invoke("evaluateConstant", input);
+  }
+
   getComponentModifierNames(
     input: parameters.GetComponentModifierNamesInput,
   ): Promise<parameters.GetComponentModifierNamesOutput> {

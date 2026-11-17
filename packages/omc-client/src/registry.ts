@@ -980,6 +980,13 @@ export const REGISTRY = {
     parameters.GetParameterValueOutputSchema,
     parameters.GetParameterValueDescription,
   ),
+  evaluateConstant: entry(
+    "parameters",
+    parameters.evaluateConstant,
+    parameters.EvaluateConstantInputSchema,
+    parameters.EvaluateConstantOutputSchema,
+    parameters.EvaluateConstantDescription,
+  ),
   getComponentModifierNames: entry(
     "parameters",
     parameters.getComponentModifierNames,

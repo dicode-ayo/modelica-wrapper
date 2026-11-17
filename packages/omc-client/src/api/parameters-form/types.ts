@@ -150,6 +150,15 @@ export interface ParameterField {
    */
   inheritedFrom?: string | undefined;
   /**
+   * The ancestor class that declares the parameter, reached through
+   * `extends`; absent for the host class's own declarations. Unlike
+   * `inheritedFrom`, this is the deep declaring class (`A` for `C extends B
+   * extends A`), the scope its `Dialog.enable` names are written in. A
+   * redeclared replaceable class that keeps an ancestor's `Dialog` keeps that
+   * ancestor's `declaredIn` too.
+   */
+  declaredIn?: string | undefined;
+  /**
    * Unit choices + conversion factors, filled from an injected `UnitTable`.
    * Empty when no table was supplied or the param is unit-less. 1 entry →
    * static suffix; ≥2 → dropdown.
@@ -172,4 +181,22 @@ export interface ParameterModel {
   component?: string | undefined;
   /** Fields in walk order (ancestors first, host last; later-declared wins by name). */
   fields: ParameterField[];
+  /**
+   * Every class reached through `className`'s `extends` chain, ancestors
+   * first, including bases that contribute no field. Absent when there are
+   * none.
+   */
+  ancestors?: string[] | undefined;
+  /**
+   * Values of the library constants the fields' `Dialog.enable` expressions
+   * reference (`Modelica.Constants.eps`), keyed by the dotted name as written
+   * in the expression. The form evaluates `enable` synchronously and has no
+   * OMC of its own, so the host resolves these before the model ships (see
+   * `resolveEnableConstants`). A name missing here stays unresolved, which
+   * leaves the dependent field enabled. The producers never set it.
+   */
+  constants?: Record<string, EnableConstantValue> | undefined;
 }
+
+/** A library constant's value as `ParameterModel.constants` carries it. */
+export type EnableConstantValue = number | boolean | string;

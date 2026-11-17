@@ -20,7 +20,7 @@
  * is the staleness this exists to prevent.
  */
 
-import type { OmcFunction } from "./commands.js";
+import { constantReference, type OmcFunction } from "./commands.js";
 import { asString, parseLeading } from "./parse.js";
 import { enclosingScope } from "./qualified-name.js";
 import type { OmcFnName } from "./registry.js";
@@ -213,6 +213,7 @@ export const MUTATIONS = {
 
   // --- Parameters & modifiers ---
   getParameterValue: "readOnly",
+  evaluateConstant: "readOnly",
   getParameterNames: "readOnly",
   setParameterValue: { pos: 0, as: "class" },
   getComponentModifierNames: "readOnly",
@@ -375,6 +376,9 @@ const LEADING_CALL = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/;
  * back coarse.
  */
 export function mutationFor(cmd: string): OmcMutation | undefined {
+  // Evaluating a constant reference reads; it is not a call, so the parser
+  // below would otherwise read it as coarse.
+  if (constantReference(cmd) !== undefined) return undefined;
   if (entryFor(LEADING_CALL.exec(cmd)?.[1] ?? "") === "readOnly") {
     return undefined;
   }

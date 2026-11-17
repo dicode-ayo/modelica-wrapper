@@ -64,6 +64,7 @@ import {
   isComplete,
   isFieldEnabled,
   parameterFieldsFromModel,
+  type EnableContext,
   type ParameterField,
   type FieldKind,
 } from "./parameter-fields.js";
@@ -371,6 +372,10 @@ export class OmParameterForm extends LitElement {
   @property({ attribute: "cref-prefix" })
   crefPrefix: string | undefined = undefined;
 
+  private get enableContext(): EnableContext {
+    return { crefPrefix: this.crefPrefix, constants: this.model?.constants };
+  }
+
   /** Tracks fields the user has actually touched — used by `change` payload. */
   @state()
   private dirty: Set<string> = new Set();
@@ -471,7 +476,7 @@ export class OmParameterForm extends LitElement {
   }
 
   override render(): TemplateResult {
-    const canSubmit = isComplete(this.fields, this.working, this.crefPrefix);
+    const canSubmit = isComplete(this.fields, this.working, this.enableContext);
     return html`
       ${this.title ? html`<h3 class="title">${this.title}</h3>` : nothing}
       <form @submit=${this.onSubmit}>
@@ -714,7 +719,7 @@ export class OmParameterForm extends LitElement {
    * precedence (`Annotations/DynamicAnnotation.cpp:222-242`).
    */
   private isFieldEnabled(f: ParameterField): boolean {
-    return isFieldEnabled(f, this.fields, this.committed, this.crefPrefix);
+    return isFieldEnabled(f, this.fields, this.committed, this.enableContext);
   }
 
   private renderControl(f: ParameterField, enabled: boolean): TemplateResult {
@@ -923,7 +928,7 @@ export class OmParameterForm extends LitElement {
 
   private onSubmit(e: Event): void {
     e.preventDefault();
-    if (!isComplete(this.fields, this.working, this.crefPrefix)) return;
+    if (!isComplete(this.fields, this.working, this.enableContext)) return;
     this.dispatchEvent(
       new CustomEvent<ParameterFormSubmitDetail>("om-parameter-submit", {
         // `submitValues()` emits base-unit values AND drops disabled fields
@@ -973,7 +978,7 @@ export class OmParameterForm extends LitElement {
     // Drop disabled-field values (issue #76, item 4): OMEdit suppresses writes
     // for a field whose `Dialog.enable` is false, so a stale value left behind
     // when the user toggled a controller off must not be submitted.
-    return enabledValues(this.fields, out, this.crefPrefix);
+    return enabledValues(this.fields, out, this.enableContext);
   }
 
   private onCancel(): void {

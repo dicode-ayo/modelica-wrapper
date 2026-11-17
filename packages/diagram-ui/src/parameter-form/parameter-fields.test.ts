@@ -461,14 +461,122 @@ describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", (
       rhs: 0,
     };
     const b = { ...fieldB(fields), enable: prefixedEnable };
-    expect(isFieldEnabled(b, fields, { a: 5 }, "PI")).toBe(true);
-    expect(isFieldEnabled(b, fields, { a: -1 }, "PI")).toBe(false);
+    expect(isFieldEnabled(b, fields, { a: 5 }, { crefPrefix: "PI" })).toBe(
+      true,
+    );
+    expect(isFieldEnabled(b, fields, { a: -1 }, { crefPrefix: "PI" })).toBe(
+      false,
+    );
   });
 
   it("buildEnableScope resolves a cref to the value, then the default", () => {
     const fields = gatedFields();
     expect(buildEnableScope(fields, { a: 9 }).lookup(["a"])).toBe(9);
     expect(buildEnableScope(fields, {}).lookup(["a"])).toBe(1);
+  });
+});
+
+describe("Dialog.enable against host-resolved library constants", () => {
+  const K_GT_EPS: Expression = {
+    $kind: "binary_op",
+    op: ">",
+    lhs: { $kind: "cref", parts: [{ name: "k" }] },
+    rhs: {
+      $kind: "cref",
+      parts: [{ name: "Modelica" }, { name: "Constants" }, { name: "eps" }],
+    },
+  };
+  const EPS = { "Modelica.Constants.eps": 1e-15 };
+
+  function epsModel(constants?: Record<string, number>): ParameterModel {
+    return {
+      ...model([
+        { name: "k", kind: "number", value: 0, defaultValue: 1 },
+        {
+          name: "y",
+          kind: "number",
+          value: 1,
+          dialog: { tab: "General", group: "Parameters", enable: K_GT_EPS },
+        },
+      ]),
+      constants,
+    };
+  }
+
+  function fieldY(fields: ParameterField[]): ParameterField {
+    const y = fields.find((f) => f.name === "y");
+    if (y === undefined) throw new Error("missing field y");
+    return y;
+  }
+
+  it("disables the field when the constant makes the condition false", () => {
+    const m = epsModel(EPS);
+    const fields = parameterFieldsFromModel(m);
+    expect(
+      isFieldEnabled(
+        fieldY(fields),
+        fields,
+        { k: 0 },
+        { constants: m.constants },
+      ),
+    ).toBe(false);
+    expect(
+      isFieldEnabled(
+        fieldY(fields),
+        fields,
+        { k: 2 },
+        { constants: m.constants },
+      ),
+    ).toBe(true);
+  });
+
+  it("stays enabled without the constant (fail open)", () => {
+    const m = epsModel();
+    const fields = parameterFieldsFromModel(m);
+    expect(
+      isFieldEnabled(
+        fieldY(fields),
+        fields,
+        { k: 0 },
+        { constants: m.constants },
+      ),
+    ).toBe(true);
+  });
+
+  it("drops a field the constant disables from submit, and from the required check", () => {
+    const m = epsModel(EPS);
+    const fields = parameterFieldsFromModel(m);
+    expect(
+      enabledValues(fields, { k: 0, y: 3 }, { constants: m.constants }),
+    ).toEqual({
+      k: 0,
+    });
+    expect(
+      isComplete(fields, { k: 0, y: "" }, { constants: m.constants }),
+    ).toBe(true);
+    expect(isComplete(fields, { k: 0, y: "" })).toBe(false);
+  });
+
+  it("resolves the constant under a component prefix, after peers and the prefix", () => {
+    const m = epsModel(EPS);
+    const fields = parameterFieldsFromModel(m);
+    const scope = buildEnableScope(
+      fields,
+      { k: 4 },
+      {
+        crefPrefix: "PI",
+        constants: m.constants,
+      },
+    );
+    expect(scope.lookup(["PI", "k"])).toBe(4);
+    expect(scope.lookup(["k"])).toBe(4);
+    expect(scope.lookup(["Modelica", "Constants", "eps"])).toBe(1e-15);
+    expect(scope.lookup(["Modelica", "Constants", "pi"])).toBeUndefined();
+  });
+
+  it("does not answer a single-segment name from the constants", () => {
+    const scope = buildEnableScope([], {}, { constants: { eps: 1 } });
+    expect(scope.lookup(["eps"])).toBeUndefined();
   });
 });
 
