@@ -1541,7 +1541,7 @@ describe("summarizeSimulationResult", () => {
     expect(result.isError).toBe(true);
     expect(text(result)).toContain("nothing to summarize");
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("readSimulationResult");
+    expect(warnings[0]).toMatch(/^summarizeSimulationResult /);
     expect(warnings[0]).toContain("failed: ");
     expect(warnings[0]).toContain("nothing to summarize");
     expect(warnings[0]).toContain("r.mat");
@@ -1566,6 +1566,7 @@ describe("summarizeSimulationResult", () => {
     })) as CallToolResult;
 
     expect(infos).toHaveLength(1);
+    expect(infos[0]).toMatch(/^summarizeSimulationResult /);
     expect(infos[0]).toContain(`-> ${text(result)}`);
     expect(infos[0]).toContain('"maxAt":1');
     expect(infos[0]).not.toContain(String(0.1 + 0.2));

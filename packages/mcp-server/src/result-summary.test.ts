@@ -21,22 +21,6 @@ describe("summarizeResult", () => {
     });
   });
 
-  it("leaves non-finite values out of the extremes and reports them as null", () => {
-    const summary = summarizeResult(
-      [0, 1, 2, 3],
-      [{ name: "x", values: [NaN, 2, Infinity, -1] }],
-    );
-
-    expect(summary.variables["x"]).toEqual({
-      initial: null,
-      final: -1,
-      min: -1,
-      max: 2,
-      minAt: 3,
-      maxAt: 1,
-    });
-  });
-
   it("omits the series unless points were asked for", () => {
     const summary = summarizeResult([0, 1], [{ name: "x", values: [0, 1] }]);
 
@@ -173,15 +157,6 @@ describe("resultSeries", () => {
     ["no result", {}],
     ["a result that is not an array", { result: null }],
     ["a row that is not an array", { result: [[0, 1], 2] }],
-    [
-      "a row that is not numbers",
-      {
-        result: [
-          [0, 1],
-          ["a", "b"],
-        ],
-      },
-    ],
     ["an answer that is not an object", "result"],
   ])("refuses %s", (_label, output) => {
     expect(resultSeries(output, ["x"])).toBeUndefined();

@@ -21,7 +21,6 @@ import type { z } from "zod";
 import {
   dispatchByName,
   errorResult,
-  invokeByName,
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
@@ -628,10 +627,10 @@ describe("dispatchByName: simulation result precision (issue #719)", () => {
   });
 });
 
-describe("invokeByName", () => {
+describe("dispatchByName with a respond option", () => {
   it("answers an error result rather than throwing when respond throws", async () => {
     const { log, warnings } = makeLog();
-    const result = await invokeByName(
+    const result = await dispatchByName(
       {
         ensureClient: async () => baseClient({ invoke: async () => ({}) }),
         verdicts,
@@ -639,8 +638,10 @@ describe("invokeByName", () => {
       },
       "readSimulationResult",
       { filename: "r.mat", variables: ["time"] },
-      () => {
-        throw new TypeError("not a matrix");
+      {
+        respond: () => {
+          throw new TypeError("not a matrix");
+        },
       },
     );
 
@@ -652,7 +653,7 @@ describe("invokeByName", () => {
   it("logs an error result from respond as a failure, quiet for a read", async () => {
     const { log, warnings, infos } = makeLog();
     const notified: string[] = [];
-    const result = await invokeByName(
+    const result = await dispatchByName(
       {
         ensureClient: async () => baseClient(),
         verdicts,
@@ -661,7 +662,7 @@ describe("invokeByName", () => {
       },
       "readSimulationResult",
       { filename: "r.mat", variables: ["time"] },
-      () => errorResult("wrong shape"),
+      { respond: () => errorResult("wrong shape") },
     );
 
     expect(result.isError).toBe(true);
@@ -669,5 +670,37 @@ describe("invokeByName", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("failed: wrong shape");
     expect(notified).toEqual([]);
+  });
+
+  it("prefixes the log line with label rather than the function", async () => {
+    const { log, infos } = makeLog();
+    await dispatchByName(
+      { ensureClient: async () => baseClient(), verdicts, log },
+      "getClassNames",
+      { typeName: "Demo" },
+      { label: "composite" },
+    );
+
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toMatch(/^composite /);
+  });
+});
+
+describe("dispatchByName with an undefined output", () => {
+  it("answers and logs `undefined` rather than an empty line", async () => {
+    const { log, infos } = makeLog();
+    const result = await dispatchByName(
+      {
+        ensureClient: async () => baseClient({ invoke: async () => undefined }),
+        verdicts,
+        log,
+      },
+      "getClassNames",
+      { typeName: "Demo" },
+    );
+
+    expect(text(result)).toBe("undefined");
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toMatch(/ -> undefined$/);
   });
 });

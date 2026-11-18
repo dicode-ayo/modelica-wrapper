@@ -246,13 +246,13 @@ than `time`; a request naming only `time` is refused before the read. With
 first and last included; a result with no more rows than `points` comes back
 whole. The extremes are found over OMC's unrounded values and each reported
 value is then rounded once to the same 6 significant digits, so a rounding tie
-never moves `minAt`/`maxAt`; times carry none of the rounding. A non-finite
-value is skipped when finding the extremes and reported as `null`. A result
-with no rows answers `null` for every value rather than failing. An answer
-whose rows do not match the variables asked for is the tool's own error
-result, logged as a warning but not raised as a notification, like any other
-read that failed on OMC's own answer. The log line carries the summary the
-model got. The reduction itself is
+never moves `minAt`/`maxAt`; times carry none of the rounding. A result with
+no rows answers `null` for every value rather than failing. An answer whose
+rows do not match the variables asked for is the tool's own error result,
+logged as a warning but not raised as a notification, like any other read that
+failed on OMC's own answer. The log line is prefixed
+`summarizeSimulationResult` and carries the summary the model got. The
+reduction itself is
 [result-summary.ts](../packages/mcp-server/src/result-summary.ts), free of MCP
 and OMC.
 

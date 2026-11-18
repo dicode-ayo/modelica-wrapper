@@ -10,8 +10,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import {
+  dispatch,
   errorResult,
-  invoke,
   textResult,
   type McpToolDeps,
 } from "./dispatch.js";
@@ -25,6 +25,7 @@ const { filename, variables } = ReadSimulationResultInputSchema.shape;
 const SummarizeSimulationResultSchema = z.strictObject({
   filename,
   variables: variables
+    // Publishes `minItems: 1`; the refinement has no JSON Schema form.
     .min(1)
     .refine((names) => names.some((name) => name !== "time"), {
       message:
@@ -61,20 +62,25 @@ export function registerResultTools(
     },
     async ({ filename, variables, points }) => {
       const names = [...new Set(variables)].filter((v) => v !== "time");
-      return invoke(
+      return dispatch(
         deps,
         "readSimulationResult",
         { filename, variables: ["time", ...names] },
-        (output) => {
-          const matrix = resultSeries(output, names);
-          if (matrix === undefined) {
-            return errorResult(
-              `readSimulationResult did not answer one equal-length row of numbers per variable for ${filename}, so there is nothing to summarize.`,
+        {
+          label: TOOL_NAME,
+          respond: (output) => {
+            const matrix = resultSeries(output, names);
+            if (matrix === undefined) {
+              return errorResult(
+                `readSimulationResult did not answer one equal-length row of numbers per variable for ${filename}, so there is nothing to summarize.`,
+              );
+            }
+            return textResult(
+              JSON.stringify(
+                summarizeResult(matrix.time, matrix.series, points),
+              ),
             );
-          }
-          return textResult(
-            JSON.stringify(summarizeResult(matrix.time, matrix.series, points)),
-          );
+          },
         },
       );
     },
