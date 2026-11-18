@@ -22,20 +22,14 @@
  * was seeded, one of the `<runtime:…>` pseudo-names a class carries between
  * its creation and its first save. Only the last is coarse.
  *
- * A member-list change rewrites the text of the parent and of every class
- * enclosing it, any of which may be the file owner whose buffer would write
- * the old listing back on save, so the open buffers among them reload. A
- * created class reloads its own buffer too, and it can resolve a reference
- * some other class failed on, which no cache is keyed by. A removal takes
- * every class nested in the removed one, and no cache can be asked for the
- * keys under a prefix: open buffers under it reload by name. A reorder shifts
- * the in-file spans of the moved class and of every sibling after it, which
- * per-class caches hold under those siblings' names. Each of the three raises
- * the coarse signal, whose listeners drop every cache and reload the whole
- * library tree. That signal, here and wherever the scope is coarse, fires
- * before any buffer reloads, so the `classChanged` each reloaded buffer still
- * sends finds those caches already empty, and only a buffer open in an editor
- * is reloaded at all.
+ * A member-list change rewrites the text of the parent and every class
+ * enclosing it, any of which may own the file and would write the old listing
+ * back on save. A created class can resolve a reference another class failed
+ * on, a removal takes every class nested in it, and a reorder shifts the
+ * in-file spans of its siblings; no cache is keyed so that a name or prefix
+ * reaches those, so each raises the coarse signal as well. That signal fires
+ * before the buffers reload, so the `classChanged` each reload sends finds the
+ * caches already empty.
  */
 
 import { isWithinScope, scopeChain } from "@dicode/modelica-lang-core";
@@ -128,13 +122,15 @@ function applyMembersChange(
 ): void {
   const { parent, created, removed } = scope;
   const rewritten = new Set(scopeChain(parent));
-  if (created !== undefined) rewritten.add(created);
+  const subtrees = [created, removed].filter(
+    (root): root is string => root !== undefined,
+  );
   const reload = source
     .openClassNames()
     .filter(
       (name) =>
         rewritten.has(name) ||
-        (removed !== undefined && isWithinScope(name, removed)),
+        subtrees.some((root) => isWithinScope(name, root)),
     );
   invalidation.allClassesChanged();
   if (reload.length > 0) source.notifySourcesChanged(reload);

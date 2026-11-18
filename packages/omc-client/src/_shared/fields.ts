@@ -55,6 +55,9 @@ export const MODELICA_IDENT = new RegExp(`^${IDENT}$`);
 const QIDENT = "'(?:[^'\\\\]|\\\\.)+'";
 const SUBSCRIPT = "(?:\\[[A-Za-z0-9_,:\\s+*/.-]+\\])?";
 const SEGMENT = `(?:${IDENT}|${QIDENT})${SUBSCRIPT}`;
+
+/** One class-name segment, whole: an IDENT or a Q-IDENT, no subscript. */
+export const MODELICA_NAME_SEGMENT = new RegExp(`^(?:${IDENT}|${QIDENT})$`);
 const MODELICA_NAME = new RegExp(`^${SEGMENT}(?:\\.${SEGMENT})*$`);
 const NAME_BODY = `${SEGMENT}(?:\\.${SEGMENT})*`;
 const RESULT_VARIABLE = new RegExp(`^(?:${NAME_BODY}|der\\(${NAME_BODY}\\))$`);

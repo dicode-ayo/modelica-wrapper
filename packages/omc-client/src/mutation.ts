@@ -22,6 +22,7 @@
  * is the staleness this exists to prevent.
  */
 
+import { MODELICA_NAME_SEGMENT } from "./_shared/fields.js";
 import { constantReference, type OmcFunction } from "./commands.js";
 import { asString, parseLeading } from "./parse.js";
 import { enclosingScope } from "./qualified-name.js";
@@ -464,14 +465,6 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
 const TOP_LEVEL = "__OpenModelica_TopLevel";
 
 /**
- * One name segment: an IDENT, or a Q-IDENT (Modelica spec §2.3.1). Anything
- * else — a dotted path, a space outside quotes — names some class other than
- * the one OMC creates.
- */
-const NAME_SEGMENT =
-  /^(?:[A-Za-z_][A-Za-z0-9_]*|'(?:[^'\\]|\\['"?\\abfnrtv])+')$/;
-
-/**
  * The mutation a typed call of `fn` announces, read from its validated
  * `input`, or `undefined` when `fn`'s row reads nothing from input and its
  * command string is classified by {@link mutationFor} as usual.
@@ -495,7 +488,7 @@ export function mutationForInput(
   if (entry.as === "within") {
     const leaf: unknown = Reflect.get(input, entry.leaf);
     if (value === "" || value === TOP_LEVEL) return coarseMutation(fn);
-    if (typeof leaf !== "string" || !NAME_SEGMENT.test(leaf)) {
+    if (typeof leaf !== "string" || !MODELICA_NAME_SEGMENT.test(leaf)) {
       return coarseMutation(fn);
     }
     return {

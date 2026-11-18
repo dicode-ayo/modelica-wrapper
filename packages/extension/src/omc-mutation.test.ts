@@ -211,6 +211,16 @@ describe("applyOmcMutation on a member-list change", () => {
     ]);
   });
 
+  it("reloads open buffers nested in a created class, as a copied package's members", () => {
+    const seen = spies(["Demo.Sub.B.Inner", "Demo.Sub.BC"]);
+
+    applyOmcMutation(created, targets(seen));
+
+    expect(seen.notifySourcesChanged).toHaveBeenCalledExactlyOnceWith([
+      "Demo.Sub.B.Inner",
+    ]);
+  });
+
   it("reloads every open buffer on the removed class or nested in it, in one batch", () => {
     const seen = spies([
       "Demo.Sub.A",

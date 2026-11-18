@@ -282,18 +282,31 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
    * documents — useful for coarse refreshes after a `loadFile` of a package.
    */
   notifySourceChanged(typeName?: string): void {
-    this.notifySourcesChanged(typeName ? [typeName] : this.openClassNames());
+    if (typeName) {
+      this.notifySourcesChanged([typeName]);
+      return;
+    }
+    // The open document's own URI, not one rebuilt from its class name: a
+    // buffer opened without the `.mo` suffix, or under a percent-escaped
+    // name, would otherwise be bumped under a URI no document holds.
+    this.fireChanged(
+      vscode.workspace.textDocuments
+        .map((doc) => doc.uri)
+        .filter((uri) => uri.scheme === MODELICA_SOURCE_SCHEME),
+    );
   }
 
   /** {@link notifySourceChanged} for each of `typeNames`, as one event. */
   notifySourcesChanged(typeNames: readonly string[]): void {
-    const events: vscode.FileChangeEvent[] = [];
-    for (const typeName of new Set(typeNames)) {
-      const uri = sourceUriFor(typeName);
-      this.bump(uri);
-      events.push({ type: vscode.FileChangeType.Changed, uri });
-    }
-    if (events.length > 0) this._onDidChangeFile.fire(events);
+    this.fireChanged([...new Set(typeNames)].map(sourceUriFor));
+  }
+
+  private fireChanged(uris: readonly vscode.Uri[]): void {
+    if (uris.length === 0) return;
+    for (const uri of uris) this.bump(uri);
+    this._onDidChangeFile.fire(
+      uris.map((uri) => ({ type: vscode.FileChangeType.Changed, uri })),
+    );
   }
 
   /** The classes open in a `modelica-source:` buffer. */
