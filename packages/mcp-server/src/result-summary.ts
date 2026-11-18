@@ -9,14 +9,9 @@
  * `roundResultOutput` leaves the `time` row alone.
  */
 
-import { ReadSimulationResultOutputSchema } from "@dicode/omc-client";
-
 import { roundSignificant } from "./result-precision.js";
 
-/**
- * `null` throughout when the result has no rows. A non-finite `initial` or
- * `final` is `null`, and `min`/`max` range over the finite values only.
- */
+/** `null` throughout when the result has no rows. */
 export interface VariableSummary {
   initial: number | null;
   final: number | null;
@@ -26,14 +21,11 @@ export interface VariableSummary {
   minAt: number | null;
   /** The time of the first row holding the maximum. */
   maxAt: number | null;
-  /** Rows holding NaN or an infinity; present only when there are any. */
-  nonFinite?: number;
 }
 
 export interface ResultSummary {
   time: { start: number | null; stop: number | null; rows: number };
   variables: Record<string, VariableSummary>;
-  /** A non-finite value is `null`, as JSON would carry it anyway. */
   series?: Record<string, (number | null)[]>;
 }
 
@@ -56,9 +48,7 @@ export function decimatedIndices(rows: number, points: number): number[] {
 }
 
 function rounded(value: number | undefined): number | null {
-  return value !== undefined && Number.isFinite(value)
-    ? roundSignificant(value)
-    : null;
+  return value === undefined ? null : roundSignificant(value);
 }
 
 function summarizeSeries(
@@ -67,17 +57,12 @@ function summarizeSeries(
 ): VariableSummary {
   let min: { value: number; at: number | null } | undefined;
   let max: { value: number; at: number | null } | undefined;
-  let nonFinite = 0;
   values.forEach((value, i) => {
-    if (!Number.isFinite(value)) {
-      nonFinite += 1;
-      return;
-    }
     const at = time[i] ?? null;
     if (min === undefined || value < min.value) min = { value, at };
     if (max === undefined || value > max.value) max = { value, at };
   });
-  const summary: VariableSummary = {
+  return {
     initial: rounded(values.at(0)),
     final: rounded(values.at(-1)),
     min: rounded(min?.value),
@@ -85,8 +70,6 @@ function summarizeSeries(
     minAt: min?.at ?? null,
     maxAt: max?.at ?? null,
   };
-  if (nonFinite > 0) summary.nonFinite = nonFinite;
-  return summary;
 }
 
 /**
@@ -121,19 +104,21 @@ export function summarizeResult(
 }
 
 /**
- * `readSimulationResult`'s `result` split into its `time` row and the rest,
- * when it is the matrix it promises — `count` rows of numbers, all one length —
- * and undefined for anything else.
+ * `readSimulationResult`'s `result` split into its `time` row and one series
+ * per name in `names`, when it holds exactly that many rows, all one length,
+ * and undefined otherwise.
  */
-export function resultMatrix(
-  output: unknown,
-  count: number,
-): { time: number[]; rows: number[][] } | undefined {
-  const parsed = ReadSimulationResultOutputSchema.safeParse(output);
-  if (!parsed.success) return undefined;
-  const [time, ...rest] = parsed.data.result;
-  if (time === undefined || rest.length !== count - 1) return undefined;
-  return rest.every((row) => row.length === time.length)
-    ? { time, rows: rest }
-    : undefined;
+export function resultSeries(
+  output: { readonly result: readonly (readonly number[])[] },
+  names: readonly string[],
+): { time: readonly number[]; series: NamedSeries[] } | undefined {
+  const [time, ...rows] = output.result;
+  if (time === undefined || rows.length !== names.length) return undefined;
+  const series: NamedSeries[] = [];
+  for (const [i, name] of names.entries()) {
+    const values = rows[i];
+    if (values === undefined || values.length !== time.length) return undefined;
+    series.push({ name, values });
+  }
+  return { time, series };
 }

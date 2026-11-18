@@ -247,13 +247,14 @@ evenly spaced rows, first and last included; a result with no more rows than
 `points` comes back whole. The extremes are found over OMC's unrounded values
 and each reported value is then rounded once to the same 6 significant digits,
 so a rounding tie never moves `minAt`/`maxAt`; times carry none of the
-rounding. `min` and `max` range over finite values only: a NaN or infinity is
-`null` where it would be reported (`initial`, `final`, a `series` sample) and
-is counted in a `nonFinite` field present only when there is one. A result
-with no rows answers `null` for every value rather than failing. The reduction
-itself is [result-summary.ts](../packages/mcp-server/src/result-summary.ts),
-free of MCP and OMC. Both tools log a result matrix by its dimensions, not its
-values.
+rounding. A result with no rows answers `null` for every value rather than
+failing; one whose rows do not match the variables asked for is an error result,
+logged as a warning but not raised as a notification, like any other read that
+failed on OMC's own answer. The reduction itself is
+[result-summary.ts](../packages/mcp-server/src/result-summary.ts), free of MCP
+and OMC. Like every dispatched value, a result matrix is logged only up to its
+first `MAX_LOGGED_CHARS` characters, and serialization stops there rather than covering
+every row.
 
 ### The model-instance read path
 

@@ -15,7 +15,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { WriteVerdictClient } from "./write-verdict.js";
-import type { McpToolClient } from "./dispatch.js";
+import type { McpToolClient, McpToolDeps } from "./dispatch.js";
 import { buildMcpServer } from "./mcp-server.js";
 import { PARITY_TOOLS } from "./parity-tools.js";
 import type { WriteVerdictSource } from "./write-verdict.js";
@@ -121,9 +121,11 @@ const verdicts: WriteVerdictSource = {
       : { ok: true },
 };
 
-async function connect(): Promise<Client> {
+async function connect(
+  extra: Pick<McpToolDeps, "log" | "notifyFailure"> = {},
+): Promise<Client> {
   const server = buildMcpServer(
-    { ensureClient: async () => client, verdicts, workspace },
+    { ensureClient: async () => client, verdicts, workspace, ...extra },
     "1.2.3",
   );
   const mcp = new Client({ name: "test", version: "0" });
@@ -1522,9 +1524,14 @@ describe("summarizeSimulationResult", () => {
     expect(text(result)).toContain("gone.mat");
   });
 
-  it("answers an error result when the read is not a matrix", async () => {
+  it("logs a read missing a row as a failure without raising it", async () => {
     answers.set("readSimulationResult", { result: [[0, 1]] });
-    const mcp = await connect();
+    const warnings: string[] = [];
+    const notified: string[] = [];
+    const mcp = await connect({
+      log: { info: () => undefined, warn: (m) => warnings.push(m) },
+      notifyFailure: (m) => notified.push(m),
+    });
 
     const result = (await mcp.callTool({
       name: "summarizeSimulationResult",
@@ -1533,6 +1540,22 @@ describe("summarizeSimulationResult", () => {
 
     expect(result.isError).toBe(true);
     expect(text(result)).toContain("nothing to summarize");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("summarizeSimulationResult failed");
+    expect(warnings[0]).toContain("r.mat");
+    expect(notified).toEqual([]);
+  });
+
+  it("advertises that variables cannot be empty", async () => {
+    const mcp = await connect();
+
+    const { tools } = await mcp.listTools();
+    const variables = (
+      tools.find((t) => t.name === "summarizeSimulationResult")?.inputSchema
+        .properties as Record<string, { minItems?: number }> | undefined
+    )?.["variables"];
+
+    expect(variables?.minItems).toBe(1);
   });
 
   it("refuses points outside the bound rather than reading", async () => {

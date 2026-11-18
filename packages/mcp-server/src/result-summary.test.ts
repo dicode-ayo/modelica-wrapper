@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   decimatedIndices,
-  resultMatrix,
+  resultSeries,
   summarizeResult,
 } from "./result-summary.js";
 
@@ -55,46 +55,6 @@ describe("summarizeResult", () => {
     );
 
     expect(summary.variables["x"]).toMatchObject({ max: 1, maxAt: 9 });
-  });
-
-  it("ranges min and max over finite values and counts the rest", () => {
-    const summary = summarizeResult(
-      [0, 1, 2, 3],
-      [
-        { name: "x", values: [NaN, 2, Infinity, -1] },
-        { name: "y", values: [1, 2] },
-      ],
-      4,
-    );
-
-    expect(summary.variables["x"]).toEqual({
-      initial: null,
-      final: -1,
-      min: -1,
-      max: 2,
-      minAt: 3,
-      maxAt: 1,
-      nonFinite: 2,
-    });
-    expect(summary.variables["y"]).not.toHaveProperty("nonFinite");
-    expect(summary.series?.["x"]).toEqual([null, 2, null, -1]);
-  });
-
-  it("answers null extremes when no value is finite", () => {
-    const summary = summarizeResult(
-      [0, 1],
-      [{ name: "x", values: [NaN, NaN] }],
-    );
-
-    expect(summary.variables["x"]).toEqual({
-      initial: null,
-      final: null,
-      min: null,
-      max: null,
-      minAt: null,
-      maxAt: null,
-      nonFinite: 2,
-    });
   });
 
   it("answers nulls rather than NaN or a throw for a result with no rows", () => {
@@ -158,38 +118,43 @@ describe("decimatedIndices", () => {
   });
 });
 
-describe("resultMatrix", () => {
-  it("splits one equal-length row of numbers per variable into time and the rest", () => {
+describe("resultSeries", () => {
+  it("splits the time row off and names each remaining row", () => {
     expect(
-      resultMatrix(
+      resultSeries(
         {
           result: [
             [0, 1],
             [2, 3],
+            [4, 5],
           ],
         },
-        2,
+        ["x", "y"],
       ),
-    ).toEqual({ time: [0, 1], rows: [[2, 3]] });
+    ).toEqual({
+      time: [0, 1],
+      series: [
+        { name: "x", values: [2, 3] },
+        { name: "y", values: [4, 5] },
+      ],
+    });
   });
 
   it.each([
-    ["no result field", { ok: true }],
-    ["a scalar", 42],
-    ["null", null],
     ["too few rows", { result: [[0, 1]] }],
-    ["no rows", { result: [] }],
     [
-      "a non-numeric value",
+      "too many rows",
       {
         result: [
           [0, 1],
-          [2, "x"],
+          [2, 3],
+          [4, 5],
         ],
       },
     ],
+    ["no rows", { result: [] }],
     ["ragged rows", { result: [[0, 1], [2]] }],
   ])("refuses %s", (_label, output) => {
-    expect(resultMatrix(output, 2)).toBeUndefined();
+    expect(resultSeries(output, ["x"])).toBeUndefined();
   });
 });

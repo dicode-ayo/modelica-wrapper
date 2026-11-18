@@ -20,6 +20,7 @@ import type { z } from "zod";
 
 import {
   dispatchByName,
+  MAX_LOGGED_CHARS,
   invokeByName,
   type McpToolClient,
   type McpToolDeps,
@@ -468,7 +469,7 @@ describe("dispatchByName's logging and failure notification", () => {
 
     expect(infos).toHaveLength(1);
     expect(infos[0]?.length).toBeLessThan(huge.length);
-    expect(infos[0]).toContain("chars total");
+    expect(infos[0]).toContain("truncated");
   });
 
   it("works with neither log nor notifyFailure wired", async () => {
@@ -638,10 +639,56 @@ describe("invokeByName", () => {
     expect(text(dispatched)).toBe(`{"result":[[${0.1 + 0.2}],[0.3]]}`);
   });
 
-  it("logs a result matrix by its dimensions rather than its values", async () => {
+  it("logs a small result in full", async () => {
     const infos: string[] = [];
-    const row = Array.from({ length: 5000 }, (_, i) => i);
-    const outcome = await invokeByName(
+    await invokeByName(
+      {
+        ensureClient: async () =>
+          baseClient({
+            invoke: async () => ({
+              result: [
+                [0, 0.5, 1],
+                [2, 3, 4],
+              ],
+            }),
+          }),
+        verdicts,
+        log: { warn: () => undefined, info: (m) => infos.push(m) },
+      },
+      "readSimulationResult",
+      { filename: "r.mat", variables: ["time", "x"] },
+    );
+
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toContain('-> {"result":[[0,0.5,1],[2,3,4]]}');
+    expect(infos[0]).not.toContain("truncated");
+  });
+
+  it("logs what JSON.stringify would for values it omits or converts", async () => {
+    const infos: string[] = [];
+    const output = {
+      skipped: undefined,
+      when: new Date(0),
+      nested: [undefined, null, { a: [1, "two"], f: () => 0 }],
+      [Symbol("hidden")]: 1,
+    };
+    await invokeByName(
+      {
+        ensureClient: async () => baseClient({ invoke: async () => output }),
+        verdicts,
+        log: { warn: () => undefined, info: (m) => infos.push(m) },
+      },
+      "getVersion",
+      {},
+    );
+
+    expect(infos[0]?.split(" -> ")[1]).toBe(JSON.stringify(output));
+  });
+
+  it("caps a long result's logged values at MAX_LOGGED_CHARS", async () => {
+    const infos: string[] = [];
+    const row = Array.from({ length: 50_000 }, (_, i) => i);
+    await invokeByName(
       {
         ensureClient: async () =>
           baseClient({ invoke: async () => ({ result: [row, row] }) }),
@@ -652,10 +699,10 @@ describe("invokeByName", () => {
       { filename: "r.mat", variables: ["time", "x"] },
     );
 
-    expect(outcome.ok).toBe(true);
-    expect(infos).toHaveLength(1);
-    expect(infos[0]).toContain("2 rows x 5000 values");
-    expect(infos[0]).not.toContain("chars total");
+    const [, logged] = infos[0]?.split(" -> ") ?? [];
+    expect(logged?.startsWith('{"result":[[0,1,2,')).toBe(true);
+    expect(logged?.length).toBeLessThan(MAX_LOGGED_CHARS + 50);
+    expect(logged).toContain("truncated");
   });
 
   it("hands back the error result instead of throwing when OMC fails", async () => {

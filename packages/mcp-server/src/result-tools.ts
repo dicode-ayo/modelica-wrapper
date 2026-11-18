@@ -15,7 +15,7 @@ import {
   type McpToolDeps,
 } from "./dispatch.js";
 import { registerTool } from "./register-tool.js";
-import { resultMatrix, summarizeResult } from "./result-summary.js";
+import { resultSeries, summarizeResult } from "./result-summary.js";
 
 const MAX_POINTS = 1000;
 
@@ -24,6 +24,7 @@ const { filename, variables } = ReadSimulationResultInputSchema.shape;
 const SummarizeSimulationResultSchema = z.strictObject({
   filename,
   variables: variables
+    .min(1)
     .refine((names) => names.some((name) => name !== "time"), {
       message:
         "Name at least one variable other than `time`; `time` is always read and reported on its own.",
@@ -65,18 +66,14 @@ export function registerResultTools(
       });
       if (!outcome.ok) return outcome.error;
 
-      const matrix = resultMatrix(outcome.output, names.length + 1);
+      const matrix = resultSeries(outcome.output, names);
       if (matrix === undefined) {
-        return errorResult(
-          `readSimulationResult did not answer one row of numbers per variable for ${filename}, so there is nothing to summarize.`,
-        );
+        const message = `readSimulationResult did not answer one equal-length row per variable for ${filename}, so there is nothing to summarize.`;
+        deps.log?.warn(`${TOOL_NAME} failed: ${message}`);
+        return errorResult(message);
       }
-      const series = names.map((name, i) => ({
-        name,
-        values: matrix.rows[i] ?? [],
-      }));
       return textResult(
-        JSON.stringify(summarizeResult(matrix.time, series, points)),
+        JSON.stringify(summarizeResult(matrix.time, matrix.series, points)),
       );
     },
   );

@@ -15,6 +15,7 @@ import type {
   DeclareClient,
   OmcFnName,
   OmcInput,
+  OmcOutput,
   PersistClient,
   RootPackageClient,
   SaveClient,
@@ -211,33 +212,92 @@ async function refuseThenInvoke(
  */
 export const MAX_LOGGED_CHARS = 2000;
 
-function loggable(value: unknown): string {
-  let text: string;
-  try {
-    text = JSON.stringify(value) ?? String(value);
-  } catch {
-    text = String(value);
+class LogCapReached extends Error {}
+
+/** Arrays and plain objects, the values JSON.stringify would walk itself. */
+function walkable(value: unknown): value is object {
+  if (typeof value !== "object" || value === null || "toJSON" in value) {
+    return false;
   }
-  return text.length > MAX_LOGGED_CHARS
-    ? `${text.slice(0, MAX_LOGGED_CHARS)}… (${text.length} chars total)`
-    : text;
+  if (Array.isArray(value)) return true;
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }
 
 /**
- * A result matrix logs as its dimensions: serializing a long run's rows only
- * to keep the first {@link MAX_LOGGED_CHARS} of them costs more than the read.
+ * `JSON.stringify(value)`, cut off once it passes `limit` characters, so a
+ * long result matrix is not serialized whole only to keep its first rows.
+ * Undefined where JSON.stringify would answer undefined; throws where it would.
  */
-function loggableOutput(fn: OmcFnName, output: unknown): string {
-  const result: unknown =
-    fn === "readSimulationResult" &&
-    typeof output === "object" &&
-    output !== null
-      ? Reflect.get(output, "result")
-      : undefined;
-  if (!Array.isArray(result)) return loggable(output);
-  const first: unknown = result.at(0);
-  const columns = Array.isArray(first) ? first.length : 0;
-  return `${result.length} rows x ${columns} values`;
+function boundedJson(
+  value: unknown,
+  limit: number,
+): { text: string; truncated: boolean } | undefined {
+  let text = "";
+  const ancestors = new Set<object>();
+  const emit = (part: string): void => {
+    text += part;
+    if (text.length > limit) throw new LogCapReached();
+  };
+  const write = (v: unknown): boolean => {
+    if (!walkable(v)) {
+      const leaf = JSON.stringify(v);
+      if (leaf === undefined) return false;
+      emit(leaf);
+      return true;
+    }
+    if (ancestors.has(v)) {
+      throw new TypeError("Converting circular structure to JSON");
+    }
+    ancestors.add(v);
+    if (Array.isArray(v)) {
+      emit("[");
+      for (let i = 0; i < v.length; i++) {
+        if (i > 0) emit(",");
+        const element: unknown = v[i];
+        if (!write(element)) emit("null");
+      }
+      emit("]");
+    } else {
+      emit("{");
+      let first = true;
+      for (const [key, member] of Object.entries(v)) {
+        const prefix = `${first ? "" : ","}${JSON.stringify(key)}:`;
+        if (walkable(member)) {
+          emit(prefix);
+          write(member);
+        } else {
+          const leaf = JSON.stringify(member);
+          if (leaf === undefined) continue;
+          emit(prefix + leaf);
+        }
+        first = false;
+      }
+      emit("}");
+    }
+    ancestors.delete(v);
+    return true;
+  };
+  try {
+    return write(value) ? { text, truncated: false } : undefined;
+  } catch (err) {
+    if (err instanceof LogCapReached) {
+      return { text: text.slice(0, limit), truncated: true };
+    }
+    throw err;
+  }
+}
+
+function loggable(value: unknown): string {
+  try {
+    const json = boundedJson(value, MAX_LOGGED_CHARS);
+    if (json === undefined) return String(value);
+    return json.truncated
+      ? `${json.text}… (truncated at ${MAX_LOGGED_CHARS} chars)`
+      : json.text;
+  } catch {
+    return String(value);
+  }
 }
 
 function requestedVariables(input: unknown): readonly unknown[] {
@@ -294,19 +354,22 @@ export async function dispatchByName(
 }
 
 /** {@link invokeByName}'s answer: OMC's output, or the error result to return. */
-export type InvokeOutcome =
-  { ok: true; output: unknown } | { ok: false; error: CallToolResult };
+export type InvokeOutcome<T = unknown> =
+  { ok: true; output: T } | { ok: false; error: CallToolResult };
 
 /**
  * {@link invokeByName} with `input` checked against the function's own type,
- * the drift check {@link dispatch} gives a tool that serializes OMC's answer.
+ * the drift check {@link dispatch} gives a tool that serializes OMC's answer,
+ * and the output typed as that function's.
  */
 export async function invoke<K extends OmcFnName>(
   deps: McpToolDeps,
   fn: K,
   input: OmcInput<K>,
-): Promise<InvokeOutcome> {
-  return invokeByName(deps, fn, input);
+): Promise<InvokeOutcome<OmcOutput<K>>> {
+  // The client parses `output` against `fn`'s own output schema before
+  // answering it; the structural client interface only drops that type.
+  return invokeByName(deps, fn, input) as Promise<InvokeOutcome<OmcOutput<K>>>;
 }
 
 /**
@@ -331,7 +394,7 @@ export async function invokeByName(
       return { ok: false, error: errorResult(outcome.refusal) };
     }
 
-    log?.info(`${action} -> ${loggableOutput(fn, outcome.output)}`);
+    log?.info(`${action} -> ${loggable(outcome.output)}`);
     return { ok: true, output: outcome.output };
   } catch (err) {
     const message = errorDetail(err, fn);
