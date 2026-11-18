@@ -307,7 +307,10 @@ export {
   WriteCoordinateSystemSchema,
 } from "./api/editing/writeClassGraphics.js";
 
-export { ReadSimulationResultInputSchema } from "./api/results/readSimulationResult.js";
+export {
+  ReadSimulationResultInputSchema,
+  ReadSimulationResultOutputSchema,
+} from "./api/results/readSimulationResult.js";
 
 /**
  * The api modules that transform a model instance rather than talk to OMC.

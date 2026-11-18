@@ -223,6 +223,23 @@ function loggable(value: unknown): string {
     : text;
 }
 
+/**
+ * A result matrix logs as its dimensions: serializing a long run's rows only
+ * to keep the first {@link MAX_LOGGED_CHARS} of them costs more than the read.
+ */
+function loggableOutput(fn: OmcFnName, output: unknown): string {
+  const result: unknown =
+    fn === "readSimulationResult" &&
+    typeof output === "object" &&
+    output !== null
+      ? Reflect.get(output, "result")
+      : undefined;
+  if (!Array.isArray(result)) return loggable(output);
+  const first: unknown = result.at(0);
+  const columns = Array.isArray(first) ? first.length : 0;
+  return `${result.length} rows x ${columns} values`;
+}
+
 function requestedVariables(input: unknown): readonly unknown[] {
   if (typeof input !== "object" || input === null) return [];
   const variables: unknown = Reflect.get(input, "variables");
@@ -268,9 +285,12 @@ export async function dispatchByName(
   gateOn?: GatedClass,
 ): Promise<CallToolResult> {
   const outcome = await invokeByName(deps, fn, input, gateOn);
-  return outcome.ok
-    ? textResult(JSON.stringify(outcome.output))
-    : outcome.error;
+  if (!outcome.ok) return outcome.error;
+  const output =
+    fn === "readSimulationResult"
+      ? roundResultOutput(outcome.output, requestedVariables(input))
+      : outcome.output;
+  return textResult(JSON.stringify(output));
 }
 
 /** {@link invokeByName}'s answer: OMC's output, or the error result to return. */
@@ -278,9 +298,21 @@ export type InvokeOutcome =
   { ok: true; output: unknown } | { ok: false; error: CallToolResult };
 
 /**
+ * {@link invokeByName} with `input` checked against the function's own type,
+ * the drift check {@link dispatch} gives a tool that serializes OMC's answer.
+ */
+export async function invoke<K extends OmcFnName>(
+  deps: McpToolDeps,
+  fn: K,
+  input: OmcInput<K>,
+): Promise<InvokeOutcome> {
+  return invokeByName(deps, fn, input);
+}
+
+/**
  * {@link dispatchByName} for a composite tool that computes its own answer
- * from the output: the same gate, logging, rounding and failure handling, with
- * the output handed back rather than serialized.
+ * from the output: the same gate, logging and failure handling, with OMC's
+ * output handed back unrounded rather than serialized.
  */
 export async function invokeByName(
   deps: McpToolDeps,
@@ -299,12 +331,8 @@ export async function invokeByName(
       return { ok: false, error: errorResult(outcome.refusal) };
     }
 
-    const output =
-      fn === "readSimulationResult"
-        ? roundResultOutput(outcome.output, requestedVariables(input))
-        : outcome.output;
-    log?.info(`${action} -> ${loggable(output)}`);
-    return { ok: true, output };
+    log?.info(`${action} -> ${loggableOutput(fn, outcome.output)}`);
+    return { ok: true, output: outcome.output };
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);

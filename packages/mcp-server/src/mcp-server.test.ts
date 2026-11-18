@@ -278,10 +278,10 @@ describe("the server's instructions", () => {
       "lives in OMC's memory until saveClass runs",
     );
     expect(instructions).toContain("readSimulationResult returns whole series");
-    // A whole series costs a model ~50k characters for what a summary
-    // answers in ~150, so the summary is what it should reach for first.
-    expect(instructions).toMatch(
-      /summarizeSimulationResult[^.]*\. Start there/,
+    const summarize = instructions.indexOf("summarizeSimulationResult");
+    expect(summarize).toBeGreaterThanOrEqual(0);
+    expect(summarize).toBeLessThan(
+      instructions.indexOf("readSimulationResult returns"),
     );
     expect(instructions).toContain("typeName rather than cl");
   });
@@ -1450,11 +1450,44 @@ describe("summarizeSimulationResult", () => {
           final: 0.3,
           min: 0.3,
           max: 0.3,
-          minAt: 0,
+          minAt: 1,
           maxAt: 0,
         },
       },
     });
+  });
+
+  it("places an extreme by OMC's unrounded value, not a 6-digit tie", async () => {
+    answers.set("readSimulationResult", {
+      result: [
+        [0, 1, 9],
+        [0, 0.9999999, 0.99999999],
+      ],
+    });
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "summarizeSimulationResult",
+      arguments: { filename: "r.mat", variables: ["x"] },
+    })) as CallToolResult;
+
+    const { variables } = JSON.parse(text(result)) as {
+      variables: Record<string, { max: number; maxAt: number }>;
+    };
+    expect(variables["x"]).toMatchObject({ max: 1, maxAt: 9 });
+  });
+
+  it("refuses a request naming only time rather than reading", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "summarizeSimulationResult",
+      arguments: { filename: "r.mat", variables: ["time", "time"] },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("other than `time`");
+    expect(calls).toEqual([]);
   });
 
   it("adds a thinned waveform when points are asked for", async () => {

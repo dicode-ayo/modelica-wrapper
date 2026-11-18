@@ -238,15 +238,22 @@ A whole series is still every row the solver wrote: three variables over a
 1004-row run is ~51k characters. `summarizeSimulationResult`
 ([result-tools.ts](../packages/mcp-server/src/result-tools.ts)) reads `time`
 and the requested variables through the same `readSimulationResult` path, so
-the write gate, logging and failure handling are that tool's, and answers the
+the gate, logging and failure handling are that tool's, and answers the
 time span and row count plus each variable's `initial`, `final`, `min`, `max`
-and the times of its extremes (`minAt`, `maxAt`, first occurrence). With
-`points` (2–1000) it adds a `series` thinned to that many evenly spaced rows,
-first and last included; a result with no more rows than `points` comes back
-whole. Values carry the same 6 significant digits, times none of the rounding.
-A result with no rows answers `null` for every value rather than failing. The
-reduction itself is [result-summary.ts](../packages/mcp-server/src/result-summary.ts),
-free of MCP and OMC.
+and the times of its extremes (`minAt`, `maxAt`, first occurrence). It needs at
+least one variable other than `time`; a request naming only `time` is refused
+before the read. With `points` (2–1000) it adds a `series` thinned to that many
+evenly spaced rows, first and last included; a result with no more rows than
+`points` comes back whole. The extremes are found over OMC's unrounded values
+and each reported value is then rounded once to the same 6 significant digits,
+so a rounding tie never moves `minAt`/`maxAt`; times carry none of the
+rounding. `min` and `max` range over finite values only: a NaN or infinity is
+`null` where it would be reported (`initial`, `final`, a `series` sample) and
+is counted in a `nonFinite` field present only when there is one. A result
+with no rows answers `null` for every value rather than failing. The reduction
+itself is [result-summary.ts](../packages/mcp-server/src/result-summary.ts),
+free of MCP and OMC. Both tools log a result matrix by its dimensions, not its
+values.
 
 ### The model-instance read path
 

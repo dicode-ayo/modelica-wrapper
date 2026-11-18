@@ -616,7 +616,7 @@ describe("invokeByName", () => {
     verdicts,
   });
 
-  it("hands back the output dispatchByName would serialize, rounding included", async () => {
+  it("hands back OMC's output unrounded, leaving rounding to dispatchByName", async () => {
     const input = { filename: "r.mat", variables: ["time", "i"] };
     const answer = async () => ({ result: [[0.1 + 0.2], [0.1 + 0.2]] });
 
@@ -633,9 +633,29 @@ describe("invokeByName", () => {
 
     expect(outcome).toEqual({
       ok: true,
-      output: { result: [[0.1 + 0.2], [0.3]] },
+      output: { result: [[0.1 + 0.2], [0.1 + 0.2]] },
     });
-    expect(outcome.ok && JSON.stringify(outcome.output)).toBe(text(dispatched));
+    expect(text(dispatched)).toBe(`{"result":[[${0.1 + 0.2}],[0.3]]}`);
+  });
+
+  it("logs a result matrix by its dimensions rather than its values", async () => {
+    const infos: string[] = [];
+    const row = Array.from({ length: 5000 }, (_, i) => i);
+    const outcome = await invokeByName(
+      {
+        ensureClient: async () =>
+          baseClient({ invoke: async () => ({ result: [row, row] }) }),
+        verdicts,
+        log: { warn: () => undefined, info: (m) => infos.push(m) },
+      },
+      "readSimulationResult",
+      { filename: "r.mat", variables: ["time", "x"] },
+    );
+
+    expect(outcome.ok).toBe(true);
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toContain("2 rows x 5000 values");
+    expect(infos[0]).not.toContain("chars total");
   });
 
   it("hands back the error result instead of throwing when OMC fails", async () => {

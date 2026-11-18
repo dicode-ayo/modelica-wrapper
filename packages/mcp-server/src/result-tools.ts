@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import {
   errorResult,
-  invokeByName,
+  invoke,
   textResult,
   type McpToolDeps,
 } from "./dispatch.js";
@@ -24,9 +24,12 @@ const { filename, variables } = ReadSimulationResultInputSchema.shape;
 const SummarizeSimulationResultSchema = z.strictObject({
   filename,
   variables: variables
-    .min(1)
+    .refine((names) => names.some((name) => name !== "time"), {
+      message:
+        "Name at least one variable other than `time`; `time` is always read and reported on its own.",
+    })
     .describe(
-      "Variable identifiers to summarize (dotted paths). `time` is always read and reported on its own.",
+      "Variable identifiers to summarize (dotted paths), at least one other than `time`, which is always read and reported on its own.",
     ),
   points: z
     .number()
@@ -56,24 +59,25 @@ export function registerResultTools(
     },
     async ({ filename, variables, points }) => {
       const names = [...new Set(variables)].filter((v) => v !== "time");
-      const outcome = await invokeByName(deps, "readSimulationResult", {
+      const outcome = await invoke(deps, "readSimulationResult", {
         filename,
         variables: ["time", ...names],
       });
       if (!outcome.ok) return outcome.error;
 
       const matrix = resultMatrix(outcome.output, names.length + 1);
-      const [time, ...rows] = matrix ?? [];
-      if (time === undefined) {
+      if (matrix === undefined) {
         return errorResult(
           `readSimulationResult did not answer one row of numbers per variable for ${filename}, so there is nothing to summarize.`,
         );
       }
-      const series = names.flatMap((name, i) => {
-        const values = rows[i];
-        return values === undefined ? [] : [{ name, values }];
-      });
-      return textResult(JSON.stringify(summarizeResult(time, series, points)));
+      const series = names.map((name, i) => ({
+        name,
+        values: matrix.rows[i] ?? [],
+      }));
+      return textResult(
+        JSON.stringify(summarizeResult(matrix.time, series, points)),
+      );
     },
   );
   return [TOOL_NAME];
