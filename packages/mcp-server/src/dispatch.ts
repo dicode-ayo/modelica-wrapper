@@ -267,6 +267,27 @@ export async function dispatchByName(
   input: unknown,
   gateOn?: GatedClass,
 ): Promise<CallToolResult> {
+  const outcome = await invokeByName(deps, fn, input, gateOn);
+  return outcome.ok
+    ? textResult(JSON.stringify(outcome.output))
+    : outcome.error;
+}
+
+/** {@link invokeByName}'s answer: OMC's output, or the error result to return. */
+export type InvokeOutcome =
+  { ok: true; output: unknown } | { ok: false; error: CallToolResult };
+
+/**
+ * {@link dispatchByName} for a composite tool that computes its own answer
+ * from the output: the same gate, logging, rounding and failure handling, with
+ * the output handed back rather than serialized.
+ */
+export async function invokeByName(
+  deps: McpToolDeps,
+  fn: OmcFnName,
+  input: unknown,
+  gateOn?: GatedClass,
+): Promise<InvokeOutcome> {
   const { log, notifyFailure } = deps;
   const action = `${fn} ${loggable(input)}`;
   try {
@@ -275,7 +296,7 @@ export async function dispatchByName(
     if (!outcome.ok) {
       log?.warn(`${action} refused: ${outcome.refusal}`);
       notifyFailure?.(`${fn} refused: ${outcome.refusal}`);
-      return errorResult(outcome.refusal);
+      return { ok: false, error: errorResult(outcome.refusal) };
     }
 
     const output =
@@ -283,7 +304,7 @@ export async function dispatchByName(
         ? roundResultOutput(outcome.output, requestedVariables(input))
         : outcome.output;
     log?.info(`${action} -> ${loggable(output)}`);
-    return textResult(JSON.stringify(output));
+    return { ok: true, output };
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);
@@ -291,6 +312,6 @@ export async function dispatchByName(
       isReadOnlyFunction(fn) &&
       (err instanceof OmcDiagnosticError || err instanceof ZodError);
     if (!quiet) notifyFailure?.(`${fn} failed: ${message}`);
-    return errorResult(message);
+    return { ok: false, error: errorResult(message) };
   }
 }

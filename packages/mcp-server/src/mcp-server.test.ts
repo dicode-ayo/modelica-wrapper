@@ -56,6 +56,8 @@ let declaredClasses: string[];
 /** What `listFile` returns per class, as OMC's unparser would. */
 let listings: Map<string, string>;
 let workspace: SourceTree | undefined;
+/** What `invoke` answers per function, in place of its default `{ ok: true }`. */
+let answers: Map<string, unknown>;
 
 /**
  * The wrappers `createClass` composes are recorded alongside `invoke` so every
@@ -69,7 +71,7 @@ const client: McpToolClient = {
     }
     if (fn === "getErrorString") return drainErrorBuffer();
     if (invokeLeavesError !== undefined) errorBuffer = invokeLeavesError;
-    return { ok: true };
+    return answers.has(fn) ? answers.get(fn) : { ok: true };
   },
   deleteClass: async (input) => {
     calls.push({ fn: "deleteClass", input });
@@ -157,6 +159,7 @@ beforeEach(() => {
   declaredClasses = [];
   listings = new Map();
   workspace = undefined;
+  answers = new Map();
 });
 
 describe("the published tool set", () => {
@@ -166,7 +169,7 @@ describe("the published tool set", () => {
     const { tools } = await mcp.listTools();
     const names = tools.map((t) => t.name);
 
-    expect(names).toHaveLength(PARITY_TOOLS.length + 3 + 7 + 3);
+    expect(names).toHaveLength(PARITY_TOOLS.length + 3 + 7 + 4);
     expect(names).toContain("readSimulationResult");
     expect(names).toEqual(expect.arrayContaining([...PARITY_TOOLS]));
     expect(names).toEqual(
@@ -184,6 +187,7 @@ describe("the published tool set", () => {
         "setSourceCode",
         "createClass",
         "saveClass",
+        "summarizeSimulationResult",
       ]),
     );
     // `writeClassGraphics` is what the seven shape tools replace, and
@@ -211,6 +215,7 @@ describe("the published tool set", () => {
     expect(hint("getModelInstance")).toBe(true);
     expect(hint("addComponent")).toBe(false);
     expect(hint("addRectangle")).toBe(false);
+    expect(hint("summarizeSimulationResult")).toBe(true);
     // Read-only or mutating depending on `fn`, and annotations are per-tool.
     expect(hint("omc_invoke")).toBe(false);
   });
@@ -273,6 +278,11 @@ describe("the server's instructions", () => {
       "lives in OMC's memory until saveClass runs",
     );
     expect(instructions).toContain("readSimulationResult returns whole series");
+    // A whole series costs a model ~50k characters for what a summary
+    // answers in ~150, so the summary is what it should reach for first.
+    expect(instructions).toMatch(
+      /summarizeSimulationResult[^.]*\. Start there/,
+    );
     expect(instructions).toContain("typeName rather than cl");
   });
 });
@@ -1400,8 +1410,113 @@ describe("setSourceCode", () => {
   });
 });
 
+describe("summarizeSimulationResult", () => {
+  it("reads time first, once, and each variable once, through readSimulationResult", async () => {
+    answers.set("readSimulationResult", {
+      result: [
+        [0, 1, 2],
+        [5, -1, 3],
+        [0.1 + 0.2, 0.3, 0.3],
+      ],
+    });
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "summarizeSimulationResult",
+      arguments: {
+        filename: "r.mat",
+        variables: ["x", "time", "der(x)", "x"],
+      },
+    })) as CallToolResult;
+
+    const reads = calls.filter((c) => c.fn === "readSimulationResult");
+    expect(reads).toEqual([
+      {
+        fn: "readSimulationResult",
+        input: expect.objectContaining({
+          filename: "r.mat",
+          variables: ["time", "x", "der(x)"],
+        }),
+      },
+    ]);
+    expect(result.isError).toBeFalsy();
+    // `time` is reported in its own block, not as a variable of itself.
+    expect(JSON.parse(text(result))).toEqual({
+      time: { start: 0, stop: 2, rows: 3 },
+      variables: {
+        x: { initial: 5, final: 3, min: -1, max: 5, minAt: 1, maxAt: 0 },
+        "der(x)": {
+          initial: 0.3,
+          final: 0.3,
+          min: 0.3,
+          max: 0.3,
+          minAt: 0,
+          maxAt: 0,
+        },
+      },
+    });
+  });
+
+  it("adds a thinned waveform when points are asked for", async () => {
+    const time = Array.from({ length: 1004 }, (_, i) => i / 1003);
+    answers.set("readSimulationResult", { result: [time, time] });
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "summarizeSimulationResult",
+      arguments: { filename: "r.mat", variables: ["x"], points: 4 },
+    })) as CallToolResult;
+
+    const { series } = JSON.parse(text(result)) as {
+      series: Record<string, number[]>;
+    };
+    expect(series["time"]).toHaveLength(4);
+    expect(series["time"]?.at(0)).toBe(0);
+    expect(series["time"]?.at(-1)).toBe(1);
+    expect(series["x"]).toHaveLength(4);
+  });
+
+  it("answers an error result when OMC fails the read", async () => {
+    failWith = "Failed to open simulation result gone.mat";
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "summarizeSimulationResult",
+      arguments: { filename: "gone.mat", variables: ["x"] },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("gone.mat");
+  });
+
+  it("answers an error result when the read is not a matrix", async () => {
+    answers.set("readSimulationResult", { result: [[0, 1]] });
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "summarizeSimulationResult",
+      arguments: { filename: "r.mat", variables: ["x"] },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("nothing to summarize");
+  });
+
+  it("refuses points outside the bound rather than reading", async () => {
+    const mcp = await connect();
+
+    const result = (await mcp.callTool({
+      name: "summarizeSimulationResult",
+      arguments: { filename: "r.mat", variables: ["x"], points: 1 },
+    })) as CallToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(calls).toEqual([]);
+  });
+});
+
 /**
- * The 13 tools whose input schema is hand-written in this package rather than
+ * The 14 tools whose input schema is hand-written in this package rather than
  * projected from the registry — every other tool's schema comes from
  * `packages/omc-client/src/`, already `z.strictObject`. Each case is a
  * minimal valid argument set for that tool plus one key it does not have;
@@ -1413,6 +1528,10 @@ const STRICT_SCHEMA_CASES: Array<{
 }> = [
   { name: "createClass", args: { name: "X", kind: "model", bogusKey: true } },
   { name: "saveClass", args: { className: "Demo.RLC", bogusKey: true } },
+  {
+    name: "summarizeSimulationResult",
+    args: { filename: "r.mat", variables: ["x"], bogusKey: true },
+  },
   {
     name: "setSourceCode",
     args: {

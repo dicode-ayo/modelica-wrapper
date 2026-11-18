@@ -20,6 +20,7 @@ import type { z } from "zod";
 
 import {
   dispatchByName,
+  invokeByName,
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
@@ -606,5 +607,49 @@ describe("dispatchByName: simulation result precision (issue #719)", () => {
     );
 
     expect(text(result)).toBe(`{"result":[[${0.1 + 0.2}]]}`);
+  });
+});
+
+describe("invokeByName", () => {
+  const deps = (invoke: McpToolClient["invoke"]): McpToolDeps => ({
+    ensureClient: async () => baseClient({ invoke }),
+    verdicts,
+  });
+
+  it("hands back the output dispatchByName would serialize, rounding included", async () => {
+    const input = { filename: "r.mat", variables: ["time", "i"] };
+    const answer = async () => ({ result: [[0.1 + 0.2], [0.1 + 0.2]] });
+
+    const outcome = await invokeByName(
+      deps(answer),
+      "readSimulationResult",
+      input,
+    );
+    const dispatched = await dispatchByName(
+      deps(answer),
+      "readSimulationResult",
+      input,
+    );
+
+    expect(outcome).toEqual({
+      ok: true,
+      output: { result: [[0.1 + 0.2], [0.3]] },
+    });
+    expect(outcome.ok && JSON.stringify(outcome.output)).toBe(text(dispatched));
+  });
+
+  it("hands back the error result instead of throwing when OMC fails", async () => {
+    const outcome = await invokeByName(
+      deps(async () => {
+        throw new OmcDiagnosticError("Error: Failed to open gone.mat");
+      }),
+      "readSimulationResult",
+      { filename: "gone.mat", variables: ["time"] },
+    );
+
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.error.isError).toBe(true);
+    expect(text(outcome.error)).toContain("gone.mat");
   });
 });
