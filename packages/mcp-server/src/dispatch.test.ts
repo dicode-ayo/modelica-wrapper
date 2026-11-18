@@ -20,7 +20,7 @@ import type { z } from "zod";
 
 import {
   dispatchByName,
-  MAX_LOGGED_CHARS,
+  errorResult,
   invokeByName,
   type McpToolClient,
   type McpToolDeps,
@@ -189,24 +189,24 @@ describe("dispatchByName's error-buffer drain under concurrency", () => {
   });
 });
 
-describe("dispatchByName's logging and failure notification", () => {
-  function makeLog(): {
-    log: { warn: (m: string) => void; info: (m: string) => void };
-    warnings: string[];
-    infos: string[];
-  } {
-    const warnings: string[] = [];
-    const infos: string[] = [];
-    return {
-      log: {
-        warn: (m) => warnings.push(m),
-        info: (m) => infos.push(m),
-      },
-      warnings,
-      infos,
-    };
-  }
+function makeLog(): {
+  log: { warn: (m: string) => void; info: (m: string) => void };
+  warnings: string[];
+  infos: string[];
+} {
+  const warnings: string[] = [];
+  const infos: string[] = [];
+  return {
+    log: {
+      warn: (m) => warnings.push(m),
+      info: (m) => infos.push(m),
+    },
+    warnings,
+    infos,
+  };
+}
 
+describe("dispatchByName's logging and failure notification", () => {
   it("logs a successful call's action and output, without notifying", async () => {
     const { log, infos, warnings } = makeLog();
     const notified: string[] = [];
@@ -469,7 +469,7 @@ describe("dispatchByName's logging and failure notification", () => {
 
     expect(infos).toHaveLength(1);
     expect(infos[0]?.length).toBeLessThan(huge.length);
-    expect(infos[0]).toContain("truncated");
+    expect(infos[0]).toContain("chars total");
   });
 
   it("works with neither log nor notifyFailure wired", async () => {
@@ -600,6 +600,23 @@ describe("dispatchByName: simulation result precision (issue #719)", () => {
     );
   });
 
+  it("logs readSimulationResult's numbers as rounded for the model", async () => {
+    const { log, infos } = makeLog();
+    await dispatchByName(
+      {
+        ensureClient: async () =>
+          baseClient({ invoke: async () => ({ result: [[0], [0.1 + 0.2]] }) }),
+        verdicts,
+        log,
+      },
+      "readSimulationResult",
+      { filename: "r.mat", variables: ["time", "i"] },
+    );
+
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toContain('-> {"result":[[0],[0.3]]}');
+  });
+
   it("leaves another function's numbers at full precision", async () => {
     const result = await dispatchByName(
       deps(async () => ({ result: [[0.1 + 0.2]] })),
@@ -612,111 +629,45 @@ describe("dispatchByName: simulation result precision (issue #719)", () => {
 });
 
 describe("invokeByName", () => {
-  const deps = (invoke: McpToolClient["invoke"]): McpToolDeps => ({
-    ensureClient: async () => baseClient({ invoke }),
-    verdicts,
-  });
-
-  it("hands back OMC's output unrounded, leaving rounding to dispatchByName", async () => {
-    const input = { filename: "r.mat", variables: ["time", "i"] };
-    const answer = async () => ({ result: [[0.1 + 0.2], [0.1 + 0.2]] });
-
-    const outcome = await invokeByName(
-      deps(answer),
-      "readSimulationResult",
-      input,
-    );
-    const dispatched = await dispatchByName(
-      deps(answer),
-      "readSimulationResult",
-      input,
-    );
-
-    expect(outcome).toEqual({
-      ok: true,
-      output: { result: [[0.1 + 0.2], [0.1 + 0.2]] },
-    });
-    expect(text(dispatched)).toBe(`{"result":[[${0.1 + 0.2}],[0.3]]}`);
-  });
-
-  it("logs a small result in full", async () => {
-    const infos: string[] = [];
-    await invokeByName(
+  it("answers an error result rather than throwing when respond throws", async () => {
+    const { log, warnings } = makeLog();
+    const result = await invokeByName(
       {
-        ensureClient: async () =>
-          baseClient({
-            invoke: async () => ({
-              result: [
-                [0, 0.5, 1],
-                [2, 3, 4],
-              ],
-            }),
-          }),
+        ensureClient: async () => baseClient({ invoke: async () => ({}) }),
         verdicts,
-        log: { warn: () => undefined, info: (m) => infos.push(m) },
+        log,
       },
       "readSimulationResult",
-      { filename: "r.mat", variables: ["time", "x"] },
-    );
-
-    expect(infos).toHaveLength(1);
-    expect(infos[0]).toContain('-> {"result":[[0,0.5,1],[2,3,4]]}');
-    expect(infos[0]).not.toContain("truncated");
-  });
-
-  it("logs what JSON.stringify would for values it omits or converts", async () => {
-    const infos: string[] = [];
-    const output = {
-      skipped: undefined,
-      when: new Date(0),
-      nested: [undefined, null, { a: [1, "two"], f: () => 0 }],
-      [Symbol("hidden")]: 1,
-    };
-    await invokeByName(
-      {
-        ensureClient: async () => baseClient({ invoke: async () => output }),
-        verdicts,
-        log: { warn: () => undefined, info: (m) => infos.push(m) },
+      { filename: "r.mat", variables: ["time"] },
+      () => {
+        throw new TypeError("not a matrix");
       },
-      "getVersion",
-      {},
     );
 
-    expect(infos[0]?.split(" -> ")[1]).toBe(JSON.stringify(output));
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("not a matrix");
+    expect(warnings).toHaveLength(1);
   });
 
-  it("caps a long result's logged values at MAX_LOGGED_CHARS", async () => {
-    const infos: string[] = [];
-    const row = Array.from({ length: 50_000 }, (_, i) => i);
-    await invokeByName(
+  it("logs an error result from respond as a failure, quiet for a read", async () => {
+    const { log, warnings, infos } = makeLog();
+    const notified: string[] = [];
+    const result = await invokeByName(
       {
-        ensureClient: async () =>
-          baseClient({ invoke: async () => ({ result: [row, row] }) }),
+        ensureClient: async () => baseClient(),
         verdicts,
-        log: { warn: () => undefined, info: (m) => infos.push(m) },
+        log,
+        notifyFailure: (m) => notified.push(m),
       },
       "readSimulationResult",
-      { filename: "r.mat", variables: ["time", "x"] },
+      { filename: "r.mat", variables: ["time"] },
+      () => errorResult("wrong shape"),
     );
 
-    const [, logged] = infos[0]?.split(" -> ") ?? [];
-    expect(logged?.startsWith('{"result":[[0,1,2,')).toBe(true);
-    expect(logged?.length).toBeLessThan(MAX_LOGGED_CHARS + 50);
-    expect(logged).toContain("truncated");
-  });
-
-  it("hands back the error result instead of throwing when OMC fails", async () => {
-    const outcome = await invokeByName(
-      deps(async () => {
-        throw new OmcDiagnosticError("Error: Failed to open gone.mat");
-      }),
-      "readSimulationResult",
-      { filename: "gone.mat", variables: ["time"] },
-    );
-
-    expect(outcome.ok).toBe(false);
-    if (outcome.ok) return;
-    expect(outcome.error.isError).toBe(true);
-    expect(text(outcome.error)).toContain("gone.mat");
+    expect(result.isError).toBe(true);
+    expect(infos).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("failed: wrong shape");
+    expect(notified).toEqual([]);
   });
 });

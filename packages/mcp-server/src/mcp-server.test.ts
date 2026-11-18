@@ -1541,21 +1541,45 @@ describe("summarizeSimulationResult", () => {
     expect(result.isError).toBe(true);
     expect(text(result)).toContain("nothing to summarize");
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("summarizeSimulationResult failed");
+    expect(warnings[0]).toContain("readSimulationResult");
+    expect(warnings[0]).toContain("failed: ");
+    expect(warnings[0]).toContain("nothing to summarize");
     expect(warnings[0]).toContain("r.mat");
     expect(notified).toEqual([]);
+  });
+
+  it("logs the summary the model got, not the matrix it was computed from", async () => {
+    answers.set("readSimulationResult", {
+      result: [
+        [0, 1, 2],
+        [0.1 + 0.2, 7, 4],
+      ],
+    });
+    const infos: string[] = [];
+    const mcp = await connect({
+      log: { info: (m) => infos.push(m), warn: () => undefined },
+    });
+
+    const result = (await mcp.callTool({
+      name: "summarizeSimulationResult",
+      arguments: { filename: "r.mat", variables: ["x"] },
+    })) as CallToolResult;
+
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toContain(`-> ${text(result)}`);
+    expect(infos[0]).toContain('"maxAt":1');
+    expect(infos[0]).not.toContain(String(0.1 + 0.2));
   });
 
   it("advertises that variables cannot be empty", async () => {
     const mcp = await connect();
 
     const { tools } = await mcp.listTools();
-    const variables = (
-      tools.find((t) => t.name === "summarizeSimulationResult")?.inputSchema
-        .properties as Record<string, { minItems?: number }> | undefined
-    )?.["variables"];
+    const tool = tools.find((t) => t.name === "summarizeSimulationResult");
 
-    expect(variables?.minItems).toBe(1);
+    expect(tool?.inputSchema.properties).toMatchObject({
+      variables: { minItems: 1 },
+    });
   });
 
   it("refuses points outside the bound rather than reading", async () => {

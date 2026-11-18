@@ -1,7 +1,8 @@
 /**
  * Reading a simulation result for what a model checks it against, rather than
- * for the whole waveform. The read itself is `readSimulationResult`'s, so the
- * gate, the logging and the failure handling are that tool's too.
+ * for the whole waveform. The read itself goes through `readSimulationResult`,
+ * so its gate, logging and failure handling apply. An answer whose rows do not
+ * match `variables` is this tool's to report.
  */
 
 import { ReadSimulationResultInputSchema } from "@dicode/omc-client";
@@ -60,20 +61,21 @@ export function registerResultTools(
     },
     async ({ filename, variables, points }) => {
       const names = [...new Set(variables)].filter((v) => v !== "time");
-      const outcome = await invoke(deps, "readSimulationResult", {
-        filename,
-        variables: ["time", ...names],
-      });
-      if (!outcome.ok) return outcome.error;
-
-      const matrix = resultSeries(outcome.output, names);
-      if (matrix === undefined) {
-        const message = `readSimulationResult did not answer one equal-length row per variable for ${filename}, so there is nothing to summarize.`;
-        deps.log?.warn(`${TOOL_NAME} failed: ${message}`);
-        return errorResult(message);
-      }
-      return textResult(
-        JSON.stringify(summarizeResult(matrix.time, matrix.series, points)),
+      return invoke(
+        deps,
+        "readSimulationResult",
+        { filename, variables: ["time", ...names] },
+        (output) => {
+          const matrix = resultSeries(output, names);
+          if (matrix === undefined) {
+            return errorResult(
+              `readSimulationResult did not answer one equal-length row of numbers per variable for ${filename}, so there is nothing to summarize.`,
+            );
+          }
+          return textResult(
+            JSON.stringify(summarizeResult(matrix.time, matrix.series, points)),
+          );
+        },
       );
     },
   );

@@ -15,7 +15,6 @@ import type {
   DeclareClient,
   OmcFnName,
   OmcInput,
-  OmcOutput,
   PersistClient,
   RootPackageClient,
   SaveClient,
@@ -212,92 +211,26 @@ async function refuseThenInvoke(
  */
 export const MAX_LOGGED_CHARS = 2000;
 
-class LogCapReached extends Error {}
-
-/** Arrays and plain objects, the values JSON.stringify would walk itself. */
-function walkable(value: unknown): value is object {
-  if (typeof value !== "object" || value === null || "toJSON" in value) {
-    return false;
-  }
-  if (Array.isArray(value)) return true;
-  const proto: unknown = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
-/**
- * `JSON.stringify(value)`, cut off once it passes `limit` characters, so a
- * long result matrix is not serialized whole only to keep its first rows.
- * Undefined where JSON.stringify would answer undefined; throws where it would.
- */
-function boundedJson(
-  value: unknown,
-  limit: number,
-): { text: string; truncated: boolean } | undefined {
-  let text = "";
-  const ancestors = new Set<object>();
-  const emit = (part: string): void => {
-    text += part;
-    if (text.length > limit) throw new LogCapReached();
-  };
-  const write = (v: unknown): boolean => {
-    if (!walkable(v)) {
-      const leaf = JSON.stringify(v);
-      if (leaf === undefined) return false;
-      emit(leaf);
-      return true;
-    }
-    if (ancestors.has(v)) {
-      throw new TypeError("Converting circular structure to JSON");
-    }
-    ancestors.add(v);
-    if (Array.isArray(v)) {
-      emit("[");
-      for (let i = 0; i < v.length; i++) {
-        if (i > 0) emit(",");
-        const element: unknown = v[i];
-        if (!write(element)) emit("null");
-      }
-      emit("]");
-    } else {
-      emit("{");
-      let first = true;
-      for (const [key, member] of Object.entries(v)) {
-        const prefix = `${first ? "" : ","}${JSON.stringify(key)}:`;
-        if (walkable(member)) {
-          emit(prefix);
-          write(member);
-        } else {
-          const leaf = JSON.stringify(member);
-          if (leaf === undefined) continue;
-          emit(prefix + leaf);
-        }
-        first = false;
-      }
-      emit("}");
-    }
-    ancestors.delete(v);
-    return true;
-  };
-  try {
-    return write(value) ? { text, truncated: false } : undefined;
-  } catch (err) {
-    if (err instanceof LogCapReached) {
-      return { text: text.slice(0, limit), truncated: true };
-    }
-    throw err;
-  }
+function capped(text: string): string {
+  return text.length > MAX_LOGGED_CHARS
+    ? `${text.slice(0, MAX_LOGGED_CHARS)}… (${text.length} chars total)`
+    : text;
 }
 
 function loggable(value: unknown): string {
+  let text: string;
   try {
-    const json = boundedJson(value, MAX_LOGGED_CHARS);
-    if (json === undefined) return String(value);
-    return json.truncated
-      ? `${json.text}… (truncated at ${MAX_LOGGED_CHARS} chars)`
-      : json.text;
+    text = JSON.stringify(value) ?? String(value);
   } catch {
-    return String(value);
+    text = String(value);
   }
+  return capped(text);
+}
+
+function resultText(result: CallToolResult): string {
+  return result.content
+    .map((part) => (part.type === "text" ? part.text : `[${part.type}]`))
+    .join("\n");
 }
 
 function requestedVariables(input: unknown): readonly unknown[] {
@@ -344,45 +277,49 @@ export async function dispatchByName(
   input: unknown,
   gateOn?: GatedClass,
 ): Promise<CallToolResult> {
-  const outcome = await invokeByName(deps, fn, input, gateOn);
-  if (!outcome.ok) return outcome.error;
-  const output =
-    fn === "readSimulationResult"
-      ? roundResultOutput(outcome.output, requestedVariables(input))
-      : outcome.output;
-  return textResult(JSON.stringify(output));
+  return invokeByName(
+    deps,
+    fn,
+    input,
+    (output) =>
+      textResult(
+        JSON.stringify(
+          fn === "readSimulationResult"
+            ? roundResultOutput(output, requestedVariables(input))
+            : output,
+        ),
+      ),
+    gateOn,
+  );
 }
-
-/** {@link invokeByName}'s answer: OMC's output, or the error result to return. */
-export type InvokeOutcome<T = unknown> =
-  { ok: true; output: T } | { ok: false; error: CallToolResult };
 
 /**
  * {@link invokeByName} with `input` checked against the function's own type,
- * the drift check {@link dispatch} gives a tool that serializes OMC's answer,
- * and the output typed as that function's.
+ * the drift check {@link dispatch} gives a composite tool.
  */
 export async function invoke<K extends OmcFnName>(
   deps: McpToolDeps,
   fn: K,
   input: OmcInput<K>,
-): Promise<InvokeOutcome<OmcOutput<K>>> {
-  // The client parses `output` against `fn`'s own output schema before
-  // answering it; the structural client interface only drops that type.
-  return invokeByName(deps, fn, input) as Promise<InvokeOutcome<OmcOutput<K>>>;
+  respond: (output: unknown) => CallToolResult,
+): Promise<CallToolResult> {
+  return invokeByName(deps, fn, input, respond);
 }
 
 /**
  * {@link dispatchByName} for a composite tool that computes its own answer
- * from the output: the same gate, logging and failure handling, with OMC's
- * output handed back unrounded rather than serialized.
+ * from OMC's unrounded output: `respond` runs under the same gate, logging and
+ * failure handling, and what it returns is what gets logged, so the log shows
+ * exactly what the model got. An error result from `respond` is logged as a
+ * failure and notified only for a function that mutates.
  */
 export async function invokeByName(
   deps: McpToolDeps,
   fn: OmcFnName,
   input: unknown,
+  respond: (output: unknown) => CallToolResult,
   gateOn?: GatedClass,
-): Promise<InvokeOutcome> {
+): Promise<CallToolResult> {
   const { log, notifyFailure } = deps;
   const action = `${fn} ${loggable(input)}`;
   try {
@@ -391,11 +328,18 @@ export async function invokeByName(
     if (!outcome.ok) {
       log?.warn(`${action} refused: ${outcome.refusal}`);
       notifyFailure?.(`${fn} refused: ${outcome.refusal}`);
-      return { ok: false, error: errorResult(outcome.refusal) };
+      return errorResult(outcome.refusal);
     }
 
-    log?.info(`${action} -> ${loggable(outcome.output)}`);
-    return { ok: true, output: outcome.output };
+    const result = respond(outcome.output);
+    const text = capped(resultText(result));
+    if (result.isError === true) {
+      log?.warn(`${action} failed: ${text}`);
+      if (!isReadOnlyFunction(fn)) notifyFailure?.(`${fn} failed: ${text}`);
+    } else {
+      log?.info(`${action} -> ${text}`);
+    }
+    return result;
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);
@@ -403,6 +347,6 @@ export async function invokeByName(
       isReadOnlyFunction(fn) &&
       (err instanceof OmcDiagnosticError || err instanceof ZodError);
     if (!quiet) notifyFailure?.(`${fn} failed: ${message}`);
-    return { ok: false, error: errorResult(message) };
+    return errorResult(message);
   }
 }

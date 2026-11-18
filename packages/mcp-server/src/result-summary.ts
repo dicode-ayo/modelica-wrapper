@@ -11,7 +11,10 @@
 
 import { roundSignificant } from "./result-precision.js";
 
-/** `null` throughout when the result has no rows. */
+/**
+ * `null` throughout when the result has no rows. A non-finite value is
+ * reported as `null` and left out of the search for the extremes.
+ */
 export interface VariableSummary {
   initial: number | null;
   final: number | null;
@@ -48,7 +51,9 @@ export function decimatedIndices(rows: number, points: number): number[] {
 }
 
 function rounded(value: number | undefined): number | null {
-  return value === undefined ? null : roundSignificant(value);
+  return value === undefined || !Number.isFinite(value)
+    ? null
+    : roundSignificant(value);
 }
 
 function summarizeSeries(
@@ -58,6 +63,7 @@ function summarizeSeries(
   let min: { value: number; at: number | null } | undefined;
   let max: { value: number; at: number | null } | undefined;
   values.forEach((value, i) => {
+    if (!Number.isFinite(value)) return;
     const at = time[i] ?? null;
     if (min === undefined || value < min.value) min = { value, at };
     if (max === undefined || value > max.value) max = { value, at };
@@ -103,21 +109,31 @@ export function summarizeResult(
   return summary;
 }
 
+function isNumberRow(row: unknown): row is readonly number[] {
+  return Array.isArray(row) && row.every((value) => typeof value === "number");
+}
+
 /**
  * `readSimulationResult`'s `result` split into its `time` row and one series
- * per name in `names`, when it holds exactly that many rows, all one length,
- * and undefined otherwise.
+ * per name in `names`, when it holds exactly that many rows of numbers, all
+ * one length, and undefined otherwise. A structural check rather than a
+ * schema parse, which would walk every cell of a long run a second time.
  */
 export function resultSeries(
-  output: { readonly result: readonly (readonly number[])[] },
+  output: unknown,
   names: readonly string[],
 ): { time: readonly number[]; series: NamedSeries[] } | undefined {
-  const [time, ...rows] = output.result;
-  if (time === undefined || rows.length !== names.length) return undefined;
+  if (typeof output !== "object" || output === null) return undefined;
+  const result: unknown = Reflect.get(output, "result");
+  if (!Array.isArray(result) || result.length !== names.length + 1) {
+    return undefined;
+  }
+  const [time, ...rows]: unknown[] = result;
+  if (!isNumberRow(time)) return undefined;
   const series: NamedSeries[] = [];
   for (const [i, name] of names.entries()) {
     const values = rows[i];
-    if (values === undefined || values.length !== time.length) return undefined;
+    if (!isNumberRow(values) || values.length !== time.length) return undefined;
     series.push({ name, values });
   }
   return { time, series };

@@ -237,24 +237,24 @@ flattened to zero.
 A whole series is still every row the solver wrote: three variables over a
 1004-row run is ~51k characters. `summarizeSimulationResult`
 ([result-tools.ts](../packages/mcp-server/src/result-tools.ts)) reads `time`
-and the requested variables through the same `readSimulationResult` path, so
-the gate, logging and failure handling are that tool's, and answers the
-time span and row count plus each variable's `initial`, `final`, `min`, `max`
-and the times of its extremes (`minAt`, `maxAt`, first occurrence). It needs at
-least one variable other than `time`; a request naming only `time` is refused
-before the read. With `points` (2–1000) it adds a `series` thinned to that many
-evenly spaced rows, first and last included; a result with no more rows than
-`points` comes back whole. The extremes are found over OMC's unrounded values
-and each reported value is then rounded once to the same 6 significant digits,
-so a rounding tie never moves `minAt`/`maxAt`; times carry none of the
-rounding. A result with no rows answers `null` for every value rather than
-failing; one whose rows do not match the variables asked for is an error result,
-logged as a warning but not raised as a notification, like any other read that
-failed on OMC's own answer. The reduction itself is
+and the requested variables through `readSimulationResult`, so that read's
+gate and failure handling apply, and answers the time span and row count plus
+each variable's `initial`, `final`, `min`, `max` and the times of its extremes
+(`minAt`, `maxAt`, first occurrence). It needs at least one variable other
+than `time`; a request naming only `time` is refused before the read. With
+`points` (2–1000) it adds a `series` thinned to that many evenly spaced rows,
+first and last included; a result with no more rows than `points` comes back
+whole. The extremes are found over OMC's unrounded values and each reported
+value is then rounded once to the same 6 significant digits, so a rounding tie
+never moves `minAt`/`maxAt`; times carry none of the rounding. A non-finite
+value is skipped when finding the extremes and reported as `null`. A result
+with no rows answers `null` for every value rather than failing. An answer
+whose rows do not match the variables asked for is the tool's own error
+result, logged as a warning but not raised as a notification, like any other
+read that failed on OMC's own answer. The log line carries the summary the
+model got. The reduction itself is
 [result-summary.ts](../packages/mcp-server/src/result-summary.ts), free of MCP
-and OMC. Like every dispatched value, a result matrix is logged only up to its
-first `MAX_LOGGED_CHARS` characters, and serialization stops there rather than covering
-every row.
+and OMC.
 
 ### The model-instance read path
 
