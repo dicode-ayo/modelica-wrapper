@@ -167,6 +167,45 @@ describe("a typed call whose command string hides the class it touched", () => {
     ]);
   });
 
+  it("leaves a raw same-name call sent between the wrapper's probe and its own command announcing coarse", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached: () => void = () => undefined;
+    const reachedGate = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const { client, announced } = scriptedClient(replyTrue);
+    const wrapper = vi
+      .spyOn(REGISTRY.deleteClass, "fn")
+      .mockImplementation(async (ctx) => {
+        await ctx.call("existClass(Demo.Sub.A)");
+        reached();
+        await gate;
+        await ctx.call("deleteClass(Demo.Sub.A)");
+        return { success: true };
+      });
+
+    try {
+      const typed = client.invoke("deleteClass", { typeName: "Demo.Sub.A" });
+      await reachedGate;
+      await client.call("deleteClass(Other.X)");
+      release();
+      await typed;
+    } finally {
+      wrapper.mockRestore();
+    }
+
+    expect(announced).toEqual([
+      { fn: "deleteClass", scope: { kind: "coarse" } },
+      {
+        fn: "deleteClass",
+        scope: members("Demo.Sub", { removed: "Demo.Sub.A" }),
+      },
+    ]);
+  });
+
   it("lets a listener that re-sends the same text announce from that text", async () => {
     const { client, announced } = scriptedClient(replyTrue);
     let resent: Promise<string> | undefined;

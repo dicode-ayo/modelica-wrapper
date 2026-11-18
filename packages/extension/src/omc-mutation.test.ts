@@ -6,7 +6,7 @@ function spies(open: readonly string[] = []) {
   const order: string[] = [];
   return {
     order,
-    notifySourceChanged: vi.fn(),
+    notifySourceChanged: vi.fn(() => order.push("reload")),
     notifySourcesChanged: vi.fn(() => order.push("reload")),
     openClassNames: () => open,
     allClassesChanged: vi.fn(() => order.push("coarse")),
@@ -131,6 +131,7 @@ describe("applyOmcMutation", () => {
     // provider reloads a buffer, and no class name is available to aim it.
     expect(seen.notifySourceChanged).toHaveBeenCalledExactlyOnceWith();
     expect(seen.allClassesChanged).toHaveBeenCalledOnce();
+    expect(seen.order).toEqual(["coarse", "reload"]);
   });
 });
 
@@ -172,7 +173,7 @@ describe("applyOmcMutation on a member-list change", () => {
   });
 
   it("leaves an open sibling of a reorder to the coarse signal rather than reloading it", () => {
-    // Its buffer text is unchanged; only the span caches hold for it moved.
+    // Its buffer text is unchanged; only the spans the caches hold for it moved.
     const seen = spies(["Demo.Sub", "Demo.Sub.B"]);
 
     applyOmcMutation(reordered, targets(seen));

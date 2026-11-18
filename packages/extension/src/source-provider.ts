@@ -282,18 +282,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
    * documents — useful for coarse refreshes after a `loadFile` of a package.
    */
   notifySourceChanged(typeName?: string): void {
-    if (typeName) {
-      this.notifySourcesChanged([typeName]);
-      return;
-    }
-    const events: vscode.FileChangeEvent[] = [];
-    for (const doc of vscode.workspace.textDocuments) {
-      if (doc.uri.scheme === MODELICA_SOURCE_SCHEME) {
-        this.bump(doc.uri);
-        events.push({ type: vscode.FileChangeType.Changed, uri: doc.uri });
-      }
-    }
-    if (events.length > 0) this._onDidChangeFile.fire(events);
+    this.notifySourcesChanged(typeName ? [typeName] : this.openClassNames());
   }
 
   /** {@link notifySourceChanged} for each of `typeNames`, as one event. */

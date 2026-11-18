@@ -32,9 +32,10 @@
  * the in-file spans of the moved class and of every sibling after it, which
  * per-class caches hold under those siblings' names. Each of the three raises
  * the coarse signal, whose listeners drop every cache and reload the whole
- * library tree. It fires first, so the `classChanged` each reloaded buffer
- * still sends finds those caches already empty, and only a buffer open in an
- * editor is reloaded at all.
+ * library tree. That signal, here and wherever the scope is coarse, fires
+ * before any buffer reloads, so the `classChanged` each reloaded buffer still
+ * sends finds those caches already empty, and only a buffer open in an editor
+ * is reloaded at all.
  */
 
 import { isWithinScope, scopeChain } from "@dicode/modelica-lang-core";
@@ -117,8 +118,8 @@ export function applyOmcMutation(
     default:
       return scope satisfies never;
   }
-  source.notifySourceChanged();
   invalidation.allClassesChanged();
+  source.notifySourceChanged();
 }
 
 function applyMembersChange(

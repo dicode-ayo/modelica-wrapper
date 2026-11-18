@@ -13,7 +13,7 @@
 
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
-import { runInTurn } from "./error-buffer.js";
+import { holdsTurn, runInTurn } from "./error-buffer.js";
 import {
   leadingCallName,
   mutationFor,
@@ -97,14 +97,15 @@ export class OmcClient implements CallContext {
   private readonly mutationListeners = new Set<MutationListener>();
   /**
    * What a typed call's own command announces in place of its text. The first
-   * `call()` inside `invoke`'s exec whose leading function is the invoked one
-   * claims `cmd`, so a probe the wrapper sends before it, or a raw command
-   * already queued ahead of it, keeps announcing from its own text. A typed
-   * call overlapping another replaces the field, and the earlier call's
-   * command then announces from its text.
+   * `call()` made while holding `invoke`'s turn whose leading function is the
+   * invoked one claims `cmd`, so a probe the wrapper sends before it, or a raw
+   * command from a caller outside that turn, keeps announcing from its own
+   * text. A typed call overlapping another replaces the field, and the
+   * earlier call's command then announces from its text.
    */
   private namedAnnouncement:
-    { cmd?: string; readonly mutation: OmcMutation } | undefined;
+    | { cmd?: string; readonly fn: OmcFnName; readonly mutation: OmcMutation }
+    | undefined;
 
   /** Spawn OMC, dial its ZMQ endpoint, and return a connected client. */
   static async create(opts: OmcClientOptions = {}): Promise<OmcClient> {
@@ -183,7 +184,7 @@ export class OmcClient implements CallContext {
     const mutation = mutationForInput(fn, validated);
     const exec = async (): Promise<unknown> => {
       if (mutation === undefined) return (entry.fn as AnyFn)(this, validated);
-      const named = { mutation };
+      const named = { fn, mutation };
       this.namedAnnouncement = named;
       try {
         return await (entry.fn as AnyFn)(this, validated);
@@ -213,7 +214,8 @@ export class OmcClient implements CallContext {
     if (
       named !== undefined &&
       named.cmd === undefined &&
-      leadingCallName(cmd) === named.mutation.fn
+      holdsTurn(this) &&
+      leadingCallName(cmd) === named.fn
     ) {
       named.cmd = cmd;
     }
