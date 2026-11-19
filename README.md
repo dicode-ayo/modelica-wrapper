@@ -155,8 +155,9 @@ reload the VSCode window, or the panel keeps serving the old bundle.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and PR:
 
-1. **Lint + unit** — typecheck, the parser/version/registry unit tests, and the
-   `omc-client` `coverage:recount` drift check, on plain `ubuntu-latest`.
+1. **Lint + unit** — typecheck (including the `*.type-test.ts` negative type
+   probes), the parser/version/registry unit tests, and the `omc-client`
+   `coverage:recount` drift check, on plain `ubuntu-latest`.
 2. **Integration (OMC matrix)** — inside the pinned `openmodelica/openmodelica`
    container, runs the full integration suite + builds the extension bundle.
 
