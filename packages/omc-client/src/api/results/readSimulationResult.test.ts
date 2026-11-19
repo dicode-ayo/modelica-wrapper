@@ -276,3 +276,86 @@ describe("readSimulationResult: a file rewritten between the size read and the r
     expect(sent).toEqual(['readSimulationResult("run.mat", {time}, 2)']);
   });
 });
+
+describe("readSimulationResult: a non-finite or non-numeric sample", () => {
+  it.each(["NaN", "inf", "-inf"])(
+    "refuses a sample OMC spells %s, naming the variable and its index",
+    async (spelling) => {
+      const { ctx } = stubCtx({
+        [`readSimulationResult("run.mat", {time, x}, 3)`]: `{{0.0, 0.5, 1.0}, {1.0, ${spelling}, 2.0}}`,
+      });
+
+      const read = readSimulationResult(ctx, {
+        filename: "run.mat",
+        variables: ["time", "x"],
+        size: 3,
+      });
+
+      await expect(read).rejects.toThrow(
+        new OmcDiagnosticError(
+          `readSimulationResult: x has a non-finite sample at index 1 (OMC wrote ${spelling})`,
+        ),
+      );
+    },
+  );
+
+  it("refuses a cell that is neither a number nor a non-finite spelling", async () => {
+    const { ctx } = stubCtx({
+      'readSimulationResult("run.mat", {time}, 2)': "{{0.0, bogus}}",
+    });
+
+    await expect(
+      readSimulationResult(ctx, {
+        filename: "run.mat",
+        variables: ["time"],
+        size: 2,
+      }),
+    ).rejects.toThrow(
+      new OmcDiagnosticError(
+        "readSimulationResult: time has a non-numeric cell at index 1 (OMC wrote bogus)",
+      ),
+    );
+  });
+
+  it("still reads a result whose samples are all finite, negatives included", async () => {
+    const { ctx } = stubCtx({
+      'readSimulationResult("run.mat", {time, x}, 2)':
+        "{{0.0, 1.0}, {-1, -1e3}}",
+    });
+
+    const out = await readSimulationResult(ctx, {
+      filename: "run.mat",
+      variables: ["time", "x"],
+      size: 2,
+    });
+
+    expect(out.result).toEqual([
+      [0.0, 1.0],
+      [-1, -1000],
+    ]);
+  });
+
+  it("refuses at a resolved size without re-reading the size or retrying the read", async () => {
+    const { ctx, sent, reads } = stubCtx({
+      'readSimulationResultSize("run.mat")': ["2", "3"],
+      'readSimulationResult("run.mat", {time, x}, 2)':
+        "{{0.0, 1.0}, {NaN, 2.0}}",
+    });
+
+    await expect(
+      readSimulationResult(ctx, {
+        filename: "run.mat",
+        variables: ["time", "x"],
+      }),
+    ).rejects.toThrow(
+      new OmcDiagnosticError(
+        "readSimulationResult: x has a non-finite sample at index 0 (OMC wrote NaN)",
+      ),
+    );
+    expect(sent).toEqual([
+      'readSimulationResultSize("run.mat")',
+      'readSimulationResult("run.mat", {time, x}, 2)',
+    ]);
+    expect(reads()).toBe(0);
+  });
+});
