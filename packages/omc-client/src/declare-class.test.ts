@@ -31,7 +31,11 @@ describe("classSource", () => {
 });
 
 describe("declareClass", () => {
-  function makeClient(options: { success: boolean; errorString?: string }): {
+  function makeClient(options: {
+    success: boolean;
+    errorString?: string;
+    exists?: boolean;
+  }): {
     client: DeclareClient;
     calls: string[];
   } {
@@ -53,6 +57,10 @@ describe("declareClass", () => {
           buffer = "";
           return Promise.resolve({ errorString });
         }),
+        existClass: vi.fn(() => {
+          calls.push("existClass");
+          return Promise.resolve({ exists: options.exists ?? false });
+        }),
       },
     };
   }
@@ -63,7 +71,28 @@ describe("declareClass", () => {
     await expect(
       declareClass(client, { name: "M", kind: "model" }),
     ).resolves.toEqual({ ok: true, source: "model M\nend M;\n" });
-    expect(calls).toEqual(["getErrorString", "loadString", "getErrorString"]);
+    expect(calls).toEqual([
+      "existClass",
+      "getErrorString",
+      "loadString",
+      "getErrorString",
+    ]);
+  });
+
+  it("refuses a class that already exists without loading over it", async () => {
+    // OMC answers `success: true` to the merge and replaces the class with
+    // the empty declaration, so the load must never be sent.
+    const { client, calls } = makeClient({ success: true, exists: true });
+
+    await expect(
+      declareClass(client, { name: "M", kind: "model", withinPath: "Lib" }),
+    ).resolves.toEqual({
+      ok: false,
+      reason:
+        "Lib.M already exists — loading a new class over it would discard what is there.",
+    });
+    expect(client.existClass).toHaveBeenCalledWith({ typeName: "Lib.M" });
+    expect(calls).toEqual(["existClass"]);
   });
 
   it("refuses a load OMC answered success: true but left an error for", async () => {

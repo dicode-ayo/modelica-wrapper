@@ -21,6 +21,7 @@ export interface DeclareClient {
     merge: boolean;
   }): Promise<{ success: boolean }>;
   getErrorString(): Promise<{ errorString: string }>;
+  existClass(input: { typeName: string }): Promise<{ exists: boolean }>;
 }
 
 /**
@@ -74,12 +75,22 @@ export function classSource(declaration: ClassDeclaration): string {
  * `success` is false for a class OMC refused and for one whose `within` target
  * it could not find, and the reason for either only lives in the error buffer.
  * A `success: true` that left an error there is a refusal too.
+ *
+ * Refuses a class that already exists: OMC answers `success: true` and
+ * replaces it with the empty declaration, contents and all.
  */
 export async function declareClass(
   client: DeclareClient,
   declaration: ClassDeclaration,
 ): Promise<{ ok: true; source: string } | { ok: false; reason: string }> {
   const qualifiedName = qualifiedNameOf(declaration);
+  const { exists } = await client.existClass({ typeName: qualifiedName });
+  if (exists) {
+    return {
+      ok: false,
+      reason: `${qualifiedName} already exists — loading a new class over it would discard what is there.`,
+    };
+  }
   const source = classSource(declaration);
   const { result, errorString } = await withErrorBuffer(client, () =>
     client.loadString({

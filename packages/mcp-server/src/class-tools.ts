@@ -120,13 +120,6 @@ async function declareAndPersist(
   declaration: ClassDeclaration,
 ): Promise<CallToolResult> {
   const className = qualifiedNameOf(declaration);
-  const { exists } = await client.existClass({ typeName: className });
-  if (exists) {
-    return errorResult(
-      `${className} already exists — loading a new class over it would discard what is there.`,
-    );
-  }
-
   const { withinPath } = declaration;
   if (withinPath !== undefined) {
     // A class written into a directory whose package.mo declares something
