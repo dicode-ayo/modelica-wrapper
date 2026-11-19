@@ -215,6 +215,10 @@ export function resolveDocumentationEditor(
     },
     classSetEvents,
   );
+  // Not filtered by scope: only this exact class's own annotation is on screen.
+  const changeSub = classSetEvents?.register((changed) => {
+    if (changed === className) controller?.onClassChanged();
+  });
   const sub = webview.onDidReceiveMessage((msg: DocWebviewToExtension) =>
     dispatchWebviewMessage(msg, {
       ready: () => gate.markReady(),
@@ -237,10 +241,10 @@ export function resolveDocumentationEditor(
   webviewPanel.onDidDispose(() => {
     disposed = true;
     watch.dispose();
+    changeSub?.dispose();
     sub.dispose();
     viewStateSub.dispose();
     DocumentationEditorProvider.clearActive(token);
-    if (controller) unregisterController(className, controller);
     controller?.dispose();
   });
   if (webviewPanel.active) {
@@ -256,14 +260,12 @@ export function resolveDocumentationEditor(
         (onForeignChange) => createShadowBuffer(document, onForeignChange),
       );
       controller = loading;
-      registerController(className, loading);
       const found = await loading.start();
       if (disposed) return;
       if (found) {
         watch.settled();
         return;
       }
-      unregisterController(className, loading);
       loading.dispose();
       controller = undefined;
       watch.notFound();
@@ -278,30 +280,6 @@ export function resolveDocumentationEditor(
 
   boot();
   watch.fetch();
-}
-
-// Focused-class → controller, so a write from the native HTML editor can re-sync
-// the open webview through its serialized queue instead of relying on VSCode's
-// (dirty-gated) buffer revert.
-const controllers = new Map<string, DocumentationEditController>();
-
-function registerController(
-  className: string,
-  controller: DocumentationEditController,
-): void {
-  controllers.set(className, controller);
-}
-
-function unregisterController(
-  className: string,
-  controller: DocumentationEditController,
-): void {
-  if (controllers.get(className) === controller) controllers.delete(className);
-}
-
-/** Re-sync the open documentation webview after an external write to `className`. */
-export function notifyDocumentationChanged(className: string): void {
-  void controllers.get(className)?.refreshFromExternalWrite();
 }
 
 interface EditControllerDeps {
@@ -381,6 +359,10 @@ export class DocumentationEditController {
   // before that is refused rather than targeting a not-yet-confirmed class.
   private seeded = false;
   private disposed = false;
+  // OMC announces this controller's own mutations back through the registry;
+  // re-sending the annotation it just wrote would overwrite what the user is
+  // still typing.
+  private writing = false;
 
   // Safe default until `refetchAndSend` resolves the class and judges it.
   private verdict: WriteVerdict = {
@@ -430,7 +412,7 @@ export class DocumentationEditController {
   }
 
   handle({ info }: DocEditMessage): Promise<void> {
-    return this.enqueue(() => this.onEdit(info));
+    return this.enqueue(() => this.writeEdit(info));
   }
 
   dispose(): void {
@@ -453,19 +435,25 @@ export class DocumentationEditController {
   }
 
   /**
-   * Re-sync after the class's documentation was written elsewhere (the native
-   * HTML editor): reflect the canonical source into the buffer — even a dirty
-   * one, through the self-write guard — and re-send the fresh annotation so the
-   * webview can't hold a stale `info` and clobber the write on its next edit.
-   * A read-only class skips the reflect (nothing should have written it in the
-   * first place) but still re-sends, so the webview can't be left holding a
-   * stale `info`/`readOnly` state.
+   * Re-sync after the class changed outside this controller: reflect the
+   * canonical source into the buffer — even a dirty one, through the
+   * self-write guard — unless the buffer already matches it, and re-send the
+   * fresh annotation so the webview can't hold a stale `info` and clobber the
+   * write on its next edit. A read-only class skips the reflect (nothing should
+   * have written it in the first place) but still re-sends, so the webview
+   * can't be left holding a stale `info`/`readOnly` state.
    */
   refreshFromExternalWrite(): Promise<void> {
     return this.enqueue(async () => {
       if (!this.rejectIfReadOnly()) await this.reflect();
       await this.refetchAndSend();
     });
+  }
+
+  /** The registry announced a change to this class; ignores the echo of our own write. */
+  onClassChanged(): void {
+    if (this.writing) return;
+    void this.refreshFromExternalWrite();
   }
 
   /** Reject an edit against a class the write verdict refuses. */
@@ -475,17 +463,28 @@ export class DocumentationEditController {
     return true;
   }
 
-  private async onEdit(info: string): Promise<void> {
+  // The registry echoes a mutation synchronously from inside the call, so the
+  // guard spans only the call: a change announced while this controller is
+  // merely awaiting is foreign and must still refresh.
+  private async ownMutation<T>(mutate: () => Promise<T>): Promise<T> {
+    this.writing = true;
+    try {
+      return await mutate();
+    } finally {
+      this.writing = false;
+    }
+  }
+
+  private async writeEdit(info: string): Promise<void> {
     if (this.rejectIfReadOnly()) return;
     if (!this.seeded) {
       this.reportError("Documentation hasn't loaded yet; edit discarded.");
       return;
     }
     const { client, className } = this.deps;
-    const { success } = await client.setFullDocumentationAnnotation({
-      typeName: className,
-      info,
-    });
+    const { success } = await this.ownMutation(() =>
+      client.setFullDocumentationAnnotation({ typeName: className, info }),
+    );
     if (!success) {
       this.reportError("setFullDocumentationAnnotation returned false");
       return;
@@ -495,19 +494,23 @@ export class DocumentationEditController {
 
   /** Reflect the class's canonical OMC source into the shadow buffer. */
   private async reflect(): Promise<void> {
-    const { contents } = await this.deps.client.listFile({
-      typeName: this.deps.className,
-    });
-    // A built-in with no listable source returns empty; writing that would wipe
-    // the buffer.
-    if (contents.length > 0) await this.shadow.write(contents);
+    const { client, className, document } = this.deps;
+    const { source, matches } = await compareBufferToClass(
+      client,
+      document,
+      className,
+    );
+    // A matching buffer needs no write, so a save of the source editor itself
+    // costs no redundant call. A built-in with no listable source returns
+    // empty, and writing that would wipe the buffer.
+    if (!matches && source.length > 0) await this.shadow.write(source);
   }
 
   private onForeignChange(): void {
     this.reverseTimer?.cancel();
     this.reverseTimer = this.scheduler.schedule(() => {
       this.reverseTimer = undefined;
-      void this.enqueue(() => this.reverseSync());
+      void this.enqueue(() => this.syncBufferToOmc());
     }, REVERSE_SYNC_DEBOUNCE_MS);
   }
 
@@ -516,7 +519,7 @@ export class DocumentationEditController {
    * re-fetched annotation. No reflect back to the buffer: the buffer is already
    * the source of this change, and writing it would fight VSCode's undo.
    */
-  private async reverseSync(): Promise<void> {
+  private async syncBufferToOmc(): Promise<void> {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
@@ -526,7 +529,9 @@ export class DocumentationEditController {
         className,
       );
       if (matches) return;
-      const reload = await reloadBufferIntoOmc(client, document, className);
+      const reload = await this.ownMutation(() =>
+        reloadBufferIntoOmc(client, document, className),
+      );
       if (!reload.ok) {
         this.reportError(reload.message);
         return;
