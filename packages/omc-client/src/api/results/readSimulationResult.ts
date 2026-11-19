@@ -28,6 +28,12 @@
  * A `size` that does not match, a variable the file does not hold, and a
  * file OMC cannot open all answer `fail()` and nothing else; only the error
  * buffer says which of the three it was.
+ *
+ * OMC writes a non-finite Real as `NaN`, `inf` or `-inf` whatever the result
+ * format. Any cell that is not a number refuses the whole read with an
+ * `OmcDiagnosticError` naming the variable, the sample index and OMC's
+ * spelling; it is never read as 0, and it is not retried, since a rewrite of
+ * the file is not what produced it.
  */
 
 import { z } from "zod";
@@ -37,7 +43,7 @@ import { resultVariable } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { parseOutput, readFailure } from "../../_shared/parseOutput.js";
 import { OmcDiagnosticError } from "../../error-buffer.js";
-import { asFloat, expectList, parse } from "../../parse.js";
+import { asFloat, expectList, parse, toJson, type Value } from "../../parse.js";
 import { readSimulationResultSize } from "./readSimulationResultSize.js";
 
 export const ReadSimulationResultInputSchema = z.strictObject({
@@ -99,8 +105,29 @@ async function readRows(
   );
   const value = parse(raw);
   if (value.kind === "call" && value.name === "fail") return undefined;
-  return expectList(value).map((row) =>
-    expectList(row).map((v) => asFloat(v) ?? 0),
+  return expectList(value).map((row, rowIndex) => {
+    const variable = input.variables[rowIndex] ?? `row ${rowIndex}`;
+    return expectList(row).map((cell, index) => sample(cell, variable, index));
+  });
+}
+
+const NON_FINITE = new Set(["NaN", "inf", "-inf"]);
+
+/**
+ * A NaN or infinite sample has no JSON number to stand in for it, and any
+ * finite stand-in would read as a real value on a plot or to a model.
+ */
+function sample(cell: Value, variable: string, index: number): number {
+  const f = asFloat(cell);
+  if (f !== undefined) return f;
+  const spelling =
+    cell.kind === "ident" ? cell.name : JSON.stringify(toJson(cell));
+  const what =
+    cell.kind === "ident" && NON_FINITE.has(cell.name)
+      ? "a non-finite sample"
+      : "a non-numeric cell";
+  throw new OmcDiagnosticError(
+    `readSimulationResult: ${variable} has ${what} at index ${index} (OMC wrote ${spelling})`,
   );
 }
 

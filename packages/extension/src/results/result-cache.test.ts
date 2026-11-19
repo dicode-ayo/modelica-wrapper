@@ -154,6 +154,40 @@ describe("ResultCache.trajectory", () => {
     );
   });
 
+  it("reads a variable again after a refused read rather than caching the refusal", async () => {
+    let refuse = true;
+    const reader = fakeReader({
+      async readSimulationResult(this: Counting) {
+        this.seriesCalls++;
+        if (refuse) {
+          throw new Error(
+            "readSimulationResult: motor.w has a non-finite sample at index 1 (OMC wrote NaN)",
+          );
+        }
+        return {
+          result: [
+            [0, 1, 2],
+            [10, 20, 30],
+          ] satisfies number[][],
+        };
+      },
+    });
+    const cache = new ResultCache(
+      async () => reader,
+      async () => 100,
+    );
+
+    await expect(cache.trajectory("a.mat", "motor.w")).rejects.toThrow(
+      /non-finite sample/,
+    );
+    refuse = false;
+    expect(await cache.trajectory("a.mat", "motor.w")).toEqual({
+      t: [0, 1, 2],
+      values: [10, 20, 30],
+    });
+    expect(reader.seriesCalls).toBe(2);
+  });
+
   it("undefined when the file is missing", async () => {
     const reader = fakeReader();
     const cache = new ResultCache(

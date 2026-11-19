@@ -221,7 +221,10 @@ see the module docstring there for the OMC behavior it works around.
 
 Those are two OMC round trips, so a rewrite from outside the client can move
 the row count between them; a resolved read that fails re-reads the count and
-retries once if it moved. An explicit non-zero `size` is never retried.
+retries once if it moved. An explicit non-zero `size` is never retried. A
+sample OMC writes as `NaN`, `inf` or `-inf` (or any other non-number) refuses
+the read with an `OmcDiagnosticError` naming the variable and sample index,
+rather than reading as 0, and is not retried.
 
 ### Result precision over MCP
 
