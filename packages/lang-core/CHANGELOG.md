@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.5](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/modelica-lang-core-v0.0.4...@dicode/modelica-lang-core-v0.0.5) (2026-11-19)
+
+
+### Features
+
+* **omc-client:** announce typed mutations from invoke() by named field ([#838](https://github.com/dicode-ayo/modelica-wrapper/issues/838)) ([c945296](https://github.com/dicode-ayo/modelica-wrapper/commit/c945296953ba331af2c7713abaa89415433f3ed5))
+
+
+### Bug Fixes
+
+* **deps:** update dependency web-tree-sitter to ^0.27.1 ([#802](https://github.com/dicode-ayo/modelica-wrapper/issues/802)) ([444938b](https://github.com/dicode-ayo/modelica-wrapper/commit/444938b2632892c3a7f9e33376241514484a37e8))
+* **omc-client,lang-core:** describe columnEnd as exclusive; drop unused modifiedTypeName ([#815](https://github.com/dicode-ayo/modelica-wrapper/issues/815)) ([f28a94f](https://github.com/dicode-ayo/modelica-wrapper/commit/f28a94fb399881a3adefd087170ee5f730dc8f5d))
+
 ## [0.0.4](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/modelica-lang-core-v0.0.3...@dicode/modelica-lang-core-v0.0.4) (2026-09-08)
 
 
