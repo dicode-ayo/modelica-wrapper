@@ -38,6 +38,25 @@ describe("sharedNestedSource", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a fetch's result for the next asker after the first stopped waiting", async () => {
+    let resolve: (layout: DiagramLayout) => void = () => {};
+    const fetch = vi.fn(
+      () =>
+        new Promise<DiagramLayout>((r) => {
+          resolve = r;
+        }),
+    );
+    const source = sharedNestedSource(fetch).fetch;
+    const layout = { ...emptyLayout(), className: "P.A" };
+
+    void source("P.A");
+    resolve(layout);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(await source("P.A")).toBe(layout);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("evicts the least recently used class past its bound", async () => {
     const fetch = vi.fn((className: string) =>
       Promise.resolve({ ...emptyLayout(), className }),
