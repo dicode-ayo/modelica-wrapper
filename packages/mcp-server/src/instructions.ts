@@ -28,9 +28,14 @@ Building a model — two ways, pick by what the user needs to see:
   incrementally, so each step lands in the open diagram as it happens.
 
 Reading results:
-- readSimulationResult returns whole series in one call; val samples one
-  variable at one time. Prefer readSimulationResult for anything but a spot
-  check. Its numbers (time excepted) carry 6 significant digits.
+- summarizeSimulationResult answers each variable's initial, final, min and
+  max (with the times of the extremes) in one small call. Start there to check
+  a result against what you expected; its points argument adds a thinned
+  waveform when the shape matters.
+- readSimulationResult returns whole series in one call — every row the solver
+  wrote, which for a long run is far more than a check needs. Reach for it
+  when you need the full waveform; val samples one variable at one time.
+  Numbers from either (time excepted) carry 6 significant digits.
 
 Arguments are this API's names, not the ones in the OMC scripting docs: it is
 typeName rather than cl, fileName rather than filename. omc_describe_function
