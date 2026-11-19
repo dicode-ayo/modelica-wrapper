@@ -23,7 +23,9 @@ export default defineConfig({
     "!src/api/**/*.test.ts",
   ],
   format: ["esm"],
-  dts: true,
+  // Keeps `@internal` test seams such as `OmcClient.forTransport` out of the
+  // published declarations; workspace consumers resolve src and still see them.
+  dts: { compilerOptions: { stripInternal: true } },
   sourcemap: true,
   clean: true,
   outDir: "dist",

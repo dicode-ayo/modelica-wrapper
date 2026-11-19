@@ -283,21 +283,40 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
    */
   notifySourceChanged(typeName?: string): void {
     if (typeName) {
-      const uri = sourceUriFor(typeName);
-      this.bump(uri);
-      this._onDidChangeFile.fire([
-        { type: vscode.FileChangeType.Changed, uri },
-      ]);
+      this.notifySourcesChanged([typeName]);
       return;
     }
-    const events: vscode.FileChangeEvent[] = [];
+    // The open document's own URI, not one rebuilt from its class name: a
+    // buffer opened without the `.mo` suffix, or under a percent-escaped
+    // name, would otherwise be bumped under a URI no document holds.
+    this.fireChanged(
+      vscode.workspace.textDocuments
+        .map((doc) => doc.uri)
+        .filter((uri) => uri.scheme === MODELICA_SOURCE_SCHEME),
+    );
+  }
+
+  /** {@link notifySourceChanged} for each of `typeNames`, as one event. */
+  notifySourcesChanged(typeNames: readonly string[]): void {
+    this.fireChanged([...new Set(typeNames)].map(sourceUriFor));
+  }
+
+  private fireChanged(uris: readonly vscode.Uri[]): void {
+    if (uris.length === 0) return;
+    for (const uri of uris) this.bump(uri);
+    this._onDidChangeFile.fire(
+      uris.map((uri) => ({ type: vscode.FileChangeType.Changed, uri })),
+    );
+  }
+
+  /** The classes open in a `modelica-source:` buffer. */
+  openClassNames(): string[] {
+    const names: string[] = [];
     for (const doc of vscode.workspace.textDocuments) {
-      if (doc.uri.scheme === MODELICA_SOURCE_SCHEME) {
-        this.bump(doc.uri);
-        events.push({ type: vscode.FileChangeType.Changed, uri: doc.uri });
-      }
+      const name = qualifiedNameFromUri(doc.uri);
+      if (name !== undefined) names.push(name);
     }
-    if (events.length > 0) this._onDidChangeFile.fire(events);
+    return names;
   }
 
   private bump(uri: vscode.Uri): void {

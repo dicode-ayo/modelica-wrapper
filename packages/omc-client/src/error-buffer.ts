@@ -110,11 +110,16 @@ export async function errorBufferTransaction<T>(
   return { result, errorString };
 }
 
+/** Whether the running async chain holds `client`'s turn. */
+export function holdsTurn(client: ErrorBufferClient): boolean {
+  return heldTurns.getStore()?.get(client)?.held === true;
+}
+
 function takeTurn<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<T> {
-  if (heldTurns.getStore()?.get(client)?.held === true) {
+  if (holdsTurn(client)) {
     return Promise.reject(
       new Error("error-buffer turn requested while already holding it"),
     );
@@ -177,7 +182,5 @@ export function runInTurn<T>(
   client: ErrorBufferClient,
   run: () => Promise<T>,
 ): Promise<T> {
-  return heldTurns.getStore()?.get(client)?.held === true
-    ? run()
-    : takeTurn(client, run);
+  return holdsTurn(client) ? run() : takeTurn(client, run);
 }

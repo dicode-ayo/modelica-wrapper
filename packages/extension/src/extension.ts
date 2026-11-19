@@ -147,7 +147,11 @@ export async function activate(
       const c = await OmcClient.create({ omcPath });
       // The subscription lives on `c` and dies with it, so there is nothing
       // for `context.subscriptions` to hold.
-      publishOmcMutations(c, sourceProvider, invalidation, pathClassIndex);
+      publishOmcMutations(c, {
+        source: sourceProvider,
+        invalidation,
+        index: pathClassIndex,
+      });
       liveNestedCache = nestedDiagramCache(c);
       await cdIntoWorkspaceCacheDir(c);
       await applyModelicaPath(c, modelicaPathScopes());

@@ -7,7 +7,9 @@
  * class goes stale silently when the REPL, the exported API, or any other
  * caller mutates it. `OmcClient.call()` is the one point every command passes
  * through, typed wrapper and raw REPL text alike, which is where the
- * announcement is derived from.
+ * announcement is derived from. A typed call whose command string hides the
+ * class it touched announces from its input instead: `OmcClient.invoke()`
+ * hands {@link mutationForInput}'s answer to that call's own command.
  *
  * The table is exhaustive over `OmcFunction`: a name added to that union fails
  * the build until it is classified here, so a new mutating wrapper cannot
@@ -20,15 +22,30 @@
  * is the staleness this exists to prevent.
  */
 
+import { MODELICA_NAME_SEGMENT } from "./_shared/fields.js";
 import { constantReference, type OmcFunction } from "./commands.js";
 import { asString, parseLeading } from "./parse.js";
 import { enclosingScope } from "./qualified-name.js";
-import type { OmcFnName } from "./registry.js";
+import type { OmcFnName, OmcInput } from "./registry.js";
 
-/** What a mutation touched, as far as the command string can tell. */
+/**
+ * What a mutation touched, as far as the command string or input can tell.
+ *
+ * `"members"` is a change to `parent`'s list of member classes — one created,
+ * copied, reordered or removed — which also rewrites the source text of
+ * `parent` and every class enclosing it. `created` is a class that joined
+ * `parent`. `removed` is a class that left `parent`, taking every class
+ * nested inside it along.
+ */
 export type MutationScope =
   | { readonly kind: "class"; readonly className: string }
   | { readonly kind: "file"; readonly fileName: string }
+  | {
+      readonly kind: "members";
+      readonly parent: string;
+      readonly created?: string;
+      readonly removed?: string;
+    }
   | { readonly kind: "coarse" };
 
 export interface OmcMutation {
@@ -46,12 +63,11 @@ export interface OmcMutation {
  *
  * - `"readOnly"` — changes nothing any cache derives from a class. `save` is one:
  *   it writes to disk, and the `.mo` watcher is what notices that.
- * - `"coarse"` — mutates, but the affected class is not readable from a single
- *   argument. `renameClass`'s second argument is a bare leaf and `copyClass`
- *   composes parent and leaf, so reading either as a class name gives a
- *   confidently wrong answer — worse than no answer. `newModel`,
- *   `deleteClass` and `moveClassToTop` do name a class, but what they move is
- *   its parent's membership, which appears nowhere in the call.
+ * - `"coarse"` — mutates, but the affected class is not readable from the
+ *   call. `renameClass` also rewrites every loaded class that references the
+ *   one it renames. Its typed input carries the full old name, but announcing
+ *   that and its parent would leave those referencing classes stale, and
+ *   neither the command nor the input names them.
  *   `setCommandLineOptions` and `setLanguageStandard` name no class at all,
  *   yet can change what instantiation reports; `setModelicaPath`,
  *   `setEnvironmentVar` and `setInstallationDirectoryPath` can change which
@@ -61,11 +77,34 @@ export interface OmcMutation {
  *   — for `"element"` — a dotted path to an element *inside* a class, whose
  *   enclosing scope is what changed. Announcing such a path as the class names
  *   something no cache is keyed by, which reads as silence.
+ * - `{ field, as }` — coarse on the command string, where `copyClass` composes
+ *   parent and leaf and the others change a parent's membership that appears
+ *   nowhere in the call. A typed call through `OmcClient.invoke` still holds
+ *   its input, and input `field` names the class the change is about: for
+ *   `"within"` the parent whose membership changed, with input `leaf` the
+ *   name the new class takes inside it, for `"member"` a class whose place in
+ *   its parent changed, for `"removed"` a class that left its parent. Each
+ *   announces a `"members"` scope. A parent that is the top level is coarse
+ *   here as well — no class name describes it. See {@link mutationForInput}.
  */
 export type MutationEntry =
   | "readOnly"
   | "coarse"
-  | { readonly pos: number; readonly as: "class" | "file" | "element" };
+  | { readonly pos: number; readonly as: "class" | "file" | "element" }
+  | FieldEntry<string>;
+
+type FieldEntry<Field extends string> =
+  | { readonly field: Field; readonly as: "within"; readonly leaf: Field }
+  | { readonly field: Field; readonly as: "member" | "removed" };
+
+/**
+ * {@link MutationEntry} with `field` and `leaf` narrowed to inputs of `F`'s
+ * wrapper, so a misspelled field fails the build rather than reading
+ * `undefined` from every input and going coarse.
+ */
+type MutationEntryFor<F extends OmcFunction> =
+  | Exclude<MutationEntry, { readonly field: string }>
+  | FieldEntry<F extends OmcFnName ? keyof OmcInput<F> & string : never>;
 
 /**
  * Argument positions follow OMC's own signatures, which disagree with
@@ -197,13 +236,13 @@ export const MUTATIONS = {
   loadModel: "coarse",
   parseFile: "readOnly",
   parseString: "readOnly",
-  newModel: "coarse",
+  newModel: { field: "withinPath", as: "within", leaf: "typeName" },
   renameClass: "coarse",
-  deleteClass: "coarse",
-  copyClass: "coarse",
-  moveClass: "coarse",
-  moveClassToTop: "coarse",
-  moveClassToBottom: "coarse",
+  deleteClass: { field: "typeName", as: "removed" },
+  copyClass: { field: "within", as: "within", leaf: "destination" },
+  moveClass: { field: "typeName", as: "member" },
+  moveClassToTop: { field: "typeName", as: "member" },
+  moveClassToBottom: { field: "typeName", as: "member" },
   getSourceFile: "readOnly",
   setSourceFile: { pos: 0, as: "class" },
   diffModelicaFileListings: "readOnly",
@@ -310,7 +349,7 @@ export const MUTATIONS = {
   filterSimulationResults: "readOnly",
   deltaSimulationResults: "readOnly",
   diffSimulationResults: "readOnly",
-} as const satisfies Record<OmcFunction, MutationEntry>;
+} as const satisfies { [K in OmcFunction]: MutationEntryFor<K> };
 
 /**
  * Registry entries that compose several OMC calls and so have no `OmcFunction`
@@ -366,6 +405,11 @@ const coarseMutation = (fn: OmcFunction | undefined): OmcMutation => ({
  */
 const LEADING_CALL = /^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/;
 
+/** The name of `cmd`'s leading `name(`, or `undefined` when it has none. */
+export function leadingCallName(cmd: string): string | undefined {
+  return LEADING_CALL.exec(cmd)?.[1];
+}
+
 /**
  * The mutation `cmd` announces, or `undefined` when it announces nothing.
  *
@@ -379,7 +423,7 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
   // Evaluating a constant reference reads; it is not a call, so the parser
   // below would otherwise read it as coarse.
   if (constantReference(cmd) !== undefined) return undefined;
-  if (entryFor(LEADING_CALL.exec(cmd)?.[1] ?? "") === "readOnly") {
+  if (entryFor(leadingCallName(cmd) ?? "") === "readOnly") {
     return undefined;
   }
 
@@ -395,7 +439,9 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
 
   const entry = MUTATIONS[head.name];
   if (entry === "readOnly") return undefined;
-  if (entry === "coarse") return coarseMutation(head.name);
+  if (entry === "coarse" || !("pos" in entry)) {
+    return coarseMutation(head.name);
+  }
 
   const arg = head.args[entry.pos];
   const name = arg === undefined ? undefined : asString(arg);
@@ -410,4 +456,49 @@ export function mutationFor(cmd: string): OmcMutation | undefined {
   return scope === ""
     ? coarseMutation(head.name)
     : { fn: head.name, scope: { kind: "class", className: scope } };
+}
+
+/**
+ * OMC's spelling of the top level as a `within` path, the default of its
+ * `copyClass` `withIn` parameter. The wrapper spells the same thing `""`.
+ */
+const TOP_LEVEL = "__OpenModelica_TopLevel";
+
+/**
+ * The mutation a typed call of `fn` announces, read from its validated
+ * `input`, or `undefined` when `fn`'s row reads nothing from input and its
+ * command string is classified by {@link mutationFor} as usual.
+ *
+ * Every uncertainty resolves to coarse, as on the string path: a field that
+ * is absent, empty or not a string, a parent that is the top level, a leaf
+ * that is not a single name segment.
+ */
+export function mutationForInput(
+  fn: OmcFnName,
+  input: unknown,
+): OmcMutation | undefined {
+  if (!isOmcFunction(fn)) return undefined;
+  const entry: MutationEntry = MUTATIONS[fn];
+  if (typeof entry !== "object" || !("field" in entry)) return undefined;
+
+  if (typeof input !== "object" || input === null) return coarseMutation(fn);
+  const value: unknown = Reflect.get(input, entry.field);
+  if (typeof value !== "string") return coarseMutation(fn);
+
+  if (entry.as === "within") {
+    const leaf: unknown = Reflect.get(input, entry.leaf);
+    if (value === "" || value === TOP_LEVEL) return coarseMutation(fn);
+    if (typeof leaf !== "string" || !MODELICA_NAME_SEGMENT.test(leaf)) {
+      return coarseMutation(fn);
+    }
+    return {
+      fn,
+      scope: { kind: "members", parent: value, created: `${value}.${leaf}` },
+    };
+  }
+  const parent = enclosingScope(value);
+  if (parent === "") return coarseMutation(fn);
+  return entry.as === "member"
+    ? { fn, scope: { kind: "members", parent } }
+    : { fn, scope: { kind: "members", parent, removed: value } };
 }

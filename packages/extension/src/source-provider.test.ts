@@ -508,3 +508,65 @@ describe("ModelicaSourceProvider: save screens share the error-buffer queue", ()
     expect(t.write).toHaveBeenCalled();
   });
 });
+
+describe("ModelicaSourceProvider: batched change notification", () => {
+  it("fires one change event naming every class, each once", () => {
+    const provider = new ModelicaSourceProvider(
+      () => Promise.reject(new Error("unused")),
+      createSelfWriteGuard(),
+      new WriteVerdicts(),
+    );
+    const fired: vscode.FileChangeEvent[][] = [];
+    provider.onDidChangeFile((events) => fired.push(events));
+
+    provider.notifySourcesChanged(["Demo.Sub", "Demo", "Demo.Sub"]);
+
+    expect(fired).toHaveLength(1);
+    expect(fired[0]?.map((e) => e.uri.toString())).toEqual([
+      sourceUriFor("Demo.Sub").toString(),
+      sourceUriFor("Demo").toString(),
+    ]);
+  });
+
+  it("refreshes every open buffer under the URI it was opened with", () => {
+    const provider = new ModelicaSourceProvider(
+      () => Promise.reject(new Error("unused")),
+      createSelfWriteGuard(),
+      new WriteVerdicts(),
+    );
+    const fired: vscode.FileChangeEvent[][] = [];
+    provider.onDidChangeFile((events) => fired.push(events));
+    const opened = [
+      vscode.Uri.parse("modelica-source:/Demo.A"),
+      vscode.Uri.parse("modelica-source:/Demo.B.mo"),
+      vscode.Uri.parse("file:///work/Demo.mo"),
+    ];
+    Object.defineProperty(vscode.workspace, "textDocuments", {
+      configurable: true,
+      get: () => opened.map((uri) => ({ uri })),
+    });
+    try {
+      provider.notifySourceChanged();
+    } finally {
+      Reflect.deleteProperty(vscode.workspace, "textDocuments");
+    }
+
+    expect(fired.map((events) => events.map((e) => e.uri.toString()))).toEqual([
+      ["modelica-source:/Demo.A", "modelica-source:/Demo.B.mo"],
+    ]);
+  });
+
+  it("fires nothing for no classes", () => {
+    const provider = new ModelicaSourceProvider(
+      () => Promise.reject(new Error("unused")),
+      createSelfWriteGuard(),
+      new WriteVerdicts(),
+    );
+    const fired: vscode.FileChangeEvent[][] = [];
+    provider.onDidChangeFile((events) => fired.push(events));
+
+    provider.notifySourcesChanged([]);
+
+    expect(fired).toEqual([]);
+  });
+});

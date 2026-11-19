@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { enclosingScope } from "@dicode/modelica-lang-core";
+import { isWithinScope } from "@dicode/modelica-lang-core";
 
 import { renderPlaceholderPage } from "./webview/webview-page.js";
 
@@ -17,11 +17,7 @@ export interface MissingClassHandlers {
 
 /** Whether a change announced for `announced` (`null`: any class) can reach `className`. */
 function announces(announced: string | null, className: string): boolean {
-  if (announced === null) return true;
-  for (let scope = className; scope !== ""; scope = enclosingScope(scope)) {
-    if (scope === announced) return true;
-  }
-  return false;
+  return announced === null || isWithinScope(className, announced);
 }
 
 const watches = new Set<MissingClassWatch>();

@@ -1,7 +1,7 @@
 import {
-  enclosingScope,
   leafName,
   noopLogger,
+  scopeChain,
   type Logger,
 } from "@dicode/modelica-lang-core";
 
@@ -58,23 +58,6 @@ export async function typePositionCandidates(
 }
 
 /**
- * The owning class followed by each enclosing scope, nearest first, by stripping
- * one trailing dotted segment at a time (`A.B.C` -> `A.B.C`, `A.B`, `A`). The
- * top-level scope (the empty name) is omitted: `getClassNames` with no
- * `typeName` lists every top-level package, which the fuzzy global search
- * already covers.
- */
-function enclosingScopes(owningClass: string): string[] {
-  const scopes: string[] = [];
-  let scope = owningClass;
-  while (scope.length > 0) {
-    scopes.push(scope);
-    scope = enclosingScope(scope);
-  }
-  return scopes;
-}
-
-/**
  * Class/type position: nested classes of the owning class and of every enclosing
  * package (the parent scope chain) merged with a fuzzy global match
  * (`searchClassNames`) on the prefix the user is typing. Nearer scopes are pushed
@@ -96,8 +79,9 @@ async function classNameCandidates(
 
   // The owning class and each enclosing package, nearest first. A bare type
   // reference resolves against this chain, so each level's children are visible
-  // local names.
-  for (const scope of enclosingScopes(owningClass)) {
+  // local names. The top-level scope is left to the fuzzy global search:
+  // `getClassNames` with no `typeName` lists every top-level package.
+  for (const scope of scopeChain(owningClass)) {
     const { classNames } = await tryCall(
       "getClassNames",
       () => client.getClassNames({ typeName: scope }),

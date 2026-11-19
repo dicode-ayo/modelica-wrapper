@@ -13,8 +13,13 @@
 
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
-import { runInTurn } from "./error-buffer.js";
-import { mutationFor, type OmcMutation } from "./mutation.js";
+import { holdsTurn, runInTurn } from "./error-buffer.js";
+import {
+  leadingCallName,
+  mutationFor,
+  mutationForInput,
+  type OmcMutation,
+} from "./mutation.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
 import { SerialQueue } from "./queue.js";
@@ -53,12 +58,27 @@ export interface OmcClientOptions {
   callTimeoutMs?: number;
 }
 
+/** The transport, narrowed to what the client sends through it. */
+interface ClientTransport {
+  send(cmd: OmcCommand, timeoutMs: number): Promise<string>;
+  close(): Promise<void>;
+}
+
 export class OmcClient implements CallContext {
   private constructor(
     private readonly proc: OmcProcess,
-    private readonly transport: OmcTransport,
+    private readonly transport: ClientTransport,
     private callTimeoutMs: number,
   ) {}
+
+  /**
+   * @internal A client on `transport` with no OMC process behind it and no
+   * call timeout, for tests that script OMC's replies.
+   */
+  static forTransport(transport: ClientTransport): OmcClient {
+    const proc: OmcProcess = { endpoint: "", stop: () => Promise.resolve() };
+    return new OmcClient(proc, transport, 0);
+  }
 
   /** OMC's REQ/REP socket admits one round-trip at a time. */
   private readonly queue = new SerialQueue();
@@ -75,6 +95,17 @@ export class OmcClient implements CallContext {
     return this._lastCall;
   }
   private readonly mutationListeners = new Set<MutationListener>();
+  /**
+   * What a typed call's own command announces in place of its text. The first
+   * `call()` made while holding `invoke`'s turn whose leading function is the
+   * invoked one claims `cmd`, so a probe the wrapper sends before it, or a raw
+   * command from a caller outside that turn, keeps announcing from its own
+   * text. A typed call overlapping another replaces the field, and the
+   * earlier call's command then announces from its text.
+   */
+  private namedAnnouncement:
+    | { cmd?: string; readonly fn: OmcFnName; readonly mutation: OmcMutation }
+    | undefined;
 
   /** Spawn OMC, dial its ZMQ endpoint, and return a connected client. */
   static async create(opts: OmcClientOptions = {}): Promise<OmcClient> {
@@ -125,6 +156,12 @@ export class OmcClient implements CallContext {
    * the same call rather than a way around it. Call it directly when the
    * function name is itself data — a JSON-RPC dispatch, a REPL, a plugin.
    *
+   * It is also where a mutation the command string cannot place is placed:
+   * when `fn`'s input names the class its command hides (`newModel`'s
+   * `withinPath`, `deleteClass`'s `typeName`, …), that command announces
+   * from the input in place of the coarse announcement its string would
+   * make, never as well as it.
+   *
    * @example
    *   const { version } = await client.invoke("getVersion", {});
    *   const info = await client.invoke("getClassInformation", {
@@ -144,7 +181,19 @@ export class OmcClient implements CallContext {
     // construction; TS's indexed-access generic narrowing can't see that, so
     // we erase to a generic call shape and re-tag the result.
     type AnyFn = (ctx: CallContext, input: unknown) => Promise<unknown>;
-    const exec = (): Promise<unknown> => (entry.fn as AnyFn)(this, validated);
+    const mutation = mutationForInput(fn, validated);
+    const exec = async (): Promise<unknown> => {
+      if (mutation === undefined) return (entry.fn as AnyFn)(this, validated);
+      const named = { fn, mutation };
+      this.namedAnnouncement = named;
+      try {
+        return await (entry.fn as AnyFn)(this, validated);
+      } finally {
+        if (this.namedAnnouncement === named) {
+          this.namedAnnouncement = undefined;
+        }
+      }
+    };
     // A wrapper's command and its own read of the error buffer must not
     // straddle another caller's clear/run/read transaction, and a bare read
     // must not land inside one.
@@ -161,6 +210,15 @@ export class OmcClient implements CallContext {
     // Record the raw command before we enqueue / send, so it's already
     // readable via `lastCall` even if the transport hangs or throws.
     this._lastCall = cmd;
+    const named = this.namedAnnouncement;
+    if (
+      named !== undefined &&
+      named.cmd === undefined &&
+      holdsTurn(this) &&
+      leadingCallName(cmd) === named.fn
+    ) {
+      named.cmd = cmd;
+    }
     const reply = await this.queue.run(() =>
       this.transport.send(cmd, this.callTimeoutMs),
     );
@@ -192,13 +250,24 @@ export class OmcClient implements CallContext {
    * `addComponent` answers `false` with an error line and may still have
    * touched the AST.
    *
+   * A typed call's own command announces what its input named
+   * instead; see {@link namedAnnouncement}. It is consumed before the
+   * fan-out, so a listener that sends the same text again announces from
+   * that text.
+   *
    * A throw is swallowed. A listener left un-run because a sibling failed is
    * the staleness this exists to prevent, and this package has no logging
    * channel to report it through.
    */
   private announce(cmd: string): void {
+    const named = this.namedAnnouncement;
+    let mutation: OmcMutation | undefined;
+    if (named?.cmd === cmd) {
+      this.namedAnnouncement = undefined;
+      mutation = named.mutation;
+    }
     if (this.mutationListeners.size === 0) return;
-    const mutation = mutationFor(cmd);
+    mutation ??= mutationFor(cmd);
     if (mutation === undefined) return;
     for (const listener of [...this.mutationListeners]) {
       try {

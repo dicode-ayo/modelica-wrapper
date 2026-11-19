@@ -14,8 +14,9 @@ import { describe, expect, it } from "vitest";
 
 import type { CallContext } from "./_shared/callContext.js";
 import type { OmcFunction } from "./commands.js";
-import { MUTATIONS, mutationFor } from "./mutation.js";
-import { REGISTRY, type OmcFnName } from "./registry.js";
+import { MUTATIONS, mutationFor, type MutationEntry } from "./mutation.js";
+import { asString, parseLeading } from "./parse.js";
+import { REGISTRY, type OmcFnName, type OmcInput } from "./registry.js";
 
 const CLASS = "Probe.Cls";
 const FILE = "/probe/File.mo";
@@ -166,7 +167,7 @@ async function commandFor(
 }
 
 const positional = Object.entries(MUTATIONS).filter(
-  ([, entry]) => typeof entry === "object",
+  ([, entry]) => typeof entry === "object" && "pos" in entry,
 );
 
 describe("positional entries against the wrappers that build the commands", () => {
@@ -192,5 +193,58 @@ describe("positional entries against the wrappers that build the commands", () =
           ? { kind: "file", fileName: FILE }
           : { kind: "class", className: CLASS },
     });
+  });
+});
+
+/**
+ * A `{ field, as }` row names an input field; the wrapper has to send that
+ * field's value as one of its command's arguments, or the announcement names
+ * a class the command never touched. A `leaf` names the new class's own name,
+ * which the command has to send as well.
+ */
+type FieldRow = Extract<MutationEntry, { readonly field: string }>;
+
+type FieldRowFn = {
+  [K in OmcFunction & OmcFnName]: (typeof MUTATIONS)[K] extends FieldRow
+    ? K
+    : never;
+}[OmcFunction & OmcFnName];
+
+const LEAF = "B";
+
+const FIELD_PROBES: { [K in FieldRowFn]: OmcInput<K> } = {
+  newModel: { typeName: LEAF, withinPath: CLASS },
+  copyClass: { source: "Probe.Other", destination: LEAF, within: CLASS },
+  deleteClass: { typeName: CLASS },
+  moveClass: { typeName: CLASS, offset: 1 },
+  moveClassToTop: { typeName: CLASS },
+  moveClassToBottom: { typeName: CLASS },
+};
+
+const named = Object.entries(MUTATIONS).filter(
+  (row): row is [FieldRowFn, FieldRow] =>
+    typeof row[1] === "object" && "field" in row[1],
+);
+
+describe("input-field entries against the wrappers that build the commands", () => {
+  // Nothing type-checks this file, so the mapped type above only helps the
+  // editor; this catches a missing probe and one left behind by a row that
+  // stopped reading its input.
+  it("probes every input-field entry", () => {
+    expect(Object.keys(FIELD_PROBES).sort()).toEqual(
+      named.map(([name]) => name).sort(),
+    );
+  });
+
+  it.each(named)("%s", async (name, entry) => {
+    const probe: Record<string, unknown> = FIELD_PROBES[name];
+    expect(probe[entry.field]).toBe(CLASS);
+    if (entry.as === "within") expect(probe[entry.leaf]).toBe(LEAF);
+
+    const head = parseLeading(await commandFor(name, probe)).value;
+    const args = head.kind === "call" ? head.args.map(asString) : [];
+
+    expect(args).toContain(CLASS);
+    if (entry.as === "within") expect(args).toContain(LEAF);
   });
 });

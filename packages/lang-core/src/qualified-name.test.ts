@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   enclosingScope,
+  isWithinScope,
   lastUnquotedDotIndex,
   leafName,
+  scopeChain,
 } from "./qualified-name.js";
 
 describe("leafName", () => {
@@ -56,5 +58,42 @@ describe("lastUnquotedDotIndex", () => {
 
   it("ignores dots inside quoted segments entirely", () => {
     expect(lastUnquotedDotIndex("'a.b.c'")).toBe(-1);
+  });
+});
+
+describe("isWithinScope", () => {
+  it("holds for the scope itself and every class nested inside it", () => {
+    expect(isWithinScope("Demo.Sub", "Demo.Sub")).toBe(true);
+    expect(isWithinScope("Demo.Sub.A.B", "Demo.Sub")).toBe(true);
+  });
+
+  it("does not hold for a sibling sharing the scope's text as a prefix", () => {
+    expect(isWithinScope("Demo.SubOther", "Demo.Sub")).toBe(false);
+    expect(isWithinScope("Demo", "Demo.Sub")).toBe(false);
+  });
+
+  it("matches a quoted segment whole, never a prefix inside its quotes", () => {
+    expect(isWithinScope("Demo.'a.b'.C", "Demo.'a.b'")).toBe(true);
+    expect(isWithinScope("Demo.'a.b'.C", "Demo.'a")).toBe(false);
+    expect(isWithinScope("Demo.'a.b'", "Demo.'a.b")).toBe(false);
+  });
+});
+
+describe("scopeChain", () => {
+  it("starts at the name itself and walks outward to its outermost segment", () => {
+    expect(scopeChain("A.B.C")).toEqual(["A.B.C", "A.B", "A"]);
+    expect(scopeChain("A")).toEqual(["A"]);
+  });
+
+  it("is empty for the empty name, which no class has", () => {
+    expect(scopeChain("")).toEqual([]);
+  });
+
+  it("never stops inside a quoted segment", () => {
+    expect(scopeChain("Demo.'a.b'.C")).toEqual([
+      "Demo.'a.b'.C",
+      "Demo.'a.b'",
+      "Demo",
+    ]);
   });
 });
