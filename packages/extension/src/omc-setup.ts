@@ -81,11 +81,11 @@ export interface OmcEnvironment {
 }
 
 export interface OmcSetup extends vscode.Disposable {
-  /** Resolve, show the result, and offer a way forward when there is none. */
-  start(): Promise<void>;
   /**
    * The `omc` a spawn should use. Rejects when there is none, so the failure
    * every command surfaces names the missing dependency instead of `ENOENT`.
+   * The first rejection in a window also offers a way forward; demand for OMC
+   * is the signal, so a window with no Modelica never sees the setup flow.
    */
   omcPath(): Promise<string>;
   /** Fill the version in, for the binary the client was spawned with. */
@@ -127,6 +127,7 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
   let generation = 0;
   let resolvedOnce = false;
   let replacementPending = false;
+  let prompted = false;
   let inFlight: Promise<void> | undefined;
 
   const root = (): string =>
@@ -429,13 +430,16 @@ export function createOmcSetup(options: OmcSetupOptions = {}): OmcSetup {
   ];
 
   return {
-    async start(): Promise<void> {
-      // The only site that notifies; the status bar carries it from here on.
-      if ((await resolve()).source === "missing") await prompt();
-    },
     async omcPath(): Promise<string> {
       const resolved = await resolve();
       if (resolved.source === "missing") {
+        // The only site that notifies; the status bar carries it from here on.
+        // Not awaited: the prompt waits on the user, and the spawn must reject
+        // now. Set before it runs, so concurrent first calls prompt once.
+        if (!prompted) {
+          prompted = true;
+          void prompt();
+        }
         throw new Error(
           "OpenModelica was not found. Set one up from the OpenModelica status bar item.",
         );
