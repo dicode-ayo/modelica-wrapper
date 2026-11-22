@@ -653,6 +653,13 @@ function iconDependencies(instance: ModelInstance): string[] {
 }
 
 /**
+ * CSS px the library tree draws a thumbnail at: `--om-icon-size-md` in
+ * ui-common's `om-tokens.ts`. Passed as `displaySize` so strokes floor at one
+ * on-screen pixel; ui-common is a webview package, so the host keeps a copy.
+ */
+const LIBRARY_ICON_DISPLAY_PX = 16;
+
+/**
  * Render a class's icon to a self-contained SVG thumbnail for the library
  * sidebar, alongside the classes its icon inherits from (`dependsOn` — its
  * `extends` chain). Best-effort: `svg` is `undefined` on any failure or when
@@ -683,6 +690,7 @@ export async function libraryIconSvg(
         ? undefined
         : renderIconLayersToSvg(layout.iconLayers, {
             coordinateSystem: layout.coordinateSystem,
+            displaySize: LIBRARY_ICON_DISPLAY_PX,
           });
     return { svg, dependsOn };
   } catch (err) {

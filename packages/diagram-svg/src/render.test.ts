@@ -135,30 +135,9 @@ describe("renderIconLayersToSvg", () => {
         ],
         { lineThicknessScale },
       );
-      // An explicit thickness is never scaled; only the omitted-value
-      // fallback is.
       expect(svg).toContain('stroke-width="5"');
     },
   );
-
-  it("scales only the spec default when lineThickness is omitted", () => {
-    const svg = renderIconLayersToSvg(
-      [
-        makeLayer("Test.Default", [
-          {
-            kind: "rectangle",
-            extent: [
-              [-50, -25],
-              [50, 25],
-            ],
-            lineColor: [0, 0, 0],
-          } satisfies RectangleShape,
-        ]),
-      ],
-      { lineThicknessScale: 4 },
-    );
-    expect(svg).toContain('stroke-width="5"');
-  });
 
   it.each(["Raised", "Sunken", "Engraved", "None"])(
     "draws borderPattern %s exactly as it draws no borderPattern",
@@ -397,25 +376,6 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).not.toContain("<polygon");
     expect(svg).toMatch(/<path d="M 5 0 C[^"]*Z"/);
     expect(svg).toContain('fill="rgb(0,128,255)"');
-  });
-
-  it("uses the bumped spec-default (1.25 × 10 = 12.5) when thickness is omitted", () => {
-    // SPEC_DEFAULT_THICKNESS = 0.25 × 5 (lifted from the literal
-    // Modelica default so unspecified strokes stay legible at typical
-    // zoom). DEFAULT_LINE_THICKNESS_SCALE = 10 then multiplies it.
-    const svg = renderIconLayersToSvg([
-      makeLayer("Test.Wire", [
-        {
-          kind: "line",
-          points: [
-            [0, 0],
-            [10, 10],
-          ],
-          color: [0, 0, 0],
-        },
-      ]),
-    ]);
-    expect(svg).toContain('stroke-width="12.5"');
   });
 
   it("renders a text shape using the literal textString", () => {
@@ -886,4 +846,127 @@ describe("gradient fill patterns", () => {
     expect(svg).not.toContain("rotate(");
     expect(svg).not.toContain("translate(");
   });
+});
+
+function strokeWidthOf(svg: string): string | undefined {
+  return /stroke-width="([^"]*)"/.exec(svg)?.[1];
+}
+
+function wire(thickness?: number): IconLayer {
+  return makeLayer("Test.Wire", [
+    {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+      ...(thickness === undefined ? {} : { thickness }),
+    },
+  ]);
+}
+
+function rect(lineThickness?: number): IconLayer {
+  return makeLayer("Test.Box", [
+    {
+      kind: "rectangle",
+      extent: [
+        [-50, -25],
+        [50, 25],
+      ],
+      ...(lineThickness === undefined ? {} : { lineThickness }),
+    } satisfies RectangleShape,
+  ]);
+}
+
+describe("renderIconLayersToSvg stroke width", () => {
+  it("renders an omitted thickness at the spec default 0.25 with no displaySize", () => {
+    expect(strokeWidthOf(renderIconLayersToSvg([wire()]))).toBe("0.25");
+    expect(strokeWidthOf(renderIconLayersToSvg([rect()]))).toBe("0.25");
+  });
+
+  it("multiplies only the omitted-value default by lineThicknessScale", () => {
+    const svg = renderIconLayersToSvg([rect()], { lineThicknessScale: 4 });
+    expect(strokeWidthOf(svg)).toBe("1");
+  });
+
+  it.each([
+    ["omitted", undefined],
+    ["explicit thin", 0.5],
+  ])(
+    "floors an %s thickness at one display pixel (200 units over 16px = 12.5)",
+    (_label, thickness) => {
+      const svg = renderIconLayersToSvg([wire(thickness)], {
+        displaySize: 16,
+      });
+      expect(strokeWidthOf(svg)).toBe("12.5");
+    },
+  );
+
+  it.each([
+    [20, 16],
+    [5, 400],
+  ])(
+    "keeps an explicit %s wider than the floor at displaySize %s literal",
+    (lineThickness, displaySize) => {
+      const svg = renderIconLayersToSvg([rect(lineThickness)], { displaySize });
+      expect(strokeWidthOf(svg)).toBe(String(lineThickness));
+    },
+  );
+
+  it("floors polygons and ellipses at one pixel of a 40px display", () => {
+    const svg = renderIconLayersToSvg(
+      [
+        makeLayer("Test.Mixed", [
+          {
+            kind: "polygon",
+            points: [
+              [0, 0],
+              [10, 0],
+              [0, 10],
+            ],
+          },
+          {
+            kind: "ellipse",
+            extent: [
+              [-10, -10],
+              [10, 10],
+            ],
+          } satisfies EllipseShape,
+        ]),
+      ],
+      { displaySize: 40 },
+    );
+    const widths = [...svg.matchAll(/stroke-width="([^"]*)"/g)].map(
+      (m) => m[1],
+    );
+    expect(widths).toEqual(["5", "5"]);
+  });
+
+  it("computes the floor against the expanded viewBox", () => {
+    // A label at x=300 stretches the longer side from 200 to 400 units.
+    const layer = makeLayer("Test.Wide", [
+      ...wire().shapes,
+      {
+        kind: "text",
+        extent: [
+          [100, -10],
+          [300, 10],
+        ],
+        textString: "%name",
+      },
+    ]);
+    const svg = renderIconLayersToSvg([layer], {
+      displaySize: 16,
+      expandViewBoxToShapes: true,
+    });
+    expect(strokeWidthOf(svg)).toBe("25");
+  });
+
+  it.each([0, -16, Number.NaN, Number.POSITIVE_INFINITY])(
+    "applies no floor for displaySize %s",
+    (displaySize) => {
+      const svg = renderIconLayersToSvg([wire()], { displaySize });
+      expect(strokeWidthOf(svg)).toBe("0.25");
+    },
+  );
 });

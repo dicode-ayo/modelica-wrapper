@@ -31,7 +31,11 @@ import { colorToCss } from "./color.js";
 // Sub-path import: the evaluator subtree only, so the browser bundles
 // this renderer lands in don't drag the OMC transport along.
 import { expressionToString } from "@dicode/omc-client/eval";
-import { isBezierSmooth, isTextAlignment } from "@dicode/omc-client/shapes";
+import {
+  isBezierSmooth,
+  isTextAlignment,
+  LINE_DEFAULTS,
+} from "@dicode/omc-client/shapes";
 import { ellipseArc, ellipseArcPathData } from "./ellipse-arc.js";
 import { linePatternToDashArray, resolveFill } from "./pattern.js";
 import {
@@ -90,25 +94,23 @@ export interface RenderOptions {
    */
   expandViewBoxToShapes?: boolean | undefined;
   /**
-   * Multiplier applied to the spec-default stroke width used when a
-   * shape omits `thickness` / `lineThickness`. Modelica's `0.25` icon
-   * units render hair-thin at the canonical `[-100,100]` extent, so the
-   * fallback is lifted to stay legible; default `10`.
-   *
-   * An explicit annotation thickness is never multiplied.
+   * Multiplier applied to the §18.6.5.5 default stroke width (`0.25` icon
+   * units) used when a shape omits `thickness` / `lineThickness`; default
+   * `1`. An explicit annotation thickness is never multiplied.
    */
   lineThicknessScale?: number | undefined;
+  /**
+   * CSS-pixel length the viewBox's longer side is finally displayed at.
+   * When it is a finite positive number, every stroke is floored at one
+   * display pixel, as the canvas primitives floor against `worldPerPixel`.
+   * Without it strokes render at their literal width: the canvas keeps a
+   * screen-space floor that a render of unknown display size cannot.
+   */
+  displaySize?: number | undefined;
 }
 
-const DEFAULT_LINE_THICKNESS_SCALE = 10;
-/**
- * Fallback stroke width when a shape's annotation omits `thickness` /
- * `lineThickness`. Modelica's spec default is `0.25` icon units, but
- * that renders as a hair-thin near-invisible line at typical zoom, so
- * the fallback is lifted to `0.25 × 5 = 1.25` before
- * `lineThicknessScale` is applied on top.
- */
-const SPEC_DEFAULT_THICKNESS = 0.25 * 5;
+/** Screen-space stroke floor (CSS px); equals diagram-ui's `MIN_STROKE_PX`. */
+const MIN_STROKE_PX = 1;
 
 /** Axis-aligned box in icon coordinates. */
 export interface IconBounds {
@@ -150,7 +152,8 @@ export function renderIconLayersToSvg(
   // (kind, edge, middle) tuple; identical fills across shapes share a def.
   const ctx: RenderContext = {
     defs: new Map(),
-    lineThicknessScale: opts.lineThicknessScale ?? DEFAULT_LINE_THICKNESS_SCALE,
+    lineThicknessScale: opts.lineThicknessScale ?? 1,
+    strokeFloor: strokeFloorFor(extent, opts.displaySize),
   };
   const layerGroups = layers.map((l) => renderLayer(l, ctx)).join("");
   const defsBlock =
@@ -321,6 +324,26 @@ function computeViewBox(extent: Extent): string {
   return `${minX} ${-maxY} ${width} ${height}`;
 }
 
+/**
+ * Icon units per display pixel times `MIN_STROKE_PX`, against the final
+ * (possibly expanded) extent; `0` when `displaySize` is unusable.
+ */
+function strokeFloorFor(
+  extent: Extent,
+  displaySize: number | undefined,
+): number {
+  if (
+    displaySize === undefined ||
+    !Number.isFinite(displaySize) ||
+    displaySize <= 0
+  ) {
+    return 0;
+  }
+  const [[x1, y1], [x2, y2]] = extent;
+  const longerSide = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+  return (MIN_STROKE_PX * longerSide) / displaySize;
+}
+
 function renderSizeAttributes(size: RenderOptions["size"]): string {
   if (size === undefined) return "";
   if (typeof size === "number") return ` width="${size}" height="${size}"`;
@@ -351,11 +374,13 @@ function renderBackground(
  * gradient defs so cylinder/sphere fills can share `<defs>` entries
  * across shapes (the `defs` Map is keyed by gradient id — see
  * `pattern.ts` — so duplicates are no-ops), and carries the
- * stroke-width scale so every shape mapper applies it uniformly.
+ * stroke-width scale and floor so every shape mapper applies them uniformly.
  */
 interface RenderContext {
   defs: Map<string, string>;
   lineThicknessScale: number;
+  /** Minimum stroke width in icon units; `0` for no floor. */
+  strokeFloor: number;
 }
 
 function renderLayer(layer: IconLayer, ctx: RenderContext): string {
@@ -419,12 +444,17 @@ function renderShapeBody(shape: Shape, ctx: RenderContext): string {
 }
 
 /**
- * Stroke width for an annotation's `thickness` / `lineThickness`. An
- * explicit value renders literally; `lineThicknessScale` lifts only the
- * omitted-value fallback.
+ * Stroke width for an annotation's `thickness` / `lineThickness`, the same
+ * rule as diagram-ui's `resolveStrokeWidth`: an explicit value renders
+ * literally, `lineThicknessScale` lifts only the omitted-value default, and
+ * the result is floored at one display pixel when the display size is known.
+ *
+ * The one divergence from the canvas: with no `displaySize` there is no
+ * floor, while the canvas always floors against its live `worldPerPixel`.
  */
-function scaledThickness(raw: number | undefined, ctx: RenderContext): number {
-  return raw ?? SPEC_DEFAULT_THICKNESS * ctx.lineThicknessScale;
+function strokeWidth(raw: number | undefined, ctx: RenderContext): number {
+  const natural = raw ?? LINE_DEFAULTS.thickness * ctx.lineThicknessScale;
+  return Math.max(natural, ctx.strokeFloor);
 }
 
 /**
@@ -448,7 +478,7 @@ function fillFor(
 
 function renderLine(s: LineShape, ctx: RenderContext): string {
   const stroke = colorToCss(s.color, "rgb(0,0,0)");
-  const thickness = scaledThickness(s.thickness, ctx);
+  const thickness = strokeWidth(s.thickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   const paint = `fill="none" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}`;
@@ -483,7 +513,7 @@ function renderArrowhead(
 function renderPolygon(s: PolygonShape, ctx: RenderContext): string {
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
-  const thickness = scaledThickness(s.lineThickness, ctx);
+  const thickness = strokeWidth(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   const paint = `fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}`;
@@ -503,7 +533,7 @@ function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const { x, y, width, height } = extentToRect(s.extent);
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
-  const thickness = scaledThickness(s.lineThickness, ctx);
+  const thickness = strokeWidth(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   const r = clampCornerRadius(s.radius, width, height);
@@ -519,7 +549,7 @@ function renderEllipse(s: EllipseShape, ctx: RenderContext): string {
   const fill = arc.filled
     ? fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx)
     : "none";
-  const thickness = scaledThickness(s.lineThickness, ctx);
+  const thickness = strokeWidth(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   const paint = `fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}`;

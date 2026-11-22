@@ -71,7 +71,7 @@ export const RectangleOnly: Story = {
         ],
       },
     ],
-    opts: { background: "white", size: 200 },
+    opts: { background: "white", size: 200, displaySize: 200 },
   },
 };
 
@@ -96,7 +96,7 @@ export const EllipseOnly: Story = {
         ],
       },
     ],
-    opts: { background: "white", size: 200 },
+    opts: { background: "white", size: 200, displaySize: 200 },
   },
 };
 
@@ -122,7 +122,7 @@ export const PolygonOnly: Story = {
         ],
       },
     ],
-    opts: { background: "white", size: 200 },
+    opts: { background: "white", size: 200, displaySize: 200 },
   },
 };
 
@@ -183,7 +183,7 @@ export const LineOnly: Story = {
         ],
       },
     ],
-    opts: { background: "white", size: 200 },
+    opts: { background: "white", size: 200, displaySize: 200 },
   },
 };
 
@@ -208,7 +208,7 @@ export const TextOnly: Story = {
         ],
       },
     ],
-    opts: { background: "white", size: 200 },
+    opts: { background: "white", size: 200, displaySize: 200 },
   },
 };
 
@@ -231,7 +231,7 @@ export const BitmapOnly: Story = {
         ],
       },
     ],
-    opts: { background: "white", size: 200 },
+    opts: { background: "white", size: 200, displaySize: 200 },
   },
 };
 
@@ -283,7 +283,7 @@ export const MultiLayerComposite: Story = {
         ],
       },
     ],
-    opts: { background: "white", size: 240 },
+    opts: { background: "white", size: 240, displaySize: 240 },
   },
 };
 
@@ -315,7 +315,7 @@ export const WithinViewbox: Story = {
         },
       },
     ],
-    opts: { background: "white", size: 240 },
+    opts: { background: "white", size: 240, displaySize: 240 },
   },
 };
 
@@ -344,6 +344,67 @@ export const BackgroundAndSize: Story = {
     opts: {
       background: "#222",
       size: { width: 160, height: 100 },
+      // The square viewBox fits the 100px height, so that is its drawn size.
+      displaySize: 100,
     },
+  },
+};
+
+const DEFAULT_THICKNESS_ICON: IconLayer[] = [
+  {
+    from: "Demo.DefaultStroke",
+    shapes: [
+      {
+        kind: "rectangle",
+        extent: [
+          [-80, -80],
+          [80, 80],
+        ],
+        lineColor: [0, 0, 127],
+      },
+      {
+        kind: "line",
+        points: [
+          [-60, 0],
+          [60, 0],
+        ],
+        color: [0, 0, 127],
+      },
+      {
+        kind: "ellipse",
+        extent: [
+          [-30, -30],
+          [30, 30],
+        ],
+        lineColor: [0, 0, 127],
+      },
+    ],
+  },
+];
+
+/**
+ * The library-tree thumbnail case. Shapes with no `thickness` take the spec
+ * `0.25`, which is under a pixel at both sizes, so each copy draws the
+ * one-display-pixel floor: 12.5 icon units at 16px, 1.25 at 160px.
+ */
+export const DefaultThicknessThumbnail: Story = {
+  args: {
+    title: "default thickness at 16px and 160px",
+    layers: DEFAULT_THICKNESS_ICON,
+  },
+  render: ({ layers, title }) => {
+    const card = document.createElement("div");
+    card.className = "diagram-svg-story";
+    const row = [16, 160]
+      .map(
+        (px) =>
+          `<figure style="margin:0 12px 0 0;display:inline-block;vertical-align:bottom;">${renderIconLayersToSvg(
+            layers,
+            { background: "white", size: px, displaySize: px },
+          )}<figcaption style="font-family:sans-serif;font-size:11px;color:#666;">${px}px</figcaption></figure>`,
+      )
+      .join("");
+    card.innerHTML = `<h3>${title}</h3>${row}`;
+    return card;
   },
 };

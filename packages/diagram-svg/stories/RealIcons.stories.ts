@@ -70,6 +70,7 @@ function renderCard(fixture: IconFixture, size: number): HTMLElement {
   svgHost.innerHTML = renderIconLayersToSvg(fixture.iconLayers, {
     coordinateSystem: cs,
     size,
+    displaySize: size,
   });
   const label = document.createElement("div");
   label.textContent = fixture.className;
