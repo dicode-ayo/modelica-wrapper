@@ -22,7 +22,6 @@ const VIEW_ONLY: LayoutContentOptions = {
   selectedKeys: new Set(),
   readonly: true,
   editableShapes: false,
-  lineThicknessScale: undefined,
   nestedSource: null,
 };
 

@@ -544,7 +544,6 @@ export class OmGraphicalLayout extends LitElement {
             selectedKeys: this.selectedKeys,
             readonly: this.readonly,
             editableShapes: true,
-            lineThicknessScale: this.lineThicknessScale,
             nestedSource: this.nestedSourceByClass?.fetch ?? null,
           },
           this.nestingViews,
