@@ -22,6 +22,7 @@ pnpm -r test                                 # adds integration when omc is on P
 pnpm lint                                    # eslint . (CI-gated)
 pnpm format:check                            # prettier --check . (CI-gated)
 pnpm format                                  # prettier --write . to fix
+pnpm crap                                    # coverage floor + CRAP ceiling per package (CI-gated)
 ```
 
 eslint + prettier are configured (`eslint.config.mjs`, `.prettierrc.json`) and
@@ -29,6 +30,17 @@ CI-gated: contributions must pass `pnpm lint` and `pnpm format:check` alongside
 `tsc` + `vitest`. Run `pnpm format` to apply formatting. cSpell flags
 `Modelica`, `MODELICA`, `dicode`, `openmodelica`, `modelica` as "Unknown word" —
 these are project terms; ignore those warnings.
+
+`pnpm crap` runs each package's `test:coverage` and then `crap4ts` over it.
+Two levers per package, each at its measured baseline: the aggregate floor is
+`coverage.thresholds` in the package's `vitest.config.ts`, the risk tail is
+`--fail-on-crap` in its `crap` script (crap4ts's `--fail-on-coverage-below` is
+per function, so it can't be the floor). A fully covered function scores its
+own complexity, so no ceiling goes below 50 — under that, the gate trips on
+tested-but-complex code like `normalizeShape` (29 at 100%). The ratchet is
+manual: when a PR improves a package's numbers, tighten that package's
+thresholds in the same PR and update the date and commit beside them. Never
+loosen one without saying why in the PR description.
 
 ## Code style
 

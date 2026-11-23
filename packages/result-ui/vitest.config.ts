@@ -9,9 +9,7 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 /**
  * happy-dom is the default test environment so Lit can register custom
- * elements and we can mount `<om-*>` elements in unit tests (the cards UI
- * lands in a later PR; pure helpers like the variable tree don't need it but
- * share the same config).
+ * elements and we can mount `<om-*>` elements in unit tests.
  */
 export default defineConfig({
   test: {
@@ -19,6 +17,11 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     environment: "happy-dom",
     testTimeout: 10_000,
-    coverage,
+    // Baseline measured 2026-11-23 at c945296, together with the
+    // `--fail-on-crap` ceiling in package.json. Ratchet per CLAUDE.md.
+    coverage: {
+      ...coverage,
+      thresholds: { statements: 64, branches: 49, functions: 56, lines: 67 },
+    },
   },
 });

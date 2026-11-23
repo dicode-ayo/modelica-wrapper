@@ -528,7 +528,7 @@
     "test:e2e:debug": "cd e2e && npm run test:debug",
     "test:e2e:omc": "cd e2e && npm run test:omc",
     "test:coverage": "OMC_INTEGRATION=0 vitest run --passWithNoTests --coverage",
-    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\"",
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\" --fail-on-crap 993",
     "package": "node esbuild.config.mjs --production && vsce package --no-dependencies --allow-missing-repository"
   },
   "dependencies": {

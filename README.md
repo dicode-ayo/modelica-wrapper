@@ -145,6 +145,7 @@ omc --version  # should match packages/omc-client/src/version.ts SUPPORTED_OMC.p
 pnpm install
 pnpm -r typecheck
 pnpm -r test          # runs unit + integration when omc is on PATH
+pnpm crap             # coverage floor + CRAP ceiling per package, as CI gates it
 ```
 
 The webview bundle has no watcher by default — after editing `diagram-ui` or the
@@ -157,7 +158,10 @@ reload the VSCode window, or the panel keeps serving the old bundle.
 
 1. **Lint + unit** — typecheck, the parser/version/registry unit tests, and the
    `omc-client` `coverage:recount` drift check, on plain `ubuntu-latest`.
-2. **Integration (OMC matrix)** — inside the pinned `openmodelica/openmodelica`
+2. **Coverage + CRAP** — `pnpm crap`: each package's Istanbul coverage run
+   against its committed floor, then `crap4ts` against its CRAP ceiling. The
+   baselines and the ratchet policy are in [`CLAUDE.md`](CLAUDE.md#commands).
+3. **Integration (OMC matrix)** — inside the pinned `openmodelica/openmodelica`
    container, runs the full integration suite + builds the extension bundle.
 
 [`.github/workflows/omc-update-audit.yml`](.github/workflows/omc-update-audit.yml)

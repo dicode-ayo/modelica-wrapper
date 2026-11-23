@@ -36,7 +36,7 @@
     "storybook": "storybook dev -p 6008 --no-open",
     "build-storybook": "storybook build",
     "test:coverage": "vitest run --coverage",
-    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\" --fail-on-crap 50"
   },
   "dependencies": {
     "@dicode/ui-common": "workspace:*",

@@ -34,7 +34,7 @@
     "update:lockfiles": "node scripts/update-lockfiles.mjs",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\" --fail-on-crap 50"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

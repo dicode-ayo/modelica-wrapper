@@ -18,7 +18,12 @@ const WEBVIEW_ENTRY_TESTS = "src/webview/*-entry.test.ts";
 
 export default defineConfig({
   test: {
-    coverage,
+    // Baseline measured 2026-11-23 at c945296, together with the
+    // `--fail-on-crap` ceiling in package.json. Ratchet per CLAUDE.md.
+    coverage: {
+      ...coverage,
+      thresholds: { statements: 79, branches: 76, functions: 78, lines: 80 },
+    },
     projects: [
       {
         // `vscode` is provided by the extension host at runtime and not on npm.
