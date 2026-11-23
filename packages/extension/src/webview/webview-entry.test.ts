@@ -3,39 +3,30 @@ import {
   formatConnectorKey,
 } from "@dicode/diagram-ui/entity-keys";
 import type { ParameterModel } from "@dicode/omc-client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import "./webview-entry.js";
 import type { ExtensionToWebview, WebviewToExtension } from "./protocol.js";
-import { installVsCodeApi, postFromHost } from "./vscode-api.fixture.js";
+import {
+  installVsCodeApi,
+  mountRoot,
+  postFromHost,
+  rendered,
+} from "./vscode-api.fixture.js";
 
-const host = installVsCodeApi<WebviewToExtension>();
+const host = installVsCodeApi<WebviewToExtension, ExtensionToWebview>();
+
+type Root = HTMLElementTagNameMap["om-webview-root"];
 
 const MODEL: ParameterModel = { className: "P.R", fields: [] };
 
-async function mount() {
-  const root = document.createElement("om-webview-root");
-  document.body.append(root);
-  await root.updateComplete;
-  host.posted.length = 0;
-  return root;
-}
-
-async function fromHost(
-  root: HTMLElementTagNameMap["om-webview-root"],
-  msg: ExtensionToWebview,
-) {
-  postFromHost(msg);
-  await root.updateComplete;
-}
+const mount = () => mountRoot("om-webview-root");
 
 function child<K extends keyof HTMLElementTagNameMap>(
-  root: HTMLElement,
+  root: Root,
   tag: K,
 ): HTMLElementTagNameMap[K] {
-  const el = root.shadowRoot?.querySelector(tag);
-  if (!el) throw new Error(`expected <${tag}> in the rendered tree`);
-  return el;
+  return rendered(root.shadowRoot, tag);
 }
 
 /** What the host was sent, minus the focus reports an opening panel makes on
@@ -44,23 +35,16 @@ function sent(): WebviewToExtension[] {
   return host.posted.filter((m) => m.type !== "inputFocus");
 }
 
-afterEach(() => {
-  document.body.replaceChildren();
-  host.posted.length = 0;
-  vi.restoreAllMocks();
-});
-
 describe("<om-webview-root>", () => {
   it("posts ready once it is connected", async () => {
-    const root = document.createElement("om-webview-root");
-    document.body.append(root);
-    await root.updateComplete;
+    await mount();
     expect(host.posted).toEqual([{ type: "ready" }]);
   });
 
   it("drops a host message whose type it does not know", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const root = await mount();
+    host.clear();
     postFromHost({ type: "notAMessage" });
     await root.updateComplete;
     expect(warn).toHaveBeenCalledOnce();
@@ -73,7 +57,7 @@ describe("<om-webview-root>", () => {
   it("swaps the diagram for an error state on renderError", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const root = await mount();
-    await fromHost(root, {
+    await host.fromHost(root, {
       type: "renderError",
       className: "P.Broken",
       mode: "diagram",
@@ -88,7 +72,8 @@ describe("<om-webview-root>", () => {
   describe("parameter modal", () => {
     async function openComponentParams() {
       const root = await mount();
-      await fromHost(root, {
+      host.clear();
+      await host.fromHost(root, {
         type: "parametersOpen",
         kind: "componentParams",
         model: MODEL,
@@ -104,7 +89,7 @@ describe("<om-webview-root>", () => {
       expect(panel.open).toBe(true);
       expect(panel.showReset).toBe(true);
 
-      await fromHost(root, {
+      await host.fromHost(root, {
         type: "parametersOpen",
         kind: "classParams",
         model: MODEL,
@@ -142,6 +127,7 @@ describe("<om-webview-root>", () => {
 
   it("opens the editor of a double-clicked component and ignores a connector", async () => {
     const root = await mount();
+    host.clear();
     const diagram = child(root, "om-graphical-layout");
     diagram.dispatchEvent(
       new CustomEvent("om-double-click", {
@@ -160,6 +146,7 @@ describe("<om-webview-root>", () => {
 
   it("relays a copy with its keys and a paste without", async () => {
     const root = await mount();
+    host.clear();
     const diagram = child(root, "om-graphical-layout");
     const keys = [formatComponentKey("R1")];
     diagram.dispatchEvent(

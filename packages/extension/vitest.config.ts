@@ -18,8 +18,9 @@ const WEBVIEW_ENTRY_TESTS = "src/webview/*-entry.test.ts";
 
 export default defineConfig({
   test: {
-    // Baseline measured 2026-11-23 at c945296, together with the
-    // `--fail-on-crap` ceiling in package.json. Ratchet per CLAUDE.md.
+    root: projectRoot,
+    // Floors sit at the measured baseline, paired with the `--fail-on-crap`
+    // ceiling in `package.json`. Ratchet per CLAUDE.md.
     coverage: {
       ...coverage,
       thresholds: { statements: 79, branches: 76, functions: 78, lines: 80 },
@@ -63,7 +64,7 @@ export default defineConfig({
           root: projectRoot,
           include: [WEBVIEW_ENTRY_TESTS],
           environment: "happy-dom",
-          testTimeout: 30_000,
+          testTimeout: 10_000,
         },
       },
     ],

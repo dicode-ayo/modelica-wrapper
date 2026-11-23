@@ -1,5 +1,5 @@
 import type { LibraryContextMenuDetail } from "@dicode/diagram-ui";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import "./library-view-entry.js";
 import type { LibraryRequestMessage } from "./library-messages.js";
@@ -7,18 +7,13 @@ import type {
   ExtensionToLibraryView,
   LibraryViewToExtension,
 } from "./library-view-protocol.js";
-import { installVsCodeApi, postFromHost } from "./vscode-api.fixture.js";
+import { installVsCodeApi, mountRoot, rendered } from "./vscode-api.fixture.js";
 
-const host = installVsCodeApi<LibraryViewToExtension>();
+const host = installVsCodeApi<LibraryViewToExtension, ExtensionToLibraryView>();
 
 type Root = HTMLElementTagNameMap["om-library-view-root"];
 
-async function mount(): Promise<Root> {
-  const root = document.createElement("om-library-view-root");
-  document.body.append(root);
-  await root.updateComplete;
-  return root;
-}
+const mount = () => mountRoot("om-library-view-root");
 
 /** Lets the tree's data-loader promises and the re-render they cause settle. */
 async function settle(root: Root): Promise<void> {
@@ -47,7 +42,7 @@ async function answerRoot(
   >,
 ): Promise<void> {
   await settle(root);
-  postFromHost({
+  await host.fromHost(root, {
     type: "libraryChildren",
     requestId: rootListRequest().requestId,
     ...response,
@@ -73,16 +68,7 @@ function shadow(root: Root): ShadowRoot {
   return sr;
 }
 
-function tree(root: Root): HTMLElement {
-  const el = shadow(root).querySelector("om-library-tree");
-  if (!el) throw new Error("expected <om-library-tree> to be mounted");
-  return el;
-}
-
-afterEach(() => {
-  document.body.replaceChildren();
-  host.posted.length = 0;
-});
+const tree = (root: Root) => rendered(root.shadowRoot, "om-library-tree");
 
 describe("<om-library-view-root>", () => {
   it("routes the tree's top-level fetch through the host and shows the empty state", async () => {
@@ -101,8 +87,10 @@ describe("<om-library-view-root>", () => {
     await answerRoot(root, { items: [] });
     expect(shadow(root).querySelector("om-library-tree")).toBeNull();
 
-    postFromHost({ type: "libraryChildrenChanged", parent: null });
-    await root.updateComplete;
+    await host.fromHost(root, {
+      type: "libraryChildrenChanged",
+      parent: null,
+    });
     expect(shadow(root).querySelector("om-library-tree")).not.toBeNull();
   });
 
@@ -127,20 +115,40 @@ describe("<om-library-view-root>", () => {
     expect(shadow(root).querySelector("om-library-tree")).not.toBeNull();
   });
 
-  it("cancels a placement on release, and only one that was started", async () => {
-    const root = await mount();
-    window.dispatchEvent(new Event("pointerup"));
-    expect(sent()).toEqual([]);
+  const GAIN = "Modelica.Blocks.Math.Gain";
 
+  function startPlacement(root: Root): void {
     tree(root).dispatchEvent(
       new CustomEvent("om-library-placement-start", {
-        detail: { className: "Modelica.Blocks.Math.Gain" },
+        detail: { className: GAIN },
       }),
     );
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  }
+
+  it("cancels nothing on release when no placement was started", async () => {
+    await mount();
+    window.dispatchEvent(new Event("pointerup"));
+    expect(sent()).toEqual([]);
+  });
+
+  it("cancels a started placement once on release", async () => {
+    const root = await mount();
+    startPlacement(root);
+    window.dispatchEvent(new Event("pointerup"));
     window.dispatchEvent(new Event("pointerup"));
     expect(sent()).toEqual([
-      { type: "placementStart", className: "Modelica.Blocks.Math.Gain" },
+      { type: "placementStart", className: GAIN },
+      { type: "placementCancel" },
+    ]);
+  });
+
+  it("cancels a started placement once on Escape", async () => {
+    const root = await mount();
+    startPlacement(root);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(sent()).toEqual([
+      { type: "placementStart", className: GAIN },
       { type: "placementCancel" },
     ]);
   });
@@ -150,9 +158,7 @@ describe("<om-library-view-root>", () => {
       tree(root).dispatchEvent(
         new CustomEvent("om-library-context-menu", { detail }),
       );
-      const menu = shadow(root).querySelector("om-context-menu");
-      if (!menu) throw new Error("expected <om-context-menu>");
-      return menu;
+      return rendered(root.shadowRoot, "om-context-menu");
     }
 
     const PACKAGE_ROW: LibraryContextMenuDetail = {

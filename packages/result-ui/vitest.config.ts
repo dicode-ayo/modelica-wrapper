@@ -17,8 +17,8 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     environment: "happy-dom",
     testTimeout: 10_000,
-    // Baseline measured 2026-11-23 at c945296, together with the
-    // `--fail-on-crap` ceiling in package.json. Ratchet per CLAUDE.md.
+    // Floors sit at the measured baseline, paired with the `--fail-on-crap`
+    // ceiling in `package.json`. Ratchet per CLAUDE.md.
     coverage: {
       ...coverage,
       thresholds: { statements: 64, branches: 49, functions: 56, lines: 67 },

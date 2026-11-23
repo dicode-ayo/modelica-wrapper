@@ -35,12 +35,14 @@ these are project terms; ignore those warnings.
 Two levers per package, each at its measured baseline: the aggregate floor is
 `coverage.thresholds` in the package's `vitest.config.ts`, the risk tail is
 `--fail-on-crap` in its `crap` script (crap4ts's `--fail-on-coverage-below` is
-per function, so it can't be the floor). A fully covered function scores its
-own complexity, so no ceiling goes below 50 — under that, the gate trips on
-tested-but-complex code like `normalizeShape` (29 at 100%). The ratchet is
-manual: when a PR improves a package's numbers, tighten that package's
-thresholds in the same PR and update the date and commit beside them. Never
-loosen one without saying why in the PR description.
+per function, so it can't be the floor). Each ceiling is
+`max(50, floor(worst CRAP) + 1)`. The 50 is a chosen minimum: a fully covered
+function scores its own complexity, so it leaves headroom for new
+complex-but-tested code. A ceiling at the current worst only blocks a new
+worst case; the coverage floor is what catches broad regressions, so keep the
+ratchet moving. It is manual: when a PR improves a package's numbers, tighten
+that package's thresholds in the same PR and record the new baseline in the PR
+description. Never loosen one without saying why in the PR description.
 
 ## Code style
 
