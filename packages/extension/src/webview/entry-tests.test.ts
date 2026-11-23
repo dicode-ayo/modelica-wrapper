@@ -18,7 +18,7 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-const DECORATOR = /^\s*(export\s+)?@(customElement|property|state|query)\(/m;
+const DECORATOR = /^\s*(export\s+)?@[A-Za-z_$][\w$]*\(/m;
 const decorated = sourceFiles(srcDir)
   .filter((path) => DECORATOR.test(readFileSync(path, "utf8")))
   .map((path) => relative(srcDir, path));
@@ -33,7 +33,7 @@ describe("every decorated source file is imported by a happy-dom entry test", ()
     (file) => {
       const name = basename(file, ".ts");
       const test = readFileSync(join(webviewDir, `${name}.test.ts`), "utf8");
-      expect(test).toContain(`"./${name}.js"`);
+      expect(test).toMatch(new RegExp(`^import "\\./${name}\\.js";$`, "m"));
     },
   );
 

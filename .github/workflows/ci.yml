@@ -60,8 +60,6 @@ jobs:
           OMC_INTEGRATION: "0"
         run: pnpm -r test
 
-  # Its own job, not a step of `Lint + unit`: a full Istanbul run is markedly
-  # slower than `pnpm -r test`, and a separate check names the failure.
   # Each package's `crap` script runs `test:coverage`, which fails below that
   # package's vitest coverage thresholds, then fails on its `--fail-on-crap`
   # ceiling.

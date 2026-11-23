@@ -16,7 +16,7 @@ export interface RecordingVsCodeApi<Out, In> {
 
 /**
  * Also registers the per-test cleanup every entry test shares: unmounts what
- * the test connected, forgets its posts and restores its spies.
+ * the test connected, forgets its posts and state, and restores its spies.
  */
 export function installVsCodeApi<Out, In>(): RecordingVsCodeApi<Out, In> {
   const posted: Out[] = [];
@@ -36,6 +36,7 @@ export function installVsCodeApi<Out, In>(): RecordingVsCodeApi<Out, In> {
   afterEach(() => {
     document.body.replaceChildren();
     clear();
+    state = undefined;
     vi.restoreAllMocks();
   });
   return {
@@ -54,9 +55,10 @@ export async function mountRoot<K extends keyof HTMLElementTagNameMap>(
 ): Promise<HTMLElementTagNameMap[K]> {
   const root = document.createElement(tag);
   document.body.append(root);
-  if (root instanceof ReactiveElement) {
-    await root.updateComplete;
+  if (!(root instanceof ReactiveElement)) {
+    throw new Error(`<${tag}> is not a registered Lit element`);
   }
+  await root.updateComplete;
   return root;
 }
 
