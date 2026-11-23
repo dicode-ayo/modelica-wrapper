@@ -1,7 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 import { coverage } from "../../vitest.base.js";
 
@@ -11,9 +11,7 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 // bundle. Their tests run in happy-dom, compiled against the same
 // `tsconfig.webview.json` that bundle uses: the default `tsconfig.json` leaves
 // decorators as TC39 stage-3 syntax, which Lit's legacy decorators reject.
-// Keep every entry imported by one of them: Istanbul parses a file no test
-// imports with that default transform, and the decorators fail the whole
-// coverage run.
+// `src/webview/entry-tests.test.ts` keeps every decorated file covered here.
 const WEBVIEW_ENTRY_TESTS = "src/webview/*-entry.test.ts";
 
 export default defineConfig({
@@ -40,7 +38,7 @@ export default defineConfig({
           name: "unit",
           root: projectRoot,
           include: ["src/**/*.test.ts"],
-          exclude: [WEBVIEW_ENTRY_TESTS],
+          exclude: [...configDefaults.exclude, WEBVIEW_ENTRY_TESTS],
           environment: "node",
           testTimeout: 30_000,
         },
