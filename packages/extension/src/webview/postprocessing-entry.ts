@@ -176,3 +176,9 @@ export class OmResultViewRoot extends LitElement {
     `;
   }
 }
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "om-result-view-root": OmResultViewRoot;
+  }
+}
