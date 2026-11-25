@@ -8,14 +8,26 @@ import { ClassInvalidationRegistry } from "./invalidation.js";
 import {
   autoLoadWorkspace,
   loadEntryFilesAndRefresh,
+  nameCollisionToast,
   registerWorkspaceAutoload,
   type AutoLoadClient,
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 
-/** Every entry file parses as a single entity unless a test says otherwise. */
+/** The one class a single-entity entry file at `fileName` declares. */
+function classNameOf(fileName: string): string {
+  const base = path.basename(fileName, ".mo");
+  return base === "package" ? path.basename(path.dirname(fileName)) : base;
+}
+
+/**
+ * Every entry file parses as a single entity named after it unless a test
+ * says otherwise, so distinct files never collide by accident.
+ */
 const singleEntity = (): AutoLoadClient["parseFile"] =>
-  vi.fn(async () => ({ classNames: ["M"] }));
+  vi.fn(async ({ fileName }: { fileName: string }) => ({
+    classNames: [classNameOf(fileName)],
+  }));
 
 /** Client whose loadFile returns `results[i]` for the i-th call. */
 function client(results: boolean[]): AutoLoadClient {
@@ -140,10 +152,10 @@ describe("loadEntryFilesAndRefresh", () => {
     const refresh = vi.fn();
     const c = client([true]);
     c.parseFile = vi.fn(async ({ fileName }: { fileName: string }) => ({
-      classNames: fileName === "AB.mo" ? ["A", "B"] : ["M"],
+      classNames: fileName === "AB.mo" ? ["A", "B"] : [classNameOf(fileName)],
     }));
 
-    const skipped = await loadEntryFilesAndRefresh(
+    const { skipped } = await loadEntryFilesAndRefresh(
       c,
       ["AB.mo", "M.mo"],
       refresh,
@@ -167,7 +179,7 @@ describe("loadEntryFilesAndRefresh", () => {
     const names: string[] = [];
     const c: AutoLoadClient = {
       parseFile: vi.fn(async ({ fileName }: { fileName: string }) => ({
-        classNames: fileName === "AB.mo" ? ["A", "B"] : ["M"],
+        classNames: fileName === "AB.mo" ? ["A", "B"] : [classNameOf(fileName)],
       })),
       loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
         names.push(fileName);
@@ -181,6 +193,103 @@ describe("loadEntryFilesAndRefresh", () => {
     await loadEntryFilesAndRefresh(c, ["AB.mo", "M.mo", "P.mo"], refresh);
 
     expect(names).toEqual(["M.mo", "P.mo", "M.mo"]);
+  });
+
+  it("never loads a second entry file declaring a class an earlier one already claimed", async () => {
+    const refresh = vi.fn();
+    const c = client([true, true]);
+    const kept = path.join("rootA", "Examples", "package.mo");
+    const refused = path.join("rootB", "Examples", "package.mo");
+    const other = path.join("rootB", "Other.mo");
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      [kept, refused, other],
+      refresh,
+    );
+
+    expect(collisions).toEqual([
+      { className: "Examples", keptFileName: kept, refusedFileName: refused },
+    ]);
+    expect(c.loadFile).toHaveBeenCalledTimes(2);
+    expect(c.loadFile).not.toHaveBeenCalledWith({ fileName: refused });
+  });
+
+  it("keeps a collision-refused file out of the retry loop as well", async () => {
+    const refresh = vi.fn();
+    const perFile = new Map<string, boolean[]>([
+      ["a/M.mo", [false, true]],
+      ["P.mo", [true]],
+    ]);
+    const idx = new Map<string, number>();
+    const names: string[] = [];
+    const c: AutoLoadClient = {
+      parseFile: singleEntity(),
+      loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+        names.push(fileName);
+        const i = idx.get(fileName) ?? 0;
+        idx.set(fileName, i + 1);
+        return { success: perFile.get(fileName)?.[i] ?? false };
+      }),
+      getErrorString: vi.fn(async () => ({ errorString: "boom" })),
+    };
+
+    await loadEntryFilesAndRefresh(c, ["a/M.mo", "b/M.mo", "P.mo"], refresh);
+
+    expect(names).toEqual(["a/M.mo", "P.mo", "a/M.mo"]);
+  });
+
+  it("does not let a multi-entity file claim a name", async () => {
+    const refresh = vi.fn();
+    const c = client([true]);
+    c.parseFile = vi.fn(async ({ fileName }: { fileName: string }) => ({
+      classNames: fileName === "AB.mo" ? ["A", "B"] : ["A"],
+    }));
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      ["AB.mo", "A.mo"],
+      refresh,
+    );
+
+    expect(collisions).toEqual([]);
+    expect(c.loadFile).toHaveBeenCalledWith({ fileName: "A.mo" });
+  });
+
+  it("parses each entry file exactly once for both screens", async () => {
+    const refresh = vi.fn();
+    const c = client([true, true, true]);
+    c.parseFile = vi.fn(async ({ fileName }: { fileName: string }) => ({
+      classNames: fileName === "AB.mo" ? ["A", "B"] : [classNameOf(fileName)],
+    }));
+    const files = ["AB.mo", "a/M.mo", "b/M.mo", "P.mo"];
+
+    await loadEntryFilesAndRefresh(c, files, refresh);
+
+    expect(c.parseFile).toHaveBeenCalledTimes(files.length);
+    for (const fileName of files) {
+      expect(c.parseFile).toHaveBeenCalledWith({ fileName });
+    }
+    expect(c.getErrorString).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a file OMC cannot parse through to the load unscreened", async () => {
+    const refresh = vi.fn();
+    const c = client([true, true]);
+    c.parseFile = vi.fn(async ({ fileName }: { fileName: string }) => {
+      if (fileName === "Broken.mo") throw new Error("parse error");
+      return { classNames: [classNameOf(fileName)] };
+    });
+
+    const result = await loadEntryFilesAndRefresh(
+      c,
+      ["Broken.mo", "M.mo"],
+      refresh,
+    );
+
+    expect(result).toEqual({ skipped: [], collisions: [] });
+    expect(c.loadFile).toHaveBeenCalledWith({ fileName: "Broken.mo" });
+    expect(c.loadFile).toHaveBeenCalledWith({ fileName: "M.mo" });
   });
 
   it("refreshes once even if a load throws, as long as one succeeds", async () => {
@@ -197,6 +306,23 @@ describe("loadEntryFilesAndRefresh", () => {
     await loadEntryFilesAndRefresh(c, ["A.mo", "B.mo"], refresh);
 
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("nameCollisionToast", () => {
+  it("names the class, both paths, and that the second copy was not loaded", () => {
+    const message = nameCollisionToast([
+      {
+        className: "Examples",
+        keptFileName: "/rootA/Examples/package.mo",
+        refusedFileName: "/rootB/Examples/package.mo",
+      },
+    ]);
+
+    expect(message).toContain("Examples");
+    expect(message).toContain("/rootA/Examples/package.mo");
+    expect(message).toContain("/rootB/Examples/package.mo");
+    expect(message).toContain("second copy was not loaded");
   });
 });
 
@@ -229,6 +355,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
     it("discovers and loads the workspace's entry files, then refreshes once", async () => {
       const refresh = vi.fn();
       const onSkipped = vi.fn();
+      const onCollisions = vi.fn();
       const c = client([true]);
 
       await autoLoadWorkspace({
@@ -236,12 +363,58 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient: async () => c,
         refresh,
         onSkipped,
+        onCollisions,
         scanMoFiles,
       });
 
       expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
       expect(refresh).toHaveBeenCalledTimes(1);
       expect(onSkipped).not.toHaveBeenCalled();
+      expect(onCollisions).not.toHaveBeenCalled();
+    });
+
+    it("reports every collision across workspace folders in one onCollisions call, earlier folder kept", async () => {
+      const rootA = path.join(tmp, "rootA");
+      const rootB = path.join(tmp, "rootB");
+      const kept = path.join(rootA, "Examples", "package.mo");
+      const refused = path.join(rootB, "Examples", "package.mo");
+      const keptLib = path.join(rootA, "Lib", "package.mo");
+      const refusedLib = path.join(rootB, "Lib", "package.mo");
+      for (const f of [kept, refused, keptLib, refusedLib]) {
+        await fsp.mkdir(path.dirname(f), { recursive: true });
+        await fsp.writeFile(f, "");
+      }
+      const onCollisions = vi.fn();
+      const c = client([true, true]);
+
+      await autoLoadWorkspace({
+        folders: () => [rootA, rootB],
+        ensureClient: async () => c,
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+        onCollisions,
+        scanMoFiles,
+      });
+
+      expect(onCollisions).toHaveBeenCalledTimes(1);
+      const [batch] = onCollisions.mock.calls[0] ?? [];
+      expect(batch).toEqual(
+        expect.arrayContaining([
+          {
+            className: "Examples",
+            keptFileName: kept,
+            refusedFileName: refused,
+          },
+          {
+            className: "Lib",
+            keptFileName: keptLib,
+            refusedFileName: refusedLib,
+          },
+        ]),
+      );
+      expect(batch).toHaveLength(2);
+      expect(c.loadFile).not.toHaveBeenCalledWith({ fileName: refused });
+      expect(c.loadFile).not.toHaveBeenCalledWith({ fileName: refusedLib });
     });
 
     it("does nothing when there are no workspace folders", async () => {
@@ -252,6 +425,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient,
         refresh: vi.fn(),
         onSkipped: vi.fn(),
+        onCollisions: vi.fn(),
         scanMoFiles,
       });
 
@@ -269,6 +443,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
           ensureClient,
           refresh: vi.fn(),
           onSkipped: vi.fn(),
+          onCollisions: vi.fn(),
           scanMoFiles,
         }),
       ).resolves.toBeUndefined();
@@ -286,6 +461,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
           ensureClient,
           refresh: vi.fn(),
           onSkipped: vi.fn(),
+          onCollisions: vi.fn(),
           scanMoFiles,
         }),
       ).resolves.toBeUndefined();
@@ -303,6 +479,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient: async () => c,
         refresh,
         onSkipped: vi.fn(),
+        onCollisions: vi.fn(),
         scanMoFiles,
       };
 
@@ -324,6 +501,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient: async () => c,
         refresh: vi.fn(),
         onSkipped: vi.fn(),
+        onCollisions: vi.fn(),
         scanMoFiles,
       };
 
@@ -356,6 +534,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         },
         refresh: vi.fn(),
         onSkipped: vi.fn(),
+        onCollisions: vi.fn(),
         scanMoFiles,
       };
 
@@ -403,6 +582,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         },
         refresh: vi.fn(),
         onSkipped: vi.fn(),
+        onCollisions: vi.fn(),
         scanMoFiles,
       };
 
@@ -439,6 +619,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         ensureClient: async () => c,
         refresh,
         onSkipped: vi.fn(),
+        onCollisions: vi.fn(),
         scanMoFiles,
       };
 

@@ -12,7 +12,8 @@ import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
 import { SessionQueue } from "./session-queue.js";
 import {
-  multipleTopLevelClasses,
+  fileClassNames,
+  moreThanOne,
   type FileParseClient,
 } from "./single-entity-file.js";
 import { deriveEntryPoints } from "./workspace-scan.js";
@@ -30,20 +31,53 @@ export interface SkippedEntryFile {
 }
 
 /**
+ * An entry file left unloaded because an earlier entry file in the same sweep
+ * already declares its class. Every workspace folder shares one OMC session,
+ * so loading both would leave one silently replacing the other.
+ */
+export interface NameCollision {
+  className: string;
+  keptFileName: string;
+  refusedFileName: string;
+}
+
+/** What one {@link loadEntryFilesAndRefresh} sweep refused to load, and why. */
+export interface AutoLoadRefusals {
+  skipped: SkippedEntryFile[];
+  collisions: NameCollision[];
+}
+
+/** Batch notification for every name collision one sweep refused. */
+export function nameCollisionToast(collisions: NameCollision[]): string {
+  const details = collisions
+    .map(
+      (c) =>
+        `${c.className} is declared by both ${c.keptFileName} and ` +
+        `${c.refusedFileName}`,
+    )
+    .join("; ");
+  return (
+    `Modelica: ${details}. All workspace folders share one OpenModelica ` +
+    `session, so the second copy was not loaded.`
+  );
+}
+
+/**
  * Load each entry file, then invoke `refresh` a single time — but only if at
  * least one file loaded. One refresh (not one per file) keeps the post-startup
  * rebuild to a single, mutex-serialized OMC fetch instead of a concurrent
  * batch; skipping it when nothing loaded lets a genuinely empty workspace keep
  * its "Load Library" state.
  *
- * Returns the entry files refused for declaring several top-level classes, so
- * the caller can report the whole batch in one message.
+ * Returns the entry files refused for declaring several top-level classes or
+ * a class an earlier entry file already declares, so the caller can report
+ * each batch in one message.
  */
 export async function loadEntryFilesAndRefresh(
   client: AutoLoadClient,
   files: readonly string[],
   refresh: () => void,
-): Promise<SkippedEntryFile[]> {
+): Promise<AutoLoadRefusals> {
   const tryLoad = async (fileName: string): Promise<boolean> => {
     try {
       const { success } = await client.loadFile({ fileName });
@@ -64,18 +98,40 @@ export async function loadEntryFilesAndRefresh(
   // Screen before the first pass, so a refused file stays out of the retry
   // loop below as well.
   const skipped: SkippedEntryFile[] = [];
+  const collisions: NameCollision[] = [];
+  const claimedBy = new Map<string, string>();
   const eligible: string[] = [];
   for (const fileName of files) {
-    const classNames = await multipleTopLevelClasses(client, fileName);
-    if (classNames) {
+    const classNames = await fileClassNames(client, fileName);
+    if (classNames === undefined) {
+      eligible.push(fileName);
+      continue;
+    }
+    const multiple = moreThanOne(classNames);
+    if (multiple) {
       log.warn(
         "autoLoad",
-        `skipping ${fileName}: declares ${classNames.join(", ")}`,
+        `skipping ${fileName}: declares ${multiple.join(", ")}`,
       );
-      skipped.push({ fileName, classNames });
-    } else {
-      eligible.push(fileName);
+      skipped.push({ fileName, classNames: multiple });
+      continue;
     }
+    // Discovery order follows workspace-folder order, so the earlier folder
+    // keeps a contested name.
+    const [className] = classNames;
+    if (className !== undefined) {
+      const keptFileName = claimedBy.get(className);
+      if (keptFileName !== undefined) {
+        log.warn(
+          "autoLoad",
+          `skipping ${fileName}: ${className} is already declared by ${keptFileName}`,
+        );
+        collisions.push({ className, keptFileName, refusedFileName: fileName });
+        continue;
+      }
+      claimedBy.set(className, fileName);
+    }
+    eligible.push(fileName);
   }
   // The screen lets a file OMC could not parse through to the load, but
   // `parseFile` has already deposited that parse error; without a drain the
@@ -106,7 +162,7 @@ export async function loadEntryFilesAndRefresh(
   if (loadedAny) {
     refresh();
   }
-  return skipped;
+  return { skipped, collisions };
 }
 
 /** What {@link autoLoadWorkspace} needs to discover, load, and report on entry files. */
@@ -117,6 +173,7 @@ export interface WorkspaceAutoloadDeps {
   /** Told once, after every load settles — see {@link loadEntryFilesAndRefresh}. */
   refresh: () => void;
   onSkipped: (skipped: SkippedEntryFile[]) => void;
+  onCollisions: (collisions: NameCollision[]) => void;
   /**
    * A flat list of every `.mo` path in the workspace, shared with the
    * mo-file-watcher's own `sessionReplaced` reseed so `:reset` triggers one
@@ -143,8 +200,13 @@ export async function autoLoadWorkspace(
     // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
     // webview tree's own mount fetch is serialized with this one through the
     // client, so they can't overlap into a busy-socket send.
-    const skipped = await loadEntryFilesAndRefresh(c, files, deps.refresh);
+    const { skipped, collisions } = await loadEntryFilesAndRefresh(
+      c,
+      files,
+      deps.refresh,
+    );
     if (skipped.length > 0) deps.onSkipped(skipped);
+    if (collisions.length > 0) deps.onCollisions(collisions);
   } catch (err) {
     log.warn("autoLoad", `workspace autoload failed: ${errorDetail(err)}`);
   }

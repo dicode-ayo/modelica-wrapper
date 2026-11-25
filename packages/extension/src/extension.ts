@@ -68,6 +68,7 @@ import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WriteVerdicts } from "./write-verdict.js";
 import { multiEntityBatchToast } from "./single-entity-file.js";
 import {
+  nameCollisionToast,
   registerWorkspaceAutoload,
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
@@ -222,6 +223,9 @@ export async function activate(
       void vscode.window.showWarningMessage(
         multiEntityBatchToast(skipped.map((s) => s.fileName)),
       );
+    },
+    onCollisions: (collisions) => {
+      void vscode.window.showWarningMessage(nameCollisionToast(collisions));
     },
     scanMoFiles: () => moFileScanner.scan(),
   };

@@ -75,6 +75,7 @@ describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
       ensureClient: async () => autoloadClient,
       refresh: vi.fn(),
       onSkipped: vi.fn(),
+      onCollisions: vi.fn(),
       scanMoFiles: () => scanner.scan(),
     };
     const autoload = registerWorkspaceAutoload(invalidation, autoloadDeps);
