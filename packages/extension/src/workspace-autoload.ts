@@ -31,9 +31,9 @@ export interface SkippedEntryFile {
 }
 
 /**
- * An entry file left unloaded because an earlier entry file in the same sweep
- * already declares its class. Every workspace folder shares one OMC session,
- * so loading both would leave one silently replacing the other.
+ * An entry file left unloaded because another entry file in the same sweep
+ * declares its class and loaded. Every workspace folder shares one OMC
+ * session, so loading both would leave one silently replacing the other.
  */
 export interface NameCollision {
   className: string;
@@ -47,18 +47,22 @@ export interface AutoLoadRefusals {
   collisions: NameCollision[];
 }
 
+const MAX_TOAST_COLLISIONS = 3;
+
 /** Batch notification for every name collision one sweep refused. */
 export function nameCollisionToast(collisions: NameCollision[]): string {
-  const details = collisions
+  const shown = collisions
+    .slice(0, MAX_TOAST_COLLISIONS)
     .map(
       (c) =>
-        `${c.className} is declared by both ${c.keptFileName} and ` +
-        `${c.refusedFileName}`,
-    )
-    .join("; ");
+        `${c.refusedFileName} was skipped: ${c.className} is already ` +
+        `loaded from ${c.keptFileName}`,
+    );
+  const hidden = collisions.length - shown.length;
+  if (hidden > 0) shown.push(`and ${hidden} more`);
   return (
-    `Modelica: ${details}. All workspace folders share one OpenModelica ` +
-    `session, so the second copy was not loaded.`
+    `Modelica: ${shown.join("; ")}. Entry files share one OpenModelica ` +
+    `session, so only the copy of each class that loaded was kept.`
   );
 }
 
@@ -69,9 +73,12 @@ export function nameCollisionToast(collisions: NameCollision[]): string {
  * batch; skipping it when nothing loaded lets a genuinely empty workspace keep
  * its "Load Library" state.
  *
+ * Of several entry files declaring the same class, only the first in `files`
+ * is loaded; if it fails to load, the next one is tried in its place.
+ *
  * Returns the entry files refused for declaring several top-level classes or
- * a class an earlier entry file already declares, so the caller can report
- * each batch in one message.
+ * a class another entry file loaded, so the caller can report each batch in
+ * one message.
  */
 export async function loadEntryFilesAndRefresh(
   client: AutoLoadClient,
@@ -98,10 +105,13 @@ export async function loadEntryFilesAndRefresh(
   // Screen before the first pass, so a refused file stays out of the retry
   // loop below as well.
   const skipped: SkippedEntryFile[] = [];
-  const collisions: NameCollision[] = [];
-  const claimedBy = new Map<string, string>();
+  // `deriveEntryPoints` walks roots in workspace-folder order, so the earlier
+  // folder's copy heads a contested name; within one folder the order is the
+  // scanner's.
+  const candidatesByName = new Map<string, string[]>();
   const eligible: string[] = [];
-  for (const fileName of files) {
+  // Nested workspace folders derive the same entry file once per folder.
+  for (const fileName of new Set(files)) {
     const classNames = await fileClassNames(client, fileName);
     if (classNames === undefined) {
       eligible.push(fileName);
@@ -116,50 +126,88 @@ export async function loadEntryFilesAndRefresh(
       skipped.push({ fileName, classNames: multiple });
       continue;
     }
-    // Discovery order follows workspace-folder order, so the earlier folder
-    // keeps a contested name.
     const [className] = classNames;
-    if (className !== undefined) {
-      const keptFileName = claimedBy.get(className);
-      if (keptFileName !== undefined) {
-        log.warn(
-          "autoLoad",
-          `skipping ${fileName}: ${className} is already declared by ${keptFileName}`,
-        );
-        collisions.push({ className, keptFileName, refusedFileName: fileName });
-        continue;
-      }
-      claimedBy.set(className, fileName);
+    if (className === undefined) {
+      eligible.push(fileName);
+      continue;
     }
-    eligible.push(fileName);
+    const candidates = candidatesByName.get(className);
+    if (candidates === undefined) {
+      candidatesByName.set(className, [fileName]);
+      eligible.push(fileName);
+    } else {
+      candidates.push(fileName);
+    }
   }
   // The screen lets a file OMC could not parse through to the load, but
   // `parseFile` has already deposited that parse error; without a drain the
   // first failing load's `getErrorString` reports it as its own reason.
   await client.getErrorString();
 
-  let loadedAny = false;
+  const loaded = new Set<string>();
   let failed: string[] = [];
-  for (const fileName of eligible) {
-    if (await tryLoad(fileName)) loadedAny = true;
-    else failed.push(fileName);
-  }
   // A `within <Parent>;` child in a standalone file fails to insert when its
   // parent package file hasn't loaded yet (discovery order is arbitrary — a
   // child can sort before its parent). Retry the still-failed set pass by pass
   // as long as each pass loads at least one; a pass that loads a parent unblocks
   // its children, which unblocks grandchildren, until no pass makes progress.
-  while (failed.length > 0 && loadedAny) {
-    const stillFailed: string[] = [];
+  const settle = async (fresh: readonly string[]): Promise<void> => {
     let progressed = false;
-    for (const fileName of failed) {
-      if (await tryLoad(fileName)) progressed = true;
-      else stillFailed.push(fileName);
+    for (const fileName of fresh) {
+      if (await tryLoad(fileName)) {
+        loaded.add(fileName);
+        progressed = true;
+      } else {
+        failed.push(fileName);
+      }
     }
-    failed = stillFailed;
-    if (!progressed) break;
+    while (failed.length > 0 && progressed) {
+      const stillFailed: string[] = [];
+      progressed = false;
+      for (const fileName of failed) {
+        if (await tryLoad(fileName)) {
+          loaded.add(fileName);
+          progressed = true;
+        } else {
+          stillFailed.push(fileName);
+        }
+      }
+      failed = stillFailed;
+    }
+  };
+
+  const headIndex = new Map<string, number>();
+  let fresh: string[] = eligible;
+  while (fresh.length > 0) {
+    await settle(fresh);
+    fresh = [];
+    const failedSet = new Set(failed);
+    for (const [className, candidates] of candidatesByName) {
+      const i = headIndex.get(className) ?? 0;
+      const head = candidates[i];
+      if (head === undefined || !failedSet.has(head)) continue;
+      failed = failed.filter((f) => f !== head);
+      headIndex.set(className, i + 1);
+      const next = candidates[i + 1];
+      if (next !== undefined) fresh.push(next);
+    }
   }
-  if (loadedAny) {
+
+  const collisions: NameCollision[] = [];
+  for (const [className, candidates] of candidatesByName) {
+    const keptFileName = candidates.find((f) => loaded.has(f));
+    if (keptFileName === undefined) continue;
+    for (const refusedFileName of candidates) {
+      if (refusedFileName === keptFileName) continue;
+      log.warn(
+        "autoLoad",
+        `skipping ${refusedFileName}: ${className} is already loaded from ${keptFileName}`,
+      );
+      collisions.push({ className, keptFileName, refusedFileName });
+    }
+  }
+
+  if (loaded.size > 0) {
     refresh();
   }
   return { skipped, collisions };

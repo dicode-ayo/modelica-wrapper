@@ -177,8 +177,6 @@ describe("deriveEntryPoints", () => {
     ).flat();
     const derived = deriveEntryPoints(allMoFiles, roots);
     const discovered = await discoverEntryPoints(roots);
-    // Order is not part of the contract: loadEntryFilesAndRefresh retries
-    // until no pass progresses, so a child before its parent is fine.
     expect(derived.sort()).toEqual(discovered.sort());
   }
 
@@ -271,6 +269,26 @@ describe("deriveEntryPoints", () => {
     } finally {
       await fsp.rm(tmp2, { recursive: true, force: true });
     }
+  });
+
+  it("lists an earlier root's entries before a later root's", () => {
+    const rootA = path.join(tmp, "a");
+    const rootB = path.join(tmp, "b");
+    const files = [
+      path.join(rootB, "B1.mo"),
+      path.join(rootA, "A1.mo"),
+      path.join(rootB, "Lib", "package.mo"),
+      path.join(rootA, "Lib", "package.mo"),
+    ];
+
+    const derived = deriveEntryPoints(files, [rootA, rootB]);
+
+    expect(derived).toHaveLength(4);
+    const lastA = Math.max(
+      ...derived.flatMap((f, i) => (f.startsWith(rootA + path.sep) ? [i] : [])),
+    );
+    const firstB = derived.findIndex((f) => f.startsWith(rootB + path.sep));
+    expect(lastA).toBeLessThan(firstB);
   });
 
   it("ignores a .mo path outside every root", () => {

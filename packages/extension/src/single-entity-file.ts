@@ -51,11 +51,7 @@ export async function multipleTopLevelClasses(
   return classNames === undefined ? undefined : moreThanOne(classNames);
 }
 
-/**
- * The top-level classes `fileName` declares, `undefined` when OMC couldn't
- * parse it. For a caller that screens the names more than one way and must
- * not pay a second `parseFile` round trip for it.
- */
+/** The top-level classes `fileName` declares, `undefined` when OMC couldn't parse it. */
 export async function fileClassNames(
   client: FileParseClient,
   fileName: string,

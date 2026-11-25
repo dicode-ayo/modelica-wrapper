@@ -239,6 +239,69 @@ describe("loadEntryFilesAndRefresh", () => {
     expect(names).toEqual(["a/M.mo", "P.mo", "a/M.mo"]);
   });
 
+  it("loads the next copy of a class when the first copy fails, and reports that one as kept", async () => {
+    const refresh = vi.fn();
+    const perFile = new Map<string, boolean[]>([
+      ["a/M.mo", [false, false]],
+      ["b/M.mo", [true]],
+      ["P.mo", [true]],
+    ]);
+    const idx = new Map<string, number>();
+    const names: string[] = [];
+    const c: AutoLoadClient = {
+      parseFile: singleEntity(),
+      loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+        names.push(fileName);
+        const i = idx.get(fileName) ?? 0;
+        idx.set(fileName, i + 1);
+        return { success: perFile.get(fileName)?.[i] ?? false };
+      }),
+      getErrorString: vi.fn(async () => ({ errorString: "boom" })),
+    };
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      ["a/M.mo", "b/M.mo", "P.mo"],
+      refresh,
+    );
+
+    expect(names).toEqual(["a/M.mo", "P.mo", "a/M.mo", "b/M.mo"]);
+    expect(collisions).toEqual([
+      { className: "M", keptFileName: "b/M.mo", refusedFileName: "a/M.mo" },
+    ]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports no collision for a class none of whose copies loaded", async () => {
+    const refresh = vi.fn();
+    const c = client([false, false, false]);
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      ["a/M.mo", "b/M.mo", "c/M.mo"],
+      refresh,
+    );
+
+    expect(collisions).toEqual([]);
+    expect(c.loadFile).toHaveBeenCalledTimes(3);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("does not report an entry file listed twice as colliding with itself", async () => {
+    const refresh = vi.fn();
+    const c = client([true]);
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      ["M.mo", "M.mo"],
+      refresh,
+    );
+
+    expect(collisions).toEqual([]);
+    expect(c.loadFile).toHaveBeenCalledTimes(1);
+    expect(c.parseFile).toHaveBeenCalledTimes(1);
+  });
+
   it("does not let a multi-entity file claim a name", async () => {
     const refresh = vi.fn();
     const c = client([true]);
@@ -310,7 +373,7 @@ describe("loadEntryFilesAndRefresh", () => {
 });
 
 describe("nameCollisionToast", () => {
-  it("names the class, both paths, and that the second copy was not loaded", () => {
+  it("names the class, the refused and loaded paths, and that only the loaded copy was kept", () => {
     const message = nameCollisionToast([
       {
         className: "Examples",
@@ -322,7 +385,24 @@ describe("nameCollisionToast", () => {
     expect(message).toContain("Examples");
     expect(message).toContain("/rootA/Examples/package.mo");
     expect(message).toContain("/rootB/Examples/package.mo");
-    expect(message).toContain("second copy was not loaded");
+    expect(message).toContain("only the copy of each class that loaded");
+    expect(message).not.toContain("folder");
+    expect(message).not.toContain("more");
+  });
+
+  it("lists at most three collisions, then counts the rest", () => {
+    const collisions = [1, 2, 3, 4, 5].map((n) => ({
+      className: `C${n}`,
+      keptFileName: `/a/C${n}.mo`,
+      refusedFileName: `/b/C${n}.mo`,
+    }));
+
+    const message = nameCollisionToast(collisions);
+
+    expect(message).toContain("/b/C3.mo");
+    expect(message).not.toContain("/b/C4.mo");
+    expect(message).not.toContain("/b/C5.mo");
+    expect(message).toContain("and 2 more");
   });
 });
 
