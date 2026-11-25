@@ -244,6 +244,7 @@ describe("loadEntryFilesAndRefresh", () => {
     const perFile = new Map<string, boolean[]>([
       ["a/M.mo", [false, false]],
       ["b/M.mo", [true]],
+      ["c/M.mo", [true]],
       ["P.mo", [true]],
     ]);
     const idx = new Map<string, number>();
@@ -261,14 +262,45 @@ describe("loadEntryFilesAndRefresh", () => {
 
     const { collisions } = await loadEntryFilesAndRefresh(
       c,
-      ["a/M.mo", "b/M.mo", "P.mo"],
+      ["a/M.mo", "b/M.mo", "c/M.mo", "P.mo"],
       refresh,
     );
 
     expect(names).toEqual(["a/M.mo", "P.mo", "a/M.mo", "b/M.mo"]);
     expect(collisions).toEqual([
-      { className: "M", keptFileName: "b/M.mo", refusedFileName: "a/M.mo" },
+      { className: "M", keptFileName: "b/M.mo", refusedFileName: "c/M.mo" },
     ]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps retrying a uniquely-named file until a promoted copy of its parent loads", async () => {
+    const refresh = vi.fn();
+    const failedLib = path.join("rootA", "Lib", "package.mo");
+    const promotedLib = path.join("rootB", "Lib", "package.mo");
+    const child = path.join("root", "Child.mo");
+    const loaded = new Set<string>();
+    const c: AutoLoadClient = {
+      parseFile: singleEntity(),
+      loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+        const success =
+          fileName === promotedLib ||
+          (fileName === child && loaded.has(promotedLib));
+        if (success) loaded.add(fileName);
+        return { success };
+      }),
+      getErrorString: vi.fn(async () => ({
+        errorString: "Failed to insert class Child within Lib;",
+      })),
+    };
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      [failedLib, promotedLib, child],
+      refresh,
+    );
+
+    expect(loaded).toEqual(new Set([promotedLib, child]));
+    expect(collisions).toEqual([]);
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 

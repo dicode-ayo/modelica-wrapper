@@ -113,6 +113,8 @@ export async function loadEntryFilesAndRefresh(
   // Nested workspace folders derive the same entry file once per folder.
   for (const fileName of new Set(files)) {
     const classNames = await fileClassNames(client, fileName);
+    // A file OMC can't parse has no name to claim; its load reports the
+    // failure.
     if (classNames === undefined) {
       eligible.push(fileName);
       continue;
@@ -186,19 +188,24 @@ export async function loadEntryFilesAndRefresh(
       const i = headIndex.get(className) ?? 0;
       const head = candidates[i];
       if (head === undefined || !failedSet.has(head)) continue;
+      // A head with no copy behind it stays in `failed`: it may be a child
+      // that the next promoted copy's load unblocks.
+      const next = candidates[i + 1];
+      if (next === undefined) continue;
       failed = failed.filter((f) => f !== head);
       headIndex.set(className, i + 1);
-      const next = candidates[i + 1];
-      if (next !== undefined) fresh.push(next);
+      fresh.push(next);
     }
   }
 
   const collisions: NameCollision[] = [];
   for (const [className, candidates] of candidatesByName) {
-    const keptFileName = candidates.find((f) => loaded.has(f));
+    // Copies before the kept one were tried and failed; only those after it
+    // were refused.
+    const keptIndex = candidates.findIndex((f) => loaded.has(f));
+    const keptFileName = candidates[keptIndex];
     if (keptFileName === undefined) continue;
-    for (const refusedFileName of candidates) {
-      if (refusedFileName === keptFileName) continue;
+    for (const refusedFileName of candidates.slice(keptIndex + 1)) {
       log.warn(
         "autoLoad",
         `skipping ${refusedFileName}: ${className} is already loaded from ${keptFileName}`,
