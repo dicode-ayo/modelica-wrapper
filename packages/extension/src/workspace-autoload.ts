@@ -55,7 +55,7 @@ export function nameCollisionToast(collisions: NameCollision[]): string {
     .slice(0, MAX_TOAST_COLLISIONS)
     .map(
       (c) =>
-        `${c.refusedFileName} was skipped: ${c.className} is already ` +
+        `${c.refusedFileName} was not loaded: ${c.className} is already ` +
         `loaded from ${c.keptFileName}`,
     );
   const hidden = collisions.length - shown.length;
@@ -200,15 +200,15 @@ export async function loadEntryFilesAndRefresh(
 
   const collisions: NameCollision[] = [];
   for (const [className, candidates] of candidatesByName) {
-    // Copies before the kept one were tried and failed; only those after it
-    // were refused.
+    // Copies before the kept one failed on their own; those after it lost to
+    // it, whether or not they were tried first.
     const keptIndex = candidates.findIndex((f) => loaded.has(f));
     const keptFileName = candidates[keptIndex];
     if (keptFileName === undefined) continue;
     for (const refusedFileName of candidates.slice(keptIndex + 1)) {
       log.warn(
         "autoLoad",
-        `skipping ${refusedFileName}: ${className} is already loaded from ${keptFileName}`,
+        `not loading ${refusedFileName}: ${className} is already loaded from ${keptFileName}`,
       );
       collisions.push({ className, keptFileName, refusedFileName });
     }
