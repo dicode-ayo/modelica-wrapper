@@ -168,6 +168,15 @@ export async function loadEntryFilesAndRefresh(
         active.delete(fileName);
         continue;
       }
+      // A load earlier in this pass may be what an earlier copy of this name
+      // was missing, so a later copy waits for the next pass to retry it.
+      if (
+        progressed &&
+        className !== undefined &&
+        candidatesByName.get(className)?.[0] !== fileName
+      ) {
+        continue;
+      }
       if (await tryLoad(fileName)) {
         loaded.add(fileName);
         active.delete(fileName);

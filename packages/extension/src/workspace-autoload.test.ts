@@ -320,39 +320,42 @@ describe("loadEntryFilesAndRefresh", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
-  it("retries a failed earlier copy once a later copy of its parent loads, and keeps it", async () => {
-    const refresh = vi.fn();
-    const aX = path.join("a", "X.mo");
-    const aLib = path.join("a", "Lib", "package.mo");
-    const bX = path.join("b", "X.mo");
-    const bLib = path.join("b", "Lib", "package.mo");
-    const loaded = new Set<string>();
-    const c: AutoLoadClient = {
-      parseFile: singleEntity(),
-      loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
-        const success =
-          fileName === bLib ||
-          ((fileName === aX || fileName === bX) && loaded.has(bLib));
-        if (success) loaded.add(fileName);
-        return { success };
-      }),
-      getErrorString: vi.fn(async () => ({
-        errorString: "Failed to insert class X within Lib;",
-      })),
-    };
+  const aX = path.join("a", "X.mo");
+  const aLib = path.join("a", "Lib", "package.mo");
+  const bX = path.join("b", "X.mo");
+  const bLib = path.join("b", "Lib", "package.mo");
 
-    const { collisions } = await loadEntryFilesAndRefresh(
-      c,
-      [aX, aLib, bX, bLib],
-      refresh,
-    );
+  it.each([
+    ["the later child before its parent", [aX, aLib, bX, bLib]],
+    ["the later parent before its child", [aX, aLib, bLib, bX]],
+  ])(
+    "retries a failed earlier copy once a later copy of its parent loads, and keeps it (%s)",
+    async (_, files) => {
+      const refresh = vi.fn();
+      const loaded = new Set<string>();
+      const c: AutoLoadClient = {
+        parseFile: singleEntity(),
+        loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+          const success =
+            fileName === bLib ||
+            ((fileName === aX || fileName === bX) && loaded.has(bLib));
+          if (success) loaded.add(fileName);
+          return { success };
+        }),
+        getErrorString: vi.fn(async () => ({
+          errorString: "Failed to insert class X within Lib;",
+        })),
+      };
 
-    expect(loaded).toEqual(new Set([aX, bLib]));
-    expect(collisions).toEqual([
-      { className: "X", keptFileName: aX, refusedFileName: bX },
-    ]);
-    expect(refresh).toHaveBeenCalledTimes(1);
-  });
+      const { collisions } = await loadEntryFilesAndRefresh(c, files, refresh);
+
+      expect(loaded).toEqual(new Set([aX, bLib]));
+      expect(collisions).toEqual([
+        { className: "X", keptFileName: aX, refusedFileName: bX },
+      ]);
+      expect(refresh).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("keeps an earlier copy whose parent loads later in the same pass over the later copy", async () => {
     const refresh = vi.fn();
