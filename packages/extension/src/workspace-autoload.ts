@@ -73,8 +73,9 @@ export function nameCollisionToast(collisions: NameCollision[]): string {
  * batch; skipping it when nothing loaded lets a genuinely empty workspace keep
  * its "Load Library" state.
  *
- * Of several entry files declaring the same class, only the first in `files`
- * is loaded; if it fails to load, the next one is tried in its place.
+ * Of several entry files declaring the same class, at most one is loaded: the
+ * first in `files` that loads. A later copy is tried only once the earlier
+ * copies stall, and those earlier copies keep being retried alongside it.
  *
  * Returns the entry files refused for declaring several top-level classes or
  * a class another entry file loaded, so the caller can report each batch in
@@ -109,17 +110,14 @@ export async function loadEntryFilesAndRefresh(
   // folder's copy heads a contested name; within one folder the order is the
   // scanner's.
   const candidatesByName = new Map<string, string[]>();
-  const eligible: string[] = [];
+  const classNameByFile = new Map<string, string>();
+  const order: string[] = [];
+  const active = new Set<string>();
   // Nested workspace folders derive the same entry file once per folder.
   for (const fileName of new Set(files)) {
     const classNames = await fileClassNames(client, fileName);
-    // A file OMC can't parse has no name to claim; its load reports the
-    // failure.
-    if (classNames === undefined) {
-      eligible.push(fileName);
-      continue;
-    }
-    const multiple = moreThanOne(classNames);
+    const multiple =
+      classNames === undefined ? undefined : moreThanOne(classNames);
     if (multiple) {
       log.warn(
         "autoLoad",
@@ -128,15 +126,19 @@ export async function loadEntryFilesAndRefresh(
       skipped.push({ fileName, classNames: multiple });
       continue;
     }
-    const [className] = classNames;
+    order.push(fileName);
+    // A file OMC can't parse has no name to claim; its load reports the
+    // failure.
+    const className = classNames?.[0];
     if (className === undefined) {
-      eligible.push(fileName);
+      active.add(fileName);
       continue;
     }
+    classNameByFile.set(fileName, className);
     const candidates = candidatesByName.get(className);
     if (candidates === undefined) {
       candidatesByName.set(className, [fileName]);
-      eligible.push(fileName);
+      active.add(fileName);
     } else {
       candidates.push(fileName);
     }
@@ -147,55 +149,44 @@ export async function loadEntryFilesAndRefresh(
   await client.getErrorString();
 
   const loaded = new Set<string>();
-  let failed: string[] = [];
+  const loadedNames = new Set<string>();
+  // Index of each contested name's last active candidate.
+  const lastActive = new Map<string, number>();
   // A `within <Parent>;` child in a standalone file fails to insert when its
   // parent package file hasn't loaded yet (discovery order is arbitrary — a
-  // child can sort before its parent). Retry the still-failed set pass by pass
-  // as long as each pass loads at least one; a pass that loads a parent unblocks
-  // its children, which unblocks grandchildren, until no pass makes progress.
-  const settle = async (fresh: readonly string[]): Promise<void> => {
+  // child can sort before its parent), so the pool is retried pass by pass
+  // while each pass loads at least one file. A failed copy stays in the pool
+  // after a later copy joins it: it may have failed only for want of a parent
+  // that a later copy of another name supplies, and walking in discovery order
+  // keeps it ahead of its own later copies.
+  for (;;) {
     let progressed = false;
-    for (const fileName of fresh) {
+    for (const fileName of order) {
+      if (!active.has(fileName)) continue;
+      const className = classNameByFile.get(fileName);
+      if (className !== undefined && loadedNames.has(className)) {
+        active.delete(fileName);
+        continue;
+      }
       if (await tryLoad(fileName)) {
         loaded.add(fileName);
+        active.delete(fileName);
+        if (className !== undefined) loadedNames.add(className);
         progressed = true;
-      } else {
-        failed.push(fileName);
       }
     }
-    while (failed.length > 0 && progressed) {
-      const stillFailed: string[] = [];
-      progressed = false;
-      for (const fileName of failed) {
-        if (await tryLoad(fileName)) {
-          loaded.add(fileName);
-          progressed = true;
-        } else {
-          stillFailed.push(fileName);
-        }
-      }
-      failed = stillFailed;
-    }
-  };
-
-  const headIndex = new Map<string, number>();
-  let fresh: string[] = eligible;
-  while (fresh.length > 0) {
-    await settle(fresh);
-    fresh = [];
-    const failedSet = new Set(failed);
+    if (progressed) continue;
+    let added = false;
     for (const [className, candidates] of candidatesByName) {
-      const i = headIndex.get(className) ?? 0;
-      const head = candidates[i];
-      if (head === undefined || !failedSet.has(head)) continue;
-      // A head with no copy behind it stays in `failed`: it may be a child
-      // that the next promoted copy's load unblocks.
-      const next = candidates[i + 1];
+      if (loadedNames.has(className)) continue;
+      const i = (lastActive.get(className) ?? 0) + 1;
+      const next = candidates[i];
       if (next === undefined) continue;
-      failed = failed.filter((f) => f !== head);
-      headIndex.set(className, i + 1);
-      fresh.push(next);
+      lastActive.set(className, i);
+      active.add(next);
+      added = true;
     }
+    if (!added) break;
   }
 
   const collisions: NameCollision[] = [];

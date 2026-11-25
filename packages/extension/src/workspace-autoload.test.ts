@@ -242,7 +242,7 @@ describe("loadEntryFilesAndRefresh", () => {
   it("loads the next copy of a class when the first copy fails, and reports that one as kept", async () => {
     const refresh = vi.fn();
     const perFile = new Map<string, boolean[]>([
-      ["a/M.mo", [false, false]],
+      ["a/M.mo", [false, false, false]],
       ["b/M.mo", [true]],
       ["c/M.mo", [true]],
       ["P.mo", [true]],
@@ -266,7 +266,7 @@ describe("loadEntryFilesAndRefresh", () => {
       refresh,
     );
 
-    expect(names).toEqual(["a/M.mo", "P.mo", "a/M.mo", "b/M.mo"]);
+    expect(names).toEqual(["a/M.mo", "P.mo", "a/M.mo", "a/M.mo", "b/M.mo"]);
     expect(collisions).toEqual([
       { className: "M", keptFileName: "b/M.mo", refusedFileName: "c/M.mo" },
     ]);
@@ -315,8 +315,71 @@ describe("loadEntryFilesAndRefresh", () => {
     );
 
     expect(collisions).toEqual([]);
-    expect(c.loadFile).toHaveBeenCalledTimes(3);
+    // Each stall adds the next copy while the earlier ones stay in the pool.
+    expect(c.loadFile).toHaveBeenCalledTimes(6);
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed earlier copy once a later copy of its parent loads, and keeps it", async () => {
+    const refresh = vi.fn();
+    const aX = path.join("a", "X.mo");
+    const aLib = path.join("a", "Lib", "package.mo");
+    const bX = path.join("b", "X.mo");
+    const bLib = path.join("b", "Lib", "package.mo");
+    const loaded = new Set<string>();
+    const c: AutoLoadClient = {
+      parseFile: singleEntity(),
+      loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+        const success =
+          fileName === bLib ||
+          ((fileName === aX || fileName === bX) && loaded.has(bLib));
+        if (success) loaded.add(fileName);
+        return { success };
+      }),
+      getErrorString: vi.fn(async () => ({
+        errorString: "Failed to insert class X within Lib;",
+      })),
+    };
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      [aX, aLib, bX, bLib],
+      refresh,
+    );
+
+    expect(loaded).toEqual(new Set([aX, bLib]));
+    expect(collisions).toEqual([
+      { className: "X", keptFileName: aX, refusedFileName: bX },
+    ]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an earlier copy whose parent loads later in the same pass over the later copy", async () => {
+    const refresh = vi.fn();
+    const loaded = new Set<string>();
+    const c: AutoLoadClient = {
+      parseFile: singleEntity(),
+      loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+        const success = fileName === "P.mo" || loaded.has("P.mo");
+        if (success) loaded.add(fileName);
+        return { success };
+      }),
+      getErrorString: vi.fn(async () => ({
+        errorString: "Failed to insert class M within P;",
+      })),
+    };
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      ["a/M.mo", "P.mo", "b/M.mo"],
+      refresh,
+    );
+
+    expect(loaded).toEqual(new Set(["a/M.mo", "P.mo"]));
+    expect(c.loadFile).not.toHaveBeenCalledWith({ fileName: "b/M.mo" });
+    expect(collisions).toEqual([
+      { className: "M", keptFileName: "a/M.mo", refusedFileName: "b/M.mo" },
+    ]);
   });
 
   it("does not report an entry file listed twice as colliding with itself", async () => {

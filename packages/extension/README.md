@@ -68,7 +68,7 @@ install as a subprocess.
 
 The extension activates when a workspace contains any `*.mo` file.
 
-Every workspace folder loads into one OpenModelica session. When the workspace loads (at startup and after `:reset`), entry files that declare the same top-level class load only once: the first found, earlier workspace folders first. The others are skipped, and you get a warning naming the files.
+Every workspace folder loads into one OpenModelica session. When the workspace loads (at startup and after `:reset`), entry files that declare the same top-level class load only once: the first copy found that loads, earlier workspace folders first. The others are skipped, and you get a warning naming the files.
 
 ## Settings
 
