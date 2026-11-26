@@ -15,7 +15,11 @@ import {
 } from "../base/placement-math.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
 import type { NestedDiagramSource } from "../nesting/nested-diagram-source.js";
-import { nestingProgress } from "../nesting/nesting-math.js";
+import {
+  lateFadeProgress,
+  nestingPrefetches,
+  nestingProgress,
+} from "../nesting/nesting-math.js";
 import type {
   NestingChangeDetail,
   NestingView,
@@ -49,8 +53,10 @@ import { extentToRect } from "../primitives/shape-utils.js";
  *     </om-component>
  *
  * With a `nestedSource`, zooming in cross-fades the icon to the class's own
- * diagram. Ports stay on the icon's placement; `om-nesting-change` tells the
- * host what the box draws, so its wires can meet the class's own ports.
+ * diagram. The diagram is fetched a little before the box starts to open, and
+ * one that lands after the box has opened fades in over a short beat rather
+ * than popping. Ports stay on the icon's placement; `om-nesting-change` tells
+ * the host what the box draws, so its wires can meet the class's own ports.
  */
 @customElement("om-component")
 export class OmComponent extends OmShapeElement {
@@ -79,7 +85,16 @@ export class OmComponent extends OmShapeElement {
 
   @state() private nestedLayout: DiagramLayout | null = null;
 
+  /** Size-driven open fraction; `effectiveOpen` is what is drawn. */
   @state() private nestingOpen = 0;
+
+  /** Scales `nestingOpen` while a late-landing diagram fades in. */
+  @state() private lateFade = 1;
+
+  private lateFadeFrame: number | null = null;
+
+  /** Big enough on screen that the diagram should be fetched, open or not. */
+  private nearBand = false;
 
   @state() private openWorldPerPixel = 1;
 
@@ -104,7 +119,7 @@ export class OmComponent extends OmShapeElement {
 
   protected override renderIcon(): unknown {
     if (!this.nestedSource) return super.renderIcon();
-    const open = this.nestedLayout ? this.nestingOpen : 0;
+    const open = this.effectiveOpen;
     return html`<om-layer-group .alpha=${1 - open}
         >${guard([this.layers], () => super.renderIcon())}</om-layer-group
       >${
@@ -125,6 +140,7 @@ export class OmComponent extends OmShapeElement {
     if (changed.has("nestedClass") || changed.has("nestedSource")) {
       this.nestedLayout = null;
       this.requestedClass = null;
+      this.cancelLateFade();
     }
     if (changed.has("coordinateSystem")) {
       this.nestedBox = coordSystemSize(this.coordinateSystem);
@@ -153,9 +169,18 @@ export class OmComponent extends OmShapeElement {
     this.announceView();
   }
 
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.cancelLateFade();
+  }
+
+  private get effectiveOpen(): number {
+    return this.nestedLayout ? this.nestingOpen * this.lateFade : 0;
+  }
+
   private announceView(): void {
     const layout = this.nestedLayout;
-    const progress = this.nestingOpen;
+    const progress = this.effectiveOpen;
     const view = layout && progress > 0 ? { layout, progress } : null;
     const last = this.announcedView;
     if (
@@ -177,40 +202,45 @@ export class OmComponent extends OmShapeElement {
     this.syncNesting();
   }
 
-  /** A failed fetch is retried only after the box leaves the band, not on every pan. */
+  /** A failed fetch is retried only after the box drops below the prefetch size, not on every pan. */
   private syncNesting(): void {
     const ctx = this.sceneCtx;
     if (!this.nestedSource || !ctx) {
       this.nestingOpen = 0;
+      this.nearBand = false;
+      this.cancelLateFade();
       return;
     }
     const worldPerPixel = ctx.worldPerPixel();
     const { width, height } = extentToRect(this.placement.extent);
-    const open = nestingProgress(Math.min(width, height) / worldPerPixel);
+    const sizePx = Math.min(width, height) / worldPerPixel;
+    const open = nestingProgress(sizePx);
     this.nestingOpen = open;
-    if (open === 0) {
+    this.nearBand = nestingPrefetches(sizePx);
+    if (open === 0) this.cancelLateFade();
+    if (!this.nearBand) {
       if (this.nestedLayout === null) this.requestedClass = null;
       return;
     }
-    if (this.nestedLayout !== null) this.openWorldPerPixel = worldPerPixel;
+    if (open > 0 && this.nestedLayout !== null) {
+      this.openWorldPerPixel = worldPerPixel;
+    }
     this.requestNested();
   }
 
   /**
    * Re-fetch if the diagram was built from `className` (`null`: any). Open, the
-   * old diagram stays up until the new one lands; closed, it is dropped. A
-   * fetch in flight is the source's to re-run.
+   * old diagram stays up until the new one lands; closed, it is dropped, and
+   * fetched afresh if the box is big enough to prefetch. A fetch in flight is
+   * the source's to re-run.
    */
   refreshNested(className: string | null): void {
     const layout = this.nestedLayout;
     if (layout === null) return;
     if (className !== null && !layoutDependsOn(layout, className)) return;
     this.requestedClass = null;
-    if (this.nestingOpen === 0) {
-      this.nestedLayout = null;
-      return;
-    }
-    this.requestNested();
+    if (this.nestingOpen === 0) this.nestedLayout = null;
+    if (this.nearBand) this.requestNested();
   }
 
   private requestNested(): void {
@@ -223,14 +253,38 @@ export class OmComponent extends OmShapeElement {
     source(className).then(
       (layout) => {
         if (this.nestedSource === source && this.nestedClass === className) {
+          const late = this.nestedLayout === null;
           this.nestedLayout = layout;
           this.syncNesting();
+          if (late && this.nestingOpen > 0) this.startLateFade();
         }
       },
       () => {
-        // Stays an icon until the box leaves the band and comes back.
+        // Stays an icon until the box drops below the prefetch size and comes back.
       },
     );
+  }
+
+  /** A box already part-open would otherwise show the diagram at once. */
+  private startLateFade(): void {
+    this.cancelLateFade();
+    this.lateFade = 0;
+    let start: number | undefined;
+    const step = (now: number): void => {
+      start ??= now;
+      this.lateFade = lateFadeProgress(now - start);
+      this.lateFadeFrame =
+        this.lateFade < 1 ? requestAnimationFrame(step) : null;
+    };
+    this.lateFadeFrame = requestAnimationFrame(step);
+  }
+
+  private cancelLateFade(): void {
+    if (this.lateFadeFrame !== null) {
+      cancelAnimationFrame(this.lateFadeFrame);
+      this.lateFadeFrame = null;
+    }
+    this.lateFade = 1;
   }
 }
 
