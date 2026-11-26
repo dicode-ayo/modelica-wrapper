@@ -539,6 +539,86 @@ describe("resolveDocumentationEditor", () => {
     });
   });
 
+  describe("registry subscription", () => {
+    const disposers: (() => void)[] = [];
+    afterEach(() => {
+      for (const dispose of disposers.splice(0)) dispose();
+    });
+
+    async function openPid() {
+      const panel = makePanel();
+      disposers.push(panel.fireDispose);
+      // Read-only, so the refresh skips the shadow-buffer reflect this fake
+      // document cannot take and only re-fetches.
+      const client = makeResolveClient({
+        info: "<html><p>PID</p></html>",
+        systemLib: true,
+      });
+      const invalidation = new ClassInvalidationRegistry();
+      let live = 0;
+      const counted = (d: vscode.Disposable): vscode.Disposable => {
+        live++;
+        let released = false;
+        return {
+          dispose: () => {
+            if (!released) live--;
+            released = true;
+            d.dispose();
+          },
+        };
+      };
+      resolveDocumentationEditor(
+        panel.panel,
+        EXT_URI,
+        () => Promise.resolve(client),
+        new WriteVerdicts(),
+        PID_DOC,
+        {
+          register: (l) => counted(invalidation.register(l)),
+          registerAllClassesChanged: (l) =>
+            counted(invalidation.registerAllClassesChanged(l)),
+        },
+      );
+      await flush();
+      panel.fireReady();
+      await flush();
+      const docs = (): number =>
+        panel.posted.filter((m) => m.type === "doc").length;
+      return { ...panel, invalidation, docs, liveListeners: () => live };
+    }
+
+    it("re-sends the doc when the registry announces its class", async () => {
+      const { invalidation, docs } = await openPid();
+      expect(docs()).toBe(1);
+
+      invalidation.classChanged("Modelica.Blocks.Continuous.PID");
+      await flush();
+
+      expect(docs()).toBe(2);
+    });
+
+    it("ignores another class's change", async () => {
+      const { invalidation, docs } = await openPid();
+
+      invalidation.classChanged("Modelica.Blocks.Continuous.PI");
+      await flush();
+
+      expect(docs()).toBe(1);
+    });
+
+    it("stops listening once the panel is disposed", async () => {
+      const { invalidation, docs, fireDispose, liveListeners } =
+        await openPid();
+
+      fireDispose();
+      invalidation.classChanged("Modelica.Blocks.Continuous.PID");
+      await flush();
+
+      expect(liveListeners()).toBe(0);
+      expect(docs()).toBe(1);
+    });
+  });
+
   it("renders a placeholder and never reads OMC for an unresolved class", async () => {
     const { panel, webview, posted } = makePanel();
     const ensureClient = vi.fn(() =>
@@ -782,6 +862,90 @@ describe("DocumentationEditController write path", () => {
     // canonical source into the (possibly dirty) buffer and re-sends the doc.
     expect(writes).toEqual([LISTED]);
     expect(posted.filter((m) => m.type === "doc").length).toBeGreaterThan(0);
+  });
+
+  it("does not re-send the doc for the registry echo of its own edit", async () => {
+    const { client } = makeEditClient({ info: "<html><p>orig</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      {
+        client: {
+          ...client,
+          setFullDocumentationAnnotation: (input) => {
+            controller.onClassChanged();
+            return client.setFullDocumentationAnnotation(input);
+          },
+        },
+        document: srcDoc(),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
+      factory,
+    );
+
+    await controller.start();
+    const before = posted.filter((m) => m.type === "doc").length;
+    await controller.handle({ type: "edit", info: "<html><p>new</p></html>" });
+    await flush();
+
+    expect(posted.filter((m) => m.type === "doc").length).toBe(before);
+  });
+
+  it("does not reflect for the registry echo of its own reverse sync", async () => {
+    const { client } = makeEditClient({ info: "<html><p>x</p></html>" });
+    const { gate } = makeGate();
+    const { factory, writes, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushTimer } = manualScheduler();
+    const controller = new DocumentationEditController(
+      {
+        client: {
+          ...client,
+          loadString: (input) => {
+            controller.onClassChanged();
+            return client.loadString(input);
+          },
+        },
+        document: srcDoc("undone text"),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
+      factory,
+      scheduler,
+    );
+
+    await controller.start();
+    fireForeign();
+    flushTimer();
+    await flush();
+
+    expect(writes).toEqual([]);
+  });
+
+  it("re-sends but does not rewrite a buffer that already matches OMC", async () => {
+    const { client } = makeEditClient({ info: "<html><p>x</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      {
+        client,
+        document: srcDoc(LISTED),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
+      factory,
+    );
+
+    await controller.start();
+    const before = posted.filter((m) => m.type === "doc").length;
+    controller.onClassChanged();
+    await flush();
+
+    expect(writes).toEqual([]);
+    expect(posted.filter((m) => m.type === "doc").length).toBe(before + 1);
   });
 
   it("posts nothing for work that runs after it is disposed", async () => {
