@@ -12,7 +12,8 @@ import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
 import { SessionQueue } from "./session-queue.js";
 import {
-  multipleTopLevelClasses,
+  fileClassNames,
+  moreThanOne,
   type FileParseClient,
 } from "./single-entity-file.js";
 import { deriveEntryPoints } from "./workspace-scan.js";
@@ -30,20 +31,61 @@ export interface SkippedEntryFile {
 }
 
 /**
+ * An entry file left unloaded because another entry file in the same sweep
+ * declares its class and loaded. Every workspace folder shares one OMC
+ * session, so loading both would leave one silently replacing the other.
+ */
+export interface NameCollision {
+  className: string;
+  keptFileName: string;
+  refusedFileName: string;
+}
+
+/** What one {@link loadEntryFilesAndRefresh} sweep refused to load, and why. */
+export interface AutoLoadRefusals {
+  skipped: SkippedEntryFile[];
+  collisions: NameCollision[];
+}
+
+const MAX_TOAST_COLLISIONS = 3;
+
+/** Batch notification for every name collision one sweep refused. */
+export function nameCollisionToast(collisions: NameCollision[]): string {
+  const shown = collisions
+    .slice(0, MAX_TOAST_COLLISIONS)
+    .map(
+      (c) =>
+        `${c.refusedFileName} was not loaded: ${c.className} is already ` +
+        `loaded from ${c.keptFileName}`,
+    );
+  const hidden = collisions.length - shown.length;
+  if (hidden > 0) shown.push(`and ${hidden} more`);
+  return (
+    `Modelica: ${shown.join("; ")}. Entry files share one OpenModelica ` +
+    `session, so only the copy of each class that loaded was kept.`
+  );
+}
+
+/**
  * Load each entry file, then invoke `refresh` a single time — but only if at
  * least one file loaded. One refresh (not one per file) keeps the post-startup
  * rebuild to a single, mutex-serialized OMC fetch instead of a concurrent
  * batch; skipping it when nothing loaded lets a genuinely empty workspace keep
  * its "Load Library" state.
  *
- * Returns the entry files refused for declaring several top-level classes, so
- * the caller can report the whole batch in one message.
+ * Of several entry files declaring the same class, at most one is loaded: the
+ * first in `files` that loads. A later copy is tried only once the earlier
+ * copies stall, and those earlier copies keep being retried alongside it.
+ *
+ * Returns the entry files refused for declaring several top-level classes or
+ * a class another entry file loaded, so the caller can report each batch in
+ * one message.
  */
 export async function loadEntryFilesAndRefresh(
   client: AutoLoadClient,
   files: readonly string[],
   refresh: () => void,
-): Promise<SkippedEntryFile[]> {
+): Promise<AutoLoadRefusals> {
   const tryLoad = async (fileName: string): Promise<boolean> => {
     try {
       const { success } = await client.loadFile({ fileName });
@@ -64,17 +106,41 @@ export async function loadEntryFilesAndRefresh(
   // Screen before the first pass, so a refused file stays out of the retry
   // loop below as well.
   const skipped: SkippedEntryFile[] = [];
-  const eligible: string[] = [];
-  for (const fileName of files) {
-    const classNames = await multipleTopLevelClasses(client, fileName);
-    if (classNames) {
+  // `deriveEntryPoints` walks roots in workspace-folder order, so the earlier
+  // folder's copy heads a contested name; within one folder the order is the
+  // scanner's.
+  const candidatesByName = new Map<string, string[]>();
+  const classNameByFile = new Map<string, string>();
+  const order: string[] = [];
+  const active = new Set<string>();
+  // Nested workspace folders derive the same entry file once per folder.
+  for (const fileName of new Set(files)) {
+    const classNames = await fileClassNames(client, fileName);
+    const multiple =
+      classNames === undefined ? undefined : moreThanOne(classNames);
+    if (multiple) {
       log.warn(
         "autoLoad",
-        `skipping ${fileName}: declares ${classNames.join(", ")}`,
+        `skipping ${fileName}: declares ${multiple.join(", ")}`,
       );
-      skipped.push({ fileName, classNames });
+      skipped.push({ fileName, classNames: multiple });
+      continue;
+    }
+    order.push(fileName);
+    // A file OMC can't parse has no name to claim; its load reports the
+    // failure.
+    const className = classNames?.[0];
+    if (className === undefined) {
+      active.add(fileName);
+      continue;
+    }
+    classNameByFile.set(fileName, className);
+    const candidates = candidatesByName.get(className);
+    if (candidates === undefined) {
+      candidatesByName.set(className, [fileName]);
+      active.add(fileName);
     } else {
-      eligible.push(fileName);
+      candidates.push(fileName);
     }
   }
   // The screen lets a file OMC could not parse through to the load, but
@@ -82,31 +148,76 @@ export async function loadEntryFilesAndRefresh(
   // first failing load's `getErrorString` reports it as its own reason.
   await client.getErrorString();
 
-  let loadedAny = false;
-  let failed: string[] = [];
-  for (const fileName of eligible) {
-    if (await tryLoad(fileName)) loadedAny = true;
-    else failed.push(fileName);
-  }
+  const loaded = new Set<string>();
+  const loadedNames = new Set<string>();
+  // Index of each contested name's last active candidate.
+  const lastActive = new Map<string, number>();
   // A `within <Parent>;` child in a standalone file fails to insert when its
   // parent package file hasn't loaded yet (discovery order is arbitrary — a
-  // child can sort before its parent). Retry the still-failed set pass by pass
-  // as long as each pass loads at least one; a pass that loads a parent unblocks
-  // its children, which unblocks grandchildren, until no pass makes progress.
-  while (failed.length > 0 && loadedAny) {
-    const stillFailed: string[] = [];
+  // child can sort before its parent), so the pool is retried pass by pass
+  // while each pass loads at least one file. A failed copy stays in the pool
+  // after a later copy joins it: it may have failed only for want of a parent
+  // that a later copy of another name supplies, and walking in discovery order
+  // keeps it ahead of its own later copies.
+  for (;;) {
     let progressed = false;
-    for (const fileName of failed) {
-      if (await tryLoad(fileName)) progressed = true;
-      else stillFailed.push(fileName);
+    for (const fileName of order) {
+      if (!active.has(fileName)) continue;
+      const className = classNameByFile.get(fileName);
+      if (className !== undefined && loadedNames.has(className)) {
+        active.delete(fileName);
+        continue;
+      }
+      // A load earlier in this pass may be what an earlier copy of this name
+      // was missing, so a later copy waits for the next pass to retry it.
+      if (
+        progressed &&
+        className !== undefined &&
+        candidatesByName.get(className)?.[0] !== fileName
+      ) {
+        continue;
+      }
+      if (await tryLoad(fileName)) {
+        loaded.add(fileName);
+        active.delete(fileName);
+        if (className !== undefined) loadedNames.add(className);
+        progressed = true;
+      }
     }
-    failed = stillFailed;
-    if (!progressed) break;
+    if (progressed) continue;
+    let added = false;
+    for (const [className, candidates] of candidatesByName) {
+      if (loadedNames.has(className)) continue;
+      const i = (lastActive.get(className) ?? 0) + 1;
+      const next = candidates[i];
+      if (next === undefined) continue;
+      lastActive.set(className, i);
+      active.add(next);
+      added = true;
+    }
+    if (!added) break;
   }
-  if (loadedAny) {
+
+  const collisions: NameCollision[] = [];
+  for (const [className, candidates] of candidatesByName) {
+    // Copies before the kept one failed on their own; those after it lost to
+    // it, whether or not they were tried first.
+    const keptIndex = candidates.findIndex((f) => loaded.has(f));
+    const keptFileName = candidates[keptIndex];
+    if (keptFileName === undefined) continue;
+    for (const refusedFileName of candidates.slice(keptIndex + 1)) {
+      log.warn(
+        "autoLoad",
+        `not loading ${refusedFileName}: ${className} is already loaded from ${keptFileName}`,
+      );
+      collisions.push({ className, keptFileName, refusedFileName });
+    }
+  }
+
+  if (loaded.size > 0) {
     refresh();
   }
-  return skipped;
+  return { skipped, collisions };
 }
 
 /** What {@link autoLoadWorkspace} needs to discover, load, and report on entry files. */
@@ -117,6 +228,7 @@ export interface WorkspaceAutoloadDeps {
   /** Told once, after every load settles — see {@link loadEntryFilesAndRefresh}. */
   refresh: () => void;
   onSkipped: (skipped: SkippedEntryFile[]) => void;
+  onCollisions: (collisions: NameCollision[]) => void;
   /**
    * A flat list of every `.mo` path in the workspace, shared with the
    * mo-file-watcher's own `sessionReplaced` reseed so `:reset` triggers one
@@ -143,8 +255,13 @@ export async function autoLoadWorkspace(
     // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
     // webview tree's own mount fetch is serialized with this one through the
     // client, so they can't overlap into a busy-socket send.
-    const skipped = await loadEntryFilesAndRefresh(c, files, deps.refresh);
+    const { skipped, collisions } = await loadEntryFilesAndRefresh(
+      c,
+      files,
+      deps.refresh,
+    );
     if (skipped.length > 0) deps.onSkipped(skipped);
+    if (collisions.length > 0) deps.onCollisions(collisions);
   } catch (err) {
     log.warn("autoLoad", `workspace autoload failed: ${errorDetail(err)}`);
   }
