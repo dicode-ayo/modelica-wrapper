@@ -67,6 +67,13 @@ export type ExtensionToWebview =
        * (`basedOn`) — see `DiagramEditController.applyChange`.
        */
       layoutVersion: number;
+      /**
+       * Set when this push undoes an edit the host refused or rolled back.
+       * Shape selection is keyed by array index and the webview re-keys it
+       * ahead of the write, so it is cleared rather than left on whichever
+       * shape the restored layout holds at that index.
+       */
+      rejected?: boolean;
     }
   | { type: "clipboard"; hasClipboard: boolean }
   | {
