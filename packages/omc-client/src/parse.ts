@@ -160,6 +160,12 @@ class Parser {
         this.pos++;
         return NULL;
       }
+      // OMC's runtime spells a negative infinite Real `-inf`, and a bare
+      // `inf` already reads as an ident; this keeps the two the same kind.
+      if (c === "-" && this.isNegativeInf()) {
+        this.pos += "-inf".length;
+        return { kind: "ident", name: "-inf" };
+      }
       return this.parseNumber();
     }
 
@@ -284,6 +290,12 @@ class Parser {
     if (i >= this.src.length) return true;
     const next = this.src[i]!;
     return next === "," || next === "}" || next === ")";
+  }
+
+  private isNegativeInf(): boolean {
+    if (this.src.slice(this.pos + 1, this.pos + 4) !== "inf") return false;
+    const after = this.src[this.pos + 4];
+    return after === undefined || !isIdentPart(after);
   }
 
   private parseString(): Value {

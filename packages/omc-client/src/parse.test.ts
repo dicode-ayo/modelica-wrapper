@@ -109,6 +109,33 @@ describe("parse: null sentinels", () => {
   });
 });
 
+describe("parse: non-finite Reals as OMC's runtime spells them", () => {
+  it.each([
+    [`NaN`, { kind: "ident", name: "NaN" }],
+    [`inf`, { kind: "ident", name: "inf" }],
+    [`-inf`, { kind: "ident", name: "-inf" }],
+  ])("reads %s as an ident", (input, want) => {
+    expect(parse(input)).toEqual(want);
+  });
+
+  it("reads -inf inside a list without disturbing a number or a null dash beside it", () => {
+    expect(parse(`{-inf, -1, -1e3, -, -inf}`)).toEqual({
+      kind: "list",
+      items: [
+        { kind: "ident", name: "-inf" },
+        { kind: "int", value: -1 },
+        { kind: "float", value: -1000 },
+        { kind: "null" },
+        { kind: "ident", name: "-inf" },
+      ],
+    });
+  });
+
+  it("does not read a longer identifier after a dash as -inf", () => {
+    expect(() => parse(`-infinity`)).toThrow(/invalid number/);
+  });
+});
+
 describe("parse: function calls", () => {
   it("parses Polygon-style annotation calls", () => {
     const v = parse(`Polygon(true, {0.0, 0.0}, 0.0, Smooth.None)`);
