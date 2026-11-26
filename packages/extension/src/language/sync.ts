@@ -6,7 +6,7 @@
  *     `onDidSaveTextDocument` and `onDidCloseTextDocument`).
  *   - A file with a dirty buffer open is not loaded on first touch: the load
  *     would revert OMC to the on-disk text under the edit.
- *   - A file the session's top-level claims refuse is not loaded: it would
+ *   - A file the session's class claims refuse is not loaded: it would
  *     replace another file's copy of the same class.
  *   - Once loaded, and between saves, resolution reflects the last saved text
  *     — not the dirty buffer. See `docs/language-features-design.md` → "Buffer ↔ OMC sync".
@@ -38,7 +38,10 @@ export interface OmcSyncOptions {
    * Keeps the notification out of this module, which stays host-free.
    */
   onMultiEntity?: (filePath: string, classNames: string[]) => void;
-  /** Consulted before each load and told of each one that succeeds. */
+  /**
+   * Waited on before each load, consulted and reserved before `loadFile`,
+   * and told of each load that succeeds.
+   */
   claims?: TopLevelClaims;
   /**
    * Called for a path {@link claims} refused, unless another loader already
@@ -166,6 +169,9 @@ export class OmcSync {
   private async load(filePath: string, key: string): Promise<boolean> {
     const snapshot = this.generation.get(key) ?? 0;
     try {
+      // A load during the workspace sweep would race it for which copy of a
+      // class is kept.
+      await this.claims?.settled();
       const classNames = await this.parseClassNames(filePath);
       // Invalidated mid-parse — the parse read stale text, discard. Recording
       // the refusal would outlive the text it was based on.
@@ -188,13 +194,20 @@ export class OmcSync {
         return false;
       }
       if (this.isBusy(filePath, classNames)) return false;
-      const { success } = await this.client.loadFile({ fileName: filePath });
+      const reservation = this.claims?.reserve(filePath, classNames);
+      let success = false;
+      try {
+        ({ success } = await this.client.loadFile({ fileName: filePath }));
+      } finally {
+        // OMC holds what loaded even when this result is discarded below.
+        if (success) reservation?.commit();
+        else reservation?.cancel();
+      }
       // Invalidated mid-flight — load read stale text, discard.
       if (snapshot !== (this.generation.get(key) ?? 0)) {
         return false;
       }
       if (success) {
-        this.claims?.recordLoad(filePath, classNames);
         this.loaded.add(key);
         return true;
       }

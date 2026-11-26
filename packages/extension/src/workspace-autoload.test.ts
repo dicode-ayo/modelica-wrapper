@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClassInvalidationRegistry } from "./invalidation.js";
+import { OmcSync } from "./language/sync.js";
 import {
   createTopLevelClaims,
   nameCollisionToast,
@@ -486,6 +487,31 @@ describe("loadEntryFilesAndRefresh", () => {
     );
   });
 
+  it("keeps a refused duplicate `within` file refused for later loads", async () => {
+    const refresh = vi.fn();
+    const claims = createTopLevelClaims();
+    const keptExt = path.join("rootA", "Ext.mo");
+    const refusedExt = path.join("rootB", "Ext.mo");
+    const c = client([true]);
+    c.parseFile = vi.fn(async () => ({ classNames: ["Lib.Ext"] }));
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      [keptExt, refusedExt],
+      refresh,
+      claims,
+    );
+
+    expect(collisions).toEqual([
+      {
+        className: "Lib.Ext",
+        keptFileName: keptExt,
+        refusedFileName: refusedExt,
+      },
+    ]);
+    expect(claims.refusal(refusedExt, ["Lib.Ext"])?.keptFileName).toBe(keptExt);
+  });
+
   it("records each loaded class in the claims, and refuses one a load outside the sweep owns", async () => {
     const refresh = vi.fn();
     const claims = createTopLevelClaims();
@@ -496,7 +522,7 @@ describe("loadEntryFilesAndRefresh", () => {
       c,
       ["a/M.mo", "a/P.mo"],
       refresh,
-      claims.holdForSweep(),
+      claims,
     );
 
     expect(c.loadFile).toHaveBeenCalledTimes(1);
@@ -542,6 +568,7 @@ describe("nameCollisionToast", () => {
     expect(message).toContain("/rootA/Examples/package.mo");
     expect(message).toContain("/rootB/Examples/package.mo");
     expect(message).toContain("only the copy of each class that loaded");
+    expect(message).toContain("Workspace files share one OpenModelica session");
     expect(message).not.toContain("folder");
     expect(message).not.toContain("more");
   });
@@ -753,7 +780,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
       expect(deps.onCollisions).not.toHaveBeenCalled();
     });
 
-    it("keeps the earlier folder's copy over one another loader claimed before the sweep ran", async () => {
+    it("keeps the earlier folder's copy over a buffer touched before the first sweep runs", async () => {
       const keptLib = path.join(tmp, "rootA", "Lib", "package.mo");
       const otherLib = path.join(tmp, "rootB", "Lib", "package.mo");
       for (const f of [keptLib, otherLib]) {
@@ -781,15 +808,61 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         deps,
       );
 
+      const sync = new OmcSync(c, { claims: autoload.claims });
+      const touched = sync.ensureLoaded(otherLib);
+      await new Promise((r) => setTimeout(r, 0));
       autoload.run();
-      autoload.claims.recordLoad(otherLib, ["Lib"]);
       release?.();
 
-      await vi.waitFor(() => expect(deps.refresh).toHaveBeenCalledTimes(1));
+      expect(await touched).toBe(false);
+      expect(c.loadFile).toHaveBeenCalledTimes(1);
       expect(c.loadFile).toHaveBeenCalledWith({ fileName: keptLib });
       expect(autoload.claims.refusal(otherLib, ["Lib"])).toMatchObject({
         keptFileName: keptLib,
       });
+    });
+
+    it("holds the claims from creation until the first sweep settles, even with no folders", async () => {
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [],
+        ensureClient: vi.fn(),
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+        onCollisions: vi.fn(),
+        scanMoFiles,
+      };
+      const autoload = registerWorkspaceAutoload(
+        new ClassInvalidationRegistry(),
+        deps,
+      );
+      let settled = false;
+      void autoload.claims.settled().then(() => {
+        settled = true;
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(settled).toBe(false);
+
+      autoload.run();
+
+      await vi.waitFor(() => expect(settled).toBe(true));
+    });
+
+    it("releases the creation hold when disposed without a sweep", async () => {
+      const autoload = registerWorkspaceAutoload(
+        new ClassInvalidationRegistry(),
+        {
+          folders: () => [],
+          ensureClient: vi.fn(),
+          refresh: vi.fn(),
+          onSkipped: vi.fn(),
+          onCollisions: vi.fn(),
+          scanMoFiles,
+        },
+      );
+
+      autoload.dispose();
+
+      await expect(autoload.claims.settled()).resolves.toBeUndefined();
     });
 
     it("stops re-running the autoload once the returned handle is disposed", async () => {

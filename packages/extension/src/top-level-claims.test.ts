@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createTopLevelClaims } from "./top-level-claims.js";
 
@@ -148,42 +148,76 @@ describe("TopLevelClaims", () => {
     expect(claims.refusal(refusedLib, ["Lib"])).toBeDefined();
   });
 
-  describe("held for a sweep", () => {
-    it("keeps a load recorded before the sweep settles from refusing anything", () => {
+  it("compares a refused copy's package through the host's key normalization", () => {
+    const claims = createTopLevelClaims((p) => p.toLowerCase());
+    const copy = { fileName: refusedLib, className: "Lib" };
+
+    expect(claims.copyHolds(copy, path.resolve("rootB", "LIB", "Sub.mo"))).toBe(
+      true,
+    );
+    expect(claims.copyHolds(copy, path.resolve("rootB", "Ext.mo"))).toBe(false);
+  });
+
+  it("refuses a second file declaring the same nested class", () => {
+    const claims = createTopLevelClaims();
+    claims.recordLoad(path.resolve("rootA", "Ext.mo"), ["Lib.Ext"]);
+
+    expect(
+      claims.refusal(path.resolve("rootB", "Ext.mo"), ["Lib.Ext"]),
+    ).toMatchObject({ className: "Lib.Ext" });
+    expect(
+      claims.refusal(path.resolve("rootB", "Other.mo"), ["Lib.Other"]),
+    ).toBeUndefined();
+  });
+
+  describe("reservations", () => {
+    it("refuses a racing copy while a reservation is open, and frees the class on cancel", () => {
       const claims = createTopLevelClaims();
-      const sweep = claims.holdForSweep();
-      claims.recordLoad(refusedLib, ["Lib"]);
-
-      expect(claims.refusal(keptLib, ["Lib"])).toBeUndefined();
-      expect(sweep.refusal(keptLib, ["Lib"])).toBeUndefined();
-    });
-
-    it("lets the sweep's load displace a provisional owner, which becomes a refused copy", () => {
-      const claims = createTopLevelClaims();
-      const sweep = claims.holdForSweep();
-      claims.recordLoad(refusedLib, ["Lib"]);
-
-      sweep.recordLoad(keptLib, ["Lib"]);
-      sweep.done();
+      const reservation = claims.reserve(keptLib, ["Lib"]);
 
       expect(claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(keptLib);
-      expect(claims.refusedCopiesHolding(refusedLib)).toEqual([
-        { fileName: refusedLib, className: "Lib" },
-      ]);
+
+      reservation.cancel();
+      expect(claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
     });
 
-    it("makes provisional claims stand once every held sweep is done", () => {
+    it("commits a reservation as a load, giving up classes no longer declared", () => {
       const claims = createTopLevelClaims();
-      const first = claims.holdForSweep();
-      const second = claims.holdForSweep();
+      claims.recordLoad(keptLib, ["Old"]);
+
+      claims.reserve(keptLib, ["Lib"]).commit();
+
+      expect(claims.refusal(refusedLib, ["Lib"])).toBeDefined();
+      expect(claims.refusal(refusedLib, ["Old"])).toBeUndefined();
+    });
+
+    it("leaves an owner's own claim in place when its cancelled reload reserved nothing new", () => {
+      const claims = createTopLevelClaims();
       claims.recordLoad(keptLib, ["Lib"]);
 
-      first.done();
-      first.done();
-      expect(claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+      claims.reserve(keptLib, ["Lib"]).cancel();
 
-      second.done();
-      expect(claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(keptLib);
+      expect(claims.refusal(refusedLib, ["Lib"])).toBeDefined();
+    });
+  });
+
+  describe("hold", () => {
+    it("settles once every hold is released, each release counting once", async () => {
+      const claims = createTopLevelClaims();
+      const first = claims.hold();
+      const second = claims.hold();
+      let settled = false;
+      void claims.settled().then(() => {
+        settled = true;
+      });
+
+      first();
+      first();
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      second();
+      await vi.waitFor(() => expect(settled).toBe(true));
     });
   });
 });

@@ -20,7 +20,6 @@ import {
   createTopLevelClaims,
   nameCollisionMessage,
   type NameCollision,
-  type SweepClaims,
   type TopLevelClaims,
 } from "./top-level-claims.js";
 import { deriveEntryPoints } from "./workspace-scan.js";
@@ -65,7 +64,7 @@ export async function loadEntryFilesAndRefresh(
   client: AutoLoadClient,
   files: readonly string[],
   refresh: () => void,
-  claims: SweepClaims = createTopLevelClaims().holdForSweep(),
+  claims: TopLevelClaims = createTopLevelClaims(),
 ): Promise<AutoLoadRefusals> {
   const tryLoad = async (fileName: string): Promise<boolean> => {
     try {
@@ -241,7 +240,7 @@ export interface WorkspaceAutoloadDeps {
  */
 export async function autoLoadWorkspace(
   deps: WorkspaceAutoloadDeps,
-  claims?: SweepClaims,
+  claims?: TopLevelClaims,
 ): Promise<void> {
   try {
     const folders = deps.folders();
@@ -272,9 +271,9 @@ export async function autoLoadWorkspace(
 export interface WorkspaceAutoload extends vscode.Disposable {
   run(): void;
   /**
-   * The session's top-level class claims, for every other load and unload to
-   * consult. Cleared on `:reset`, before that reset's sweep is queued; each
-   * queued sweep holds them until it settles.
+   * The session's class claims, for every other load and unload to consult.
+   * Cleared on `:reset`, before that reset's sweep is queued; held from
+   * creation until the first sweep settles, and by each later queued sweep.
    */
   claims: TopLevelClaims;
 }
@@ -300,13 +299,17 @@ export function registerWorkspaceAutoload(
 ): WorkspaceAutoload {
   const queue = new SessionQueue();
   const claims = createTopLevelClaims();
+  // Held from creation, so a load that lands before the first `run()` still
+  // waits for the sweep to pick the kept copies.
+  let firstHold: (() => void) | undefined = claims.hold();
   const run = (): void => {
-    const sweep = claims.holdForSweep();
+    const release = firstHold ?? claims.hold();
+    firstHold = undefined;
     queue.enqueue(async () => {
       try {
-        await autoLoadWorkspace(deps, sweep);
+        await autoLoadWorkspace(deps, claims);
       } finally {
-        sweep.done();
+        release();
       }
     });
   };
@@ -314,5 +317,12 @@ export function registerWorkspaceAutoload(
     claims.clear();
     run();
   });
-  return { run, claims, dispose: () => sub.dispose() };
+  return {
+    run,
+    claims,
+    dispose: () => {
+      firstHold?.();
+      sub.dispose();
+    },
+  };
 }

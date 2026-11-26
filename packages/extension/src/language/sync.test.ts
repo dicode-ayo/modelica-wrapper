@@ -416,4 +416,37 @@ describe("OmcSync — top-level class claims", () => {
 
     expect(onCollision).not.toHaveBeenCalled();
   });
+
+  it("waits for a held sweep, so a buffer touched first never takes the class from it", async () => {
+    const { client, claims, sync } = setup();
+    const release = claims.hold();
+
+    const pending = sync.ensureLoaded(refused);
+    await Promise.resolve();
+    claims.recordLoad(kept, ["Lib"]);
+    release();
+
+    expect(await pending).toBe(false);
+    expect(client.calls).toEqual([]);
+  });
+
+  it("refuses a second copy whose load starts while the first copy's load is in flight", async () => {
+    const { client, claims, sync } = setup();
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile = vi.fn(
+      () =>
+        new Promise<{ success: boolean }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const first = sync.ensureLoaded(kept);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+    finish?.({ success: true });
+
+    expect(await first).toBe(true);
+    expect(client.loadFile).toHaveBeenCalledTimes(1);
+    expect(claims.refusal(refused, ["Lib"])?.keptFileName).toBe(kept);
+  });
 });

@@ -35,7 +35,7 @@
  * dirty* in an editor, where reloading OMC would clobber the unsaved buffer
  * — skipped with a warning until it saves; and an edit to a file the
  * session's {@link TopLevelClaims} refuse, which would replace another
- * file's copy of the same top-level class — skipped with a warning, and its
+ * file's copy of the same class — skipped with a warning, and its
  * delete never unloads that copy.
  */
 
@@ -47,7 +47,7 @@ import * as vscode from "vscode";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { errorDetail } from "./error-detail.js";
-import { isInsideDirInclusive, isPackageFile, pathExists } from "./fs-util.js";
+import { pathExists } from "./fs-util.js";
 import { createEventScheduler } from "./mo-event-scheduler.js";
 import type { FilesUnderEntry, PathClassIndex } from "./path-class-index.js";
 import type { ClassInvalidationRegistry } from "./invalidation.js";
@@ -105,7 +105,7 @@ export interface MoWatcherDeps {
   sourceProvider: Pick<ModelicaSourceProvider, "notifySourceChanged">;
   guard: SelfWriteGuard;
   index: PathClassIndex;
-  /** Which file supplies each top-level class; see {@link TopLevelClaims}. */
+  /** Which file supplies each class; see {@link TopLevelClaims}. */
   claims: TopLevelClaims;
   /** Packages whose reorder is waiting on a busy buffer's save to retry. */
   pendingReorders: PendingReorders;
@@ -172,6 +172,24 @@ function warnCollision(
   }
 }
 
+type CascadeDeps = Pick<MoWatcherDeps, "index" | "claims">;
+
+/**
+ * {@link PathClassIndex.filesUnder}, keeping only the classes OMC can hold
+ * from each file: a refused copy's classes there are the kept copy's.
+ */
+function suppliedFilesUnder(
+  deps: CascadeDeps,
+  name: string,
+): FilesUnderEntry[] {
+  return deps.index.filesUnder(name).flatMap((file) => {
+    const classNames = file.classNames.filter((n) =>
+      deps.claims.supplies(file.fsPath, n),
+    );
+    return classNames.length > 0 ? [{ fsPath: file.fsPath, classNames }] : [];
+  });
+}
+
 /**
  * Every file and class a `deleteClass` or reload of `names` can reach,
  * deduplicated: each name's own file, plus every file holding a class nested
@@ -183,11 +201,11 @@ function warnCollision(
  * e.g. a `..` segment still dedupes against the same file's cascaded entry.
  */
 function cascadeReach(
-  index: PathClassIndex,
+  deps: CascadeDeps,
   names: string[],
   extra: { fsPath?: string; classNames?: string[] } = {},
 ): { fsPaths: string[]; classNames: string[] } {
-  const matches = names.flatMap((name) => index.filesUnder(name));
+  const matches = names.flatMap((name) => suppliedFilesUnder(deps, name));
   const fsPaths = new Set(matches.map((f) => f.fsPath));
   if (extra.fsPath !== undefined) fsPaths.add(path.resolve(extra.fsPath));
   const classNames = new Set(matches.flatMap((f) => f.classNames));
@@ -210,13 +228,14 @@ function cascadeReach(
  * and dedupes once.
  */
 function cascadeCleanup(
-  index: PathClassIndex,
+  deps: CascadeDeps,
   names: string[],
   exclude?: string,
 ): FilesUnderEntry[] {
+  const { index } = deps;
   const excluded = exclude !== undefined ? path.resolve(exclude) : undefined;
   const cascadedFiles = names
-    .flatMap((name) => index.filesUnder(name))
+    .flatMap((name) => suppliedFilesUnder(deps, name))
     .filter((file) => file.fsPath !== excluded);
   for (const file of cascadedFiles) {
     const remaining = (index.get(file.fsPath) ?? []).filter(
@@ -254,7 +273,7 @@ function reindexAndRelist(
 ): void {
   deps.index.set(fsPath, names);
 
-  const cascadedFiles = cascadeCleanup(deps.index, removed, fsPath);
+  const cascadedFiles = cascadeCleanup(deps, removed, fsPath);
 
   const scopes = new Set<string | null>();
   for (const name of names) {
@@ -340,18 +359,13 @@ export async function handleMoChange(
     return;
   }
 
+  // A class this file was refused for is the kept copy's in OMC.
+  const unloaded = removed.filter((n) => deps.claims.supplies(fsPath, n));
   const collision = deps.claims.refusal(fsPath, names);
   if (collision !== undefined) {
-    warnCollision(deps.claims, collision, names);
-    // Indexed like a seeded copy, so its delete can tell when the refused
-    // copy's files are all gone.
-    deps.index.set(fsPath, names);
+    await refuseChange(deps, fsPath, names, unloaded, collision);
     return;
   }
-  // A class this file was refused for is the kept copy's in OMC.
-  const unloaded = removed.filter(
-    (n) => deps.claims.refusal(fsPath, [n]) === undefined,
-  );
 
   const directNames = [...names, ...unloaded];
   // loadFile on fsPath reloads its whole subtree from disk when fsPath is a
@@ -359,7 +373,7 @@ export async function handleMoChange(
   // cascades to its nested members' files exactly as a removed one cascades
   // its deleteClass to them. `classNames: names` is the floor for a
   // brand-new class the index doesn't know yet to cascade from.
-  const { fsPaths, classNames } = cascadeReach(deps.index, directNames, {
+  const { fsPaths, classNames } = cascadeReach(deps, directNames, {
     fsPath,
     classNames: names,
   });
@@ -368,16 +382,51 @@ export async function handleMoChange(
     return;
   }
 
-  const { success } = await client.loadFile({ fileName: fsPath });
+  const reservation = deps.claims.reserve(fsPath, names);
+  let success = false;
+  try {
+    ({ success } = await client.loadFile({ fileName: fsPath }));
+  } finally {
+    if (!success) reservation.cancel();
+  }
   if (!success) {
     log.warn("moWatcher", `loadFile ${fsPath} returned success=false`);
     return;
   }
-  deps.claims.recordLoad(fsPath, names);
+  reservation.commit();
   for (const name of unloaded) await client.deleteClass({ typeName: name });
 
   reindexAndRelist(deps, fsPath, names, unloaded);
   retryUnblockedReorders(deps);
+}
+
+/**
+ * `fsPath` now declares `names`, which `collision` refuses. It is not
+ * loaded, but the classes it supplied and no longer declares (`unloaded`)
+ * are unloaded and given up, as any edit dropping them would.
+ */
+async function refuseChange(
+  deps: MoWatcherDeps,
+  fsPath: string,
+  names: string[],
+  unloaded: string[],
+  collision: NameCollision,
+): Promise<void> {
+  if (unloaded.length > 0) {
+    const { fsPaths, classNames } = cascadeReach(deps, unloaded, { fsPath });
+    if (deps.isBusy(fsPaths, classNames)) {
+      warnBusy(fsPath, unloaded);
+      return;
+    }
+    const client = await deps.ensureClient();
+    for (const name of unloaded) await client.deleteClass({ typeName: name });
+    deps.claims.release(fsPath);
+    reindexAndRelist(deps, fsPath, [], unloaded);
+  }
+  warnCollision(deps.claims, collision, names);
+  // Indexed like a seeded copy, so its delete can tell when the refused
+  // copy's files are all gone.
+  deps.index.set(fsPath, names);
 }
 
 /**
@@ -410,6 +459,7 @@ async function reorderPackage(
     );
     return;
   }
+  const client = await deps.ensureClient();
   const collision = deps.claims.refusal(pkgFile, names);
   if (collision !== undefined) {
     warnCollision(deps.claims, collision, names);
@@ -418,7 +468,7 @@ async function reorderPackage(
   // Reloading the package re-reads every member from disk, so a dirty buffer
   // for a *member* — not just the package itself — is at risk of being
   // clobbered underneath its editor, whichever file that member lives in.
-  const { fsPaths, classNames } = cascadeReach(deps.index, names, {
+  const { fsPaths, classNames } = cascadeReach(deps, names, {
     fsPath: pkgFile,
   });
   if (deps.isBusy(fsPaths, classNames)) {
@@ -433,13 +483,15 @@ async function reorderPackage(
   // alongside it — see `package-order-reload.integration.test.ts`. Nothing has
   // to be unloaded first, and nothing is: a failed reload leaves OMC holding
   // the order it already had, which is what the tree goes on showing.
-  const client = await deps.ensureClient();
+  const reservation = deps.claims.reserve(pkgFile, names);
   let loaded = false;
   try {
     ({ success: loaded } = await client.loadFile({ fileName: pkgFile }));
   } catch (err) {
     log.warn("moWatcher", `reload of ${pkgFile} threw: ${errorDetail(err)}`);
   }
+  if (loaded) reservation.commit();
+  else reservation.cancel();
 
   // A reorder doesn't change which classes exist, so `names` (unchanged
   // above) is also what the index already holds for `pkgFile`.
@@ -472,7 +524,7 @@ function retryUnblockedReorders(deps: MoWatcherDeps): void {
       deps.pendingReorders.delete(pkgFile);
       continue;
     }
-    const { fsPaths, classNames } = cascadeReach(deps.index, names, {
+    const { fsPaths, classNames } = cascadeReach(deps, names, {
       fsPath: pkgFile,
     });
     if (deps.isBusy(fsPaths, classNames)) continue;
@@ -554,7 +606,7 @@ export async function handleMoDelete(
   }
   // Deleting a package cascades to every member nested under it, wherever
   // those live — widen the busy check to their files and names too.
-  const { fsPaths, classNames } = cascadeReach(deps.index, names, { fsPath });
+  const { fsPaths, classNames } = cascadeReach(deps, names, { fsPath });
   if (deps.isBusy(fsPaths, classNames)) {
     warnBusy(fsPath, names);
     return;
@@ -562,12 +614,13 @@ export async function handleMoDelete(
 
   const client = await deps.ensureClient();
   for (const name of names) await client.deleteClass({ typeName: name });
-  deps.claims.release(fsPath);
 
   // OMC's own deleteClass cascade just took every nested member with it too,
   // wherever those live — the index and any editor open on one of them have
-  // to be told the same way, not just for fsPath's own direct names.
-  const cascadedFiles = cascadeCleanup(deps.index, names);
+  // to be told the same way, not just for fsPath's own direct names. Released
+  // after, so the refused copies' files still fall outside the cascade.
+  const cascadedFiles = cascadeCleanup(deps, names);
+  deps.claims.release(fsPath);
   for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
@@ -589,12 +642,9 @@ export async function handleMoDelete(
  */
 function releaseVacatedCopies(deps: MoWatcherDeps, fsPath: string): void {
   for (const copy of deps.claims.refusedCopiesHolding(fsPath)) {
-    const dir = path.resolve(path.dirname(copy.fileName));
-    const remaining =
-      isPackageFile(copy.fileName) &&
-      deps.index
-        .filesUnder(copy.className)
-        .some((f) => isInsideDirInclusive(dir, f.fsPath));
+    const remaining = deps.index
+      .filesUnder(copy.className)
+      .some((f) => deps.claims.copyHolds(copy, f.fsPath));
     if (!remaining) deps.claims.release(copy.fileName);
   }
 }
@@ -638,7 +688,7 @@ export function registerMoFileWatcher(deps: {
    * too.
    */
   index: PathClassIndex;
-  /** Owned by `registerWorkspaceAutoload`, whose sweep records them. */
+  /** Owned by `registerWorkspaceAutoload`; events wait while its sweep holds them. */
   claims: TopLevelClaims;
   /**
    * A flat `.mo` path list for the index seed, both at activation and on
@@ -672,7 +722,12 @@ export function registerMoFileWatcher(deps: {
   );
 
   const { run } = createEventScheduler({
-    ready: () => seedQueue.current,
+    // A load during the sweep would race it for which copy of a class is
+    // kept.
+    ready: async () => {
+      await seedQueue.current;
+      await deps.claims.settled();
+    },
     onError: (describedPath, err) =>
       log.warn(
         "moWatcher",

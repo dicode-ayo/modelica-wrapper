@@ -132,10 +132,11 @@ keystroke. Policy for v1:
   is parsed, immediately before `loadFile`. A dirty plain text editor does not
   block the load. The same predicate (`isDeclaredClassBusy`, in
   `dirty-buffer.ts`) guards the `.mo` watcher's reloads.
-- **A refused copy stays unloaded.** A file whose top-level class another
-  file already supplies to the session (see `top-level-claims.ts`) is not
-  loaded on touch. It is retried after a save or close, and warned about once
-  per file across the sweep, the `.mo` watcher and the sync.
+- **A refused copy stays unloaded.** A file whose class another file already
+  supplies to the session (see `top-level-claims.ts`) is not loaded on touch.
+  It is retried after a save or close, and warned about once per file across
+  the sweep, the `.mo` watcher and the sync. A touch during the workspace
+  sweep waits for it to finish.
 - **Owning class name** for a document is derived from its path within the
   package structure (`package.mo` walk), confirmed via
   [`parseFile`](../packages/omc-client/src/api/lifecycle/parseFile.ts) which

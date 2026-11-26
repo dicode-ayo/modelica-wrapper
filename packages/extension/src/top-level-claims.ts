@@ -1,22 +1,20 @@
 /**
- * Which file each top-level class in the shared OMC session was loaded from.
+ * Which file each class in the shared OMC session was loaded from.
  *
  * Every workspace folder loads into one OMC session, so a second file
- * declaring a top-level class another file already supplied would silently
- * replace it. The workspace sweep, the `.mo` watcher and the buffer sync all
- * consult one instance before `loadFile`, and the watcher before
- * `deleteClass`, so a refused copy can neither replace the kept one nor
- * unload it.
+ * declaring a class another file already supplied would silently replace it.
+ * The workspace sweep, the `.mo` watcher and the buffer sync all consult one
+ * instance before `loadFile`, and the watcher before `deleteClass`, so a
+ * refused copy can neither replace the kept one nor unload it.
  *
- * The sweep decides which copy is kept. A load recorded while a sweep is
- * queued or running is provisional: it refuses nothing, and a sweep load of
- * another copy of the same class displaces it. Once every held sweep is done,
- * the provisional claims stand.
+ * The sweep decides which copy is kept: while a sweep is held (see
+ * {@link TopLevelClaims.hold}) the watcher and the sync wait on
+ * {@link TopLevelClaims.settled} before loading anything.
  */
 
 import * as path from "node:path";
 
-import { scopeChain } from "@dicode/modelica-lang-core";
+import { isWithinScope, scopeChain } from "@dicode/modelica-lang-core";
 
 import {
   defaultNormalizeKey,
@@ -53,48 +51,43 @@ export function nameCollisionToast(collisions: NameCollision[]): string {
   const hidden = collisions.length - shown.length;
   if (hidden > 0) shown.push(`and ${hidden} more`);
   return (
-    `Modelica: ${shown.join("; ")}. Entry files share one OpenModelica ` +
+    `Modelica: ${shown.join("; ")}. Workspace files share one OpenModelica ` +
     `session, so only the copy of each class that loaded was kept.`
   );
 }
 
-/** A refused copy of a top-level class. */
+/** A refused copy of a class. */
 export interface RefusedCopy {
   fileName: string;
   className: string;
 }
 
-/** What a sweep held by {@link TopLevelClaims.holdForSweep} reads and records. */
-export interface SweepClaims {
-  refusal(
-    fsPath: string,
-    classNames: readonly string[],
-  ): NameCollision | undefined;
-  recordRefusal(
-    collision: NameCollision,
-    classNames: readonly string[],
-  ): boolean;
-  refuse(fsPath: string, className: string): void;
-  /**
-   * Like {@link TopLevelClaims.recordLoad}, but never provisional; a
-   * provisional owner of another copy becomes a refused copy.
-   */
-  recordLoad(fsPath: string, classNames: readonly string[]): void;
-  /** Releases the hold; called once the sweep settles, loaded or not. */
-  done(): void;
+/** A claim taken before `loadFile`, so a racing load of another copy is refused. */
+export interface Reservation {
+  /** The load succeeded: record it as {@link TopLevelClaims.recordLoad} does. */
+  commit(): void;
+  /** The load failed or was skipped: drop the claims this reservation took. */
+  cancel(): void;
 }
 
 export interface TopLevelClaims {
   /**
    * The collision that refuses loading `fsPath`, which declares
    * `classNames`, or `undefined` when it may load: another file owns one of
-   * its top-level classes, or it sits inside a refused copy's package, or it
-   * is a `within` extension whose nearest library root is a refused copy's.
+   * those classes, or `fsPath` sits inside a refused copy's package, or it is
+   * a `within` extension whose nearest library root is a refused copy's.
    */
   refusal(
     fsPath: string,
     classNames: readonly string[],
   ): NameCollision | undefined;
+  /** Whether OMC's `className` can be `fsPath`'s: no {@link refusal} for it. */
+  supplies(fsPath: string, className: string): boolean;
+  /**
+   * Claim each unowned class of `classNames` for `fsPath` until the load
+   * settles. Call it with no `await` after a {@link refusal} that passed.
+   */
+  reserve(fsPath: string, classNames: readonly string[]): Reservation;
   /**
    * Record a refusal {@link refusal} returned for `classNames`: a file
    * declaring the contested class itself becomes a refused copy. Returns
@@ -108,34 +101,25 @@ export interface TopLevelClaims {
   /** Record `fsPath` as a copy refused in favor of the owner of `className`. */
   refuse(fsPath: string, className: string): void;
   /**
-   * `fsPath` loaded declaring `classNames`: it owns each top-level one, and
-   * gives up any top-level class it owned and no longer declares.
+   * `fsPath` loaded declaring `classNames`: it owns each one, and gives up any
+   * class it owned and no longer declares.
    */
   recordLoad(fsPath: string, classNames: readonly string[]): void;
   /** The refused copies whose package holds `fsPath`, or that are `fsPath`. */
   refusedCopiesHolding(fsPath: string): RefusedCopy[];
+  /** Whether `fsPath` is the refused copy `copy` or lies inside its package. */
+  copyHolds(copy: RefusedCopy, fsPath: string): boolean;
   /** `fsPath` is gone: drop its refusal, and its claims with their refusals. */
   release(fsPath: string): void;
   /** The OMC session the claims describe was replaced (`:reset`). */
   clear(): void;
-  /**
-   * Make loads recorded from now on provisional until the returned sweep is
-   * done. Call it when the sweep is queued, not when it starts.
-   */
-  holdForSweep(): SweepClaims;
+  /** Hold off other loaders until the returned release is called, once per hold. */
+  hold(): () => void;
+  /** Resolves once no hold is outstanding. */
+  settled(): Promise<void>;
 }
 
-interface Owner {
-  /** As the loader named it, so a report does too. */
-  fileName: string;
-  provisional: boolean;
-}
-
-function outermost(qualifiedName: string): string | undefined {
-  return scopeChain(qualifiedName).at(-1);
-}
-
-/** The directory a copy of a top-level class sits in, beside its `within` siblings. */
+/** The directory a copy of a class sits in, beside its `within` siblings. */
 function libraryRoot(fsPath: string): string {
   const dir = path.dirname(fsPath);
   return isPackageFile(fsPath) ? path.dirname(dir) : dir;
@@ -144,27 +128,32 @@ function libraryRoot(fsPath: string): string {
 export function createTopLevelClaims(
   normalizeKey: (filePath: string) => string = defaultNormalizeKey,
 ): TopLevelClaims {
-  const ownerByClass = new Map<string, Owner>();
+  // Owners keep the path they loaded under, so a report names the file the
+  // way its loader did; comparisons go through `key`.
+  const ownerByClass = new Map<string, string>();
   const refusedByKey = new Map<string, RefusedCopy>();
   const reported = new Map<string, string>();
-  let heldSweeps = 0;
   const key = (p: string): string => normalizeKey(path.resolve(p));
 
-  /** Whether `fsPath`, declaring a class nested in `className`, extends a refused copy. */
+  let heldCount = 0;
+  let settledPromise: Promise<void> = Promise.resolve();
+  let resolveSettled: (() => void) | undefined;
+
+  const holdsKey = (refused: string, fsPath: string): boolean =>
+    refused === fsPath ||
+    (isPackageFile(refused) &&
+      isInsideDirExclusive(path.dirname(refused), fsPath));
+
+  /** Whether `fsPath`, declaring a class nested in `scope`, extends a refused copy of it. */
   const refusedReach = (
     fsPath: string,
-    className: string,
+    scope: string,
     owner: string,
   ): boolean => {
     const keptRoot = libraryRoot(key(owner));
     for (const [refused, copy] of refusedByKey) {
-      if (copy.className !== className) continue;
-      if (
-        isPackageFile(refused) &&
-        isInsideDirExclusive(path.dirname(refused), fsPath)
-      ) {
-        return true;
-      }
+      if (copy.className !== scope) continue;
+      if (holdsKey(refused, fsPath)) return true;
       // A `within` extension belongs to the library whose root sits closest
       // above it.
       const refusedRoot = libraryRoot(refused);
@@ -185,22 +174,18 @@ export function createTopLevelClaims(
   ): NameCollision | undefined => {
     const fsPath = key(rawPath);
     for (const declared of classNames) {
-      const className = outermost(declared);
-      if (className === undefined) continue;
-      const owner = ownerByClass.get(className);
-      if (owner === undefined || owner.provisional) continue;
-      if (key(owner.fileName) === fsPath) continue;
-      if (
-        declared !== className &&
-        !refusedReach(fsPath, className, owner.fileName)
-      ) {
-        continue;
+      for (const scope of scopeChain(declared)) {
+        const owner = ownerByClass.get(scope);
+        if (owner === undefined || key(owner) === fsPath) continue;
+        if (scope !== declared && !refusedReach(fsPath, scope, owner)) {
+          continue;
+        }
+        return {
+          className: scope,
+          keptFileName: owner,
+          refusedFileName: rawPath,
+        };
       }
-      return {
-        className,
-        keptFileName: owner.fileName,
-        refusedFileName: rawPath,
-      };
     }
     return undefined;
   };
@@ -209,79 +194,70 @@ export function createTopLevelClaims(
     refusedByKey.set(key(rawPath), { fileName: rawPath, className });
   };
 
-  const recordRefusal = (
-    collision: NameCollision,
-    classNames: readonly string[],
-  ): boolean => {
-    if (classNames.includes(collision.className)) {
-      refuse(collision.refusedFileName, collision.className);
-    }
-    const refusedKey = key(collision.refusedFileName);
-    if (reported.has(refusedKey)) return false;
-    reported.set(refusedKey, collision.className);
-    return true;
-  };
-
-  const recordLoad = (
-    rawPath: string,
-    classNames: readonly string[],
-    provisional: boolean,
-  ): void => {
+  const recordLoad = (rawPath: string, classNames: readonly string[]): void => {
     const fsPath = key(rawPath);
-    const topLevel = new Set(classNames.filter((n) => outermost(n) === n));
+    const declared = new Set(classNames);
     for (const [className, owner] of ownerByClass) {
-      if (key(owner.fileName) === fsPath && !topLevel.has(className)) {
+      if (key(owner) === fsPath && !declared.has(className)) {
         ownerByClass.delete(className);
       }
     }
-    for (const className of topLevel) {
-      const displaced = ownerByClass.get(className);
-      if (
-        !provisional &&
-        displaced?.provisional === true &&
-        key(displaced.fileName) !== fsPath
-      ) {
-        refuse(displaced.fileName, className);
-      }
-      ownerByClass.set(className, { fileName: rawPath, provisional });
-    }
+    for (const className of declared) ownerByClass.set(className, rawPath);
     refusedByKey.delete(fsPath);
     reported.delete(fsPath);
   };
 
   const dropRefusalsOf = (className: string): void => {
     for (const [refused, copy] of refusedByKey) {
-      if (copy.className === className) refusedByKey.delete(refused);
+      if (isWithinScope(copy.className, className))
+        refusedByKey.delete(refused);
     }
     for (const [file, reportedClass] of reported) {
-      if (reportedClass === className) reported.delete(file);
+      if (isWithinScope(reportedClass, className)) reported.delete(file);
     }
   };
 
   return {
     refusal,
-    recordRefusal,
-    refuse,
-    recordLoad(rawPath, classNames) {
-      recordLoad(rawPath, classNames, heldSweeps > 0);
+    supplies: (fsPath, className) => refusal(fsPath, [className]) === undefined,
+    reserve(rawPath, classNames) {
+      const reserved = classNames.filter((n) => !ownerByClass.has(n));
+      for (const className of reserved) ownerByClass.set(className, rawPath);
+      return {
+        commit: () => recordLoad(rawPath, classNames),
+        cancel() {
+          for (const className of reserved) {
+            if (ownerByClass.get(className) === rawPath) {
+              ownerByClass.delete(className);
+            }
+          }
+        },
+      };
     },
+    recordRefusal(collision, classNames) {
+      if (classNames.includes(collision.className)) {
+        refuse(collision.refusedFileName, collision.className);
+      }
+      const refusedKey = key(collision.refusedFileName);
+      if (reported.has(refusedKey)) return false;
+      reported.set(refusedKey, collision.className);
+      return true;
+    },
+    refuse,
+    recordLoad,
     refusedCopiesHolding(rawPath) {
       const fsPath = key(rawPath);
       return [...refusedByKey]
-        .filter(
-          ([refused]) =>
-            refused === fsPath ||
-            (isPackageFile(refused) &&
-              isInsideDirExclusive(path.dirname(refused), fsPath)),
-        )
+        .filter(([refused]) => holdsKey(refused, fsPath))
         .map(([, copy]) => copy);
     },
+    copyHolds: (copy, fsPath) => holdsKey(key(copy.fileName), key(fsPath)),
     release(rawPath) {
       const fsPath = key(rawPath);
       refusedByKey.delete(fsPath);
       reported.delete(fsPath);
       for (const [className, owner] of ownerByClass) {
-        if (key(owner.fileName) !== fsPath) continue;
+        if (key(owner) !== fsPath) continue;
         ownerByClass.delete(className);
         dropRefusalsOf(className);
       }
@@ -291,23 +267,21 @@ export function createTopLevelClaims(
       refusedByKey.clear();
       reported.clear();
     },
-    holdForSweep() {
-      heldSweeps++;
-      let held = true;
-      return {
-        refusal,
-        recordRefusal,
-        refuse,
-        recordLoad: (rawPath, classNames) =>
-          recordLoad(rawPath, classNames, false),
-        done() {
-          if (!held) return;
-          held = false;
-          heldSweeps--;
-          if (heldSweeps > 0) return;
-          for (const owner of ownerByClass.values()) owner.provisional = false;
-        },
+    hold() {
+      if (heldCount === 0) {
+        settledPromise = new Promise<void>((resolve) => {
+          resolveSettled = resolve;
+        });
+      }
+      heldCount++;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        heldCount--;
+        if (heldCount === 0) resolveSettled?.();
       };
     },
+    settled: () => settledPromise,
   };
 }

@@ -258,8 +258,8 @@ Conflict rules and failure handling are detailed in `mo-event-scheduler.ts`.
 ### Top-level class claims
 
 Every workspace folder loads into one OMC session, so a second file declaring
-a top-level class another file supplied would silently replace it.
-`top-level-claims.ts` records which file each top-level class was loaded from.
+a class another file supplied would silently replace it.
+`top-level-claims.ts` records which file each declared class was loaded from.
 `registerWorkspaceAutoload` owns the instance and clears it on `:reset`; its
 sweep, the `.mo` watcher and the buffer sync (`language/sync.ts`) consult it
 before `loadFile`:
@@ -270,14 +270,17 @@ before `loadFile`:
 - A file inside a refused copy's package directory is refused too, as is a
   `within` extension of the class whose nearest library root is the refused
   copy's rather than the kept copy's.
-- The watcher never `deleteClass`es a name its file was refused for: not on
-  the delete of a refused file, and not when an edit drops that name. A
-  refused copy's refusal is dropped once none of its package's files is
-  indexed. Deleting the owner frees the class and drops its refusals.
-- The sweep decides which copy is kept. `registerWorkspaceAutoload` holds the
-  claims from the moment a sweep is queued; a watcher or sync load recorded
-  during the hold is provisional, refuses nothing, and is displaced (and
-  refused) by the sweep's load of another copy.
+- The watcher and the sync reserve a file's classes synchronously after the
+  refusal check and before `loadFile`, so two copies loading at once cannot
+  both pass; a failed load cancels the reservation.
+- The watcher never `deleteClass`es a name its file was refused for, and its
+  delete cascade leaves refused copies' files out. An edit whose new class is
+  refused still unloads the classes the file supplied before. A refused
+  copy's refusal is dropped once none of its package's files is indexed.
+  Deleting the owner frees the class and drops its refusals.
+- The sweep decides which copy is kept. The claims are held from creation
+  until the first sweep settles, and again for each queued `:reset` sweep;
+  the watcher's events and the sync's loads wait on `settled()` meanwhile.
 
 ## Logging
 

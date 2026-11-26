@@ -70,7 +70,7 @@ The extension activates when a workspace contains any `*.mo` file.
 
 Every workspace folder loads into one OpenModelica session, so each top-level class is loaded from one file only. When the workspace loads (at startup and after `:reset`), entry files that declare the same top-level class load only once: the first copy found that loads, earlier workspace folders first. The others are not loaded, and you get a warning naming the files.
 
-The same rule holds until the next `:reset`. Saving or creating a file that declares a top-level class another file already supplies, opening it in an editor, or editing a file inside a refused copy's package (or a `within` file beside that copy) leaves the loaded copy in place, and you are warned once per file. Editing or deleting a refused copy never unloads the loaded copy. Once the loaded copy's file is deleted, the class is free, and the next save of another copy loads it. A file saved or opened while the workspace is still loading does not take a class from the workspace load's choice.
+The same rule holds until the next `:reset`, for nested classes a file declares with `within` as well. Saving or creating a file that declares a class another file already supplies, opening it in an editor, or editing a file inside a refused copy's package (or a `within` file beside that copy) leaves the loaded copy in place, and you are warned once per file. Editing or deleting a refused copy never unloads the loaded copy. Once the loaded copy's file is deleted, the class is free, and the next save of another copy loads it. Files saved or opened while the workspace is still loading wait for it to finish, so they never take a class from the copy it keeps.
 
 ## Settings
 

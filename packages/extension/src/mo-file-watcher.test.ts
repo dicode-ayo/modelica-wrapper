@@ -1,3 +1,5 @@
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -5,6 +7,7 @@ import * as vscode from "vscode";
 
 import { makeWatcherClient } from "../test-support/mock-watcher-client.js";
 import {
+  fileSystemWatchers,
   recordedMessages,
   resetTabs,
   setFindFilesResult,
@@ -1539,5 +1542,114 @@ describe("top-level class claims", () => {
       keptFileName: keptLib,
     });
     expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
+
+  it("unloads and gives up a class a loaded file stops declaring when its new class is refused", async () => {
+    const foo = path.resolve("/rootB/Foo.mo");
+    const { deps, client } = depsWithRefusedLib(["Lib"]);
+    deps.claims.recordLoad(foo, ["Foo"]);
+    deps.index.set(foo, ["Foo"]);
+
+    await handleMoChange(deps, foo);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Foo" });
+    expect(
+      deps.claims.refusal(path.resolve("/rootC/Foo.mo"), ["Foo"]),
+    ).toBeUndefined();
+    expect(deps.index.get(foo)).toEqual(["Lib"]);
+    expect(recordedMessages).toHaveLength(1);
+  });
+
+  it("refuses a second copy whose load starts while the first copy's load is in flight", async () => {
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const first = handleMoChange(deps, keptLib);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await handleMoChange(deps, refusedLib);
+    finish?.({ success: true });
+    await first;
+
+    expect(client.loadFile).toHaveBeenCalledTimes(1);
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: keptLib });
+    expect(deps.claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(
+      keptLib,
+    );
+  });
+
+  it("frees the class when a reserved load fails", async () => {
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+    client.loadFile.mockResolvedValueOnce({ success: false });
+
+    await handleMoChange(deps, keptLib);
+
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
+
+  it("leaves a refused copy's files out of the kept copy's delete cascade", async () => {
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    const keptSub = path.resolve("/rootA/Lib/Sub.mo");
+    const isBusy = vi.fn((fsPaths: string[]) => fsPaths.includes(sub));
+    const { deps, client } = depsWithRefusedLib();
+    deps.isBusy = isBusy;
+    deps.index.set(sub, ["Lib.Sub"]);
+    deps.index.set(keptSub, ["Lib.Sub"]);
+
+    await handleMoDelete(deps, keptLib);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Lib" });
+    expect(deps.index.get(sub)).toEqual(["Lib.Sub"]);
+    expect(deps.index.get(refusedLib)).toEqual(["Lib"]);
+    expect(deps.index.get(keptSub)).toBeUndefined();
+  });
+});
+
+describe("registerMoFileWatcher — workspace sweep hold", () => {
+  it("handles no `.mo` event until the claims' sweep hold is released", async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "mo-watch-hold-"));
+    const file = path.join(dir, "Lib.mo");
+    await fsp.writeFile(file, "package Lib end Lib;");
+    const client = makeWatcherClient();
+    const claims = createTopLevelClaims();
+    const release = claims.hold();
+    const watchersBefore = fileSystemWatchers.length;
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation: new ClassInvalidationRegistry(),
+      index: createPathClassIndex(),
+      claims,
+      scanMoFiles: async () => [],
+    });
+    const moWatcher = fileSystemWatchers
+      .slice(watchersBefore)
+      .find((w) => w.pattern === "**/*.mo");
+
+    for (const listener of moWatcher?.change ?? []) listener(Uri.file(file));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(client.loadFile).not.toHaveBeenCalled();
+
+    release();
+    await vi.waitFor(() =>
+      expect(client.loadFile).toHaveBeenCalledWith({ fileName: file }),
+    );
+
+    disposable.dispose();
+    await fsp.rm(dir, { recursive: true, force: true });
   });
 });
