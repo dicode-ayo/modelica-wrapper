@@ -31,7 +31,11 @@ import {
 } from "../test-support/vscode-mock.js";
 
 import type { InstallHooks, OmcInstaller } from "./omc-install-host.js";
-import { createOmcSetup, type OmcEnvironment } from "./omc-setup.js";
+import {
+  createOmcSetup,
+  type OmcEnvironment,
+  type OmcSetup,
+} from "./omc-setup.js";
 import { REMOVE_TITLE } from "./omc-status.js";
 
 const untested: CompatibilityReport = {
@@ -169,11 +173,105 @@ function offered(): string[] {
   return prompt.items;
 }
 
+/** Let every already-settled continuation, a fire-and-forget prompt's included, run. */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * A spawn's demand for an `omc` that is not there. The prompt it fires is not
+ * awaited by the spawn, so this waits until the prompt has been offered.
+ */
+async function demandWithoutOmc(setup: OmcSetup): Promise<void> {
+  const before = recordedPrompts.length;
+  await expect(setup.omcPath()).rejects.toThrow(/OpenModelica was not found/);
+  await vi.waitFor(() => {
+    expect(recordedPrompts.length).toBeGreaterThan(before);
+  });
+}
+
 function errors(): string[] {
   return recordedMessages
     .filter((m) => m.level === "error")
     .map((m) => m.message);
 }
+
+describe("the missing-omc prompt", () => {
+  beforeEach(() => {
+    resetStatusBarItems();
+    resetCommands();
+    resetMessages();
+    resetConfiguration();
+  });
+
+  it("stays quiet until something asks for OMC, so a window with no Modelica sees nothing", async () => {
+    const setup = createOmcSetup({
+      environment: environment(() => Promise.resolve(false)),
+      installer: recordingInstaller({}),
+    });
+    await settle();
+
+    const item = statusBarItems.at(-1);
+    expect(item?.visible).toBe(false);
+    expect(item?.text).toBe("");
+    expect(recordedMessages).toEqual([]);
+    expect(recordedPrompts).toEqual([]);
+    setup.dispose();
+  });
+
+  it("offers a way forward on the first demand that finds no omc, and only that one", async () => {
+    const setup = createOmcSetup({
+      environment: environment(() => Promise.resolve(false)),
+      installer: recordingInstaller({}),
+    });
+
+    await demandWithoutOmc(setup);
+    expect(offered()).toContain("Install for me");
+    expect(statusBarItems.at(-1)?.visible).toBe(true);
+
+    await expect(setup.omcPath()).rejects.toThrow(/OpenModelica was not found/);
+    await settle();
+
+    expect(recordedPrompts).toHaveLength(1);
+    setup.dispose();
+  });
+
+  it("prompts once when two first demands race", async () => {
+    const setup = createOmcSetup({
+      environment: environment(() => Promise.resolve(false)),
+      installer: recordingInstaller({}),
+    });
+
+    const outcomes = await Promise.allSettled([
+      setup.omcPath(),
+      setup.omcPath(),
+    ]);
+    await vi.waitFor(() => {
+      expect(recordedPrompts.length).toBeGreaterThan(0);
+    });
+    await settle();
+
+    expect(outcomes.map((o) => o.status)).toEqual(["rejected", "rejected"]);
+    expect(recordedPrompts).toHaveLength(1);
+    setup.dispose();
+  });
+
+  it("never prompts when the demand finds an omc", async () => {
+    const setup = createOmcSetup({
+      environment: environment((candidate) =>
+        Promise.resolve(candidate === ON_PATH),
+      ),
+      installer: recordingInstaller({}),
+    });
+
+    await expect(setup.omcPath()).resolves.toBe(ON_PATH);
+    await settle();
+
+    expect(recordedPrompts).toEqual([]);
+    expect(recordedMessages).toEqual([]);
+    setup.dispose();
+  });
+});
 
 describe("the managed install", () => {
   beforeEach(() => {
@@ -193,7 +291,7 @@ describe("the managed install", () => {
       installer: recordingInstaller({}),
     });
 
-    await setup.start();
+    await demandWithoutOmc(setup);
 
     expect(offered()).not.toContain("Install for me");
     setup.dispose();
@@ -205,7 +303,7 @@ describe("the managed install", () => {
       installer: recordingInstaller({}),
     });
 
-    await setup.start();
+    await demandWithoutOmc(setup);
 
     expect(offered()).toContain("Install for me");
     setup.dispose();
@@ -262,7 +360,7 @@ describe("the managed install", () => {
         },
       }),
     });
-    await setup.start();
+    await demandWithoutOmc(setup);
     expect(changes).toBe(0);
 
     await runCommand(INSTALL_COMMAND);
@@ -285,7 +383,7 @@ describe("the managed install", () => {
       },
       installer: recordingInstaller({}),
     });
-    await setup.start();
+    await setup.omcPath();
     expect(changes).toBe(0);
 
     await runCommand(INSTALL_COMMAND);
@@ -331,7 +429,7 @@ describe("the managed install", () => {
         },
       }),
     });
-    await setup.start();
+    await setup.omcPath();
     expect(changes).toBe(0);
 
     const installing = runCommand(INSTALL_COMMAND);
@@ -439,7 +537,7 @@ describe("the managed install", () => {
       ),
       installer: recordingInstaller({}),
     });
-    await setup.start();
+    await setup.omcPath();
     await setup.reportVersion(
       { getVersionStatus: () => Promise.resolve(unparseable) },
       ON_PATH,
@@ -543,7 +641,7 @@ describe("the managed install", () => {
         },
       }),
     });
-    await setup.start();
+    await setup.omcPath();
     queueMessageAnswers("Remove");
 
     await runCommand(REMOVE_COMMAND);
@@ -560,7 +658,7 @@ describe("the managed install", () => {
       ),
       installer: recordingInstaller({}),
     });
-    await setup.start();
+    await setup.omcPath();
     await setup.reportVersion(
       { getVersionStatus: () => Promise.resolve(untested) },
       ON_PATH,
@@ -578,7 +676,7 @@ describe("the managed install", () => {
       environment: environment(() => Promise.resolve(false)),
       installer: recordingInstaller({}),
     });
-    await setup.start();
+    await setup.omcPath();
     await setup.reportVersion(
       { getVersionStatus: () => Promise.resolve(untested) },
       "/opt/omc",
@@ -600,9 +698,11 @@ describe("the managed install", () => {
     });
     queueMessageAnswers("Get OpenModelica");
 
-    await setup.start();
+    await demandWithoutOmc(setup);
 
-    expect(openedExternals.at(-1)?.toString()).toContain("windows");
+    await vi.waitFor(() => {
+      expect(openedExternals.at(-1)?.toString()).toContain("windows");
+    });
     setup.dispose();
   });
 
@@ -618,7 +718,7 @@ describe("the managed install", () => {
     queueMessageAnswers("Locate omc...");
     queueOpenDialogPicks(Uri.file("/opt/omc"));
 
-    await setup.start();
+    await runCommand(SETUP_COMMAND);
 
     expect(configurationUpdates).toEqual([
       {

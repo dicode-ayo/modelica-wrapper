@@ -77,7 +77,6 @@ import {
   onModelicaPathChanged,
   type ModelicaPathScope,
 } from "./modelica-path.js";
-import { hasModelicaContent } from "./modelica-window.js";
 
 // Only `deactivate()` outlives `activate()`'s scope.
 let closeOmcClientCache: (() => Promise<void>) | undefined;
@@ -353,22 +352,8 @@ export async function activate(
   // on `recoverRestoredCustomEditors`.
   void recoverRestoredCustomEditors();
 
-  // Neither blocks: OMC startup is slow, and the missing-OpenModelica
-  // notification waits on the user. A window with no Modelica in it skips the
-  // setup flow entirely — see `hasModelicaContent`; it reaches OMC through
-  // `omcPath()` instead, which renders the status item on the way to reporting
-  // the same missing dependency.
-  void (async () => {
-    const wanted = await hasModelicaContent({
-      openDocuments: () =>
-        vscode.workspace.textDocuments.map((d) => ({
-          languageId: d.languageId,
-          scheme: d.uri.scheme,
-        })),
-      scanMoFiles: () => moFileScanner.scan(),
-    });
-    if (wanted) await omcSetup.start();
-  })();
+  // OMC startup is slow, so this does not block. Demand for OMC is the signal
+  // for the setup flow, so a window with no Modelica never sees it.
   autoload.run();
 
   // Exported API surface. Tested separately via the `repl-eval` integration

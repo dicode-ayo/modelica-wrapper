@@ -23,6 +23,13 @@ every gesture is written straight back into the `.mo` source.
 The extension does **not** bundle OpenModelica — it drives your local `omc`
 install as a subprocess.
 
+The OpenModelica setup does not run at activation. The first time something needs
+OMC (opening a `.mo` file, the workspace autoload, a restored editor, or an MCP
+tool call), the OpenModelica status bar item appears, and if no `omc` is found
+a notification offers to install or locate one. That notification fires once
+per window; after that the status bar item carries the state, and clicking it
+reopens the setup flow. A window that never needs OMC sees neither.
+
 ## Features
 
 - **Library browser** — an activity-bar view of loaded libraries with search and
