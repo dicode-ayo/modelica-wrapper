@@ -134,7 +134,8 @@ keystroke. Policy for v1:
   `dirty-buffer.ts`) guards the `.mo` watcher's reloads.
 - **A refused copy stays unloaded.** A file whose top-level class another
   file already supplies to the session (see `top-level-claims.ts`) is not
-  loaded on touch, and is reported once until it is saved or closed.
+  loaded on touch. It is retried after a save or close, and warned about once
+  per file across the sweep, the `.mo` watcher and the sync.
 - **Owning class name** for a document is derived from its path within the
   package structure (`package.mo` walk), confirmed via
   [`parseFile`](../packages/omc-client/src/api/lifecycle/parseFile.ts) which

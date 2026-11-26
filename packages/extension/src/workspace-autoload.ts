@@ -18,12 +18,12 @@ import {
 } from "./single-entity-file.js";
 import {
   createTopLevelClaims,
+  nameCollisionMessage,
   type NameCollision,
+  type SweepClaims,
   type TopLevelClaims,
 } from "./top-level-claims.js";
 import { deriveEntryPoints } from "./workspace-scan.js";
-
-export { nameCollisionToast, type NameCollision } from "./top-level-claims.js";
 
 /** OMC surface the auto-loader calls. `OmcClient` satisfies it structurally. */
 export interface AutoLoadClient extends FileParseClient {
@@ -41,13 +41,6 @@ export interface SkippedEntryFile {
 export interface AutoLoadRefusals {
   skipped: SkippedEntryFile[];
   collisions: NameCollision[];
-}
-
-function logCollision(c: NameCollision): void {
-  log.warn(
-    "autoLoad",
-    `not loading ${c.refusedFileName}: ${c.className} is already loaded from ${c.keptFileName}`,
-  );
 }
 
 /**
@@ -72,7 +65,7 @@ export async function loadEntryFilesAndRefresh(
   client: AutoLoadClient,
   files: readonly string[],
   refresh: () => void,
-  claims: TopLevelClaims = createTopLevelClaims(),
+  claims: SweepClaims = createTopLevelClaims().holdForSweep(),
 ): Promise<AutoLoadRefusals> {
   const tryLoad = async (fileName: string): Promise<boolean> => {
     try {
@@ -166,12 +159,11 @@ export async function loadEntryFilesAndRefresh(
       ) {
         continue;
       }
-      const refusal = claims.refusal(
-        fileName,
-        className === undefined ? [] : [className],
-      );
+      const declared = className === undefined ? [] : [className];
+      const refusal = claims.refusal(fileName, declared);
       if (refusal !== undefined) {
-        logCollision(refusal);
+        log.warn("autoLoad", nameCollisionMessage(refusal));
+        claims.recordRefusal(refusal, declared);
         collisions.push(refusal);
         active.delete(fileName);
         continue;
@@ -213,7 +205,8 @@ export async function loadEntryFilesAndRefresh(
     if (keptFileName === undefined) continue;
     for (const refusedFileName of candidates.slice(keptIndex + 1)) {
       const collision = { className, keptFileName, refusedFileName };
-      logCollision(collision);
+      log.warn("autoLoad", nameCollisionMessage(collision));
+      claims.recordRefusal(collision, [className]);
       collisions.push(collision);
     }
   }
@@ -248,7 +241,7 @@ export interface WorkspaceAutoloadDeps {
  */
 export async function autoLoadWorkspace(
   deps: WorkspaceAutoloadDeps,
-  claims?: TopLevelClaims,
+  claims?: SweepClaims,
 ): Promise<void> {
   try {
     const folders = deps.folders();
@@ -279,8 +272,9 @@ export async function autoLoadWorkspace(
 export interface WorkspaceAutoload extends vscode.Disposable {
   run(): void;
   /**
-   * The session's top-level class claims, for every later load and unload to
-   * consult. Cleared on `:reset`, before that reset's sweep is queued.
+   * The session's top-level class claims, for every other load and unload to
+   * consult. Cleared on `:reset`, before that reset's sweep is queued; each
+   * queued sweep holds them until it settles.
    */
   claims: TopLevelClaims;
 }
@@ -307,7 +301,14 @@ export function registerWorkspaceAutoload(
   const queue = new SessionQueue();
   const claims = createTopLevelClaims();
   const run = (): void => {
-    queue.enqueue(() => autoLoadWorkspace(deps, claims));
+    const sweep = claims.holdForSweep();
+    queue.enqueue(async () => {
+      try {
+        await autoLoadWorkspace(deps, sweep);
+      } finally {
+        sweep.done();
+      }
+    });
   };
   const sub = invalidation.registerSessionReplaced(() => {
     claims.clear();

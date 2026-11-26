@@ -264,14 +264,20 @@ a top-level class another file supplied would silently replace it.
 sweep, the `.mo` watcher and the buffer sync (`language/sync.ts`) consult it
 before `loadFile`:
 
-- A file declaring a class another file owns is refused, warned about, and
-  remembered as a refused copy.
+- A file declaring a class another file owns is refused and remembered as a
+  refused copy. Each refused file is warned about once, whichever loader
+  refused it first.
 - A file inside a refused copy's package directory is refused too, as is a
   `within` extension of the class whose nearest library root is the refused
   copy's rather than the kept copy's.
-- The watcher's delete skips `deleteClass` for a refused file, since the
-  classes it names in OMC are the kept copy's. Deleting the owner frees the
-  class and drops its refusals.
+- The watcher never `deleteClass`es a name its file was refused for: not on
+  the delete of a refused file, and not when an edit drops that name. A
+  refused copy's refusal is dropped once none of its package's files is
+  indexed. Deleting the owner frees the class and drops its refusals.
+- The sweep decides which copy is kept. `registerWorkspaceAutoload` holds the
+  claims from the moment a sweep is queued; a watcher or sync load recorded
+  during the hold is provisional, refuses nothing, and is displaced (and
+  refused) by the sweep's load of another copy.
 
 ## Logging
 

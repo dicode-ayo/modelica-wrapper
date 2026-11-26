@@ -47,7 +47,7 @@ import * as vscode from "vscode";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { errorDetail } from "./error-detail.js";
-import { pathExists } from "./fs-util.js";
+import { isInsideDirInclusive, isPackageFile, pathExists } from "./fs-util.js";
 import { createEventScheduler } from "./mo-event-scheduler.js";
 import type { FilesUnderEntry, PathClassIndex } from "./path-class-index.js";
 import type { ClassInvalidationRegistry } from "./invalidation.js";
@@ -56,6 +56,7 @@ import { SessionQueue } from "./session-queue.js";
 import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
+  nameCollisionMessage,
   nameCollisionToast,
   type NameCollision,
   type TopLevelClaims,
@@ -160,13 +161,15 @@ function warnReorderBusy(describedPath: string, classNames: string[]): void {
   );
 }
 
-function warnCollision(collision: NameCollision): void {
-  log.warn(
-    "moWatcher",
-    `not loading ${collision.refusedFileName}: ${collision.className} is ` +
-      `already loaded from ${collision.keptFileName}`,
-  );
-  void vscode.window.showWarningMessage(nameCollisionToast([collision]));
+function warnCollision(
+  claims: TopLevelClaims,
+  collision: NameCollision,
+  classNames: readonly string[],
+): void {
+  log.warn("moWatcher", nameCollisionMessage(collision));
+  if (claims.recordRefusal(collision, classNames)) {
+    void vscode.window.showWarningMessage(nameCollisionToast([collision]));
+  }
 }
 
 /**
@@ -331,6 +334,7 @@ export async function handleMoChange(
   const removed = previous.filter((n) => !names.includes(n));
 
   if (isSelfWrite) {
+    deps.claims.recordLoad(fsPath, names);
     reindexAndRelist(deps, fsPath, names, removed);
     retryUnblockedReorders(deps);
     return;
@@ -338,11 +342,18 @@ export async function handleMoChange(
 
   const collision = deps.claims.refusal(fsPath, names);
   if (collision !== undefined) {
-    warnCollision(collision);
+    warnCollision(deps.claims, collision, names);
+    // Indexed like a seeded copy, so its delete can tell when the refused
+    // copy's files are all gone.
+    deps.index.set(fsPath, names);
     return;
   }
+  // A class this file was refused for is the kept copy's in OMC.
+  const unloaded = removed.filter(
+    (n) => deps.claims.refusal(fsPath, [n]) === undefined,
+  );
 
-  const directNames = [...names, ...removed];
+  const directNames = [...names, ...unloaded];
   // loadFile on fsPath reloads its whole subtree from disk when fsPath is a
   // package — same as reorderPackage's reload — so a still-declared class
   // cascades to its nested members' files exactly as a removed one cascades
@@ -363,9 +374,9 @@ export async function handleMoChange(
     return;
   }
   deps.claims.recordLoad(fsPath, names);
-  for (const name of removed) await client.deleteClass({ typeName: name });
+  for (const name of unloaded) await client.deleteClass({ typeName: name });
 
-  reindexAndRelist(deps, fsPath, names, removed);
+  reindexAndRelist(deps, fsPath, names, unloaded);
   retryUnblockedReorders(deps);
 }
 
@@ -401,7 +412,7 @@ async function reorderPackage(
   }
   const collision = deps.claims.refusal(pkgFile, names);
   if (collision !== undefined) {
-    warnCollision(collision);
+    warnCollision(deps.claims, collision, names);
     return;
   }
   // Reloading the package re-reads every member from disk, so a dirty buffer
@@ -532,11 +543,13 @@ export async function handleMoDelete(
     return;
   }
   // A refused copy never reached OMC, so the classes it names there are the
-  // kept copy's. Its refusal outlives it: a directory delete reports the
-  // files inside the package in no set order, and each still needs refusing.
+  // kept copy's. Its refusal lasts while any of its package's files is
+  // indexed: a directory delete reports them in no set order, and each still
+  // needs refusing.
   if (deps.claims.refusal(fsPath, names) !== undefined) {
     log.info("moWatcher", `deleted ${fsPath} was a refused copy; kept loaded`);
     deps.index.delete(fsPath);
+    releaseVacatedCopies(deps, fsPath);
     return;
   }
   // Deleting a package cascades to every member nested under it, wherever
@@ -567,6 +580,23 @@ export async function handleMoDelete(
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
 
   retryUnblockedReorders(deps);
+}
+
+/**
+ * Drop the refusal of each refused copy holding `fsPath` once none of its
+ * files is indexed any more, so a later file is no longer refused for
+ * reaching a copy that is gone.
+ */
+function releaseVacatedCopies(deps: MoWatcherDeps, fsPath: string): void {
+  for (const copy of deps.claims.refusedCopiesHolding(fsPath)) {
+    const dir = path.resolve(path.dirname(copy.fileName));
+    const remaining =
+      isPackageFile(copy.fileName) &&
+      deps.index
+        .filesUnder(copy.className)
+        .some((f) => isInsideDirInclusive(dir, f.fsPath));
+    if (!remaining) deps.claims.release(copy.fileName);
+  }
 }
 
 /**

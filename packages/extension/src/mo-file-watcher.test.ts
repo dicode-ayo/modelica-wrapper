@@ -1478,4 +1478,66 @@ describe("top-level class claims", () => {
     expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Lib" });
     expect(client.loadFile).toHaveBeenCalledWith({ fileName: refusedLib });
   });
+
+  it("warns about a refused file once, however often it changes", async () => {
+    const { deps } = depsWithRefusedLib();
+
+    await handleMoChange(deps, refusedLib);
+    await handleMoChange(deps, refusedLib);
+
+    expect(recordedMessages).toHaveLength(1);
+  });
+
+  it("never unloads the kept copy when a refused copy is edited to declare another class", async () => {
+    const { deps, client } = depsWithRefusedLib(["Lib2"]);
+
+    await handleMoChange(deps, refusedLib);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: refusedLib });
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(deps.index.get(keptLib)).toEqual(["Lib"]);
+  });
+
+  it("never unloads the kept copy's member when a file inside a refused copy stops declaring it", async () => {
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    const { deps, client } = depsWithRefusedLib(["Foo"]);
+    deps.index.set(sub, ["Lib.Sub"]);
+
+    await handleMoChange(deps, sub);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: sub });
+    expect(client.deleteClass).not.toHaveBeenCalled();
+  });
+
+  it("drops a refused copy's refusal once its package's last indexed file is deleted", async () => {
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    const ext = path.resolve("/rootB/Ext.mo");
+    const { deps, client } = depsWithRefusedLib();
+    deps.index.set(sub, ["Lib.Sub"]);
+
+    await handleMoDelete(deps, refusedLib);
+    expect(deps.claims.refusal(ext, ["Lib.Ext"])).toBeDefined();
+
+    await handleMoDelete(deps, sub);
+    expect(deps.claims.refusal(ext, ["Lib.Ext"])).toBeUndefined();
+    expect(client.deleteClass).not.toHaveBeenCalled();
+  });
+
+  it("claims what a self-write declares and gives up what it no longer does", async () => {
+    const guard = createSelfWriteGuard();
+    const text = "package Renamed end Renamed;";
+    guard.record(keptLib, text);
+    const { deps, client } = makeDeps({ guard, readFile: async () => text });
+    client.parseFile.mockResolvedValue({ classNames: ["Renamed"] });
+    deps.claims.recordLoad(keptLib, ["Lib"]);
+    deps.index.set(keptLib, ["Lib"]);
+
+    await handleMoChange(deps, keptLib);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(deps.claims.refusal(refusedLib, ["Renamed"])).toMatchObject({
+      keptFileName: keptLib,
+    });
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
 });

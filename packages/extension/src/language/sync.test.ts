@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createTopLevelClaims } from "../top-level-claims.js";
 
-import { defaultNormalizeKey, OmcSync, type SyncClient } from "./sync.js";
+import { defaultNormalizeKey } from "../fs-util.js";
+import { OmcSync, type SyncClient } from "./sync.js";
 
 /** Every file parses as a single entity unless a test says otherwise. */
 function singleEntity(classNames = ["Foo"]) {
@@ -402,5 +403,17 @@ describe("OmcSync — top-level class claims", () => {
 
     expect(await sync.ensureLoaded(refused)).toBe(true);
     expect(client.calls).toEqual([refused]);
+  });
+
+  it("stays quiet about a buffer another loader already reported", async () => {
+    const { claims, onCollision, sync } = setup();
+    claims.recordLoad(kept, ["Lib"]);
+    const collision = claims.refusal(refused, ["Lib"]);
+    if (collision === undefined) throw new Error("expected a collision");
+    claims.recordRefusal(collision, ["Lib"]);
+
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+
+    expect(onCollision).not.toHaveBeenCalled();
   });
 });

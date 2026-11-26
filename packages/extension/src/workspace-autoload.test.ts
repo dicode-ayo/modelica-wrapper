@@ -5,11 +5,13 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClassInvalidationRegistry } from "./invalidation.js";
-import { createTopLevelClaims } from "./top-level-claims.js";
+import {
+  createTopLevelClaims,
+  nameCollisionToast,
+} from "./top-level-claims.js";
 import {
   autoLoadWorkspace,
   loadEntryFilesAndRefresh,
-  nameCollisionToast,
   registerWorkspaceAutoload,
   type AutoLoadClient,
   type WorkspaceAutoloadDeps,
@@ -494,7 +496,7 @@ describe("loadEntryFilesAndRefresh", () => {
       c,
       ["a/M.mo", "a/P.mo"],
       refresh,
-      claims,
+      claims.holdForSweep(),
     );
 
     expect(c.loadFile).toHaveBeenCalledTimes(1);
@@ -749,6 +751,45 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
         autoload.claims.refusal(path.join(tmp, "old", "Foo.mo"), ["Foo"]),
       ).toMatchObject({ keptFileName: entryFile });
       expect(deps.onCollisions).not.toHaveBeenCalled();
+    });
+
+    it("keeps the earlier folder's copy over one another loader claimed before the sweep ran", async () => {
+      const keptLib = path.join(tmp, "rootA", "Lib", "package.mo");
+      const otherLib = path.join(tmp, "rootB", "Lib", "package.mo");
+      for (const f of [keptLib, otherLib]) {
+        await fsp.mkdir(path.dirname(f), { recursive: true });
+        await fsp.writeFile(f, "");
+      }
+      let release: (() => void) | undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const c = client([true]);
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [path.join(tmp, "rootA"), path.join(tmp, "rootB")],
+        ensureClient: async () => {
+          await gate;
+          return c;
+        },
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+        onCollisions: vi.fn(),
+        scanMoFiles,
+      };
+      const autoload = registerWorkspaceAutoload(
+        new ClassInvalidationRegistry(),
+        deps,
+      );
+
+      autoload.run();
+      autoload.claims.recordLoad(otherLib, ["Lib"]);
+      release?.();
+
+      await vi.waitFor(() => expect(deps.refresh).toHaveBeenCalledTimes(1));
+      expect(c.loadFile).toHaveBeenCalledWith({ fileName: keptLib });
+      expect(autoload.claims.refusal(otherLib, ["Lib"])).toMatchObject({
+        keptFileName: keptLib,
+      });
     });
 
     it("stops re-running the autoload once the returned handle is disposed", async () => {

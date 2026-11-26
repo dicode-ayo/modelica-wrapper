@@ -13,9 +13,14 @@
  */
 
 import { errorDetail } from "../error-detail.js";
+import { defaultNormalizeKey } from "../fs-util.js";
 import { log } from "../logger.js";
 import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
-import type { NameCollision, TopLevelClaims } from "../top-level-claims.js";
+import {
+  nameCollisionMessage,
+  type NameCollision,
+  type TopLevelClaims,
+} from "../top-level-claims.js";
 
 export interface SyncClient extends FileParseClient {
   loadFile(input: { fileName: string }): Promise<{ success: boolean }>;
@@ -35,7 +40,10 @@ export interface OmcSyncOptions {
   onMultiEntity?: (filePath: string, classNames: string[]) => void;
   /** Consulted before each load and told of each one that succeeds. */
   claims?: TopLevelClaims;
-  /** Called once per path {@link claims} refused, until it is invalidated. */
+  /**
+   * Called for a path {@link claims} refused, unless another loader already
+   * reported that path.
+   */
   onCollision?: (collision: NameCollision) => void;
   /**
    * True when a dirty editor holds unsaved text for one of `classNames`, the
@@ -46,12 +54,6 @@ export interface OmcSyncOptions {
    */
   isBusy?: (filePath: string, classNames: string[]) => boolean;
 }
-
-/** Case-folds on case-insensitive hosts (win32/darwin); identity elsewhere. */
-export const defaultNormalizeKey: (filePath: string) => string =
-  process.platform === "win32" || process.platform === "darwin"
-    ? (p) => p.toLowerCase()
-    : (p) => p;
 
 export class OmcSync {
   private readonly loaded = new Set<string>();
@@ -179,7 +181,10 @@ export class OmcSync {
       const collision = this.claims?.refusal(filePath, classNames);
       if (collision !== undefined) {
         this.refused.add(key);
-        this.onCollision(collision);
+        log.warn("language", nameCollisionMessage(collision));
+        if (this.claims?.recordRefusal(collision, classNames)) {
+          this.onCollision(collision);
+        }
         return false;
       }
       if (this.isBusy(filePath, classNames)) return false;

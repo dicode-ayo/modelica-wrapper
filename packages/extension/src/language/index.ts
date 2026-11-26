@@ -200,11 +200,6 @@ export function registerLanguageFeatures(
     },
     claims,
     onCollision: (collision) => {
-      log.warn(
-        "language",
-        `not loading ${collision.refusedFileName}: ${collision.className} is ` +
-          `already loaded from ${collision.keptFileName}`,
-      );
       void vscode.window.showWarningMessage(nameCollisionToast([collision]));
     },
   });

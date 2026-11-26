@@ -1,5 +1,7 @@
 import * as path from "node:path";
 
+import { isInsideDirInclusive, isPackageFile } from "./fs-util.js";
+
 export interface EventScheduler {
   run(key: string, describedPath: string, fn: () => Promise<void>): void;
 }
@@ -14,28 +16,21 @@ interface Entry {
   readonly settled: Promise<void>;
 }
 
-function isPackageFile(key: string): boolean {
-  return path.basename(key) === "package.mo";
-}
-
-function dirContains(dir: string, target: string): boolean {
-  const rel = path.relative(dir, target);
-  return (
-    rel === "" ||
-    (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
-  );
-}
-
 /**
  * A `package.mo` key subsumes every key at or below its directory, because
  * its handlers (cascaded delete, reorder) touch the whole subtree.
  */
 function conflicts(a: string, b: string): boolean {
   if (a === b) return true;
-  if (isPackageFile(a) && dirContains(path.dirname(a), path.dirname(b))) {
+  if (
+    isPackageFile(a) &&
+    isInsideDirInclusive(path.dirname(a), path.dirname(b))
+  ) {
     return true;
   }
-  return isPackageFile(b) && dirContains(path.dirname(b), path.dirname(a));
+  return (
+    isPackageFile(b) && isInsideDirInclusive(path.dirname(b), path.dirname(a))
+  );
 }
 
 /**
