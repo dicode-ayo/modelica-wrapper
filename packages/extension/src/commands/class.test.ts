@@ -38,7 +38,10 @@ import type { CommandContext, LibraryNode } from "./context.js";
 
 const MODELICA_PATH = "/home/u/.openmodelica/libraries";
 
-function makeContext(sourceFile: string): {
+function makeContext(
+  sourceFile: string,
+  loaded: readonly string[] = [],
+): {
   ctx: CommandContext;
   verdicts: WriteVerdicts;
   loadString: ReturnType<typeof vi.fn>;
@@ -49,6 +52,9 @@ function makeContext(sourceFile: string): {
   const client = {
     loadString,
     parseFile,
+    existClass: vi.fn(({ typeName }: { typeName: string }) =>
+      Promise.resolve({ exists: loaded.includes(typeName) }),
+    ),
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
     getSourceFile: vi.fn(() => Promise.resolve({ fileName: sourceFile })),
     getModelicaPath: vi.fn(() =>
@@ -127,6 +133,25 @@ describe("modelica.createClass", () => {
     await runCommand("modelica.createClass", packageNode("Pkg"));
 
     expect(loadString).toHaveBeenCalled();
+  });
+
+  it("refuses to create a class that already exists instead of emptying it", async () => {
+    const { ctx, loadString } = makeContext("/ws/Pkg/package.mo", [
+      "Pkg.MyModel",
+    ]);
+    registerClassCommands(ctx);
+    queuePromptAnswers("model", "MyModel");
+
+    await runCommand("modelica.createClass", packageNode("Pkg"));
+
+    // OMC would answer the load `true` and replace Pkg.MyModel with an empty
+    // model.
+    expect(loadString).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual({
+      level: "error",
+      message:
+        "Modelica: failed to create Pkg.MyModel: Pkg.MyModel already exists — loading a new class over it would discard what is there.",
+    });
   });
 
   // The toolbar `+` (view/title, no tree node) against a workspace whose root
