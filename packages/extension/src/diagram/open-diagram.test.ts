@@ -176,6 +176,55 @@ describe("libraryIconSvg: when the annotation path is trusted", () => {
   });
 });
 
+describe("libraryIconSvg: stroke weight", () => {
+  it("floors a spec-default line at one pixel of the 16px tree thumbnail", async () => {
+    const withLine: ModelInstance = {
+      name: "Pkg.Wire",
+      restriction: "model",
+      annotation: {
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [
+            {
+              $kind: "record",
+              name: "Line",
+              elements: [
+                true,
+                [0, 0],
+                0,
+                [
+                  [-50, 0],
+                  [50, 0],
+                ],
+                [0, 0, 0],
+                { $kind: "enum", name: "LinePattern.Solid", index: 1 },
+                0.25,
+                [
+                  { $kind: "enum", name: "Arrow.None", index: 1 },
+                  { $kind: "enum", name: "Arrow.None", index: 1 },
+                ],
+                3,
+                { $kind: "enum", name: "Smooth.None", index: 1 },
+              ],
+            },
+          ],
+        },
+      },
+    } as unknown as ModelInstance;
+    const { client } = makeClient({
+      annotation: async () => ({ instance: withLine }),
+    });
+    const { svg } = await libraryIconSvg(client, "Pkg.Wire");
+    // 200 icon units across 16px: one pixel is 12.5 units.
+    expect(svg).toContain('stroke-width="12.5"');
+  });
+});
+
 describe("libraryIconSvg: dependency reporting", () => {
   it("reports the extends chain as the icon's dependencies", async () => {
     const derived: ModelInstance = {

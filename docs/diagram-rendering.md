@@ -149,9 +149,16 @@ string. It renders the same six primitives as SVG elements:
 
 Modelica's +Y-up coordinate system is handled by a root `<g transform="scale(1,-1)">`
 flip; text and bitmaps get a counter-transform so glyphs stay upright. Cylinder
-and sphere fills are emitted as gradient `<defs>`. An explicit `lineThickness`
-renders literally; the `lineThicknessScale` factor lifts only the spec default a
-shape falls back to when it omits one (spec thicknesses are tiny).
+and sphere fills are emitted as gradient `<defs>`. Stroke width follows the
+same rule as the canvas primitives: an explicit `lineThickness` renders
+literally, a shape that omits one takes the §18.6.5.5 default of `0.25` icon
+units, and the `lineThicknessScale` factor lifts only that default. The canvas
+then floors every stroke at one screen pixel. The SVG renderer floors only when
+the caller passes `displaySize`, the CSS pixels the viewBox is drawn at; without
+it widths stay literal, because a render of unknown display size cannot know
+how large a pixel is. The library thumbnail passes the tree's 16px icon size;
+`<om-icon-provider>` rasterizes before its display size is known, so its
+textures carry no floor.
 
 It is used:
 

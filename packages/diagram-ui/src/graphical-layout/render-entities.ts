@@ -47,7 +47,6 @@ export interface LayoutContentOptions {
   readonly: boolean;
   /** Own-layer host shapes as selectable entities; off draws plain geometry. */
   editableShapes: boolean;
-  lineThicknessScale: number | undefined;
   /** `null` keeps every component an icon. */
   nestedSource: NestedDiagramSource | null;
 }
@@ -173,7 +172,6 @@ function renderComponent(
     .placement=${comp.placement}
     .layers=${withNoIconFallback(cls?.iconLayers ?? [])}
     .coordinateSystem=${cls?.coordinateSystem ?? undefined}
-    .lineThicknessScale=${opts.lineThicknessScale}
     .substitutions=${substitutions}
     ?selected=${opts.selectedKeys.has(formatComponentKey(id))}
     ?readonly=${opts.readonly}
@@ -187,7 +185,6 @@ function renderComponent(
                 .placement=${port.placement}
                 .layers=${withNoIconFallback(port.iconLayers)}
                 .coordinateSystem=${cls.coordinateSystem ?? undefined}
-                .lineThicknessScale=${opts.lineThicknessScale}
                 ?readonly=${opts.readonly}
               ></om-connector>`,
           )
@@ -217,7 +214,6 @@ function renderStandaloneConnector(
     .placement=${conn.placement}
     .layers=${withNoIconFallback(layers)}
     .coordinateSystem=${coordinateSystem ?? undefined}
-    .lineThicknessScale=${opts.lineThicknessScale}
     ?selected=${opts.selectedKeys.has(formatConnectorKey(null, id))}
     ?readonly=${opts.readonly}
   ></om-connector>`;

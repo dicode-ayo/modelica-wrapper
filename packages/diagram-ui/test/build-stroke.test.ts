@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Container, Graphics } from "pixi.js";
 import type { Color } from "@dicode/omc-client";
+import { renderIconLayersToSvg } from "@dicode/diagram-svg";
 
 import {
   buildStroke,
@@ -316,4 +317,61 @@ describe("buildStroke", () => {
     expect(count).toBeGreaterThan(0);
     expect(count).toBeLessThan(10_000);
   });
+});
+
+describe("SVG renderer stroke parity", () => {
+  // A 200-unit extent drawn at `displaySize` px is `200 / displaySize` icon
+  // units per pixel, the `worldPerPixel` an unscaled canvas parent sees.
+  const EXTENT = 200;
+
+  function svgStrokeWidth(
+    thickness: number | undefined,
+    lineThicknessScale: number | undefined,
+    displaySize: number | undefined,
+  ): number {
+    const svg = renderIconLayersToSvg(
+      [
+        {
+          from: "Test.Wire",
+          shapes: [
+            {
+              kind: "line",
+              points: [
+                [0, 0],
+                [10, 10],
+              ],
+              ...(thickness === undefined ? {} : { thickness }),
+            },
+          ],
+        },
+      ],
+      { lineThicknessScale, displaySize },
+    );
+    const width = /stroke-width="([^"]*)"/.exec(svg)?.[1];
+    if (width === undefined) throw new Error("no stroke-width in SVG");
+    return Number(width);
+  }
+
+  it.each([undefined, 0.25, 0.5, 5, 20])(
+    "matches resolveStrokeWidth for thickness %s",
+    (thickness) => {
+      const { parent } = makeScene();
+      for (const lineThicknessScale of [undefined, 4]) {
+        for (const displaySize of [16, 64, 400, undefined]) {
+          const worldPerPixel =
+            displaySize === undefined ? undefined : EXTENT / displaySize;
+          expect(
+            svgStrokeWidth(thickness, lineThicknessScale, displaySize),
+          ).toBeCloseTo(
+            resolveStrokeWidth(
+              parent,
+              thickness,
+              lineThicknessScale,
+              worldPerPixel,
+            ),
+          );
+        }
+      }
+    },
+  );
 });

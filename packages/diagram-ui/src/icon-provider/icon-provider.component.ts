@@ -109,6 +109,12 @@ export class OmIconProvider extends LitElement {
    * `renderIconLayersToSvg` when the provider builds its default SVG
    * renderer. Only used when the caller does NOT supply a custom
    * `renderSvg` override. `undefined` keeps the renderer's own default.
+   *
+   * The texture carries no screen-space stroke floor: it is rasterized at
+   * `resolution` before anyone knows the size it will be displayed at, so
+   * no `displaySize` reaches the render call. A spec-default stroke can
+   * therefore fall below a pixel once the texture is downscaled, where the
+   * canvas primitives would floor it at one.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
