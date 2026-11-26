@@ -31,9 +31,12 @@
  * adds or removes a nested class leaves the sidebar showing the old children,
  * and a file the write created never enters the index at all.
  *
- * The watcher leaves one kind of edit alone: an edit to a class open *and
+ * The watcher leaves two kinds of edit alone: an edit to a class open *and
  * dirty* in an editor, where reloading OMC would clobber the unsaved buffer
- * — skipped with a warning until it saves.
+ * — skipped with a warning until it saves; and an edit to a file the
+ * session's {@link TopLevelClaims} refuse, which would replace another
+ * file's copy of the same top-level class — skipped with a warning, and its
+ * delete never unloads that copy.
  */
 
 import * as fsp from "node:fs/promises";
@@ -52,6 +55,11 @@ import { log } from "./logger.js";
 import { SessionQueue } from "./session-queue.js";
 import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
+import {
+  nameCollisionToast,
+  type NameCollision,
+  type TopLevelClaims,
+} from "./top-level-claims.js";
 import { isDeclaredClassBusy } from "./dirty-buffer.js";
 import type { ModelicaSourceProvider } from "./source-provider.js";
 import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
@@ -96,6 +104,8 @@ export interface MoWatcherDeps {
   sourceProvider: Pick<ModelicaSourceProvider, "notifySourceChanged">;
   guard: SelfWriteGuard;
   index: PathClassIndex;
+  /** Which file supplies each top-level class; see {@link TopLevelClaims}. */
+  claims: TopLevelClaims;
   /** Packages whose reorder is waiting on a busy buffer's save to retry. */
   pendingReorders: PendingReorders;
   /**
@@ -148,6 +158,15 @@ function warnReorderBusy(describedPath: string, classNames: string[]): void {
       `the ${path.basename(describedPath)} reload was skipped. Save the editor ` +
       `to retry automatically.`,
   );
+}
+
+function warnCollision(collision: NameCollision): void {
+  log.warn(
+    "moWatcher",
+    `not loading ${collision.refusedFileName}: ${collision.className} is ` +
+      `already loaded from ${collision.keptFileName}`,
+  );
+  void vscode.window.showWarningMessage(nameCollisionToast([collision]));
 }
 
 /**
@@ -317,6 +336,12 @@ export async function handleMoChange(
     return;
   }
 
+  const collision = deps.claims.refusal(fsPath, names);
+  if (collision !== undefined) {
+    warnCollision(collision);
+    return;
+  }
+
   const directNames = [...names, ...removed];
   // loadFile on fsPath reloads its whole subtree from disk when fsPath is a
   // package — same as reorderPackage's reload — so a still-declared class
@@ -337,6 +362,7 @@ export async function handleMoChange(
     log.warn("moWatcher", `loadFile ${fsPath} returned success=false`);
     return;
   }
+  deps.claims.recordLoad(fsPath, names);
   for (const name of removed) await client.deleteClass({ typeName: name });
 
   reindexAndRelist(deps, fsPath, names, removed);
@@ -371,6 +397,11 @@ async function reorderPackage(
       "moWatcher",
       `package.order edit for ${pkgFile}, but it is not indexed`,
     );
+    return;
+  }
+  const collision = deps.claims.refusal(pkgFile, names);
+  if (collision !== undefined) {
+    warnCollision(collision);
     return;
   }
   // Reloading the package re-reads every member from disk, so a dirty buffer
@@ -500,6 +531,14 @@ export async function handleMoDelete(
     log.warn("moWatcher", `deleted ${fsPath} declared no indexed classes`);
     return;
   }
+  // A refused copy never reached OMC, so the classes it names there are the
+  // kept copy's. Its refusal outlives it: a directory delete reports the
+  // files inside the package in no set order, and each still needs refusing.
+  if (deps.claims.refusal(fsPath, names) !== undefined) {
+    log.info("moWatcher", `deleted ${fsPath} was a refused copy; kept loaded`);
+    deps.index.delete(fsPath);
+    return;
+  }
   // Deleting a package cascades to every member nested under it, wherever
   // those live — widen the busy check to their files and names too.
   const { fsPaths, classNames } = cascadeReach(deps.index, names, { fsPath });
@@ -510,6 +549,7 @@ export async function handleMoDelete(
 
   const client = await deps.ensureClient();
   for (const name of names) await client.deleteClass({ typeName: name });
+  deps.claims.release(fsPath);
 
   // OMC's own deleteClass cascade just took every nested member with it too,
   // wherever those live — the index and any editor open on one of them have
@@ -568,6 +608,8 @@ export function registerMoFileWatcher(deps: {
    * too.
    */
   index: PathClassIndex;
+  /** Owned by `registerWorkspaceAutoload`, whose sweep records them. */
+  claims: TopLevelClaims;
   /**
    * A flat `.mo` path list for the index seed, both at activation and on
    * every `:reset`. extension.ts hands in a scanner memoized per `:reset` and
@@ -583,6 +625,7 @@ export function registerMoFileWatcher(deps: {
     sourceProvider: deps.sourceProvider,
     guard: deps.guard,
     index,
+    claims: deps.claims,
     pendingReorders: createPendingReorders(),
     scheduleReorderRetry: (pkgFile, describedPath, retry) => {
       run(pkgFile, describedPath, retry);

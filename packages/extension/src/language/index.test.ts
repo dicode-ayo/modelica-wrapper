@@ -19,6 +19,7 @@ import {
 
 import { ClassInvalidationRegistry } from "../invalidation.js";
 import { sourceUriFor } from "../source-provider.js";
+import { createTopLevelClaims } from "../top-level-claims.js";
 
 import {
   handleClassChanged,
@@ -146,6 +147,7 @@ describe("registerLanguageFeatures — invalidation wiring", () => {
       { extensionUri: Uri.file("/ext") } as never,
       vi.fn(() => Promise.resolve(fakeOmcClient())) as never,
       invalidation,
+      createTopLevelClaims(),
     );
     return { invalidation, disposable };
   }
@@ -208,6 +210,7 @@ describe("registerLanguageFeatures — save wiring", () => {
       { extensionUri: Uri.file("/ext") } as never,
       ensureClient as never,
       new ClassInvalidationRegistry(),
+      createTopLevelClaims(),
     );
 
     // A save listener is registered.

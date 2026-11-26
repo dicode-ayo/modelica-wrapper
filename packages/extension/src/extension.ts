@@ -298,6 +298,7 @@ export async function activate(
       guard: selfWriteGuard,
       invalidation,
       index: pathClassIndex,
+      claims: autoload.claims,
       scanMoFiles: () => moFileScanner.scan(),
     }),
   );
@@ -334,7 +335,12 @@ export async function activate(
       DOCUMENTATION_VIEW_TYPE,
       invalidation,
     ),
-    registerLanguageFeatures(context, ensureClient, invalidation),
+    registerLanguageFeatures(
+      context,
+      ensureClient,
+      invalidation,
+      autoload.claims,
+    ),
     registerMcpServerProvider(
       { ensureClient, verdicts: writeVerdicts },
       selfWriteGuard,

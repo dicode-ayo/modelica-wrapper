@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createTopLevelClaims } from "../top-level-claims.js";
+
 import { defaultNormalizeKey, OmcSync, type SyncClient } from "./sync.js";
 
 /** Every file parses as a single entity unless a test says otherwise. */
@@ -349,5 +351,56 @@ describe("defaultNormalizeKey", () => {
     expect(defaultNormalizeKey("C:\\Work\\Foo.mo")).toBe(
       caseInsensitive ? "c:\\work\\foo.mo" : "C:\\Work\\Foo.mo",
     );
+  });
+});
+
+describe("OmcSync — top-level class claims", () => {
+  const kept = "/rootA/Lib/package.mo";
+  const refused = "/rootB/Lib/package.mo";
+
+  function setup() {
+    const client = clientOk();
+    client.parseFile = singleEntity(["Lib"]);
+    const claims = createTopLevelClaims();
+    const onCollision = vi.fn();
+    const sync = new OmcSync(client, { claims, onCollision });
+    return { client, claims, onCollision, sync };
+  }
+
+  it("refuses a buffer whose file declares a class another file owns, reporting it once", async () => {
+    const { client, claims, onCollision, sync } = setup();
+    claims.recordLoad(kept, ["Lib"]);
+
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+
+    expect(client.calls).toEqual([]);
+    expect(client.parseFile).toHaveBeenCalledTimes(1);
+    expect(onCollision).toHaveBeenCalledTimes(1);
+    expect(onCollision).toHaveBeenCalledWith({
+      className: "Lib",
+      keptFileName: kept,
+      refusedFileName: refused,
+    });
+  });
+
+  it("claims the classes of a file it loads", async () => {
+    const { claims, sync } = setup();
+
+    expect(await sync.ensureLoaded(kept)).toBe(true);
+
+    expect(claims.refusal(refused, ["Lib"])?.keptFileName).toBe(kept);
+  });
+
+  it("retries a refused buffer after invalidate, once its class is free", async () => {
+    const { client, claims, sync } = setup();
+    claims.recordLoad(kept, ["Lib"]);
+    await sync.ensureLoaded(refused);
+
+    claims.release(kept);
+    sync.invalidate(refused);
+
+    expect(await sync.ensureLoaded(refused)).toBe(true);
+    expect(client.calls).toEqual([refused]);
   });
 });

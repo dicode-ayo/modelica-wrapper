@@ -255,6 +255,24 @@ events. Its events share that index, so `mo-event-scheduler.ts` orders them:
 
 Conflict rules and failure handling are detailed in `mo-event-scheduler.ts`.
 
+### Top-level class claims
+
+Every workspace folder loads into one OMC session, so a second file declaring
+a top-level class another file supplied would silently replace it.
+`top-level-claims.ts` records which file each top-level class was loaded from.
+`registerWorkspaceAutoload` owns the instance and clears it on `:reset`; its
+sweep, the `.mo` watcher and the buffer sync (`language/sync.ts`) consult it
+before `loadFile`:
+
+- A file declaring a class another file owns is refused, warned about, and
+  remembered as a refused copy.
+- A file inside a refused copy's package directory is refused too, as is a
+  `within` extension of the class whose nearest library root is the refused
+  copy's rather than the kept copy's.
+- The watcher's delete skips `deleteClass` for a refused file, since the
+  classes it names in OMC are the kept copy's. Deleting the owner frees the
+  class and drops its refusals.
+
 ## Logging
 
 The extension host writes to one `LogOutputChannel` named "Modelica" (View →

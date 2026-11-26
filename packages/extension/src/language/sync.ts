@@ -6,6 +6,8 @@
  *     `onDidSaveTextDocument` and `onDidCloseTextDocument`).
  *   - A file with a dirty buffer open is not loaded on first touch: the load
  *     would revert OMC to the on-disk text under the edit.
+ *   - A file the session's top-level claims refuse is not loaded: it would
+ *     replace another file's copy of the same class.
  *   - Once loaded, and between saves, resolution reflects the last saved text
  *     — not the dirty buffer. See `docs/language-features-design.md` → "Buffer ↔ OMC sync".
  */
@@ -13,6 +15,7 @@
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
+import type { NameCollision, TopLevelClaims } from "../top-level-claims.js";
 
 export interface SyncClient extends FileParseClient {
   loadFile(input: { fileName: string }): Promise<{ success: boolean }>;
@@ -30,6 +33,10 @@ export interface OmcSyncOptions {
    * Keeps the notification out of this module, which stays host-free.
    */
   onMultiEntity?: (filePath: string, classNames: string[]) => void;
+  /** Consulted before each load and told of each one that succeeds. */
+  claims?: TopLevelClaims;
+  /** Called once per path {@link claims} refused, until it is invalidated. */
+  onCollision?: (collision: NameCollision) => void;
   /**
    * True when a dirty editor holds unsaved text for one of `classNames`, the
    * top-level classes `filePath` declares. `loadFile` would replace OMC's AST
@@ -56,17 +63,19 @@ export class OmcSync {
    */
   private readonly generation = new Map<string, number>();
   /**
-   * Paths refused for declaring several top-level classes. Remembered so a
-   * touch-per-keystroke doesn't re-`parseFile` a file that cannot load, and so
-   * {@link OmcSyncOptions.onMultiEntity} reports each path once.
+   * Paths refused for declaring several top-level classes or a class another
+   * file supplies. Remembered so a touch-per-keystroke doesn't re-`parseFile`
+   * a file that cannot load, and so each refusal is reported once.
    */
-  private readonly multiEntity = new Set<string>();
+  private readonly refused = new Set<string>();
   private readonly normalizeKey: (filePath: string) => string;
   private readonly isBusy: (filePath: string, classNames: string[]) => boolean;
   private readonly onMultiEntity: (
     filePath: string,
     classNames: string[],
   ) => void;
+  private readonly claims: TopLevelClaims | undefined;
+  private readonly onCollision: (collision: NameCollision) => void;
 
   constructor(
     private readonly client: SyncClient,
@@ -75,6 +84,8 @@ export class OmcSync {
     this.normalizeKey = options.normalizeKey ?? defaultNormalizeKey;
     this.onMultiEntity = options.onMultiEntity ?? (() => {});
     this.isBusy = options.isBusy ?? (() => false);
+    this.claims = options.claims;
+    this.onCollision = options.onCollision ?? (() => {});
   }
 
   /**
@@ -85,7 +96,7 @@ export class OmcSync {
   async ensureLoaded(filePath: string): Promise<boolean> {
     const key = this.normalizeKey(filePath);
     if (this.loaded.has(key)) return true;
-    if (this.multiEntity.has(key)) return false;
+    if (this.refused.has(key)) return false;
 
     const pending = this.inFlight.get(key);
     if (pending) return pending;
@@ -116,7 +127,7 @@ export class OmcSync {
     this.inFlight.delete(key);
     // A save that splits the file out into one class each makes it loadable,
     // so the refusal must not outlive the text it was based on.
-    this.multiEntity.delete(key);
+    this.refused.delete(key);
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
   }
 
@@ -126,7 +137,7 @@ export class OmcSync {
 
   /**
    * Forget every load state this instance tracks: the OMC session those
-   * "loaded"/"in-flight"/"multi-entity" facts describe is gone (`:reset`).
+   * "loaded"/"in-flight"/"refused" facts describe is gone (`:reset`).
    * The keys are already normalized and {@link OmcSyncOptions.normalizeKey}
    * is not required to be idempotent, so they go straight to
    * {@link invalidateKey}.
@@ -135,7 +146,7 @@ export class OmcSync {
     const keys = new Set([
       ...this.loaded,
       ...this.inFlight.keys(),
-      ...this.multiEntity,
+      ...this.refused,
     ]);
     for (const key of keys) this.invalidateKey(key);
   }
@@ -161,8 +172,14 @@ export class OmcSync {
       }
       const several = moreThanOne(classNames);
       if (several) {
-        this.multiEntity.add(key);
+        this.refused.add(key);
         this.onMultiEntity(filePath, several);
+        return false;
+      }
+      const collision = this.claims?.refusal(filePath, classNames);
+      if (collision !== undefined) {
+        this.refused.add(key);
+        this.onCollision(collision);
         return false;
       }
       if (this.isBusy(filePath, classNames)) return false;
@@ -172,6 +189,7 @@ export class OmcSync {
         return false;
       }
       if (success) {
+        this.claims?.recordLoad(filePath, classNames);
         this.loaded.add(key);
         return true;
       }
