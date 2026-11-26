@@ -20,6 +20,7 @@ import type { z } from "zod";
 
 import {
   dispatchByName,
+  errorResult,
   type McpToolClient,
   type McpToolDeps,
 } from "./dispatch.js";
@@ -187,24 +188,24 @@ describe("dispatchByName's error-buffer drain under concurrency", () => {
   });
 });
 
-describe("dispatchByName's logging and failure notification", () => {
-  function makeLog(): {
-    log: { warn: (m: string) => void; info: (m: string) => void };
-    warnings: string[];
-    infos: string[];
-  } {
-    const warnings: string[] = [];
-    const infos: string[] = [];
-    return {
-      log: {
-        warn: (m) => warnings.push(m),
-        info: (m) => infos.push(m),
-      },
-      warnings,
-      infos,
-    };
-  }
+function makeLog(): {
+  log: { warn: (m: string) => void; info: (m: string) => void };
+  warnings: string[];
+  infos: string[];
+} {
+  const warnings: string[] = [];
+  const infos: string[] = [];
+  return {
+    log: {
+      warn: (m) => warnings.push(m),
+      info: (m) => infos.push(m),
+    },
+    warnings,
+    infos,
+  };
+}
 
+describe("dispatchByName's logging and failure notification", () => {
   it("logs a successful call's action and output, without notifying", async () => {
     const { log, infos, warnings } = makeLog();
     const notified: string[] = [];
@@ -598,6 +599,23 @@ describe("dispatchByName: simulation result precision (issue #719)", () => {
     );
   });
 
+  it("logs readSimulationResult's numbers as rounded for the model", async () => {
+    const { log, infos } = makeLog();
+    await dispatchByName(
+      {
+        ensureClient: async () =>
+          baseClient({ invoke: async () => ({ result: [[0], [0.1 + 0.2]] }) }),
+        verdicts,
+        log,
+      },
+      "readSimulationResult",
+      { filename: "r.mat", variables: ["time", "i"] },
+    );
+
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toContain('-> {"result":[[0],[0.3]]}');
+  });
+
   it("leaves another function's numbers at full precision", async () => {
     const result = await dispatchByName(
       deps(async () => ({ result: [[0.1 + 0.2]] })),
@@ -606,5 +624,83 @@ describe("dispatchByName: simulation result precision (issue #719)", () => {
     );
 
     expect(text(result)).toBe(`{"result":[[${0.1 + 0.2}]]}`);
+  });
+});
+
+describe("dispatchByName with a respond option", () => {
+  it("answers an error result rather than throwing when respond throws", async () => {
+    const { log, warnings } = makeLog();
+    const result = await dispatchByName(
+      {
+        ensureClient: async () => baseClient({ invoke: async () => ({}) }),
+        verdicts,
+        log,
+      },
+      "readSimulationResult",
+      { filename: "r.mat", variables: ["time"] },
+      {
+        respond: () => {
+          throw new TypeError("not a matrix");
+        },
+      },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(text(result)).toContain("not a matrix");
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("logs an error result from respond as a failure, quiet for a read", async () => {
+    const { log, warnings, infos } = makeLog();
+    const notified: string[] = [];
+    const result = await dispatchByName(
+      {
+        ensureClient: async () => baseClient(),
+        verdicts,
+        log,
+        notifyFailure: (m) => notified.push(m),
+      },
+      "readSimulationResult",
+      { filename: "r.mat", variables: ["time"] },
+      { respond: () => errorResult("wrong shape") },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(infos).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("failed: wrong shape");
+    expect(notified).toEqual([]);
+  });
+
+  it("prefixes the log line with label rather than the function", async () => {
+    const { log, infos } = makeLog();
+    await dispatchByName(
+      { ensureClient: async () => baseClient(), verdicts, log },
+      "getClassNames",
+      { typeName: "Demo" },
+      { label: "composite" },
+    );
+
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toMatch(/^composite /);
+  });
+});
+
+describe("dispatchByName with an undefined output", () => {
+  it("answers and logs `undefined` rather than an empty line", async () => {
+    const { log, infos } = makeLog();
+    const result = await dispatchByName(
+      {
+        ensureClient: async () => baseClient({ invoke: async () => undefined }),
+        verdicts,
+        log,
+      },
+      "getClassNames",
+      { typeName: "Demo" },
+    );
+
+    expect(text(result)).toBe("undefined");
+    expect(infos).toHaveLength(1);
+    expect(infos[0]).toMatch(/ -> undefined$/);
   });
 });

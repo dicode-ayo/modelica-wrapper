@@ -73,7 +73,7 @@ export function registerSourceTools(
         deps,
         "loadString",
         filename === undefined ? { data: code } : { data: code, filename },
-        { className, action: "edit" },
+        { gateOn: { className, action: "edit" } },
       );
     },
   );

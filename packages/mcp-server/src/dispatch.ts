@@ -211,6 +211,12 @@ async function refuseThenInvoke(
  */
 export const MAX_LOGGED_CHARS = 2000;
 
+function capped(text: string): string {
+  return text.length > MAX_LOGGED_CHARS
+    ? `${text.slice(0, MAX_LOGGED_CHARS)}… (${text.length} chars total)`
+    : text;
+}
+
 function loggable(value: unknown): string {
   let text: string;
   try {
@@ -218,15 +224,40 @@ function loggable(value: unknown): string {
   } catch {
     text = String(value);
   }
-  return text.length > MAX_LOGGED_CHARS
-    ? `${text.slice(0, MAX_LOGGED_CHARS)}… (${text.length} chars total)`
-    : text;
+  return capped(text);
+}
+
+function resultText(result: CallToolResult): string {
+  return result.content
+    .map((part) => (part.type === "text" ? part.text : `[${part.type}]`))
+    .join("\n");
 }
 
 function requestedVariables(input: unknown): readonly unknown[] {
   if (typeof input !== "object" || input === null) return [];
   const variables: unknown = Reflect.get(input, "variables");
   return Array.isArray(variables) ? variables : [];
+}
+
+/** How a call's output becomes the answer, and the name it is logged under. */
+export interface DispatchOptions {
+  /**
+   * Adds a class the tool knows it writes to the ones the gate derives from
+   * the arguments themselves. `setSourceCode` needs it: the gate judges the
+   * classes its code declares, and `className` names a further one — the
+   * class whose file the reload takes over, which the code need not declare.
+   */
+  gateOn?: GatedClass;
+  /**
+   * Computes the answer from OMC's unrounded output, for a composite tool.
+   * It runs under the same gate, logging and failure handling, and what it
+   * returns is what gets logged. An error result from it is logged as a
+   * failure and notified only for a function that mutates. Absent, the
+   * output is serialized, a `readSimulationResult` matrix rounded first.
+   */
+  respond?: (output: unknown) => CallToolResult;
+  /** The log line's prefix, for a composite tool answering under its own name. */
+  label?: string;
 }
 
 /**
@@ -243,18 +274,27 @@ export async function dispatch<K extends OmcFnName>(
   deps: McpToolDeps,
   fn: K,
   input: OmcInput<K>,
+  options?: DispatchOptions,
 ): Promise<CallToolResult> {
-  return dispatchByName(deps, fn, input);
+  return dispatchByName(deps, fn, input, options);
+}
+
+/** Falls back to `String`, so neither the answer nor its log line is empty. */
+function serialized(
+  fn: OmcFnName,
+  input: unknown,
+  output: unknown,
+): CallToolResult {
+  const answer =
+    fn === "readSimulationResult"
+      ? roundResultOutput(output, requestedVariables(input))
+      : output;
+  return textResult(JSON.stringify(answer) ?? String(answer));
 }
 
 /**
  * {@link dispatch} for a function named by the caller rather than by the code:
  * the parity tools, which loop over their own list, and `omc_invoke`.
- *
- * `gateOn` adds a class the tool knows it writes to the ones the gate derives
- * from the arguments themselves. `setSourceCode` needs it: the gate judges the
- * classes its code declares, and `className` names a further one — the class
- * whose file the reload takes over, which the code need not declare.
  *
  * An OMC failure comes back as an error result rather than a thrown protocol
  * error: "no such class" is an answer the model can act on, not a transport
@@ -265,10 +305,10 @@ export async function dispatchByName(
   deps: McpToolDeps,
   fn: OmcFnName,
   input: unknown,
-  gateOn?: GatedClass,
+  { gateOn, respond, label }: DispatchOptions = {},
 ): Promise<CallToolResult> {
   const { log, notifyFailure } = deps;
-  const action = `${fn} ${loggable(input)}`;
+  const action = `${label ?? fn} ${loggable(input)}`;
   try {
     const client = await deps.ensureClient();
     const outcome = await refuseThenInvoke(deps, client, fn, input, gateOn);
@@ -278,12 +318,18 @@ export async function dispatchByName(
       return errorResult(outcome.refusal);
     }
 
-    const output =
-      fn === "readSimulationResult"
-        ? roundResultOutput(outcome.output, requestedVariables(input))
-        : outcome.output;
-    log?.info(`${action} -> ${loggable(output)}`);
-    return textResult(JSON.stringify(output));
+    const result =
+      respond === undefined
+        ? serialized(fn, input, outcome.output)
+        : respond(outcome.output);
+    const text = capped(resultText(result));
+    if (result.isError === true) {
+      log?.warn(`${action} failed: ${text}`);
+      if (!isReadOnlyFunction(fn)) notifyFailure?.(`${fn} failed: ${text}`);
+    } else {
+      log?.info(`${action} -> ${text}`);
+    }
+    return result;
   } catch (err) {
     const message = errorDetail(err, fn);
     log?.warn(`${action} failed: ${message}`);
