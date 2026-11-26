@@ -57,7 +57,7 @@
     "check-modelinstance-schema-drift": "node scripts/check-modelinstance-schema-drift.mjs",
     "coverage:recount": "node scripts/check-coverage-counts.mjs",
     "test:coverage": "OMC_INTEGRATION=0 vitest run --coverage",
-    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\" --fail-on-crap 157"
   },
   "dependencies": {
     "zeromq": "^6.8.0",

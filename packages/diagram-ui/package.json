@@ -40,7 +40,7 @@
     "storybook": "storybook dev -p 6007 --no-open",
     "build-storybook": "storybook build",
     "test:coverage": "vitest run --coverage",
-    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\" --fail-on-crap 455"
   },
   "dependencies": {
     "@awesome.me/webawesome": "^3.14.0",

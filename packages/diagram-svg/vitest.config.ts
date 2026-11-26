@@ -13,6 +13,11 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     environment: "node",
     testTimeout: 30_000,
-    coverage,
+    // Floors sit at the measured baseline, paired with the `--fail-on-crap`
+    // ceiling in `package.json`. Ratchet per CLAUDE.md.
+    coverage: {
+      ...coverage,
+      thresholds: { statements: 87, branches: 82, functions: 93, lines: 89 },
+    },
   },
 });

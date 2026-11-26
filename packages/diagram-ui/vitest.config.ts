@@ -20,6 +20,11 @@ export default defineConfig({
     environment: "happy-dom",
     setupFiles: ["./test/assigned-slot-shim.ts"],
     testTimeout: 10_000,
-    coverage,
+    // Floors sit at the measured baseline, paired with the `--fail-on-crap`
+    // ceiling in `package.json`. Ratchet per CLAUDE.md.
+    coverage: {
+      ...coverage,
+      thresholds: { statements: 81, branches: 72, functions: 82, lines: 81 },
+    },
   },
 });

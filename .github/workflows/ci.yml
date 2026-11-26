@@ -60,6 +60,23 @@ jobs:
           OMC_INTEGRATION: "0"
         run: pnpm -r test
 
+  # Each package's `crap` script runs `test:coverage`, which fails below that
+  # package's vitest coverage thresholds, then fails on its `--fail-on-crap`
+  # ceiling.
+  coverage-crap:
+    name: Coverage + CRAP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      - name: Coverage floors and CRAP ceilings, per package
+        env:
+          OMC_INTEGRATION: "0"
+        run: pnpm crap
+
   # Integration tests against the pinned OMC release. Renovate keeps the
   # image tag in lock-step with `SUPPORTED_OMC.primary` via the regex manager
   # in renovate.json.
