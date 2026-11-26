@@ -66,6 +66,10 @@ install as a subprocess.
 | `modelica.getOmcVersion` | Show OMC Version |
 | `modelica.showLogs` | Show Logs |
 
+In a multi-root workspace, **New Class…** (from the view title bar) and
+`modelica.initializeWorkspaceAsPackage` ask which workspace folder to use;
+dismissing that prompt cancels the command.
+
 The extension activates when a workspace contains any `*.mo` file.
 
 ## Settings

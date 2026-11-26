@@ -3,8 +3,8 @@
  * `listFile`, write it to disk ourselves, then tell OMC where it now lives
  * with `setSourceFile`. Works on any package or library node.
  *
- * `modelica.initializeWorkspaceAsPackage` — Create a root `package.mo` in the
- * open workspace folder, making the folder itself a named package. Follows the
+ * `modelica.initializeWorkspaceAsPackage` — Create a root `package.mo` in a
+ * workspace folder, making the folder itself a named package. Follows the
  * OMEdit convention so children written later nest correctly under the package.
  */
 
@@ -22,6 +22,7 @@ import {
   type LibraryNode,
 } from "./context.js";
 import { createReplLog } from "./repl.js";
+import { pickWorkspaceFolder } from "./workspace-folder.js";
 
 interface PkgInitClient {
   loadString(i: {
@@ -74,13 +75,17 @@ export function registerPackageCommands(
     vscode.commands.registerCommand(
       "modelica.initializeWorkspaceAsPackage",
       async () => {
-        const ws = vscode.workspace.workspaceFolders?.[0];
-        if (!ws) {
+        const choice = await pickWorkspaceFolder(
+          "Workspace folder to initialize as a package",
+        );
+        if (choice.kind === "cancelled") return;
+        if (choice.kind === "none") {
           await vscode.window.showWarningMessage(
             "Modelica: Open a folder first to initialize it as a package.",
           );
           return;
         }
+        const ws = choice.folder;
         const folderDefault = sanitizeIdentifier(path.basename(ws.uri.fsPath));
         const pkgName = await vscode.window.showInputBox({
           prompt: "Package name for the workspace root",

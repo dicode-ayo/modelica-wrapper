@@ -45,6 +45,7 @@ import {
 } from "./context.js";
 import { loadRootPackage } from "./package.js";
 import { createReplLog } from "./repl.js";
+import { pickWorkspaceFolder } from "./workspace-folder.js";
 
 export function registerClassCommands(
   ctx: CommandContext,
@@ -68,7 +69,15 @@ export function registerClassCommands(
         });
         if (!name) return;
 
-        const ws = vscode.workspace.workspaceFolders?.[0];
+        let ws = vscode.workspace.workspaceFolders?.[0];
+
+        if (!parent) {
+          const choice = await pickWorkspaceFolder(
+            "Workspace folder to create the class in",
+          );
+          if (choice.kind === "cancelled") return;
+          ws = choice.kind === "picked" ? choice.folder : undefined;
+        }
 
         if (!parent && ws) {
           const destination = await resolveTopLevelDestination(ctx, ws, name);

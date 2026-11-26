@@ -336,6 +336,17 @@ export function setWorkspaceFolders(paths: string[]): void {
   currentWorkspaceFolders = paths.map((p) => ({ uri: UriImpl.file(p) }));
 }
 
+/** The `placeHolder` of each `showWorkspaceFolderPick` call, in call order. */
+export const workspaceFolderPickRequests: Array<string | undefined> = [];
+
+/** Index into `workspaceFolders` the next pick returns; `undefined` dismisses it. */
+let workspaceFolderPickIndex: number | undefined;
+
+/** Choose which workspace folder `showWorkspaceFolderPick` hands back. */
+export function queueWorkspaceFolderPick(index: number | undefined): void {
+  workspaceFolderPickIndex = index;
+}
+
 /**
  * Minimal `window` namespace. The message helpers record their args on a
  * module-level log so unit tests can assert which toast a code path
@@ -924,6 +935,15 @@ export const window = {
     _provider: unknown,
     _options?: unknown,
   ): Disposable => new Disposable(),
+  showWorkspaceFolderPick(options?: {
+    placeHolder?: string;
+  }): Promise<{ uri: UriImpl } | undefined> {
+    workspaceFolderPickRequests.push(options?.placeHolder);
+    const index = workspaceFolderPickIndex;
+    return Promise.resolve(
+      index === undefined ? undefined : currentWorkspaceFolders?.[index],
+    );
+  },
   showInputBox: (): Promise<string | undefined> =>
     Promise.resolve(promptAnswers.shift()),
   showQuickPick: (): Promise<string | undefined> =>
@@ -995,6 +1015,8 @@ export function resetCommands(): void {
   registeredCommands.clear();
   promptAnswers.length = 0;
   currentWorkspaceFolders = undefined;
+  workspaceFolderPickRequests.length = 0;
+  workspaceFolderPickIndex = undefined;
   foundFiles = [];
 }
 
