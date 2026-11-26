@@ -103,6 +103,7 @@ This `main`-based harness only asserts what `main` already contributes:
 | Spec | Asserts | Why it can run on `main` |
 | --- | --- | --- |
 | `extension-loads.spec.ts` | `.monaco-workbench` mounts; the Modelica activity-bar item is registered; clicking it opens the Libraries view with the `viewsWelcome` empty-state ("No Modelica libraries are loaded yet.") | Pure declarative contributions plus on-demand extension activation — no language features required |
+| `mcp-contribution.spec.ts` | `MCP: List Servers` lists `Modelica (OpenModelica)`; starting it logs `Discovered N tools` in its output channel | Proves VSCode accepts `contributes.mcpServerDefinitionProviders` (a wrong key or id drops the server from the list) and that the loopback server answers an authenticated `tools/list` — no `omc` required |
 
 **Feature PRs add their own spec(s) here**, rebased onto `main`:
 
@@ -140,7 +141,9 @@ packages/extension/e2e/
 ├── playwright.config.ts     # workers + Chromium project + generous timeouts
 ├── README.md                # this file
 ├── specs/
-│   └── extension-loads.spec.ts   # baseline (this PR)
+│   ├── extension-loads.spec.ts   # baseline
+│   ├── mcp-contribution.spec.ts  # MCP server provider + loopback host
+│   └── …                         # language-feature specs
 ├── test-base.ts             # worker-scoped `codeServer` fixture
 ├── tsconfig.json
 └── workspace/
