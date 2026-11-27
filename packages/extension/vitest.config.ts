@@ -21,7 +21,7 @@ export default defineConfig({
     // ceiling in `package.json`. Ratchet per CLAUDE.md.
     coverage: {
       ...coverage,
-      thresholds: { statements: 79, branches: 76, functions: 78, lines: 80 },
+      thresholds: { statements: 80, branches: 77, functions: 79, lines: 81 },
     },
     projects: [
       {

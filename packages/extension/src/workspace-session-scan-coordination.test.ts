@@ -22,6 +22,7 @@ import { ClassInvalidationRegistry } from "./invalidation.js";
 import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
 import { createPathClassIndex } from "./path-class-index.js";
+import { createTopLevelClaims } from "./top-level-claims.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import type { ModelicaSourceProvider } from "./source-provider.js";
 import {
@@ -62,6 +63,7 @@ describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
       guard: createSelfWriteGuard(),
       invalidation,
       index: createPathClassIndex(),
+      claims: createTopLevelClaims(),
       scanMoFiles: () => scanner.scan(),
     });
 
@@ -125,6 +127,7 @@ describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
       guard: createSelfWriteGuard(),
       invalidation,
       index: createPathClassIndex(),
+      claims: createTopLevelClaims(),
       scanMoFiles: () => scanner.scan(),
     });
 
@@ -174,6 +177,7 @@ describe("shared MoFileScanner across sessionReplaced listeners (#484)", () => {
       guard: createSelfWriteGuard(),
       invalidation,
       index: createPathClassIndex(),
+      claims: createTopLevelClaims(),
       scanMoFiles: () => scanner.scan(),
     });
 

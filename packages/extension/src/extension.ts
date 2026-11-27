@@ -67,8 +67,8 @@ import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WriteVerdicts } from "./write-verdict.js";
 import { multiEntityBatchToast } from "./single-entity-file.js";
+import { nameCollisionToast } from "./top-level-claims.js";
 import {
-  nameCollisionToast,
   registerWorkspaceAutoload,
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
@@ -298,6 +298,7 @@ export async function activate(
       guard: selfWriteGuard,
       invalidation,
       index: pathClassIndex,
+      claims: autoload.claims,
       scanMoFiles: () => moFileScanner.scan(),
     }),
   );
@@ -334,7 +335,12 @@ export async function activate(
       DOCUMENTATION_VIEW_TYPE,
       invalidation,
     ),
-    registerLanguageFeatures(context, ensureClient, invalidation),
+    registerLanguageFeatures(
+      context,
+      ensureClient,
+      invalidation,
+      autoload.claims,
+    ),
     registerMcpServerProvider(
       { ensureClient, verdicts: writeVerdicts },
       selfWriteGuard,

@@ -21,6 +21,8 @@ import * as path from "node:path";
 
 import { isLikelyDiskPath, splitModelicaPath } from "@dicode/omc-client";
 
+import { isInsideDirInclusive } from "./fs-util.js";
+
 export interface ModelicaPathReader {
   getModelicaPath(): Promise<{ modelicaPath: string }>;
 }
@@ -74,12 +76,5 @@ export async function systemLibraryVerdict(
   if (!isLikelyDiskPath(fileName)) return undefined;
   const roots = await systemLibraryRoots(client);
   const file = path.resolve(fileName);
-  return roots.some((root) => isUnder(file, path.resolve(root)));
-}
-
-/** True when `file` is `root` itself or nested beneath it. */
-function isUnder(file: string, root: string): boolean {
-  if (file === root) return true;
-  const rel = path.relative(root, file);
-  return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
+  return roots.some((root) => isInsideDirInclusive(path.resolve(root), file));
 }

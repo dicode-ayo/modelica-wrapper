@@ -16,6 +16,13 @@ import {
   moreThanOne,
   type FileParseClient,
 } from "./single-entity-file.js";
+import {
+  createTopLevelClaims,
+  nameCollisionMessage,
+  type NameCollision,
+  type ClaimsSession,
+  type TopLevelClaims,
+} from "./top-level-claims.js";
 import { deriveEntryPoints } from "./workspace-scan.js";
 
 /** OMC surface the auto-loader calls. `OmcClient` satisfies it structurally. */
@@ -30,40 +37,10 @@ export interface SkippedEntryFile {
   classNames: string[];
 }
 
-/**
- * An entry file left unloaded because another entry file in the same sweep
- * declares its class and loaded. Every workspace folder shares one OMC
- * session, so loading both would leave one silently replacing the other.
- */
-export interface NameCollision {
-  className: string;
-  keptFileName: string;
-  refusedFileName: string;
-}
-
 /** What one {@link loadEntryFilesAndRefresh} sweep refused to load, and why. */
 export interface AutoLoadRefusals {
   skipped: SkippedEntryFile[];
   collisions: NameCollision[];
-}
-
-const MAX_TOAST_COLLISIONS = 3;
-
-/** Batch notification for every name collision one sweep refused. */
-export function nameCollisionToast(collisions: NameCollision[]): string {
-  const shown = collisions
-    .slice(0, MAX_TOAST_COLLISIONS)
-    .map(
-      (c) =>
-        `${c.refusedFileName} was not loaded: ${c.className} is already ` +
-        `loaded from ${c.keptFileName}`,
-    );
-  const hidden = collisions.length - shown.length;
-  if (hidden > 0) shown.push(`and ${hidden} more`);
-  return (
-    `Modelica: ${shown.join("; ")}. Entry files share one OpenModelica ` +
-    `session, so only the copy of each class that loaded was kept.`
-  );
 }
 
 /**
@@ -77,14 +54,18 @@ export function nameCollisionToast(collisions: NameCollision[]): string {
  * first in `files` that loads. A later copy is tried only once the earlier
  * copies stall, and those earlier copies keep being retried alongside it.
  *
+ * Each load is recorded in `claims`, which also refuses a file a load outside
+ * this sweep already supplied, or one reaching into a refused copy's library.
+ *
  * Returns the entry files refused for declaring several top-level classes or
- * a class another entry file loaded, so the caller can report each batch in
- * one message.
+ * a class another file loaded, so the caller can report each batch in one
+ * message.
  */
 export async function loadEntryFilesAndRefresh(
   client: AutoLoadClient,
   files: readonly string[],
   refresh: () => void,
+  claims: ClaimsSession = createTopLevelClaims(),
 ): Promise<AutoLoadRefusals> {
   const tryLoad = async (fileName: string): Promise<boolean> => {
     try {
@@ -150,6 +131,7 @@ export async function loadEntryFilesAndRefresh(
 
   const loaded = new Set<string>();
   const loadedNames = new Set<string>();
+  const collisions: NameCollision[] = [];
   // Index of each contested name's last active candidate.
   const lastActive = new Map<string, number>();
   // A `within <Parent>;` child in a standalone file fails to insert when its
@@ -177,11 +159,28 @@ export async function loadEntryFilesAndRefresh(
       ) {
         continue;
       }
+      const declared = className === undefined ? [] : [className];
+      const refusal = claims.refusal(fileName, declared);
+      if (refusal !== undefined) {
+        log.warn("autoLoad", nameCollisionMessage(refusal));
+        claims.recordRefusal(refusal, declared);
+        collisions.push(refusal);
+        active.delete(fileName);
+        continue;
+      }
       if (await tryLoad(fileName)) {
         loaded.add(fileName);
         active.delete(fileName);
-        if (className !== undefined) loadedNames.add(className);
         progressed = true;
+        if (className === undefined) continue;
+        loadedNames.add(className);
+        claims.recordLoad(fileName, [className]);
+        const candidates = candidatesByName.get(className) ?? [];
+        for (const later of candidates.slice(
+          candidates.indexOf(fileName) + 1,
+        )) {
+          claims.refuse(later, className, fileName);
+        }
       }
     }
     if (progressed) continue;
@@ -198,7 +197,8 @@ export async function loadEntryFilesAndRefresh(
     if (!added) break;
   }
 
-  const collisions: NameCollision[] = [];
+  // A later copy refused during the passes is already reported.
+  const reported = new Set(collisions.map((c) => c.refusedFileName));
   for (const [className, candidates] of candidatesByName) {
     // Copies before the kept one failed on their own; those after it lost to
     // it, whether or not they were tried first.
@@ -206,11 +206,11 @@ export async function loadEntryFilesAndRefresh(
     const keptFileName = candidates[keptIndex];
     if (keptFileName === undefined) continue;
     for (const refusedFileName of candidates.slice(keptIndex + 1)) {
-      log.warn(
-        "autoLoad",
-        `not loading ${refusedFileName}: ${className} is already loaded from ${keptFileName}`,
-      );
-      collisions.push({ className, keptFileName, refusedFileName });
+      if (reported.has(refusedFileName)) continue;
+      const collision = { className, keptFileName, refusedFileName };
+      log.warn("autoLoad", nameCollisionMessage(collision));
+      claims.recordRefusal(collision, [className]);
+      collisions.push(collision);
     }
   }
 
@@ -244,6 +244,7 @@ export interface WorkspaceAutoloadDeps {
  */
 export async function autoLoadWorkspace(
   deps: WorkspaceAutoloadDeps,
+  claims?: ClaimsSession,
 ): Promise<void> {
   try {
     const folders = deps.folders();
@@ -259,6 +260,7 @@ export async function autoLoadWorkspace(
       c,
       files,
       deps.refresh,
+      claims,
     );
     if (skipped.length > 0) deps.onSkipped(skipped);
     if (collisions.length > 0) deps.onCollisions(collisions);
@@ -272,6 +274,12 @@ export async function autoLoadWorkspace(
  *  `vscode.Disposable` that stops the `:reset` listener. */
 export interface WorkspaceAutoload extends vscode.Disposable {
   run(): void;
+  /**
+   * The session's class claims, for every other load and unload to consult.
+   * Cleared on `:reset`, before that reset's sweep is queued; held from
+   * creation until the first sweep settles, and by each later queued sweep.
+   */
+  claims: TopLevelClaims;
 }
 
 /**
@@ -294,9 +302,33 @@ export function registerWorkspaceAutoload(
   deps: WorkspaceAutoloadDeps,
 ): WorkspaceAutoload {
   const queue = new SessionQueue();
+  const claims = createTopLevelClaims();
+  // Held from creation, so a load that lands before the first `run()` still
+  // waits for the sweep to pick the kept copies.
+  let firstHold: (() => void) | undefined = claims.hold();
   const run = (): void => {
-    queue.enqueue(() => autoLoadWorkspace(deps));
+    const release = firstHold ?? claims.hold();
+    firstHold = undefined;
+    queue.enqueue(async () => {
+      try {
+        // Bound now, so a `:reset` mid-sweep leaves this sweep's writes out
+        // of the next session's claims.
+        await autoLoadWorkspace(deps, claims.session());
+      } finally {
+        release();
+      }
+    });
   };
-  const sub = invalidation.registerSessionReplaced(run);
-  return { run, dispose: () => sub.dispose() };
+  const sub = invalidation.registerSessionReplaced(() => {
+    claims.clear();
+    run();
+  });
+  return {
+    run,
+    claims,
+    dispose: () => {
+      firstHold?.();
+      sub.dispose();
+    },
+  };
 }

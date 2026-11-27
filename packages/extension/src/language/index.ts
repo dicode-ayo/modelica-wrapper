@@ -14,6 +14,11 @@ import { log } from "../logger.js";
 import { isDeclaredClassBusy } from "../dirty-buffer.js";
 import { multiEntityMessage, multiEntityToast } from "../single-entity-file.js";
 import { sourceUriFor } from "../source-provider.js";
+import {
+  nameCollisionToast,
+  reportOrphans,
+  type TopLevelClaims,
+} from "../top-level-claims.js";
 
 import {
   ANNOTATION_SEMANTIC_TOKENS_LEGEND,
@@ -161,11 +166,14 @@ export function handleClassChanged(
  * @param invalidation - the class-invalidation registry; the parse and lookup
  *   caches subscribe to it for changes that never pass through a text-document
  *   event.
+ * @param claims - the session's top-level class claims; the sync refuses a
+ *   file that would replace another file's copy of a class.
  */
 export function registerLanguageFeatures(
   context: vscode.ExtensionContext,
   ensureClient: EnsureClient,
   invalidation: ClassInvalidationRegistry,
+  claims: TopLevelClaims,
 ): vscode.Disposable {
   // esbuild copies both `.wasm` files next to `extension.js` in `out/`.
   const wasmDir = vscode.Uri.joinPath(context.extensionUri, "out").fsPath;
@@ -191,6 +199,11 @@ export function registerLanguageFeatures(
         ),
       );
     },
+    claims,
+    onCollision: (collision) => {
+      void vscode.window.showWarningMessage(nameCollisionToast([collision]));
+    },
+    onOrphaned: (copies) => reportOrphans("language", copies),
   });
 
   // One shared read-only-lookup cache for resolution + completion, keyed by the

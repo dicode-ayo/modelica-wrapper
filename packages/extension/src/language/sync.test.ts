@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { defaultNormalizeKey, OmcSync, type SyncClient } from "./sync.js";
+import { createTopLevelClaims } from "../top-level-claims.js";
+
+import { defaultNormalizeKey } from "../fs-util.js";
+import { OmcSync, type SyncClient } from "./sync.js";
 
 /** Every file parses as a single entity unless a test says otherwise. */
 function singleEntity(classNames = ["Foo"]) {
@@ -349,5 +352,148 @@ describe("defaultNormalizeKey", () => {
     expect(defaultNormalizeKey("C:\\Work\\Foo.mo")).toBe(
       caseInsensitive ? "c:\\work\\foo.mo" : "C:\\Work\\Foo.mo",
     );
+  });
+});
+
+describe("OmcSync — top-level class claims", () => {
+  const kept = "/rootA/Lib/package.mo";
+  const refused = "/rootB/Lib/package.mo";
+
+  function setup() {
+    const client = clientOk();
+    client.parseFile = singleEntity(["Lib"]);
+    const claims = createTopLevelClaims();
+    const onCollision = vi.fn();
+    const sync = new OmcSync(client, { claims, onCollision });
+    return { client, claims, onCollision, sync };
+  }
+
+  it("refuses a buffer whose file declares a class another file owns, reporting it once", async () => {
+    const { client, claims, onCollision, sync } = setup();
+    claims.recordLoad(kept, ["Lib"]);
+
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+
+    expect(client.calls).toEqual([]);
+    expect(client.parseFile).toHaveBeenCalledTimes(1);
+    expect(onCollision).toHaveBeenCalledTimes(1);
+    expect(onCollision).toHaveBeenCalledWith({
+      className: "Lib",
+      keptFileName: kept,
+      refusedFileName: refused,
+    });
+  });
+
+  it("claims the classes of a file it loads", async () => {
+    const { claims, sync } = setup();
+
+    expect(await sync.ensureLoaded(kept)).toBe(true);
+
+    expect(claims.refusal(refused, ["Lib"])?.keptFileName).toBe(kept);
+  });
+
+  it("retries a refused buffer after invalidate, once its class is free", async () => {
+    const { client, claims, sync } = setup();
+    claims.recordLoad(kept, ["Lib"]);
+    await sync.ensureLoaded(refused);
+
+    claims.release(kept);
+    sync.invalidate(refused);
+
+    expect(await sync.ensureLoaded(refused)).toBe(true);
+    expect(client.calls).toEqual([refused]);
+  });
+
+  it("stays quiet about a buffer another loader already reported", async () => {
+    const { claims, onCollision, sync } = setup();
+    claims.recordLoad(kept, ["Lib"]);
+    const collision = claims.refusal(refused, ["Lib"]);
+    if (collision === undefined) throw new Error("expected a collision");
+    claims.recordRefusal(collision, ["Lib"]);
+
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+
+    expect(onCollision).not.toHaveBeenCalled();
+  });
+
+  it("waits for a held sweep, so a buffer touched first never takes the class from it", async () => {
+    const { client, claims, sync } = setup();
+    const release = claims.hold();
+
+    const pending = sync.ensureLoaded(refused);
+    await Promise.resolve();
+    claims.recordLoad(kept, ["Lib"]);
+    release();
+
+    expect(await pending).toBe(false);
+    expect(client.calls).toEqual([]);
+  });
+
+  it("refuses a second copy whose load starts while the first copy's load is in flight", async () => {
+    const { client, claims, sync } = setup();
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile = vi.fn(
+      () =>
+        new Promise<{ success: boolean }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const first = sync.ensureLoaded(kept);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+    finish?.({ success: true });
+
+    expect(await first).toBe(true);
+    expect(client.loadFile).toHaveBeenCalledTimes(1);
+    expect(claims.refusal(refused, ["Lib"])?.keptFileName).toBe(kept);
+  });
+
+  it("loads a refused buffer once the claims free its class, without waiting for a save", async () => {
+    const { client, claims, sync } = setup();
+    claims.recordLoad(kept, ["Lib"]);
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+
+    claims.release(kept);
+
+    expect(await sync.ensureLoaded(refused)).toBe(true);
+    expect(client.calls).toEqual([refused]);
+  });
+
+  it("records nothing for a load in flight across a :reset", async () => {
+    const { client, claims, sync } = setup();
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile = vi.fn(
+      () =>
+        new Promise<{ success: boolean }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const pending = sync.ensureLoaded(refused);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    claims.clear();
+    claims.recordLoad(kept, ["Lib"]);
+    finish?.({ success: true });
+    await pending;
+
+    expect(claims.refusal(refused, ["Lib"])?.keptFileName).toBe(kept);
+  });
+
+  it("reports the refused copies a load gave up", async () => {
+    const onOrphaned = vi.fn();
+    const client = clientOk();
+    client.parseFile = singleEntity(["Lib2"]);
+    const claims = createTopLevelClaims();
+    claims.recordLoad(kept, ["Lib"]);
+    claims.refuse(refused, "Lib", kept);
+    const sync = new OmcSync(client, { claims, onOrphaned });
+
+    await sync.ensureLoaded(kept);
+
+    expect(onOrphaned).toHaveBeenCalledWith([
+      { fileName: refused, className: "Lib", keptFileName: kept },
+    ]);
   });
 });

@@ -1,3 +1,5 @@
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -5,6 +7,7 @@ import * as vscode from "vscode";
 
 import { makeWatcherClient } from "../test-support/mock-watcher-client.js";
 import {
+  fileSystemWatchers,
   recordedMessages,
   resetTabs,
   setFindFilesResult,
@@ -27,6 +30,7 @@ import {
 import { isDeclaredClassBusy } from "./dirty-buffer.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
 import { createPathClassIndex } from "./path-class-index.js";
+import { createTopLevelClaims } from "./top-level-claims.js";
 import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { publishSourceChanges } from "./source-invalidation.js";
@@ -79,6 +83,7 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     sourceProvider: { notifySourceChanged },
     guard: createSelfWriteGuard(),
     index: createPathClassIndex(),
+    claims: createTopLevelClaims(),
     pendingReorders: createPendingReorders(),
     scheduleReorderRetry: makeFakeReorderScheduler(),
     readFile: async () => "model Bar end Bar;",
@@ -1225,6 +1230,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       guard: createSelfWriteGuard(),
       invalidation,
       index: createPathClassIndex(),
+      claims: createTopLevelClaims(),
       scanMoFiles: async () => [FILE],
     });
 
@@ -1253,6 +1259,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       guard: createSelfWriteGuard(),
       invalidation,
       index: createPathClassIndex(),
+      claims: createTopLevelClaims(),
       scanMoFiles: async () => [FILE],
     });
     await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
@@ -1296,6 +1303,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       guard: createSelfWriteGuard(),
       invalidation,
       index: createPathClassIndex(),
+      claims: createTopLevelClaims(),
       scanMoFiles,
     });
 
@@ -1341,6 +1349,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
       guard: createSelfWriteGuard(),
       invalidation,
       index: createPathClassIndex(),
+      claims: createTopLevelClaims(),
       scanMoFiles,
     });
 
@@ -1353,5 +1362,464 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
 
     disposable.dispose();
     findFilesSpy.mockRestore();
+  });
+});
+
+describe("top-level class claims", () => {
+  const keptLib = path.resolve("/rootA/Lib/package.mo");
+  const refusedLib = path.resolve("/rootB/Lib/package.mo");
+
+  /** `Lib` loaded from rootA, rootB's copy refused, both seeded into the index. */
+  function depsWithRefusedLib(parsed: string[] = ["Lib"]) {
+    const made = makeDeps();
+    made.client.parseFile.mockResolvedValue({ classNames: parsed });
+    made.deps.claims.recordLoad(keptLib, ["Lib"]);
+    made.deps.claims.refuse(refusedLib, "Lib", keptLib);
+    made.deps.index.set(keptLib, ["Lib"]);
+    made.deps.index.set(refusedLib, ["Lib"]);
+    return made;
+  }
+
+  it("refuses and warns about a change to a file declaring a class another file owns", async () => {
+    const { deps, client, childrenChanged } = depsWithRefusedLib();
+
+    await handleMoChange(deps, refusedLib);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(childrenChanged).not.toHaveBeenCalled();
+    expect(recordedMessages).toEqual([
+      expect.objectContaining({
+        level: "warning",
+        message: expect.stringContaining(
+          `${refusedLib} was not loaded: Lib is already loaded from ${keptLib}`,
+        ),
+      }),
+    ]);
+  });
+
+  it("refuses a created file declaring an already-loaded class, and remembers it as refused", async () => {
+    const created = path.resolve("/rootC/Lib.mo");
+    const { deps, client } = depsWithRefusedLib();
+
+    await handleMoChange(deps, created);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(
+      deps.claims.refusal(path.resolve("/rootC/Ext.mo"), ["Lib.Ext"]),
+    ).toBeDefined();
+  });
+
+  it("claims the classes a watcher load supplies", async () => {
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+
+    await handleMoChange(deps, keptLib);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: keptLib });
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toMatchObject({
+      keptFileName: keptLib,
+    });
+  });
+
+  it("refuses a change to a file inside a refused copy's package", async () => {
+    const { deps, client } = depsWithRefusedLib(["Lib.Sub"]);
+
+    await handleMoChange(deps, path.resolve("/rootB/Lib/Sub.mo"));
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+  });
+
+  it("refuses a `within` extension beside a refused copy", async () => {
+    const { deps, client } = depsWithRefusedLib(["Lib.Ext"]);
+
+    await handleMoChange(deps, path.resolve("/rootB/Ext.mo"));
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+  });
+
+  it("refuses a reorder of a refused copy's package", async () => {
+    const { deps, client } = depsWithRefusedLib();
+    deps.readFile = async () => "A\nB\n";
+
+    await handleOrderChange(deps, path.resolve("/rootB/Lib/package.order"));
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+  });
+
+  it("does not unload the kept copy when a refused copy is deleted", async () => {
+    const { deps, client, childrenChanged } = depsWithRefusedLib();
+
+    await handleMoDelete(deps, refusedLib);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(childrenChanged).not.toHaveBeenCalled();
+    expect(deps.index.get(refusedLib)).toBeUndefined();
+    expect(deps.index.get(keptLib)).toEqual(["Lib"]);
+  });
+
+  it("does not unload the kept copy's member when a file inside a refused copy is deleted", async () => {
+    const { deps, client } = depsWithRefusedLib();
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    deps.index.set(sub, ["Lib.Sub"]);
+
+    await handleMoDelete(deps, refusedLib);
+    await handleMoDelete(deps, sub);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+  });
+
+  it("frees the class when its owner is deleted, so the other copy loads next", async () => {
+    const { deps, client } = depsWithRefusedLib();
+
+    await handleMoDelete(deps, keptLib);
+    await handleMoChange(deps, refusedLib);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Lib" });
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: refusedLib });
+  });
+
+  it("warns about a refused file once, however often it changes", async () => {
+    const { deps } = depsWithRefusedLib();
+
+    await handleMoChange(deps, refusedLib);
+    await handleMoChange(deps, refusedLib);
+
+    expect(recordedMessages).toHaveLength(1);
+  });
+
+  it("never unloads the kept copy when a refused copy is edited to declare another class", async () => {
+    const { deps, client } = depsWithRefusedLib(["Lib2"]);
+
+    await handleMoChange(deps, refusedLib);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: refusedLib });
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(deps.index.get(keptLib)).toEqual(["Lib"]);
+  });
+
+  it("never unloads the kept copy's member when a file inside a refused copy stops declaring it", async () => {
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    const { deps, client } = depsWithRefusedLib(["Foo"]);
+    deps.index.set(sub, ["Lib.Sub"]);
+
+    await handleMoChange(deps, sub);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: sub });
+    expect(client.deleteClass).not.toHaveBeenCalled();
+  });
+
+  it("drops a refused copy's refusal once its package's last indexed file is deleted", async () => {
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    const ext = path.resolve("/rootB/Ext.mo");
+    const { deps, client } = depsWithRefusedLib();
+    deps.index.set(sub, ["Lib.Sub"]);
+
+    await handleMoDelete(deps, refusedLib);
+    expect(deps.claims.refusal(ext, ["Lib.Ext"])).toBeDefined();
+
+    await handleMoDelete(deps, sub);
+    expect(deps.claims.refusal(ext, ["Lib.Ext"])).toBeUndefined();
+    expect(client.deleteClass).not.toHaveBeenCalled();
+  });
+
+  it("claims what a self-write declares and gives up what it no longer does", async () => {
+    const guard = createSelfWriteGuard();
+    const text = "package Renamed end Renamed;";
+    guard.record(keptLib, text);
+    const { deps, client } = makeDeps({ guard, readFile: async () => text });
+    client.parseFile.mockResolvedValue({ classNames: ["Renamed"] });
+    deps.claims.recordLoad(keptLib, ["Lib"]);
+    deps.index.set(keptLib, ["Lib"]);
+
+    await handleMoChange(deps, keptLib);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(deps.claims.refusal(refusedLib, ["Renamed"])).toMatchObject({
+      keptFileName: keptLib,
+    });
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
+
+  it("unloads and gives up a class a loaded file stops declaring when its new class is refused", async () => {
+    const foo = path.resolve("/rootB/Foo.mo");
+    const { deps, client } = depsWithRefusedLib(["Lib"]);
+    deps.claims.recordLoad(foo, ["Foo"]);
+    deps.index.set(foo, ["Foo"]);
+
+    await handleMoChange(deps, foo);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Foo" });
+    expect(
+      deps.claims.refusal(path.resolve("/rootC/Foo.mo"), ["Foo"]),
+    ).toBeUndefined();
+    expect(deps.index.get(foo)).toEqual(["Lib"]);
+    expect(recordedMessages).toHaveLength(1);
+  });
+
+  it("refuses a second copy whose load starts while the first copy's load is in flight", async () => {
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const first = handleMoChange(deps, keptLib);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await handleMoChange(deps, refusedLib);
+    finish?.({ success: true });
+    await first;
+
+    expect(client.loadFile).toHaveBeenCalledTimes(1);
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: keptLib });
+    expect(deps.claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(
+      keptLib,
+    );
+  });
+
+  it("frees the class when a reserved load fails", async () => {
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+    client.loadFile.mockResolvedValueOnce({ success: false });
+
+    await handleMoChange(deps, keptLib);
+
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
+
+  it("leaves a refused copy's files out of the kept copy's delete cascade", async () => {
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    const keptSub = path.resolve("/rootA/Lib/Sub.mo");
+    const isBusy = vi.fn((fsPaths: string[]) => fsPaths.includes(sub));
+    const { deps, client } = depsWithRefusedLib();
+    deps.isBusy = isBusy;
+    deps.index.set(sub, ["Lib.Sub"]);
+    deps.index.set(keptSub, ["Lib.Sub"]);
+
+    await handleMoDelete(deps, keptLib);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Lib" });
+    expect(deps.index.get(sub)).toEqual(["Lib.Sub"]);
+    expect(deps.index.get(refusedLib)).toEqual(["Lib"]);
+    expect(deps.index.get(keptSub)).toBeUndefined();
+  });
+
+  it("loads a renamed top-level file whose create lands before the old path's delete, and keeps it loaded", async () => {
+    const oldFile = path.resolve("/rootA/Old.mo");
+    const newFile = path.resolve("/rootA/New.mo");
+    const { deps, client } = makeDeps({
+      fileExists: async (p) => path.resolve(p) !== oldFile,
+    });
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+    deps.claims.recordLoad(oldFile, ["Lib"]);
+    deps.index.set(oldFile, ["Lib"]);
+
+    await handleMoChange(deps, newFile);
+    await handleMoDelete(deps, oldFile);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: newFile });
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(recordedMessages).toEqual([]);
+    expect(deps.claims.refusal(oldFile, ["Lib"])?.keptFileName).toBe(newFile);
+  });
+
+  it("loads a renamed member file whose create lands before the old path's delete", async () => {
+    const pkg = path.resolve("/rootA/Lib/package.mo");
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib.A.Foo"] });
+    deps.claims.recordLoad(pkg, ["Lib"]);
+    deps.claims.recordLoad(path.resolve("/rootA/Lib/A/Foo.mo"), ["Lib.A.Foo"]);
+
+    await handleMoChange(deps, path.resolve("/rootA/Lib/A/Bar.mo"));
+
+    expect(client.loadFile).toHaveBeenCalledTimes(1);
+    expect(recordedMessages).toEqual([]);
+  });
+
+  it("drops the refusal of a deleted refused copy the index never saw", async () => {
+    const { deps } = makeDeps();
+    deps.claims.recordLoad(keptLib, ["Lib"]);
+    deps.claims.refuse(refusedLib, "Lib", keptLib);
+
+    await handleMoDelete(deps, refusedLib);
+
+    expect(
+      deps.claims.refusal(path.resolve("/rootB/Ext.mo"), ["Lib.Ext"]),
+    ).toBeUndefined();
+  });
+
+  it("frees the class of a deleted owner the index never saw", async () => {
+    const { deps } = makeDeps();
+    deps.claims.recordLoad(keptLib, ["Lib"]);
+
+    await handleMoDelete(deps, keptLib);
+
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
+
+  it("warns that a refused copy stays unloaded once the kept copy is deleted", async () => {
+    const { deps, client } = depsWithRefusedLib();
+
+    await handleMoDelete(deps, keptLib);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Lib" });
+    expect(recordedMessages).toEqual([
+      expect.objectContaining({
+        level: "warning",
+        message: expect.stringContaining(
+          `${refusedLib} was not loaded in favor of a copy of Lib`,
+        ),
+      }),
+    ]);
+  });
+
+  it("warns about the refused copies when the kept file is edited to stop declaring the class", async () => {
+    const { deps, client } = depsWithRefusedLib(["Lib2"]);
+
+    await handleMoChange(deps, keptLib);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Lib" });
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+    expect(recordedMessages).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining(`${refusedLib} was not loaded`),
+      }),
+    ]);
+  });
+
+  it("keeps a refused copy's package refused across a create-before-delete rename of the kept file", async () => {
+    const renamed = path.resolve("/rootA/LibNew/package.mo");
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    const { deps, client } = depsWithRefusedLib();
+    deps.fileExists = async (p) => path.resolve(p) !== keptLib;
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const load = handleMoChange(deps, renamed);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(deps.claims.refusal(sub, ["Lib.Sub"])?.keptFileName).toBe(renamed);
+    finish?.({ success: true });
+    await load;
+
+    expect(deps.claims.refusal(sub, ["Lib.Sub"])?.keptFileName).toBe(renamed);
+    expect(deps.claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(
+      renamed,
+    );
+    expect(recordedMessages).toEqual([]);
+  });
+
+  it("warns about a copy refused against a reservation whose load then fails", async () => {
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const first = handleMoChange(deps, keptLib);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await handleMoChange(deps, refusedLib);
+    finish?.({ success: false });
+    await first;
+
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+    expect(recordedMessages.at(-1)).toEqual(
+      expect.objectContaining({
+        message: expect.stringContaining(
+          `${refusedLib} was not loaded in favor`,
+        ),
+      }),
+    );
+  });
+
+  it("warns about the refused copies a kept file gives up when its new class is refused", async () => {
+    const other = path.resolve("/rootC/Other.mo");
+    const { deps } = depsWithRefusedLib(["Other"]);
+    deps.claims.recordLoad(other, ["Other"]);
+
+    await handleMoChange(deps, keptLib);
+
+    expect(recordedMessages.map((m) => m.message)).toEqual([
+      expect.stringContaining(`${refusedLib} was not loaded in favor`),
+      expect.stringContaining(`${keptLib} was not loaded: Other`),
+    ]);
+  });
+
+  it("checks a reorder's refusal before bringing up the client", async () => {
+    const { deps } = depsWithRefusedLib();
+    const ensureClient = vi.fn(deps.ensureClient);
+    deps.ensureClient = ensureClient;
+    deps.readFile = async () => "A\nB\n";
+
+    await handleOrderChange(deps, path.resolve("/rootB/Lib/package.order"));
+
+    expect(ensureClient).not.toHaveBeenCalled();
+  });
+
+  it("loads a refused copy without an orphan warning once its kept file is gone", async () => {
+    const { deps, client } = depsWithRefusedLib();
+    deps.fileExists = async (p) => path.resolve(p) !== keptLib;
+
+    await handleMoChange(deps, refusedLib);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: refusedLib });
+    expect(recordedMessages).toEqual([]);
+  });
+});
+
+describe("registerMoFileWatcher — workspace sweep hold", () => {
+  it("handles no `.mo` event until the claims' sweep hold is released", async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "mo-watch-hold-"));
+    const file = path.join(dir, "Lib.mo");
+    await fsp.writeFile(file, "package Lib end Lib;");
+    const client = makeWatcherClient();
+    const claims = createTopLevelClaims();
+    const release = claims.hold();
+    const watchersBefore = fileSystemWatchers.length;
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation: new ClassInvalidationRegistry(),
+      index: createPathClassIndex(),
+      claims,
+      scanMoFiles: async () => [],
+    });
+    const moWatcher = fileSystemWatchers
+      .slice(watchersBefore)
+      .find((w) => w.pattern === "**/*.mo");
+
+    for (const listener of moWatcher?.change ?? []) listener(Uri.file(file));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(client.loadFile).not.toHaveBeenCalled();
+
+    release();
+    await vi.waitFor(() =>
+      expect(client.loadFile).toHaveBeenCalledWith({ fileName: file }),
+    );
+
+    disposable.dispose();
+    await fsp.rm(dir, { recursive: true, force: true });
   });
 });

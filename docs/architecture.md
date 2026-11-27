@@ -255,6 +255,49 @@ events. Its events share that index, so `mo-event-scheduler.ts` orders them:
 
 Conflict rules and failure handling are detailed in `mo-event-scheduler.ts`.
 
+### Top-level class claims
+
+Every workspace folder loads into one OMC session, so a second file declaring
+a top-level class another file supplied would silently replace it.
+`top-level-claims.ts` records which file each top-level class was loaded
+from. `registerWorkspaceAutoload` owns the instance and clears it on `:reset`;
+its sweep, the `.mo` watcher and the buffer sync (`language/sync.ts`) consult
+it before `loadFile`:
+
+- A file declaring a top-level class another file owns is refused and
+  remembered as a refused copy. Each refused file is warned about once,
+  whichever loader refused it first.
+- A file inside a refused copy's package directory is refused too, as is a
+  `within` extension of the class whose nearest library root is the refused
+  copy's rather than the kept copy's. A duplicate `within` file the sweep
+  refused stays refused by path while its kept file is loaded.
+- The watcher and the sync reserve a file's top-level classes synchronously
+  after the refusal check and before `loadFile`, so two copies loading at
+  once cannot both pass. A failed load cancels its own reservation and the
+  refusals recorded against it, never a later load's claim.
+- A rename reports the new path's create before the old path's delete. When
+  the kept file no longer exists, the watcher releases it before deciding, so
+  the new path loads; the old path's delete then finds it a refused copy and
+  leaves the class loaded.
+- The watcher never `deleteClass`es a name its file was refused for, and its
+  delete cascade leaves refused copies' files out. An edit whose new class is
+  refused still unloads the classes the file supplied before. A refused
+  copy's refusal is dropped once none of its package's files is indexed.
+- A claim is given up one way, whether its owner is deleted, edits the class
+  away, has its reservation cancelled, or vanished in a rename: the refusals
+  kept in its favor are dropped and returned. The caller hands them to
+  `adopt`, which re-refuses each copy in favor of a file that owns the class
+  now (a rename's new path, reserved before its load) and returns the rest,
+  which are warned about as unloaded until saved or `:reset`.
+- `clear()` starts a new epoch. A sweep binds a `session()` when it starts,
+  and every reservation is bound when taken, so writes from a load in flight
+  across a `:reset` never reach the new session's claims.
+- The sync re-asks the claims on every touch of a buffer they refused, so a
+  class the watcher frees loads without a save.
+- The sweep decides which copy is kept. The claims are held from creation
+  until the first sweep settles, and again for each queued `:reset` sweep;
+  the watcher's events and the sync's loads wait on `settled()` meanwhile.
+
 ## Logging
 
 The extension host writes to one `LogOutputChannel` named "Modelica" (View →

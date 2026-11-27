@@ -6,13 +6,22 @@
  *     `onDidSaveTextDocument` and `onDidCloseTextDocument`).
  *   - A file with a dirty buffer open is not loaded on first touch: the load
  *     would revert OMC to the on-disk text under the edit.
+ *   - A file the session's top-level class claims refuse is not loaded: it would
+ *     replace another file's copy of the same class.
  *   - Once loaded, and between saves, resolution reflects the last saved text
  *     — not the dirty buffer. See `docs/language-features-design.md` → "Buffer ↔ OMC sync".
  */
 
 import { errorDetail } from "../error-detail.js";
+import { defaultNormalizeKey } from "../fs-util.js";
 import { log } from "../logger.js";
 import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
+import {
+  nameCollisionMessage,
+  type NameCollision,
+  type RefusedCopy,
+  type TopLevelClaims,
+} from "../top-level-claims.js";
 
 export interface SyncClient extends FileParseClient {
   loadFile(input: { fileName: string }): Promise<{ success: boolean }>;
@@ -31,6 +40,18 @@ export interface OmcSyncOptions {
    */
   onMultiEntity?: (filePath: string, classNames: string[]) => void;
   /**
+   * Waited on before each load, consulted and reserved before `loadFile`,
+   * and told of each load that succeeds.
+   */
+  claims?: TopLevelClaims;
+  /**
+   * Called for a path {@link claims} refused, unless another loader already
+   * reported that path.
+   */
+  onCollision?: (collision: NameCollision) => void;
+  /** Called with the refused copies a load gave up that no loaded copy stands for. */
+  onOrphaned?: (copies: RefusedCopy[]) => void;
+  /**
    * True when a dirty editor holds unsaved text for one of `classNames`, the
    * top-level classes `filePath` declares. `loadFile` would replace OMC's AST
    * with the on-disk text and discard that edit, so a busy file is left
@@ -39,12 +60,6 @@ export interface OmcSyncOptions {
    */
   isBusy?: (filePath: string, classNames: string[]) => boolean;
 }
-
-/** Case-folds on case-insensitive hosts (win32/darwin); identity elsewhere. */
-export const defaultNormalizeKey: (filePath: string) => string =
-  process.platform === "win32" || process.platform === "darwin"
-    ? (p) => p.toLowerCase()
-    : (p) => p;
 
 export class OmcSync {
   private readonly loaded = new Set<string>();
@@ -61,12 +76,21 @@ export class OmcSync {
    * {@link OmcSyncOptions.onMultiEntity} reports each path once.
    */
   private readonly multiEntity = new Set<string>();
+  /**
+   * The classes of each path {@link OmcSyncOptions.claims} refused, so a touch
+   * re-asks the claims without a `parseFile`: the watcher can free the class
+   * while the buffer stays open.
+   */
+  private readonly collided = new Map<string, string[]>();
   private readonly normalizeKey: (filePath: string) => string;
   private readonly isBusy: (filePath: string, classNames: string[]) => boolean;
   private readonly onMultiEntity: (
     filePath: string,
     classNames: string[],
   ) => void;
+  private readonly claims: TopLevelClaims | undefined;
+  private readonly onCollision: (collision: NameCollision) => void;
+  private readonly onOrphaned: (copies: RefusedCopy[]) => void;
 
   constructor(
     private readonly client: SyncClient,
@@ -75,6 +99,9 @@ export class OmcSync {
     this.normalizeKey = options.normalizeKey ?? defaultNormalizeKey;
     this.onMultiEntity = options.onMultiEntity ?? (() => {});
     this.isBusy = options.isBusy ?? (() => false);
+    this.claims = options.claims;
+    this.onCollision = options.onCollision ?? (() => {});
+    this.onOrphaned = options.onOrphaned ?? (() => {});
   }
 
   /**
@@ -86,6 +113,13 @@ export class OmcSync {
     const key = this.normalizeKey(filePath);
     if (this.loaded.has(key)) return true;
     if (this.multiEntity.has(key)) return false;
+    const collidedNames = this.collided.get(key);
+    if (collidedNames !== undefined) {
+      if (this.claims?.refusal(filePath, collidedNames) !== undefined) {
+        return false;
+      }
+      this.collided.delete(key);
+    }
 
     const pending = this.inFlight.get(key);
     if (pending) return pending;
@@ -117,6 +151,7 @@ export class OmcSync {
     // A save that splits the file out into one class each makes it loadable,
     // so the refusal must not outlive the text it was based on.
     this.multiEntity.delete(key);
+    this.collided.delete(key);
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
   }
 
@@ -126,7 +161,7 @@ export class OmcSync {
 
   /**
    * Forget every load state this instance tracks: the OMC session those
-   * "loaded"/"in-flight"/"multi-entity" facts describe is gone (`:reset`).
+   * "loaded"/"in-flight"/"refused" facts describe is gone (`:reset`).
    * The keys are already normalized and {@link OmcSyncOptions.normalizeKey}
    * is not required to be idempotent, so they go straight to
    * {@link invalidateKey}.
@@ -136,6 +171,7 @@ export class OmcSync {
       ...this.loaded,
       ...this.inFlight.keys(),
       ...this.multiEntity,
+      ...this.collided.keys(),
     ]);
     for (const key of keys) this.invalidateKey(key);
   }
@@ -153,6 +189,9 @@ export class OmcSync {
   private async load(filePath: string, key: string): Promise<boolean> {
     const snapshot = this.generation.get(key) ?? 0;
     try {
+      // A load during the workspace sweep would race it for which copy of a
+      // class is kept.
+      await this.claims?.settled();
       const classNames = await this.parseClassNames(filePath);
       // Invalidated mid-parse — the parse read stale text, discard. Recording
       // the refusal would outlive the text it was based on.
@@ -165,8 +204,28 @@ export class OmcSync {
         this.onMultiEntity(filePath, several);
         return false;
       }
+      const collision = this.claims?.refusal(filePath, classNames);
+      if (collision !== undefined) {
+        this.collided.set(key, classNames);
+        log.warn("language", nameCollisionMessage(collision));
+        if (this.claims?.recordRefusal(collision, classNames)) {
+          this.onCollision(collision);
+        }
+        return false;
+      }
       if (this.isBusy(filePath, classNames)) return false;
-      const { success } = await this.client.loadFile({ fileName: filePath });
+      const reservation = this.claims?.reserve(filePath, classNames);
+      let success = false;
+      try {
+        ({ success } = await this.client.loadFile({ fileName: filePath }));
+      } finally {
+        // OMC holds what loaded even when this result is discarded below.
+        const orphaned = success
+          ? reservation?.commit()
+          : reservation?.cancel();
+        const lost = this.claims?.adopt(orphaned ?? []) ?? [];
+        if (lost.length > 0) this.onOrphaned(lost);
+      }
       // Invalidated mid-flight — load read stale text, discard.
       if (snapshot !== (this.generation.get(key) ?? 0)) {
         return false;
