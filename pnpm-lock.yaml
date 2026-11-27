@@ -311,6 +311,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.0
         version: 1.32.0(zod@4.6.5)
+      zeromq:
+        specifier: ^6.8.0
+        version: 6.8.0
       zod:
         specifier: ^4.5.4
         version: 4.6.5

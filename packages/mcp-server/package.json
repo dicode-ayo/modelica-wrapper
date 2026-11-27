@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "bin": {
+    "modelica-mcp": "./dist/cli.js"
+  },
   "files": [
     "dist"
   ],
@@ -35,9 +38,10 @@
     "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\" --fail-on-crap 50"
   },
   "dependencies": {
-    "@dicode/omc-client": "workspace:*",
     "@dicode/modelica-lang-core": "workspace:*",
+    "@dicode/omc-client": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.0",
+    "zeromq": "^6.8.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
