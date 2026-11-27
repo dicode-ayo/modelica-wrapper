@@ -57,6 +57,21 @@ export function nameCollisionToast(collisions: NameCollision[]): string {
   );
 }
 
+/**
+ * Notification for refused copies whose kept copy no longer stands: deleted,
+ * renamed away from the class, or never loaded.
+ */
+export function orphanedCopiesToast(copies: readonly RefusedCopy[]): string {
+  const classes = [...new Set(copies.map((c) => c.className))];
+  const files = [...new Set(copies.map((c) => c.fileName))];
+  const one = files.length === 1;
+  return (
+    `Modelica: ${files.join(", ")} ${one ? "was" : "were"} not loaded in ` +
+    `favor of a copy of ${classes.join(", ")} that is no longer loaded. ` +
+    `Save ${one ? "it" : "them"} or run :reset to load ${one ? "it" : "them"}.`
+  );
+}
+
 /** A refused copy of a class, and the file its class was kept from. */
 export interface RefusedCopy {
   fileName: string;
@@ -66,16 +81,24 @@ export interface RefusedCopy {
 
 /** A claim taken before `loadFile`, so a racing load of another copy is refused. */
 export interface Reservation {
-  /** The load succeeded: record it as {@link TopLevelClaims.recordLoad} does. */
-  commit(): void;
+  /** The load succeeded: record it as {@link ClaimsSession.recordLoad} does. */
+  commit(): RefusedCopy[];
   /**
    * The load failed or was skipped: drop the claims this reservation took,
-   * and the refusals recorded against them.
+   * and return the copies refused against them.
    */
-  cancel(): void;
+  cancel(): RefusedCopy[];
 }
 
-export interface TopLevelClaims {
+/**
+ * Everything a loader reads and records, bound to the OMC session it started
+ * in: once {@link TopLevelClaims.clear} replaces that session, its writes are
+ * ignored and its reservations commit and cancel nothing.
+ *
+ * Each write that gives a class up returns the copies that were refused in
+ * favor of it; see {@link TopLevelClaims.adopt}.
+ */
+export interface ClaimsSession {
   /**
    * The collision that refuses loading `fsPath`, which declares
    * `classNames`, or `undefined` when it may load: another file owns one of
@@ -110,7 +133,17 @@ export interface TopLevelClaims {
    * `fsPath` loaded declaring `classNames`: it owns each top-level one, and
    * gives up any it owned and no longer declares.
    */
-  recordLoad(fsPath: string, classNames: readonly string[]): void;
+  recordLoad(fsPath: string, classNames: readonly string[]): RefusedCopy[];
+}
+
+export interface TopLevelClaims extends ClaimsSession {
+  /** The current OMC session's view; see {@link ClaimsSession}. */
+  session(): ClaimsSession;
+  /**
+   * Re-refuse each of `copies` whose class another file owns now, in favor of
+   * that file, and return the rest: copies no loaded copy stands for.
+   */
+  adopt(copies: readonly RefusedCopy[]): RefusedCopy[];
   /** The refused copies whose package holds `fsPath`, or that are `fsPath`. */
   refusedCopiesHolding(fsPath: string): RefusedCopy[];
   /** Whether `fsPath` is the refused copy `copy` or lies inside its package. */
@@ -159,6 +192,7 @@ export function createTopLevelClaims(
   const reported = new Map<string, Report>();
   const key = (p: string): string => normalizeKey(path.resolve(p));
 
+  let epoch = 0;
   let heldCount = 0;
   let settledPromise: Promise<void> = Promise.resolve();
   let resolveSettled: (() => void) | undefined;
@@ -237,12 +271,16 @@ export function createTopLevelClaims(
     });
   };
 
-  const recordLoad = (rawPath: string, classNames: readonly string[]): void => {
+  const recordLoad = (
+    rawPath: string,
+    classNames: readonly string[],
+  ): RefusedCopy[] => {
     const fsPath = key(rawPath);
     const topLevel = new Set(classNames.filter((n) => outermost(n) === n));
+    const orphaned: RefusedCopy[] = [];
     for (const [className, owner] of ownerByClass) {
       if (key(owner.fileName) === fsPath && !topLevel.has(className)) {
-        ownerByClass.delete(className);
+        orphaned.push(...giveUp(fsPath, className));
       }
     }
     for (const className of topLevel) {
@@ -250,6 +288,7 @@ export function createTopLevelClaims(
     }
     refusedByKey.delete(fsPath);
     reported.delete(fsPath);
+    return orphaned;
   };
 
   /**
@@ -276,47 +315,110 @@ export function createTopLevelClaims(
     return dropped;
   };
 
+  /**
+   * The one path a class's claim is given up by: drop `keptKey`'s ownership
+   * of `className` and the refusals kept in its favor, and return the refused
+   * copies of the class itself.
+   */
+  const giveUp = (keptKey: string, className: string): RefusedCopy[] => {
+    const owner = ownerByClass.get(className);
+    if (owner !== undefined && key(owner.fileName) === keptKey) {
+      ownerByClass.delete(className);
+    }
+    return dropRefusalsFor(keptKey, className).filter(
+      (c) => c.className === className,
+    );
+  };
+
+  const reserve = (
+    rawPath: string,
+    classNames: readonly string[],
+  ): Reservation => {
+    const reservedIn = epoch;
+    const reserved: Array<[string, Owner]> = [];
+    for (const className of classNames) {
+      if (outermost(className) !== className) continue;
+      if (ownerByClass.has(className)) continue;
+      const owner = { fileName: rawPath };
+      ownerByClass.set(className, owner);
+      reserved.push([className, owner]);
+    }
+    return {
+      commit: () =>
+        reservedIn === epoch ? recordLoad(rawPath, classNames) : [],
+      cancel() {
+        if (reservedIn !== epoch) return [];
+        const orphaned: RefusedCopy[] = [];
+        for (const [className, owner] of reserved) {
+          if (ownerByClass.get(className) !== owner) continue;
+          orphaned.push(...giveUp(key(rawPath), className));
+        }
+        return orphaned;
+      },
+    };
+  };
+
+  const recordRefusal = (
+    collision: NameCollision,
+    classNames: readonly string[],
+  ): boolean => {
+    if (classNames.includes(collision.className)) {
+      refuse(
+        collision.refusedFileName,
+        collision.className,
+        collision.keptFileName,
+      );
+    }
+    const refusedKey = key(collision.refusedFileName);
+    if (reported.has(refusedKey)) return false;
+    reported.set(refusedKey, {
+      className: collision.className,
+      keptKey: key(collision.keptFileName),
+    });
+    return true;
+  };
+
+  const supplies = (fsPath: string, className: string): boolean =>
+    refusal(fsPath, [className]) === undefined;
+
   return {
     refusal,
-    supplies: (fsPath, className) => refusal(fsPath, [className]) === undefined,
-    reserve(rawPath, classNames) {
-      const reserved: Array<[string, Owner]> = [];
-      for (const className of classNames) {
-        if (outermost(className) !== className) continue;
-        if (ownerByClass.has(className)) continue;
-        const owner = { fileName: rawPath };
-        ownerByClass.set(className, owner);
-        reserved.push([className, owner]);
-      }
-      return {
-        commit: () => recordLoad(rawPath, classNames),
-        cancel() {
-          for (const [className, owner] of reserved) {
-            if (ownerByClass.get(className) !== owner) continue;
-            ownerByClass.delete(className);
-            dropRefusalsFor(key(rawPath), className);
-          }
-        },
-      };
-    },
-    recordRefusal(collision, classNames) {
-      if (classNames.includes(collision.className)) {
-        refuse(
-          collision.refusedFileName,
-          collision.className,
-          collision.keptFileName,
-        );
-      }
-      const refusedKey = key(collision.refusedFileName);
-      if (reported.has(refusedKey)) return false;
-      reported.set(refusedKey, {
-        className: collision.className,
-        keptKey: key(collision.keptFileName),
-      });
-      return true;
-    },
+    supplies,
+    reserve,
+    recordRefusal,
     refuse,
     recordLoad,
+    session() {
+      const boundTo = epoch;
+      const live = (): boolean => boundTo === epoch;
+      return {
+        refusal,
+        supplies,
+        reserve: (fsPath, classNames) =>
+          live()
+            ? reserve(fsPath, classNames)
+            : { commit: () => [], cancel: () => [] },
+        recordRefusal: (collision, classNames) =>
+          live() && recordRefusal(collision, classNames),
+        refuse: (fsPath, className, keptFileName) => {
+          if (live()) refuse(fsPath, className, keptFileName);
+        },
+        recordLoad: (fsPath, classNames) =>
+          live() ? recordLoad(fsPath, classNames) : [],
+      };
+    },
+    adopt(copies) {
+      const lost: RefusedCopy[] = [];
+      for (const copy of copies) {
+        const owner = ownerByClass.get(copy.className);
+        if (owner === undefined || key(owner.fileName) === key(copy.fileName)) {
+          lost.push(copy);
+        } else {
+          refuse(copy.fileName, copy.className, owner.fileName);
+        }
+      }
+      return lost;
+    },
     refusedCopiesHolding(rawPath) {
       const fsPath = key(rawPath);
       return [...refusedByKey]
@@ -330,10 +432,8 @@ export function createTopLevelClaims(
       reported.delete(fsPath);
       const orphaned: RefusedCopy[] = [];
       for (const [className, owner] of ownerByClass) {
-        if (key(owner.fileName) !== fsPath) continue;
-        ownerByClass.delete(className);
-        for (const copy of dropRefusalsFor(fsPath, className)) {
-          if (copy.className === className) orphaned.push(copy);
+        if (key(owner.fileName) === fsPath) {
+          orphaned.push(...giveUp(fsPath, className));
         }
       }
       // Nested `within` duplicates are refused by path, not by an owner.
@@ -341,6 +441,7 @@ export function createTopLevelClaims(
       return orphaned;
     },
     clear() {
+      epoch++;
       ownerByClass.clear();
       refusedByKey.clear();
       reported.clear();

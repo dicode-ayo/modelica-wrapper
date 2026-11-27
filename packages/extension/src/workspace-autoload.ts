@@ -20,6 +20,7 @@ import {
   createTopLevelClaims,
   nameCollisionMessage,
   type NameCollision,
+  type ClaimsSession,
   type TopLevelClaims,
 } from "./top-level-claims.js";
 import { deriveEntryPoints } from "./workspace-scan.js";
@@ -64,7 +65,7 @@ export async function loadEntryFilesAndRefresh(
   client: AutoLoadClient,
   files: readonly string[],
   refresh: () => void,
-  claims: TopLevelClaims = createTopLevelClaims(),
+  claims: ClaimsSession = createTopLevelClaims(),
 ): Promise<AutoLoadRefusals> {
   const tryLoad = async (fileName: string): Promise<boolean> => {
     try {
@@ -240,7 +241,7 @@ export interface WorkspaceAutoloadDeps {
  */
 export async function autoLoadWorkspace(
   deps: WorkspaceAutoloadDeps,
-  claims?: TopLevelClaims,
+  claims?: ClaimsSession,
 ): Promise<void> {
   try {
     const folders = deps.folders();
@@ -307,7 +308,9 @@ export function registerWorkspaceAutoload(
     firstHold = undefined;
     queue.enqueue(async () => {
       try {
-        await autoLoadWorkspace(deps, claims);
+        // Bound now, so a `:reset` mid-sweep leaves this sweep's writes out
+        // of the next session's claims.
+        await autoLoadWorkspace(deps, claims.session());
       } finally {
         release();
       }

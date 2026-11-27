@@ -1674,9 +1674,102 @@ describe("top-level class claims", () => {
     expect(recordedMessages).toEqual([
       expect.objectContaining({
         level: "warning",
-        message: expect.stringContaining(`${refusedLib} is not loaded`),
+        message: expect.stringContaining(
+          `${refusedLib} was not loaded in favor of a copy of Lib`,
+        ),
       }),
     ]);
+  });
+
+  it("warns about the refused copies when the kept file is edited to stop declaring the class", async () => {
+    const { deps, client } = depsWithRefusedLib(["Lib2"]);
+
+    await handleMoChange(deps, keptLib);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Lib" });
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+    expect(recordedMessages).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining(`${refusedLib} was not loaded`),
+      }),
+    ]);
+  });
+
+  it("keeps a refused copy's package refused across a create-before-delete rename of the kept file", async () => {
+    const renamed = path.resolve("/rootA/LibNew/package.mo");
+    const sub = path.resolve("/rootB/Lib/Sub.mo");
+    const { deps, client } = depsWithRefusedLib();
+    deps.fileExists = async (p) => path.resolve(p) !== keptLib;
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const load = handleMoChange(deps, renamed);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(deps.claims.refusal(sub, ["Lib.Sub"])?.keptFileName).toBe(renamed);
+    finish?.({ success: true });
+    await load;
+
+    expect(deps.claims.refusal(sub, ["Lib.Sub"])?.keptFileName).toBe(renamed);
+    expect(deps.claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(
+      renamed,
+    );
+    expect(recordedMessages).toEqual([]);
+  });
+
+  it("warns about a copy refused against a reservation whose load then fails", async () => {
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const first = handleMoChange(deps, keptLib);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await handleMoChange(deps, refusedLib);
+    finish?.({ success: false });
+    await first;
+
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+    expect(recordedMessages.at(-1)).toEqual(
+      expect.objectContaining({
+        message: expect.stringContaining(
+          `${refusedLib} was not loaded in favor`,
+        ),
+      }),
+    );
+  });
+
+  it("warns about the refused copies a kept file gives up when its new class is refused", async () => {
+    const other = path.resolve("/rootC/Other.mo");
+    const { deps } = depsWithRefusedLib(["Other"]);
+    deps.claims.recordLoad(other, ["Other"]);
+
+    await handleMoChange(deps, keptLib);
+
+    expect(recordedMessages.map((m) => m.message)).toEqual([
+      expect.stringContaining(`${refusedLib} was not loaded in favor`),
+      expect.stringContaining(`${keptLib} was not loaded: Other`),
+    ]);
+  });
+
+  it("checks a reorder's refusal before bringing up the client", async () => {
+    const { deps } = depsWithRefusedLib();
+    const ensureClient = vi.fn(deps.ensureClient);
+    deps.ensureClient = ensureClient;
+    deps.readFile = async () => "A\nB\n";
+
+    await handleOrderChange(deps, path.resolve("/rootB/Lib/package.order"));
+
+    expect(ensureClient).not.toHaveBeenCalled();
   });
 });
 

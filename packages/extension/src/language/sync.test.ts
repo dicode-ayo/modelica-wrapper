@@ -460,4 +460,40 @@ describe("OmcSync — top-level class claims", () => {
     expect(await sync.ensureLoaded(refused)).toBe(true);
     expect(client.calls).toEqual([refused]);
   });
+
+  it("records nothing for a load in flight across a :reset", async () => {
+    const { client, claims, sync } = setup();
+    let finish: ((v: { success: boolean }) => void) | undefined;
+    client.loadFile = vi.fn(
+      () =>
+        new Promise<{ success: boolean }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const pending = sync.ensureLoaded(refused);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    claims.clear();
+    claims.recordLoad(kept, ["Lib"]);
+    finish?.({ success: true });
+    await pending;
+
+    expect(claims.refusal(refused, ["Lib"])?.keptFileName).toBe(kept);
+  });
+
+  it("reports the refused copies a load gave up", async () => {
+    const onOrphaned = vi.fn();
+    const client = clientOk();
+    client.parseFile = singleEntity(["Lib2"]);
+    const claims = createTopLevelClaims();
+    claims.recordLoad(kept, ["Lib"]);
+    claims.refuse(refused, "Lib", kept);
+    const sync = new OmcSync(client, { claims, onOrphaned });
+
+    await sync.ensureLoaded(kept);
+
+    expect(onOrphaned).toHaveBeenCalledWith([
+      { fileName: refused, className: "Lib", keptFileName: kept },
+    ]);
+  });
 });

@@ -58,6 +58,7 @@ import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
   nameCollisionMessage,
   nameCollisionToast,
+  orphanedCopiesToast,
   type NameCollision,
   type RefusedCopy,
   type TopLevelClaims,
@@ -333,6 +334,7 @@ export async function handleMoChange(
   // self-write to the same path racing in here would otherwise desync the
   // guard's pending entry from the text this call actually read.
   const isSelfWrite = deps.guard.claim(fsPath, text);
+  const claims = deps.claims.session();
 
   const client = await deps.ensureClient();
   let names: string[];
@@ -354,17 +356,18 @@ export async function handleMoChange(
   const removed = previous.filter((n) => !names.includes(n));
 
   if (isSelfWrite) {
-    deps.claims.recordLoad(fsPath, names);
+    settleOrphans(deps, claims.recordLoad(fsPath, names));
     reindexAndRelist(deps, fsPath, names, removed);
     retryUnblockedReorders(deps);
     return;
   }
 
-  await releaseVanishedOwners(deps, fsPath, names);
+  const vanished = await releaseVanishedOwners(deps, fsPath, names);
   // A class this file was refused for is the kept copy's in OMC.
   const unloaded = removed.filter((n) => deps.claims.supplies(fsPath, n));
   const collision = deps.claims.refusal(fsPath, names);
   if (collision !== undefined) {
+    settleOrphans(deps, vanished);
     await refuseChange(deps, fsPath, names, unloaded, collision);
     return;
   }
@@ -380,22 +383,26 @@ export async function handleMoChange(
     classNames: names,
   });
   if (deps.isBusy(fsPaths, classNames)) {
+    settleOrphans(deps, vanished);
     warnBusy(fsPath, directNames);
     return;
   }
 
-  const reservation = deps.claims.reserve(fsPath, names);
+  const reservation = claims.reserve(fsPath, names);
+  // Taken over by this reservation, so a file inside a copy the vanished
+  // owner was kept over cannot load before this one settles.
+  settleOrphans(deps, vanished);
   let success = false;
   try {
     ({ success } = await client.loadFile({ fileName: fsPath }));
   } finally {
-    if (!success) reservation.cancel();
+    if (!success) settleOrphans(deps, reservation.cancel());
   }
   if (!success) {
     log.warn("moWatcher", `loadFile ${fsPath} returned success=false`);
     return;
   }
-  reservation.commit();
+  settleOrphans(deps, reservation.commit());
   for (const name of unloaded) await client.deleteClass({ typeName: name });
 
   reindexAndRelist(deps, fsPath, names, unloaded);
@@ -411,12 +418,13 @@ async function releaseVanishedOwners(
   deps: MoWatcherDeps,
   fsPath: string,
   names: string[],
-): Promise<void> {
+): Promise<RefusedCopy[]> {
+  const orphaned: RefusedCopy[] = [];
   for (;;) {
     const collision = deps.claims.refusal(fsPath, names);
-    if (collision === undefined) return;
-    if (await deps.fileExists(collision.keptFileName)) return;
-    deps.claims.release(collision.keptFileName);
+    if (collision === undefined) return orphaned;
+    if (await deps.fileExists(collision.keptFileName)) return orphaned;
+    orphaned.push(...deps.claims.release(collision.keptFileName));
   }
 }
 
@@ -440,7 +448,7 @@ async function refuseChange(
     }
     const client = await deps.ensureClient();
     for (const name of unloaded) await client.deleteClass({ typeName: name });
-    deps.claims.release(fsPath);
+    settleOrphans(deps, deps.claims.release(fsPath));
     reindexAndRelist(deps, fsPath, [], unloaded);
   }
   warnCollision(deps.claims, collision, names);
@@ -479,7 +487,6 @@ async function reorderPackage(
     );
     return;
   }
-  const client = await deps.ensureClient();
   const collision = deps.claims.refusal(pkgFile, names);
   if (collision !== undefined) {
     warnCollision(deps.claims, collision, names);
@@ -503,6 +510,13 @@ async function reorderPackage(
   // alongside it — see `package-order-reload.integration.test.ts`. Nothing has
   // to be unloaded first, and nothing is: a failed reload leaves OMC holding
   // the order it already had, which is what the tree goes on showing.
+  const client = await deps.ensureClient();
+  // Checked again: another copy can have loaded while the client came up.
+  const lateCollision = deps.claims.refusal(pkgFile, names);
+  if (lateCollision !== undefined) {
+    warnCollision(deps.claims, lateCollision, names);
+    return;
+  }
   const reservation = deps.claims.reserve(pkgFile, names);
   let loaded = false;
   try {
@@ -510,8 +524,7 @@ async function reorderPackage(
   } catch (err) {
     log.warn("moWatcher", `reload of ${pkgFile} threw: ${errorDetail(err)}`);
   }
-  if (loaded) reservation.commit();
-  else reservation.cancel();
+  settleOrphans(deps, loaded ? reservation.commit() : reservation.cancel());
 
   // A reorder doesn't change which classes exist, so `names` (unchanged
   // above) is also what the index already holds for `pkgFile`.
@@ -616,7 +629,7 @@ export async function handleMoDelete(
     if (deps.claims.refusedCopiesHolding(fsPath).length > 0) {
       releaseVacatedCopies(deps, fsPath);
     } else {
-      warnOrphaned(deps.claims.release(fsPath));
+      settleOrphans(deps, deps.claims.release(fsPath));
     }
     return;
   }
@@ -646,7 +659,7 @@ export async function handleMoDelete(
   // to be told the same way, not just for fsPath's own direct names. Released
   // after, so the refused copies' files still fall outside the cascade.
   const cascadedFiles = cascadeCleanup(deps, names);
-  warnOrphaned(deps.claims.release(fsPath));
+  settleOrphans(deps, deps.claims.release(fsPath));
   for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
@@ -661,19 +674,20 @@ export async function handleMoDelete(
   retryUnblockedReorders(deps);
 }
 
-/** The kept copy is gone; the copies it was kept over are still not loaded. */
+/** The copies a given-up claim was kept over are still not loaded. */
 function warnOrphaned(copies: RefusedCopy[]): void {
   if (copies.length === 0) return;
-  const files = copies.map((c) => c.fileName);
-  log.warn(
-    "moWatcher",
-    `${files.join(", ")} not loaded: the copy kept over them was deleted`,
-  );
-  void vscode.window.showWarningMessage(
-    `Modelica: the loaded copy of ${copies.map((c) => c.className).join(", ")} ` +
-      `was deleted. ${files.join(", ")} is not loaded; save it or run :reset ` +
-      `to load it.`,
-  );
+  const toast = orphanedCopiesToast(copies);
+  log.warn("moWatcher", toast);
+  void vscode.window.showWarningMessage(toast);
+}
+
+/**
+ * The one handler for refused copies a claim gave up: re-refused in favor of
+ * a file that owns their class now, warned about otherwise.
+ */
+function settleOrphans(deps: MoWatcherDeps, copies: RefusedCopy[]): void {
+  warnOrphaned(deps.claims.adopt(copies));
 }
 
 /**

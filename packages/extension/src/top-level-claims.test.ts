@@ -2,7 +2,10 @@ import * as path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createTopLevelClaims } from "./top-level-claims.js";
+import {
+  createTopLevelClaims,
+  orphanedCopiesToast,
+} from "./top-level-claims.js";
 
 const keptLib = path.resolve("rootA", "Lib", "package.mo");
 const refusedLib = path.resolve("rootB", "Lib", "package.mo");
@@ -278,5 +281,92 @@ describe("TopLevelClaims", () => {
       second();
       await vi.waitFor(() => expect(settled).toBe(true));
     });
+  });
+
+  it("returns the refused copies of a class its owner stops declaring, and frees them", () => {
+    const claims = claimsWithRefusedLib();
+
+    expect(claims.recordLoad(keptLib, ["Lib2"])).toEqual([
+      { fileName: refusedLib, className: "Lib", keptFileName: keptLib },
+    ]);
+    expect(claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
+
+  it("returns the copies refused against a reservation it cancels", () => {
+    const claims = createTopLevelClaims();
+    const reservation = claims.reserve(keptLib, ["Lib"]);
+    claims.refuse(refusedLib, "Lib", keptLib);
+
+    expect(reservation.cancel()).toEqual([
+      { fileName: refusedLib, className: "Lib", keptFileName: keptLib },
+    ]);
+  });
+
+  it("re-refuses an adopted copy in favor of the class's new owner, and returns the rest", () => {
+    const claims = createTopLevelClaims();
+    const renamed = path.resolve("rootA", "LibNew", "package.mo");
+    claims.recordLoad(renamed, ["Lib"]);
+    const lib = {
+      fileName: refusedLib,
+      className: "Lib",
+      keptFileName: keptLib,
+    };
+    const other = {
+      fileName: path.resolve("rootB", "Other.mo"),
+      className: "Other",
+      keptFileName: keptLib,
+    };
+
+    expect(claims.adopt([lib, other])).toEqual([other]);
+    expect(claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(renamed);
+  });
+
+  describe("across a :reset", () => {
+    it("ignores a reservation taken before clear()", () => {
+      const claims = createTopLevelClaims();
+      const reservation = claims.reserve(refusedLib, ["Lib"]);
+      claims.clear();
+      claims.recordLoad(keptLib, ["Lib"]);
+
+      expect(reservation.commit()).toEqual([]);
+      expect(claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(keptLib);
+    });
+
+    it("ignores the writes of a session bound before clear()", () => {
+      const claims = createTopLevelClaims();
+      const session = claims.session();
+      claims.clear();
+
+      session.recordLoad(keptLib, ["Lib"]);
+      session.refuse(refusedLib, "Lib", keptLib);
+      session.reserve(keptLib, ["Other"]);
+
+      expect(claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+      expect(claims.refusal(refusedLib, ["Other"])).toBeUndefined();
+    });
+  });
+});
+
+describe("orphanedCopiesToast", () => {
+  it("names one copy and its class once", () => {
+    expect(
+      orphanedCopiesToast([
+        { fileName: refusedLib, className: "Lib", keptFileName: keptLib },
+      ]),
+    ).toBe(
+      `Modelica: ${refusedLib} was not loaded in favor of a copy of Lib that ` +
+        `is no longer loaded. Save it or run :reset to load it.`,
+    );
+  });
+
+  it("dedupes class names and pluralizes for several copies", () => {
+    const toast = orphanedCopiesToast([
+      { fileName: "b/Lib.mo", className: "Lib", keptFileName: "a/Lib.mo" },
+      { fileName: "c/Lib.mo", className: "Lib", keptFileName: "a/Lib.mo" },
+    ]);
+
+    expect(toast).toContain("b/Lib.mo, c/Lib.mo were not loaded");
+    expect(toast).toContain("a copy of Lib that");
+    expect(toast).toContain("Save them or run :reset to load them.");
   });
 });

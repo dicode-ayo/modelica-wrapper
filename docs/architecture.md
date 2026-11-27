@@ -283,8 +283,15 @@ it before `loadFile`:
   delete cascade leaves refused copies' files out. An edit whose new class is
   refused still unloads the classes the file supplied before. A refused
   copy's refusal is dropped once none of its package's files is indexed.
-  Deleting the owner frees the class and warns that its refused copies stay
-  unloaded until saved or `:reset`.
+- A claim is given up one way, whether its owner is deleted, edits the class
+  away, has its reservation cancelled, or vanished in a rename: the refusals
+  kept in its favor are dropped and returned. The caller hands them to
+  `adopt`, which re-refuses each copy in favor of a file that owns the class
+  now (a rename's new path, reserved before its load) and returns the rest,
+  which are warned about as unloaded until saved or `:reset`.
+- `clear()` starts a new epoch. A sweep binds a `session()` when it starts,
+  and every reservation is bound when taken, so writes from a load in flight
+  across a `:reset` never reach the new session's claims.
 - The sync re-asks the claims on every touch of a buffer they refused, so a
   class the watcher frees loads without a save.
 - The sweep decides which copy is kept. The claims are held from creation

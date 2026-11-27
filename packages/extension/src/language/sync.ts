@@ -19,6 +19,7 @@ import { moreThanOne, type FileParseClient } from "../single-entity-file.js";
 import {
   nameCollisionMessage,
   type NameCollision,
+  type RefusedCopy,
   type TopLevelClaims,
 } from "../top-level-claims.js";
 
@@ -48,6 +49,8 @@ export interface OmcSyncOptions {
    * reported that path.
    */
   onCollision?: (collision: NameCollision) => void;
+  /** Called with the refused copies a load gave up that no loaded copy stands for. */
+  onOrphaned?: (copies: RefusedCopy[]) => void;
   /**
    * True when a dirty editor holds unsaved text for one of `classNames`, the
    * top-level classes `filePath` declares. `loadFile` would replace OMC's AST
@@ -87,6 +90,7 @@ export class OmcSync {
   ) => void;
   private readonly claims: TopLevelClaims | undefined;
   private readonly onCollision: (collision: NameCollision) => void;
+  private readonly onOrphaned: (copies: RefusedCopy[]) => void;
 
   constructor(
     private readonly client: SyncClient,
@@ -97,6 +101,7 @@ export class OmcSync {
     this.isBusy = options.isBusy ?? (() => false);
     this.claims = options.claims;
     this.onCollision = options.onCollision ?? (() => {});
+    this.onOrphaned = options.onOrphaned ?? (() => {});
   }
 
   /**
@@ -215,8 +220,11 @@ export class OmcSync {
         ({ success } = await this.client.loadFile({ fileName: filePath }));
       } finally {
         // OMC holds what loaded even when this result is discarded below.
-        if (success) reservation?.commit();
-        else reservation?.cancel();
+        const orphaned = success
+          ? reservation?.commit()
+          : reservation?.cancel();
+        const lost = this.claims?.adopt(orphaned ?? []) ?? [];
+        if (lost.length > 0) this.onOrphaned(lost);
       }
       // Invalidated mid-flight — load read stale text, discard.
       if (snapshot !== (this.generation.get(key) ?? 0)) {
