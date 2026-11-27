@@ -1374,7 +1374,7 @@ describe("top-level class claims", () => {
     const made = makeDeps();
     made.client.parseFile.mockResolvedValue({ classNames: parsed });
     made.deps.claims.recordLoad(keptLib, ["Lib"]);
-    made.deps.claims.refuse(refusedLib, "Lib");
+    made.deps.claims.refuse(refusedLib, "Lib", keptLib);
     made.deps.index.set(keptLib, ["Lib"]);
     made.deps.index.set(refusedLib, ["Lib"]);
     return made;
@@ -1610,6 +1610,73 @@ describe("top-level class claims", () => {
     expect(deps.index.get(sub)).toEqual(["Lib.Sub"]);
     expect(deps.index.get(refusedLib)).toEqual(["Lib"]);
     expect(deps.index.get(keptSub)).toBeUndefined();
+  });
+
+  it("loads a renamed top-level file whose create lands before the old path's delete, and keeps it loaded", async () => {
+    const oldFile = path.resolve("/rootA/Old.mo");
+    const newFile = path.resolve("/rootA/New.mo");
+    const { deps, client } = makeDeps({
+      fileExists: async (p) => path.resolve(p) !== oldFile,
+    });
+    client.parseFile.mockResolvedValue({ classNames: ["Lib"] });
+    deps.claims.recordLoad(oldFile, ["Lib"]);
+    deps.index.set(oldFile, ["Lib"]);
+
+    await handleMoChange(deps, newFile);
+    await handleMoDelete(deps, oldFile);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: newFile });
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(recordedMessages).toEqual([]);
+    expect(deps.claims.refusal(oldFile, ["Lib"])?.keptFileName).toBe(newFile);
+  });
+
+  it("loads a renamed member file whose create lands before the old path's delete", async () => {
+    const pkg = path.resolve("/rootA/Lib/package.mo");
+    const { deps, client } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["Lib.A.Foo"] });
+    deps.claims.recordLoad(pkg, ["Lib"]);
+    deps.claims.recordLoad(path.resolve("/rootA/Lib/A/Foo.mo"), ["Lib.A.Foo"]);
+
+    await handleMoChange(deps, path.resolve("/rootA/Lib/A/Bar.mo"));
+
+    expect(client.loadFile).toHaveBeenCalledTimes(1);
+    expect(recordedMessages).toEqual([]);
+  });
+
+  it("drops the refusal of a deleted refused copy the index never saw", async () => {
+    const { deps } = makeDeps();
+    deps.claims.recordLoad(keptLib, ["Lib"]);
+    deps.claims.refuse(refusedLib, "Lib", keptLib);
+
+    await handleMoDelete(deps, refusedLib);
+
+    expect(
+      deps.claims.refusal(path.resolve("/rootB/Ext.mo"), ["Lib.Ext"]),
+    ).toBeUndefined();
+  });
+
+  it("frees the class of a deleted owner the index never saw", async () => {
+    const { deps } = makeDeps();
+    deps.claims.recordLoad(keptLib, ["Lib"]);
+
+    await handleMoDelete(deps, keptLib);
+
+    expect(deps.claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
+
+  it("warns that a refused copy stays unloaded once the kept copy is deleted", async () => {
+    const { deps, client } = depsWithRefusedLib();
+
+    await handleMoDelete(deps, keptLib);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Lib" });
+    expect(recordedMessages).toEqual([
+      expect.objectContaining({
+        level: "warning",
+        message: expect.stringContaining(`${refusedLib} is not loaded`),
+      }),
+    ]);
   });
 });
 

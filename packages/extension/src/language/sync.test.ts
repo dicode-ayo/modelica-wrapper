@@ -449,4 +449,15 @@ describe("OmcSync — top-level class claims", () => {
     expect(client.loadFile).toHaveBeenCalledTimes(1);
     expect(claims.refusal(refused, ["Lib"])?.keptFileName).toBe(kept);
   });
+
+  it("loads a refused buffer once the claims free its class, without waiting for a save", async () => {
+    const { client, claims, sync } = setup();
+    claims.recordLoad(kept, ["Lib"]);
+    expect(await sync.ensureLoaded(refused)).toBe(false);
+
+    claims.release(kept);
+
+    expect(await sync.ensureLoaded(refused)).toBe(true);
+    expect(client.calls).toEqual([refused]);
+  });
 });

@@ -6,7 +6,7 @@
  *     `onDidSaveTextDocument` and `onDidCloseTextDocument`).
  *   - A file with a dirty buffer open is not loaded on first touch: the load
  *     would revert OMC to the on-disk text under the edit.
- *   - A file the session's class claims refuse is not loaded: it would
+ *   - A file the session's top-level class claims refuse is not loaded: it would
  *     replace another file's copy of the same class.
  *   - Once loaded, and between saves, resolution reflects the last saved text
  *     — not the dirty buffer. See `docs/language-features-design.md` → "Buffer ↔ OMC sync".
@@ -68,11 +68,17 @@ export class OmcSync {
    */
   private readonly generation = new Map<string, number>();
   /**
-   * Paths refused for declaring several top-level classes or a class another
-   * file supplies. Remembered so a touch-per-keystroke doesn't re-`parseFile`
-   * a file that cannot load, and so each refusal is reported once.
+   * Paths refused for declaring several top-level classes. Remembered so a
+   * touch-per-keystroke doesn't re-`parseFile` a file that cannot load, and so
+   * {@link OmcSyncOptions.onMultiEntity} reports each path once.
    */
-  private readonly refused = new Set<string>();
+  private readonly multiEntity = new Set<string>();
+  /**
+   * The classes of each path {@link OmcSyncOptions.claims} refused, so a touch
+   * re-asks the claims without a `parseFile`: the watcher can free the class
+   * while the buffer stays open.
+   */
+  private readonly collided = new Map<string, string[]>();
   private readonly normalizeKey: (filePath: string) => string;
   private readonly isBusy: (filePath: string, classNames: string[]) => boolean;
   private readonly onMultiEntity: (
@@ -101,7 +107,14 @@ export class OmcSync {
   async ensureLoaded(filePath: string): Promise<boolean> {
     const key = this.normalizeKey(filePath);
     if (this.loaded.has(key)) return true;
-    if (this.refused.has(key)) return false;
+    if (this.multiEntity.has(key)) return false;
+    const collidedNames = this.collided.get(key);
+    if (collidedNames !== undefined) {
+      if (this.claims?.refusal(filePath, collidedNames) !== undefined) {
+        return false;
+      }
+      this.collided.delete(key);
+    }
 
     const pending = this.inFlight.get(key);
     if (pending) return pending;
@@ -132,7 +145,8 @@ export class OmcSync {
     this.inFlight.delete(key);
     // A save that splits the file out into one class each makes it loadable,
     // so the refusal must not outlive the text it was based on.
-    this.refused.delete(key);
+    this.multiEntity.delete(key);
+    this.collided.delete(key);
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
   }
 
@@ -151,7 +165,8 @@ export class OmcSync {
     const keys = new Set([
       ...this.loaded,
       ...this.inFlight.keys(),
-      ...this.refused,
+      ...this.multiEntity,
+      ...this.collided.keys(),
     ]);
     for (const key of keys) this.invalidateKey(key);
   }
@@ -180,13 +195,13 @@ export class OmcSync {
       }
       const several = moreThanOne(classNames);
       if (several) {
-        this.refused.add(key);
+        this.multiEntity.add(key);
         this.onMultiEntity(filePath, several);
         return false;
       }
       const collision = this.claims?.refusal(filePath, classNames);
       if (collision !== undefined) {
-        this.refused.add(key);
+        this.collided.set(key, classNames);
         log.warn("language", nameCollisionMessage(collision));
         if (this.claims?.recordRefusal(collision, classNames)) {
           this.onCollision(collision);

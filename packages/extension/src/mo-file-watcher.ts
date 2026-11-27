@@ -35,7 +35,7 @@
  * dirty* in an editor, where reloading OMC would clobber the unsaved buffer
  * — skipped with a warning until it saves; and an edit to a file the
  * session's {@link TopLevelClaims} refuse, which would replace another
- * file's copy of the same class — skipped with a warning, and its
+ * file's copy of the same top-level class — skipped with a warning, and its
  * delete never unloads that copy.
  */
 
@@ -59,6 +59,7 @@ import {
   nameCollisionMessage,
   nameCollisionToast,
   type NameCollision,
+  type RefusedCopy,
   type TopLevelClaims,
 } from "./top-level-claims.js";
 import { isDeclaredClassBusy } from "./dirty-buffer.js";
@@ -105,7 +106,7 @@ export interface MoWatcherDeps {
   sourceProvider: Pick<ModelicaSourceProvider, "notifySourceChanged">;
   guard: SelfWriteGuard;
   index: PathClassIndex;
-  /** Which file supplies each class; see {@link TopLevelClaims}. */
+  /** Which file supplies each top-level class; see {@link TopLevelClaims}. */
   claims: TopLevelClaims;
   /** Packages whose reorder is waiting on a busy buffer's save to retry. */
   pendingReorders: PendingReorders;
@@ -359,6 +360,7 @@ export async function handleMoChange(
     return;
   }
 
+  await releaseVanishedOwners(deps, fsPath, names);
   // A class this file was refused for is the kept copy's in OMC.
   const unloaded = removed.filter((n) => deps.claims.supplies(fsPath, n));
   const collision = deps.claims.refusal(fsPath, names);
@@ -398,6 +400,24 @@ export async function handleMoChange(
 
   reindexAndRelist(deps, fsPath, names, unloaded);
   retryUnblockedReorders(deps);
+}
+
+/**
+ * Release each kept copy refusing `fsPath` whose file is gone. A rename
+ * reports the new path's create before the old path's delete, so the old
+ * path still owns the class when the new one loads.
+ */
+async function releaseVanishedOwners(
+  deps: MoWatcherDeps,
+  fsPath: string,
+  names: string[],
+): Promise<void> {
+  for (;;) {
+    const collision = deps.claims.refusal(fsPath, names);
+    if (collision === undefined) return;
+    if (await deps.fileExists(collision.keptFileName)) return;
+    deps.claims.release(collision.keptFileName);
+  }
 }
 
 /**
@@ -592,6 +612,12 @@ export async function handleMoDelete(
   const names = deps.index.get(fsPath);
   if (names === undefined || names.length === 0) {
     log.warn("moWatcher", `deleted ${fsPath} declared no indexed classes`);
+    // The sync can have claimed or refused a file the index never saw.
+    if (deps.claims.refusedCopiesHolding(fsPath).length > 0) {
+      releaseVacatedCopies(deps, fsPath);
+    } else {
+      warnOrphaned(deps.claims.release(fsPath));
+    }
     return;
   }
   // A refused copy never reached OMC, so the classes it names there are the
@@ -620,7 +646,7 @@ export async function handleMoDelete(
   // to be told the same way, not just for fsPath's own direct names. Released
   // after, so the refused copies' files still fall outside the cascade.
   const cascadedFiles = cascadeCleanup(deps, names);
-  deps.claims.release(fsPath);
+  warnOrphaned(deps.claims.release(fsPath));
   for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
@@ -633,6 +659,21 @@ export async function handleMoDelete(
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
 
   retryUnblockedReorders(deps);
+}
+
+/** The kept copy is gone; the copies it was kept over are still not loaded. */
+function warnOrphaned(copies: RefusedCopy[]): void {
+  if (copies.length === 0) return;
+  const files = copies.map((c) => c.fileName);
+  log.warn(
+    "moWatcher",
+    `${files.join(", ")} not loaded: the copy kept over them was deleted`,
+  );
+  void vscode.window.showWarningMessage(
+    `Modelica: the loaded copy of ${copies.map((c) => c.className).join(", ")} ` +
+      `was deleted. ${files.join(", ")} is not loaded; save it or run :reset ` +
+      `to load it.`,
+  );
 }
 
 /**

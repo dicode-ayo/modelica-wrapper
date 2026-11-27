@@ -63,7 +63,7 @@ describe("TopLevelClaims", () => {
     const kept = path.resolve("ws", "Lib", "package.mo");
     const refused = path.resolve("ws", "sub", "Lib.mo");
     claims.recordLoad(kept, ["Lib"]);
-    claims.refuse(refused, "Lib");
+    claims.refuse(refused, "Lib", kept);
 
     expect(
       claims.refusal(path.resolve("ws", "sub", "Ext.mo"), ["Lib.Ext"]),
@@ -125,7 +125,7 @@ describe("TopLevelClaims", () => {
     expect(claims.recordRefusal(collision, ["Lib.Ext"])).toBe(false);
     expect(claims.refusedCopiesHolding(ext)).toEqual([]);
     expect(claims.refusedCopiesHolding(refusedLib)).toEqual([
-      { fileName: refusedLib, className: "Lib" },
+      { fileName: refusedLib, className: "Lib", keptFileName: keptLib },
     ]);
   });
 
@@ -134,7 +134,9 @@ describe("TopLevelClaims", () => {
 
     expect(
       claims.refusedCopiesHolding(path.resolve("rootB", "Lib", "A.mo")),
-    ).toEqual([{ fileName: refusedLib, className: "Lib" }]);
+    ).toEqual([
+      { fileName: refusedLib, className: "Lib", keptFileName: keptLib },
+    ]);
     expect(claims.refusedCopiesHolding(path.resolve("rootB", "A.mo"))).toEqual(
       [],
     );
@@ -150,7 +152,11 @@ describe("TopLevelClaims", () => {
 
   it("compares a refused copy's package through the host's key normalization", () => {
     const claims = createTopLevelClaims((p) => p.toLowerCase());
-    const copy = { fileName: refusedLib, className: "Lib" };
+    const copy = {
+      fileName: refusedLib,
+      className: "Lib",
+      keptFileName: keptLib,
+    };
 
     expect(claims.copyHolds(copy, path.resolve("rootB", "LIB", "Sub.mo"))).toBe(
       true,
@@ -158,16 +164,42 @@ describe("TopLevelClaims", () => {
     expect(claims.copyHolds(copy, path.resolve("rootB", "Ext.mo"))).toBe(false);
   });
 
-  it("refuses a second file declaring the same nested class", () => {
+  it("claims top-level classes only, so a moved member file is never refused against its old path", () => {
     const claims = createTopLevelClaims();
-    claims.recordLoad(path.resolve("rootA", "Ext.mo"), ["Lib.Ext"]);
+    claims.recordLoad(path.resolve("rootA", "Lib", "A", "Foo.mo"), [
+      "Lib.A.Foo",
+    ]);
 
     expect(
-      claims.refusal(path.resolve("rootB", "Ext.mo"), ["Lib.Ext"]),
-    ).toMatchObject({ className: "Lib.Ext" });
-    expect(
-      claims.refusal(path.resolve("rootB", "Other.mo"), ["Lib.Other"]),
+      claims.refusal(path.resolve("rootA", "Lib", "A", "Bar.mo"), [
+        "Lib.A.Foo",
+      ]),
     ).toBeUndefined();
+  });
+
+  it("keeps refusing a file refused by path for a nested class until its kept file goes", () => {
+    const claims = createTopLevelClaims();
+    const keptExt = path.resolve("rootA", "Ext.mo");
+    const refusedExt = path.resolve("rootB", "Ext.mo");
+    claims.refuse(refusedExt, "Lib.Ext", keptExt);
+
+    expect(claims.refusal(refusedExt, ["Lib.Ext"])).toEqual({
+      className: "Lib.Ext",
+      keptFileName: keptExt,
+      refusedFileName: refusedExt,
+    });
+    expect(claims.refusal(refusedExt, ["Lib.Other"])).toBeUndefined();
+
+    claims.release(keptExt);
+    expect(claims.refusal(refusedExt, ["Lib.Ext"])).toBeUndefined();
+  });
+
+  it("returns the refused copies of a released owner's class", () => {
+    const claims = claimsWithRefusedLib();
+
+    expect(claims.release(keptLib)).toEqual([
+      { fileName: refusedLib, className: "Lib", keptFileName: keptLib },
+    ]);
   });
 
   describe("reservations", () => {
@@ -179,6 +211,33 @@ describe("TopLevelClaims", () => {
 
       reservation.cancel();
       expect(claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+    });
+
+    it("drops the refusals recorded against a reservation it cancels", () => {
+      const claims = createTopLevelClaims();
+      const reservation = claims.reserve(keptLib, ["Lib"]);
+      const collision = claims.refusal(refusedLib, ["Lib"]);
+      if (collision === undefined) throw new Error("expected a collision");
+      claims.recordRefusal(collision, ["Lib"]);
+
+      reservation.cancel();
+
+      expect(claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+      expect(
+        claims.refusal(path.resolve("rootB", "Lib", "A.mo"), ["Lib.A"]),
+      ).toBeUndefined();
+      expect(claims.recordRefusal(collision, [])).toBe(true);
+    });
+
+    it("leaves a later load of the same file committed when an earlier reservation cancels", () => {
+      const claims = createTopLevelClaims();
+      const first = claims.reserve(keptLib, ["Lib"]);
+      const second = claims.reserve(keptLib, ["Lib"]);
+
+      second.commit();
+      first.cancel();
+
+      expect(claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(keptLib);
     });
 
     it("commits a reservation as a load, giving up classes no longer declared", () => {

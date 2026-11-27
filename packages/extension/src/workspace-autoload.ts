@@ -178,7 +178,7 @@ export async function loadEntryFilesAndRefresh(
         for (const later of candidates.slice(
           candidates.indexOf(fileName) + 1,
         )) {
-          claims.refuse(later, className);
+          claims.refuse(later, className, fileName);
         }
       }
     }
