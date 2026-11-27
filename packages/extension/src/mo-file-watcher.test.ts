@@ -1771,6 +1771,16 @@ describe("top-level class claims", () => {
 
     expect(ensureClient).not.toHaveBeenCalled();
   });
+
+  it("loads a refused copy without an orphan warning once its kept file is gone", async () => {
+    const { deps, client } = depsWithRefusedLib();
+    deps.fileExists = async (p) => path.resolve(p) !== keptLib;
+
+    await handleMoChange(deps, refusedLib);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: refusedLib });
+    expect(recordedMessages).toEqual([]);
+  });
 });
 
 describe("registerMoFileWatcher — workspace sweep hold", () => {

@@ -197,6 +197,8 @@ export async function loadEntryFilesAndRefresh(
     if (!added) break;
   }
 
+  // A later copy refused during the passes is already reported.
+  const reported = new Set(collisions.map((c) => c.refusedFileName));
   for (const [className, candidates] of candidatesByName) {
     // Copies before the kept one failed on their own; those after it lost to
     // it, whether or not they were tried first.
@@ -204,6 +206,7 @@ export async function loadEntryFilesAndRefresh(
     const keptFileName = candidates[keptIndex];
     if (keptFileName === undefined) continue;
     for (const refusedFileName of candidates.slice(keptIndex + 1)) {
+      if (reported.has(refusedFileName)) continue;
       const collision = { className, keptFileName, refusedFileName };
       log.warn("autoLoad", nameCollisionMessage(collision));
       claims.recordRefusal(collision, [className]);

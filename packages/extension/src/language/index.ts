@@ -16,7 +16,7 @@ import { multiEntityMessage, multiEntityToast } from "../single-entity-file.js";
 import { sourceUriFor } from "../source-provider.js";
 import {
   nameCollisionToast,
-  orphanedCopiesToast,
+  reportOrphans,
   type TopLevelClaims,
 } from "../top-level-claims.js";
 
@@ -203,11 +203,7 @@ export function registerLanguageFeatures(
     onCollision: (collision) => {
       void vscode.window.showWarningMessage(nameCollisionToast([collision]));
     },
-    onOrphaned: (copies) => {
-      const toast = orphanedCopiesToast(copies);
-      log.warn("language", toast);
-      void vscode.window.showWarningMessage(toast);
-    },
+    onOrphaned: (copies) => reportOrphans("language", copies),
   });
 
   // One shared read-only-lookup cache for resolution + completion, keyed by the

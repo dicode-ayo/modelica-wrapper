@@ -58,7 +58,7 @@ import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
   nameCollisionMessage,
   nameCollisionToast,
-  orphanedCopiesToast,
+  reportOrphans,
   type NameCollision,
   type RefusedCopy,
   type TopLevelClaims,
@@ -674,20 +674,12 @@ export async function handleMoDelete(
   retryUnblockedReorders(deps);
 }
 
-/** The copies a given-up claim was kept over are still not loaded. */
-function warnOrphaned(copies: RefusedCopy[]): void {
-  if (copies.length === 0) return;
-  const toast = orphanedCopiesToast(copies);
-  log.warn("moWatcher", toast);
-  void vscode.window.showWarningMessage(toast);
-}
-
 /**
  * The one handler for refused copies a claim gave up: re-refused in favor of
  * a file that owns their class now, warned about otherwise.
  */
 function settleOrphans(deps: MoWatcherDeps, copies: RefusedCopy[]): void {
-  warnOrphaned(deps.claims.adopt(copies));
+  reportOrphans("moWatcher", deps.claims.adopt(copies));
 }
 
 /**

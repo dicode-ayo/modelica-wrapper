@@ -512,6 +512,47 @@ describe("loadEntryFilesAndRefresh", () => {
     expect(claims.refusal(refusedExt, ["Lib.Ext"])?.keptFileName).toBe(keptExt);
   });
 
+  it("reports a later copy refused during the passes only once", async () => {
+    const refresh = vi.fn();
+    const aLib = path.join("rootA", "Lib", "package.mo");
+    const bLib = path.join("rootB", "Lib", "package.mo");
+    const aExt = path.join("rootA", "Ext.mo");
+    const bExt = path.join("rootB", "Ext.mo");
+    const late = path.join("rootA", "Late.mo");
+    const loaded = new Set<string>();
+    const attempts = new Map<string, number>();
+    const c: AutoLoadClient = {
+      parseFile: vi.fn(async ({ fileName }: { fileName: string }) => ({
+        classNames: [
+          fileName === aExt || fileName === bExt
+            ? "Lib.Ext"
+            : classNameOf(fileName),
+        ],
+      })),
+      loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+        const n = (attempts.get(fileName) ?? 0) + 1;
+        attempts.set(fileName, n);
+        const success =
+          fileName === aLib ||
+          (fileName === late && n >= 3) ||
+          (fileName === aExt && loaded.has(late));
+        if (success) loaded.add(fileName);
+        return { success };
+      }),
+      getErrorString: vi.fn(async () => ({ errorString: "boom" })),
+    };
+
+    const { collisions } = await loadEntryFilesAndRefresh(
+      c,
+      [aLib, bLib, aExt, bExt, late],
+      refresh,
+    );
+
+    expect(loaded).toEqual(new Set([aLib, aExt, late]));
+    const refusedFiles = collisions.map((x) => x.refusedFileName);
+    expect(refusedFiles.sort()).toEqual([bExt, bLib].sort());
+  });
+
   it("records each loaded class in the claims, and refuses one a load outside the sweep owns", async () => {
     const refresh = vi.fn();
     const claims = createTopLevelClaims();

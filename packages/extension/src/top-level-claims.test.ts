@@ -321,6 +321,19 @@ describe("TopLevelClaims", () => {
     expect(claims.refusal(refusedLib, ["Lib"])?.keptFileName).toBe(renamed);
   });
 
+  it("neither re-refuses nor reports a copy that owns its class again", () => {
+    const claims = createTopLevelClaims();
+    claims.recordLoad(refusedLib, ["Lib"]);
+    const copy = {
+      fileName: refusedLib,
+      className: "Lib",
+      keptFileName: keptLib,
+    };
+
+    expect(claims.adopt([copy])).toEqual([]);
+    expect(claims.refusal(refusedLib, ["Lib"])).toBeUndefined();
+  });
+
   describe("across a :reset", () => {
     it("ignores a reservation taken before clear()", () => {
       const claims = createTopLevelClaims();

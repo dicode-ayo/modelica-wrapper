@@ -15,6 +15,8 @@
 
 import * as path from "node:path";
 
+import * as vscode from "vscode";
+
 import { isWithinScope, scopeChain } from "@dicode/modelica-lang-core";
 
 import {
@@ -22,6 +24,7 @@ import {
   isInsideDirExclusive,
   isPackageFile,
 } from "./fs-util.js";
+import { log } from "./logger.js";
 
 /**
  * A file left unloaded because a class it declares, or extends from inside
@@ -70,6 +73,17 @@ export function orphanedCopiesToast(copies: readonly RefusedCopy[]): string {
     `favor of a copy of ${classes.join(", ")} that is no longer loaded. ` +
     `Save ${one ? "it" : "them"} or run :reset to load ${one ? "it" : "them"}.`
   );
+}
+
+/** Log and toast {@link orphanedCopiesToast} for `copies`, if any. */
+export function reportOrphans(
+  topic: string,
+  copies: readonly RefusedCopy[],
+): void {
+  if (copies.length === 0) return;
+  const toast = orphanedCopiesToast(copies);
+  log.warn(topic, toast);
+  void vscode.window.showWarningMessage(toast);
 }
 
 /** A refused copy of a class, and the file its class was kept from. */
@@ -408,12 +422,13 @@ export function createTopLevelClaims(
       };
     },
     adopt(copies) {
+      // A copy that owns its class again is loading, not lost.
       const lost: RefusedCopy[] = [];
       for (const copy of copies) {
         const owner = ownerByClass.get(copy.className);
-        if (owner === undefined || key(owner.fileName) === key(copy.fileName)) {
+        if (owner === undefined) {
           lost.push(copy);
-        } else {
+        } else if (key(owner.fileName) !== key(copy.fileName)) {
           refuse(copy.fileName, copy.className, owner.fileName);
         }
       }
