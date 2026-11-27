@@ -234,6 +234,17 @@ the digits past that sit below the default 1e-6 solver tolerance and cost an age
 every read. Significant digits, not decimal places, so a 1e-9 signal is not
 flattened to zero.
 
+### The MCP server without an editor
+
+The same tool set is served over stdio by the `modelica-mcp` bin
+([cli.ts](../packages/mcp-server/src/cli.ts),
+[stdio-host.ts](../packages/mcp-server/src/stdio-host.ts)). It spawns its own
+`OmcClient` on the first tool call, so it cannot see classes an editor window
+has loaded, and gates writes with
+[fs-verdicts.ts](../packages/mcp-server/src/fs-verdicts.ts): a class under a
+`MODELICAPATH` entry or in a read-only file is refused, as in the extension.
+See the [package README](../packages/mcp-server/README.md) for running it.
+
 ### The model-instance read path
 
 `getModelInstance(className, modifier="", prettyPrint=false)` returns the whole
